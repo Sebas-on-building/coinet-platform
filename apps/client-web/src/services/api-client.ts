@@ -19,7 +19,13 @@ const getBackendURL = () => {
     return import.meta.env.VITE_API_URL;
   }
   
-  // Auto-detect in Codespaces
+  // In development (Vite dev server), use relative URLs to leverage Vite proxy
+  // This avoids CORS issues by proxying through the same origin
+  if (import.meta.env.DEV) {
+    return ''; // Empty string = relative URL (same origin)
+  }
+  
+  // In production or if explicitly needed, try direct backend URL
   if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
     // Extract base URL and replace port with 3000
     const baseUrl = window.location.hostname.replace(/-\d+\.app\.github\.dev$/, '-3000.app.github.dev');
