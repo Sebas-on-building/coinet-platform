@@ -1,0 +1,15 @@
+// This file is used for Protobuf serialization of Tick messages in the market data service.
+// To generate Go code, run:
+//   protoc --go_out=. proto/tick.proto
+// The generated code should be imported in the producer and consumer for Protobuf serialization.
+
+syntax = "proto3";
+package coinnet.marketdata;
+option go_package = "marketdataservice/proto;proto";
+
+message Tick {
+  string symbol = 1;
+  int64 timestamp = 2;
+  double price = 3;
+  double volume = 4;
+} 

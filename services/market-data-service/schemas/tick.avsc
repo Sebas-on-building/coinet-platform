@@ -1,0 +1,14 @@
+// This file is used for Avro serialization of Tick messages in the market data service.
+// Register this schema with your schema registry and reference it in the producer via KAFKA_AVRO_SUBJECT.
+// The producer uses this schema for Avro serialization when KAFKA_SERIALIZATION=avro.
+{
+  "type": "record",
+  "name": "Tick",
+  "namespace": "coinnet.marketdata",
+  "fields": [
+    {"name": "symbol", "type": "string"},
+    {"name": "timestamp", "type": "long"},
+    {"name": "price", "type": "double"},
+    {"name": "volume", "type": "double"}
+  ]
+} 

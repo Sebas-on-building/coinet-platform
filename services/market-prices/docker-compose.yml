@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # Market Prices Service
+  market-prices:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: coinet-market-prices
+    restart: unless-stopped
+    environment:
+      # CoinGecko
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY}
+      COINGECKO_RATE_LIMIT_PER_MINUTE: ${COINGECKO_RATE_LIMIT_PER_MINUTE:-30}
+      
+      # CoinMarketCap
+      COINMARKETCAP_API_KEY: ${COINMARKETCAP_API_KEY}
+      COINMARKETCAP_RATE_LIMIT_PER_MINUTE: ${COINMARKETCAP_RATE_LIMIT_PER_MINUTE:-30}
+      
+      # Database
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: 5432
+      TIMESCALE_DATABASE: coinet
+      TIMESCALE_USER: coinet_user
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD:-coinet_password}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      
+      # Service config
+      NODE_ENV: production
+      LOG_LEVEL: info
+      CACHE_TTL_SECONDS: 30
+      ENABLE_WEBSOCKET: ${ENABLE_WEBSOCKET:-true}
+      ENABLE_CMC_FALLBACK: ${ENABLE_CMC_FALLBACK:-true}
+    depends_on:
+      - timescaledb
+      - redis
+    networks:
+      - coinet-network
+    volumes:
+      - ./logs:/app/logs
+
+  # TimescaleDB (PostgreSQL with time-series extension)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: coinet-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: coinet
+      POSTGRES_USER: coinet_user
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-coinet_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    networks:
+      - coinet-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: coinet-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - coinet-network
+
+  # Optional: Redis Commander for cache inspection
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: coinet-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - coinet-network
+    profiles:
+      - debug
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: coinet-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@coinet.com
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - timescaledb
+    networks:
+      - coinet-network
+    profiles:
+      - debug
+
+volumes:
+  timescale-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  coinet-network:
+    driver: bridge
+
