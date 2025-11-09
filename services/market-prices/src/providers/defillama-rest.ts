@@ -124,6 +124,76 @@ export interface DeFiLlamaTokenUnlock {
   maxSupply: number;
 }
 
+/**
+ * Bridge data for cross-chain analytics
+ */
+export interface DeFiLlamaBridge {
+  id: string;
+  name: string;
+  displayName: string;
+  icon?: string;
+  chains: string[];
+  tvl: number;
+  volume24h?: number;
+  volume7d?: number;
+  volume30d?: number;
+  uniqueUsers24h?: number;
+  uniqueUsers7d?: number;
+  uniqueUsers30d?: number;
+  change24h?: number;
+  change7d?: number;
+  change30d?: number;
+}
+
+/**
+ * Protocol revenue data for investment analysis
+ */
+export interface DeFiLlamaRevenue {
+  date: number;
+  dailyRevenueUSD?: number;
+  dailyFeesUSD?: number;
+  dailySupplySideRevenueUSD?: number;
+  dailyProtocolRevenueUSD?: number;
+  totalRevenueUSD?: number;
+  totalFeesUSD?: number;
+  totalSupplySideRevenueUSD?: number;
+  totalProtocolRevenueUSD?: number;
+}
+
+/**
+ * Protocol fees data for fee analysis
+ */
+export interface DeFiLlamaFees {
+  date: number;
+  dailyFeesUSD?: number;
+  dailyRevenueUSD?: number;
+  dailySupplySideRevenueUSD?: number;
+  dailyProtocolRevenueUSD?: number;
+  totalFeesUSD?: number;
+  totalRevenueUSD?: number;
+  totalSupplySideRevenueUSD?: number;
+  totalProtocolRevenueUSD?: number;
+  protocolId?: string;
+  protocolName?: string;
+}
+
+/**
+ * Historical yield data for yield trend analysis
+ */
+export interface DeFiLlamaYieldHistory {
+  date: number;
+  apy?: number;
+  apyBase?: number;
+  apyReward?: number;
+  apyMean30d?: number;
+  tvlUsd?: number;
+  volumeUsd?: number;
+  pool?: string;
+  chain?: string;
+  project?: string;
+  symbol?: string;
+}
+
 // Cache for responses
 interface CacheEntry<T> {
   data: T;
@@ -450,6 +520,159 @@ export class DefiLlamaRestClient {
   async getTokenUnlocks(): Promise<DeFiLlamaTokenUnlock[]> {
     const response = await this.request<any>('GET', '/emission/all');
     return Array.isArray(response) ? response : [];
+  }
+
+  /**
+   * Get all bridge data for cross-chain analytics
+   * Returns bridge TVL, volume, and unique users data
+   */
+  async getBridges(): Promise<DeFiLlamaBridge[]> {
+    const response = await this.request<any>('GET', '/bridges');
+    
+    // Handle direct array response
+    if (Array.isArray(response)) {
+      return response;
+    }
+    
+    // Handle object with bridges property
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response.bridges)) {
+        return response.bridges;
+      }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+    }
+    
+    return [];
+  }
+
+  /**
+   * Get specific bridge by ID or name
+   */
+  async getBridge(bridgeId: string): Promise<DeFiLlamaBridge | null> {
+    try {
+      const bridges = await this.getBridges();
+      const searchLower = bridgeId.toLowerCase();
+      const bridge = bridges.find(
+        (b) => b.id?.toLowerCase() === searchLower ||
+               b.name?.toLowerCase() === searchLower ||
+               b.displayName?.toLowerCase() === searchLower
+      );
+      return bridge || null;
+    } catch (error) {
+      logger.error('Failed to get bridge', { bridgeId, error });
+      return null;
+    }
+  }
+
+  /**
+   * Get protocol revenue data for investment analysis
+   * @param protocolId Protocol ID or slug
+   * @param days Number of days of historical data (default: 30)
+   */
+  async getProtocolRevenue(
+    protocolId: string,
+    days: number = 30
+  ): Promise<DeFiLlamaRevenue[]> {
+    try {
+      const response = await this.request<any>(
+        'GET',
+        `/protocol/${protocolId}/revenue`,
+        { days }
+      );
+      
+      // Handle array response
+      if (Array.isArray(response)) {
+        return response;
+      }
+      
+      // Handle object with data property
+      if (response && typeof response === 'object') {
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        if (Array.isArray(response.revenue)) {
+          return response.revenue;
+        }
+      }
+      
+      return [];
+    } catch (error) {
+      logger.error('Failed to get protocol revenue', { protocolId, days, error });
+      return [];
+    }
+  }
+
+  /**
+   * Get all protocol fees data
+   * Returns fees data for all protocols or a specific protocol
+   */
+  async getFees(protocolId?: string): Promise<DeFiLlamaFees[]> {
+    try {
+      const endpoint = protocolId 
+        ? `/protocol/${protocolId}/fees`
+        : '/fees';
+      
+      const response = await this.request<any>('GET', endpoint);
+      
+      // Handle array response
+      if (Array.isArray(response)) {
+        return response;
+      }
+      
+      // Handle object with data property
+      if (response && typeof response === 'object') {
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        if (Array.isArray(response.fees)) {
+          return response.fees;
+        }
+      }
+      
+      return [];
+    } catch (error) {
+      logger.error('Failed to get fees', { protocolId, error });
+      return [];
+    }
+  }
+
+  /**
+   * Get protocol fees data (alias for getFees with protocolId)
+   */
+  async getProtocolFees(protocolId: string): Promise<DeFiLlamaFees[]> {
+    return this.getFees(protocolId);
+  }
+
+  /**
+   * Get historical yield data for a specific pool
+   * @param poolId Pool ID or identifier
+   * @param days Number of days of historical data (default: 30)
+   */
+  async getHistoricalYields(
+    poolId: string,
+    days: number = 30
+  ): Promise<DeFiLlamaYieldHistory[]> {
+    try {
+      // First, get the pool to find its chain and project
+      const pool = await this.getPoolById(poolId);
+      
+      if (!pool) {
+        logger.warn('Pool not found for historical yields', { poolId });
+        return [];
+      }
+
+      // DeFiLlama doesn't have a direct historical yields endpoint
+      // We'll use the yields endpoint with date filtering if available
+      // For now, return empty array as this endpoint may not exist
+      // This is a placeholder for future API support
+      logger.debug('Historical yields endpoint not yet available', { poolId, days });
+      return [];
+    } catch (error) {
+      logger.error('Failed to get historical yields', { poolId, days, error });
+      return [];
+    }
   }
 
   /**
