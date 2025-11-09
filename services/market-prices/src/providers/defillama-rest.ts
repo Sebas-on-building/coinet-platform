@@ -77,6 +77,8 @@ export interface DeFiLlamaYieldPool {
   rewardTokens?: string[];
   underlyingTokens?: string[];
   url?: string;
+  volumeUsd1d?: number;
+  volumeUsd7d?: number;
 }
 
 export interface DeFiLlamaStablecoin {
@@ -104,23 +106,22 @@ export interface DeFiLlamaStablecoin {
   };
   price?: number;
   priceSource?: string;
-  chains?: {
-    [chain: string]: {
-      minted?: number;
-      bridgedTo?: number;
-      circulating?: {
-        peggedUSD?: number;
-        [key: string]: number | undefined;
-      };
-    };
-  };
+  chains?: string[];
+  chainCirculating?: Record<string, any>;
 }
 
 export interface DeFiLlamaTokenUnlock {
-  token: string;
-  unlockDate: number;
-  unlockAmount: number;
-  unlockPercentage: number;
+  name: string;
+  symbol: string;
+  nextEvent: {
+    date: number;
+    amount: number;
+    amountUSD: number;
+  };
+  totalLocked: number;
+  totalLockedUSD: number;
+  circulatingSupply: number;
+  maxSupply: number;
 }
 
 // Cache for responses
@@ -129,7 +130,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-export class DeFiLlamaRestClient {
+export class DefiLlamaRestClient {
   private axios: AxiosInstance;
   private config: ProviderConfig;
   private rateLimiter = getRateLimiter();
@@ -145,7 +146,7 @@ export class DeFiLlamaRestClient {
       timeout: 30000,
       headers: {
         'Accept': 'application/json',
-        ...(config.apiKey ? { 'X-API-Key': config.apiKey } : {}),
+        ...(config.apiKey ? { 'x-api-key': config.apiKey } : {}),
       },
     });
 
@@ -174,7 +175,7 @@ export class DeFiLlamaRestClient {
     this.rateLimiter.register(DataSource.DEFILLAMA, config.rateLimit);
 
     logger.info('DeFiLlama REST client initialized', {
-      baseURL: config.apiUrl || 'https://api.llama.fi',
+      baseURL: this.axios.defaults.baseURL,
       rateLimitPerMinute: config.rateLimit.maxRequestsPerMinute,
     });
   }
@@ -194,6 +195,7 @@ export class DeFiLlamaRestClient {
       const cacheKey = `${method}:${url}:${JSON.stringify(params || {})}`;
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+        logger.debug(`DeFiLlama cache hit: ${url}`);
         return cached.data as T;
       }
     }
@@ -237,7 +239,7 @@ export class DeFiLlamaRestClient {
   }
 
   /**
-   * Handle API errors - Fixed to safely check error.response
+   * Handle API errors with comprehensive error handling
    */
   private handleError(error: AxiosError, endpoint: string): void {
     // Safely check for error.response before accessing properties
@@ -247,39 +249,61 @@ export class DeFiLlamaRestClient {
 
       logger.error(`DeFiLlama API error: ${status}`, {
         endpoint,
-        error: data?.error || data?.status?.error_message || error.message,
         status,
+        error: data?.error || data?.status?.error_message || error.message,
       });
 
       throw new ProviderError(
-        data?.error || data?.status?.error_message || `HTTP ${status}`,
+        `DeFiLlama API error: ${status} - ${data?.error || data?.status?.error_message || error.message}`,
         DataSource.DEFILLAMA,
         status,
         error
       );
     } else if (error.request) {
+      // The request was made but no response was received
       logger.error('DeFiLlama network error', {
         endpoint,
         error: error.message,
       });
+
       throw new ProviderError(
-        'Network error',
+        `DeFiLlama network error: ${error.message}`,
         DataSource.DEFILLAMA,
         undefined,
         error
       );
     } else {
+      // Something happened in setting up the request that triggered an Error
       logger.error('DeFiLlama request error', {
         endpoint,
         error: error.message,
       });
+
       throw new ProviderError(
-        error.message,
+        `DeFiLlama request error: ${error.message}`,
         DataSource.DEFILLAMA,
         undefined,
         error
       );
     }
+  }
+
+  /**
+   * Clear all cache entries
+   */
+  clearCache(): void {
+    this.cache.clear();
+    logger.info('DeFiLlama cache cleared', { timestamp: new Date().toISOString() });
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { size: number; keys: string[] } {
+    return {
+      size: this.cache.size,
+      keys: Array.from(this.cache.keys()),
+    };
   }
 
   /**
@@ -292,12 +316,12 @@ export class DeFiLlamaRestClient {
   }
 
   /**
-   * Get specific protocol by ID
+   * Get specific protocol by ID or slug
    */
   async getProtocol(protocolId: string): Promise<DeFiLlamaProtocol | null> {
     try {
-      const protocols = await this.getProtocols();
-      return protocols.find(p => p.id === protocolId || p.name.toLowerCase() === protocolId.toLowerCase()) || null;
+      const response = await this.request<any>('GET', `/protocol/${protocolId}`);
+      return response || null;
     } catch (error) {
       logger.error('Failed to get protocol', { protocolId, error });
       return null;
@@ -305,21 +329,11 @@ export class DeFiLlamaRestClient {
   }
 
   /**
-   * Get historical TVL for a protocol
+   * Get historical TVL data for all protocols
    */
-  async getHistoricalTVL(protocolId?: string): Promise<any> {
-    if (protocolId) {
-      return this.request<any>('GET', `/protocol/${protocolId}`, undefined, undefined, false);
-    }
-    // If no protocolId, return all protocols TVL (for test compatibility)
-    return this.request<any>('GET', '/protocols', undefined, undefined, false);
-  }
-
-  /**
-   * Get all chains (alias for getChains for test compatibility)
-   */
-  async getAllChains(): Promise<string[]> {
-    return this.getChains();
+  async getHistoricalTVL(): Promise<any[]> {
+    const response = await this.request<any>('GET', '/charts');
+    return Array.isArray(response) ? response : [];
   }
 
   /**
@@ -332,11 +346,30 @@ export class DeFiLlamaRestClient {
 
   /**
    * Get all yield pools
+   * Handles both direct array responses and nested structures
    */
   async getPools(): Promise<DeFiLlamaYieldPool[]> {
     const response = await this.request<any>('GET', '/yields');
-    // Mock returns array directly after request() extracts response.data
-    return Array.isArray(response) ? response : [];
+    
+    // Handle direct array response (most common case)
+    if (Array.isArray(response)) {
+      return response;
+    }
+    
+    // Handle nested structures (for test compatibility)
+    if (response && typeof response === 'object') {
+      // If response has a data property that's an array
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // If response has a results property that's an array
+      if (Array.isArray(response.results)) {
+        return response.results;
+      }
+    }
+    
+    // Return empty array if response is invalid
+    return [];
   }
 
   /**
@@ -352,7 +385,7 @@ export class DeFiLlamaRestClient {
   async getPoolById(poolId: string): Promise<DeFiLlamaYieldPool | null> {
     try {
       const pools = await this.getPools();
-      // Find pool by pool property or symbol
+      // Find pool by pool property, symbol, or id
       const pool = pools.find(p => 
         p.pool === poolId || 
         p.symbol === poolId ||
@@ -367,13 +400,27 @@ export class DeFiLlamaRestClient {
 
   /**
    * Get all stablecoins
+   * Handles DeFiLlama API format: { peggedAssets: [...] }
    */
   async getStablecoins(): Promise<DeFiLlamaStablecoin[]> {
     const response = await this.request<any>('GET', '/stablecoins');
+    
     // Handle DeFiLlama API format: { peggedAssets: [...] }
-    if (response && response.peggedAssets && Array.isArray(response.peggedAssets)) {
-      return response.peggedAssets;
+    if (response && typeof response === 'object') {
+      // Primary format: { peggedAssets: [...] }
+      if (response.peggedAssets && Array.isArray(response.peggedAssets)) {
+        return response.peggedAssets;
+      }
+      // Nested format: { data: { peggedAssets: [...] } }
+      if (response.data && response.data.peggedAssets && Array.isArray(response.data.peggedAssets)) {
+        return response.data.peggedAssets;
+      }
+      // Fallback: { data: [...] }
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
     }
+    
     // Fallback: return as array if it is one
     return Array.isArray(response) ? response : [];
   }
@@ -386,10 +433,9 @@ export class DeFiLlamaRestClient {
       const stablecoins = await this.getStablecoins();
       const searchLower = symbolOrId.toLowerCase();
       const stablecoin = stablecoins.find(
-        s => s.symbol?.toLowerCase() === searchLower ||
-             s.id?.toLowerCase() === searchLower ||
-             s.gecko_id?.toLowerCase() === searchLower ||
-             s.name?.toLowerCase() === searchLower
+        (sc) => sc.symbol?.toLowerCase() === searchLower || 
+                sc.id?.toLowerCase() === searchLower ||
+                sc.gecko_id?.toLowerCase() === searchLower
       );
       return stablecoin || null;
     } catch (error) {
@@ -399,64 +445,106 @@ export class DeFiLlamaRestClient {
   }
 
   /**
-   * Get token unlocks (alias for getTokenUnlocks for test compatibility)
-   */
-  async getUnlocks(): Promise<DeFiLlamaTokenUnlock[]> {
-    return this.getTokenUnlocks();
-  }
-
-  /**
-   * Get token unlocks
+   * Get token unlocks data
    */
   async getTokenUnlocks(): Promise<DeFiLlamaTokenUnlock[]> {
-    const response = await this.request<any>('GET', '/tokenUnlocks');
-    if (response && Array.isArray(response)) {
-      return response;
-    }
-    if (response && response.data && Array.isArray(response.data)) {
-      return response.data;
-    }
-    return [];
+    const response = await this.request<any>('GET', '/emission/all');
+    return Array.isArray(response) ? response : [];
   }
 
   /**
-   * Clear cache
-   */
-  clearCache(): void {
-    this.cache.clear();
-    logger.info('DeFiLlama cache cleared');
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats(): { size: number; entries: string[] } {
-    return {
-      size: this.cache.size,
-      entries: Array.from(this.cache.keys()),
-    };
-  }
-
-  /**
-   * Health check
+   * Health check for DeFiLlama API
    */
   async healthCheck(): Promise<boolean> {
     try {
-      await this.request<any>('GET', '/protocols', undefined, undefined, false);
+      await this.getProtocols(); // Attempt to fetch some data
       return true;
-    } catch (error: any) {
-      logger.error('DeFiLlama health check failed', { error });
+    } catch (error) {
+      logger.error('DeFiLlama health check failed', { 
+        error: error instanceof ProviderError ? {
+          message: error.message,
+          source: error.source,
+          statusCode: error.statusCode,
+        } : error 
+      });
       return false;
     }
   }
 
   /**
-   * Get rate limiter statistics
+   * Data Normalization Methods
+   * Convert DeFiLlama API responses into Coinet-compatible format
    */
-  getStats(): any {
-    return this.rateLimiter.getCounts(DataSource.DEFILLAMA);
+
+  normalizeProtocolData(protocol: any): any {
+    return {
+      id: protocol.slug || protocol.id,
+      name: protocol.name,
+      tvl: protocol.tvl,
+      tvlChange24h: protocol.change_1d,
+      tvlChange7d: protocol.change_7d,
+      mcap: protocol.mcap,
+      fdv: protocol.fdv,
+      source: DataSource.DEFILLAMA,
+      chains: protocol.chains || [],
+    };
+  }
+
+  normalizeYieldData(pool: any): any {
+    let riskLevel: 'low' | 'medium' | 'high' = 'medium';
+    if (pool.stablecoin) {
+      riskLevel = 'low';
+    } else if (pool.ilRisk === 'yes' || pool.exposure === 'multi') {
+      riskLevel = 'high';
+    }
+
+    return {
+      poolId: pool.pool,
+      protocol: pool.project,
+      chain: pool.chain,
+      symbol: pool.symbol,
+      tvl: pool.tvlUsd,
+      apy: pool.apy,
+      apyBase: pool.apyBase,
+      apyReward: pool.apyReward,
+      isStablecoin: pool.stablecoin,
+      ilRisk: pool.ilRisk,
+      exposure: pool.exposure,
+      riskLevel,
+      source: DataSource.DEFILLAMA,
+      rewardTokens: pool.rewardTokens || [],
+      underlyingTokens: pool.underlyingTokens || [],
+    };
+  }
+
+  createTimeSeriesData(
+    protocol: string,
+    chain: string,
+    metric: string,
+    value: number,
+    change24h: number,
+    change7d: number
+  ): any {
+    return {
+      protocol,
+      chain,
+      metric,
+      value,
+      change24h,
+      change7d,
+      timestamp: new Date(),
+      source: DataSource.DEFILLAMA,
+    };
+  }
+
+  // Aliases for test compatibility
+  async getAllChains(): Promise<string[]> {
+    return this.getChains();
+  }
+
+  async getUnlocks(): Promise<DeFiLlamaTokenUnlock[]> {
+    return this.getTokenUnlocks();
   }
 }
 
-export default DeFiLlamaRestClient;
-
+export default DefiLlamaRestClient;
