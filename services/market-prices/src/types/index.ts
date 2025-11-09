@@ -6,6 +6,7 @@
 export enum DataSource {
   COINGECKO = 'coingecko',
   COINMARKETCAP = 'coinmarketcap',
+  DEFILLAMA = 'defillama',
 }
 
 export enum PriceUpdateType {
@@ -203,7 +204,6 @@ export interface HealthStatus {
 export interface CoinGeckoSimplePrice {
   [coinId: string]: {
     [currency: string]: number;
-    [key: string]: number; // For additional fields like market_cap, volume, etc.
   };
 }
 
