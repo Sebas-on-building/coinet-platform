@@ -22,23 +22,19 @@ COPY services/ai-data-feeder ./services/ai-data-feeder
 # Install all workspace dependencies from root (including devDependencies for build)
 RUN pnpm install --no-frozen-lockfile --include-workspace-root
 
-# Build market-prices first (dependency) - use pnpm run build to use service's own script
-RUN cd services/market-prices && \
-    echo "=== Building market-prices ===" && \
-    pnpm run build && \
+# Build market-prices first (dependency) - use pnpm --filter to build specific package
+RUN echo "=== Building market-prices ===" && \
+    pnpm --filter @coinet/market-prices run build && \
     echo "=== Market-prices build complete ===" && \
-    ls -la dist/ 2>/dev/null || echo "No dist directory"
+    ls -la services/market-prices/dist/ 2>/dev/null || echo "No dist directory"
 
-# Build this service - install dependencies locally first, then build
-RUN cd services/ai-data-feeder && \
-    echo "=== Installing dependencies for ai-data-feeder ===" && \
-    pnpm install --no-frozen-lockfile && \
-    echo "=== Building AI Data Feeder ===" && \
-    pnpm run build && \
+# Build this service - use pnpm --filter to build specific package
+RUN echo "=== Building AI Data Feeder ===" && \
+    pnpm --filter @coinet/ai-data-feeder run build && \
     echo "=== Build output ===" && \
-    ls -la dist/ && \
+    ls -la services/ai-data-feeder/dist/ && \
     echo "=== Verifying index.js ===" && \
-    test -f dist/index.js || (echo "ERROR: dist/index.js not found!" && pwd && ls -la && exit 1) && \
+    test -f services/ai-data-feeder/dist/index.js || (echo "ERROR: dist/index.js not found!" && ls -la services/ai-data-feeder/ && exit 1) && \
     echo "✅ Build successful!"
 
 # Set working directory to service
