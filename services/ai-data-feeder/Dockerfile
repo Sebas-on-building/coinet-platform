@@ -1,23 +1,34 @@
 # AI Data Feeder Service - Docker Configuration
+# Builds from monorepo root to handle workspace dependencies
 FROM node:20-alpine
 
+# Set working directory to monorepo root
 WORKDIR /app
 
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy package files
-COPY package.json ./
-COPY tsconfig.json ./
+# Copy workspace configuration
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml* ./ 2>/dev/null || true
 
-# Install dependencies (without lock file - standalone)
+# Copy market-prices service (workspace dependency)
+COPY services/market-prices ./services/market-prices
+
+# Copy this service
+COPY services/ai-data-feeder ./services/ai-data-feeder
+
+# Install all workspace dependencies
 RUN pnpm install --no-frozen-lockfile
 
-# Copy source code
-COPY src ./src
+# Build market-prices first (dependency)
+RUN cd services/market-prices && pnpm build
 
-# Build TypeScript
-RUN pnpm build
+# Build this service
+RUN cd services/ai-data-feeder && pnpm build
+
+# Set working directory to service
+WORKDIR /app/services/ai-data-feeder
 
 # Create logs directory
 RUN mkdir -p logs
