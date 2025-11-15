@@ -4,7 +4,7 @@
  */
 
 import dotenv from 'dotenv';
-import { AIDataFeeder } from './data-feeder';
+import { StandaloneAIDataFeeder } from './standalone-feeder';
 import { getConfig } from './config';
 import { logger } from './logger';
 
@@ -12,7 +12,7 @@ import { logger } from './logger';
 dotenv.config();
 
 // Export main classes
-export { AIDataFeeder } from './data-feeder';
+export { StandaloneAIDataFeeder as AIDataFeeder } from './standalone-feeder';
 export * from './types';
 export { getConfig } from './config';
 
@@ -25,8 +25,8 @@ async function main() {
   // Get configuration
   const config = getConfig();
 
-  // Create data feeder
-  const feeder = new AIDataFeeder(config);
+  // Create data feeder (standalone version for Railway)
+  const feeder = new StandaloneAIDataFeeder(config);
 
   // Listen for data updates
   feeder.on('data_update', (event) => {
