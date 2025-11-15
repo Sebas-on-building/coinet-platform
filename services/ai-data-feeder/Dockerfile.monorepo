@@ -13,8 +13,8 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml* ./
 
-# Copy market-prices service (workspace dependency) - ensure package.json exists
-COPY services/market-prices/package.json ./services/market-prices/
+# Copy market-prices service (workspace dependency) - copy package.json first, then rest
+COPY services/market-prices/package.json ./services/market-prices/package.json
 COPY services/market-prices ./services/market-prices
 
 # Copy this service (entire directory)
@@ -22,10 +22,11 @@ COPY services/ai-data-feeder ./services/ai-data-feeder
 
 # Verify workspace packages are present
 RUN echo "=== Verifying workspace packages ===" && \
-    test -f services/market-prices/package.json && echo "✅ market-prices/package.json found" || echo "❌ market-prices/package.json missing" && \
-    test -f services/ai-data-feeder/package.json && echo "✅ ai-data-feeder/package.json found" || echo "❌ ai-data-feeder/package.json missing" && \
-    cat services/market-prices/package.json | grep '"name"' && \
-    cat services/ai-data-feeder/package.json | grep '"name"'
+    ls -la services/market-prices/package.json && \
+    ls -la services/ai-data-feeder/package.json && \
+    echo "=== Package names ===" && \
+    grep '"name"' services/market-prices/package.json && \
+    grep '"name"' services/ai-data-feeder/package.json
 
 # Install all workspace dependencies from root (including devDependencies for build)
 RUN pnpm install --no-frozen-lockfile --include-workspace-root
