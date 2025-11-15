@@ -22,17 +22,20 @@ COPY services/ai-data-feeder ./services/ai-data-feeder
 # Install all workspace dependencies from root (including devDependencies for build)
 RUN pnpm install --no-frozen-lockfile --include-workspace-root
 
-# Build market-prices first (dependency) - fail if build fails
+# Build market-prices first (dependency)
 RUN cd services/market-prices && pnpm build
 
-# Build this service - verbose output and fail on error
+# Build this service - install dependencies locally first, then build
 RUN cd services/ai-data-feeder && \
-    echo "Building AI Data Feeder..." && \
+    echo "=== Installing dependencies for ai-data-feeder ===" && \
+    pnpm install --no-frozen-lockfile && \
+    echo "=== Building AI Data Feeder ===" && \
     pnpm build && \
-    echo "Build completed, checking output..." && \
+    echo "=== Build output ===" && \
     ls -la dist/ && \
-    echo "Verifying index.js exists..." && \
-    test -f dist/index.js || (echo "ERROR: dist/index.js not found after build!" && exit 1)
+    echo "=== Verifying index.js ===" && \
+    test -f dist/index.js || (echo "ERROR: dist/index.js not found!" && pwd && ls -la && exit 1) && \
+    echo "✅ Build successful!"
 
 # Set working directory to service
 WORKDIR /app/services/ai-data-feeder
