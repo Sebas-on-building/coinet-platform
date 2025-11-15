@@ -8,15 +8,23 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy workspace configuration
-COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml* ./ 2>/dev/null || true
+# Copy workspace configuration (with error handling)
+COPY pnpm-workspace.yaml* ./ 2>/dev/null || echo "pnpm-workspace.yaml not found, continuing..."
+COPY pnpm-lock.yaml* ./ 2>/dev/null || echo "pnpm-lock.yaml not found, continuing..."
 
 # Copy market-prices service (workspace dependency)
 COPY services/market-prices ./services/market-prices
 
 # Copy this service
 COPY services/ai-data-feeder ./services/ai-data-feeder
+
+# Create pnpm-workspace.yaml if it doesn't exist
+RUN if [ ! -f pnpm-workspace.yaml ]; then \
+      echo "packages:" > pnpm-workspace.yaml && \
+      echo "  - 'services/*'" >> pnpm-workspace.yaml && \
+      echo "  - 'apps/*'" >> pnpm-workspace.yaml && \
+      echo "  - 'packages/*'" >> pnpm-workspace.yaml; \
+    fi
 
 # Install all workspace dependencies
 RUN pnpm install --no-frozen-lockfile
@@ -38,4 +46,3 @@ EXPOSE 8080
 
 # Run the service
 CMD ["node", "dist/index.js"]
-
