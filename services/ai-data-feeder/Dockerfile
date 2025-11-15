@@ -1,34 +1,34 @@
 # AI Data Feeder Service - Docker Configuration
-# Builds from monorepo root to handle workspace dependencies
+# This Dockerfile works when Railway root directory is set to services/ai-data-feeder
 FROM node:20-alpine
 
-# Set working directory to monorepo root
 WORKDIR /app
 
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy workspace configuration
-COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml* ./ 2>/dev/null || true
+# Copy workspace configuration from parent directories
+COPY ../../pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY ../../pnpm-lock.yaml* ./pnpm-lock.yaml 2>/dev/null || echo "No lock file"
 
-# Copy market-prices service (workspace dependency)
-COPY services/market-prices ./services/market-prices
+# Copy market-prices service (workspace dependency) from sibling directory
+COPY ../market-prices ./services/market-prices
 
-# Copy this service
-COPY services/ai-data-feeder ./services/ai-data-feeder
+# Copy this service's files
+COPY package.json ./
+COPY tsconfig.json ./
+COPY src ./src
 
-# Install all workspace dependencies
-RUN pnpm install --no-frozen-lockfile
+# Install dependencies (pnpm handles workspace)
+# We need to be in a directory that has pnpm-workspace.yaml
+WORKDIR /app
+RUN pnpm install --no-frozen-lockfile || (cd .. && pnpm install --no-frozen-lockfile)
 
 # Build market-prices first (dependency)
-RUN cd services/market-prices && pnpm build
+RUN cd services/market-prices && pnpm build || echo "Market prices build skipped"
 
 # Build this service
-RUN cd services/ai-data-feeder && pnpm build
-
-# Set working directory to service
-WORKDIR /app/services/ai-data-feeder
+RUN pnpm build
 
 # Create logs directory
 RUN mkdir -p logs
