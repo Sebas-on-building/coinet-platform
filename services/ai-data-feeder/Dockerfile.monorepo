@@ -10,7 +10,9 @@ RUN npm install -g pnpm
 
 # Copy workspace configuration first (for better caching)
 COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml* ./ 2>/dev/null || true
+
+# Copy pnpm-lock.yaml if it exists (optional - use wildcard)
+COPY pnpm-lock.yaml* ./
 
 # Copy market-prices service (workspace dependency)
 COPY services/market-prices ./services/market-prices
