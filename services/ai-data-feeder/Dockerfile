@@ -3,22 +3,24 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-COPY pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Copy package files
+COPY package.json ./
+COPY tsconfig.json ./
+
+# Install dependencies (pnpm will create lockfile if needed)
+RUN pnpm install --frozen-lockfile=false
 
 # Copy source code
-COPY . .
+COPY src ./src
 
 # Build TypeScript
 RUN pnpm build
 
 # Create logs directory
 RUN mkdir -p logs
-
-# Expose health check endpoint (optional)
-EXPOSE 8080
 
 # Run the service
 CMD ["node", "dist/index.js"]
