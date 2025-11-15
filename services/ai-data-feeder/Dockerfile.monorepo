@@ -25,10 +25,11 @@ RUN pnpm install --no-frozen-lockfile
 # Build market-prices first (dependency) - fail if build fails
 RUN cd services/market-prices && pnpm build
 
-# Build this service - fail if build fails
+# Build this service - use direct build command, fail if it fails
 RUN cd services/ai-data-feeder && pnpm build
 
-# Verify build output exists
+# Verify build output exists - this will fail the build if file is missing
+RUN ls -la services/ai-data-feeder/dist/ || (echo "ERROR: dist directory not found!" && exit 1)
 RUN test -f services/ai-data-feeder/dist/index.js || (echo "ERROR: dist/index.js not found!" && ls -la services/ai-data-feeder/ && exit 1)
 
 # Set working directory to service
