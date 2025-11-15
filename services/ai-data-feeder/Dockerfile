@@ -1,5 +1,5 @@
 # AI Data Feeder Service - Docker Configuration
-# This Dockerfile works when Railway root directory is set to services/ai-data-feeder
+# Works when Railway Root Directory = services/ai-data-feeder
 FROM node:20-alpine
 
 WORKDIR /app
@@ -7,28 +7,20 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy workspace configuration from parent directories
-COPY ../../pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY ../../pnpm-lock.yaml* ./pnpm-lock.yaml 2>/dev/null || echo "No lock file"
-
-# Copy market-prices service (workspace dependency) from sibling directory
-COPY ../market-prices ./services/market-prices
-
-# Copy this service's files
+# Copy package files
 COPY package.json ./
 COPY tsconfig.json ./
+
+# Install dependencies
+# Note: @coinet/market-prices is a workspace dependency
+# We'll handle it by installing from the workspace or as a regular package
+RUN pnpm install --no-frozen-lockfile || npm install
+
+# Copy source code
 COPY src ./src
 
-# Install dependencies (pnpm handles workspace)
-# We need to be in a directory that has pnpm-workspace.yaml
-WORKDIR /app
-RUN pnpm install --no-frozen-lockfile || (cd .. && pnpm install --no-frozen-lockfile)
-
-# Build market-prices first (dependency)
-RUN cd services/market-prices && pnpm build || echo "Market prices build skipped"
-
-# Build this service
-RUN pnpm build
+# Build TypeScript
+RUN pnpm build || npx tsc
 
 # Create logs directory
 RUN mkdir -p logs
