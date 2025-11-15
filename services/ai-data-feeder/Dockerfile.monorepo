@@ -13,11 +13,19 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml* ./
 
-# Copy market-prices service (workspace dependency)
+# Copy market-prices service (workspace dependency) - ensure package.json exists
+COPY services/market-prices/package.json ./services/market-prices/
 COPY services/market-prices ./services/market-prices
 
-# Copy this service (entire directory - tsconfig.json is now in git)
+# Copy this service (entire directory)
 COPY services/ai-data-feeder ./services/ai-data-feeder
+
+# Verify workspace packages are present
+RUN echo "=== Verifying workspace packages ===" && \
+    test -f services/market-prices/package.json && echo "✅ market-prices/package.json found" || echo "❌ market-prices/package.json missing" && \
+    test -f services/ai-data-feeder/package.json && echo "✅ ai-data-feeder/package.json found" || echo "❌ ai-data-feeder/package.json missing" && \
+    cat services/market-prices/package.json | grep '"name"' && \
+    cat services/ai-data-feeder/package.json | grep '"name"'
 
 # Install all workspace dependencies from root (including devDependencies for build)
 RUN pnpm install --no-frozen-lockfile --include-workspace-root
@@ -40,8 +48,6 @@ RUN echo "=== Building AI Data Feeder ===" && \
     cd services/ai-data-feeder && \
     echo "=== Checking tsconfig.json ===" && \
     test -f tsconfig.json && echo "✅ tsconfig.json found" || (echo "❌ tsconfig.json missing!" && exit 1) && \
-    echo "=== Checking node_modules ===" && \
-    ls -la node_modules/@types/node 2>/dev/null || echo "⚠️  @types/node not found in local node_modules" && \
     echo "=== Running TypeScript compiler ===" && \
     npx tsc -p tsconfig.json --skipLibCheck || echo "⚠️  TypeScript compilation had errors" && \
     echo "=== Build output ===" && \
