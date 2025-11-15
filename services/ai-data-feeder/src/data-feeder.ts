@@ -36,9 +36,19 @@ export class AIDataFeeder extends EventEmitter {
     
     // Initialize CoinGecko
     this.coinGecko = new CoinGeckoRestClient({
-      apiKey: process.env.COINGECKO_API_KEY,
-      timeout: 30000,
-      enableCaching: true,
+      apiKey: process.env.COINGECKO_API_KEY || '',
+      apiUrl: process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3',
+      rateLimit: {
+        maxRequestsPerMinute: 50,
+        reservoir: 50,
+        reservoirRefreshAmount: 50,
+        reservoirRefreshInterval: 60 * 1000,
+      },
+      retry: {
+        retries: 3,
+        retryDelay: 1000,
+      },
+      priority: 1,
     });
     
     // Initialize CryptoPanic if token available
@@ -187,7 +197,20 @@ export class AIDataFeeder extends EventEmitter {
         coins: this.config.coins.length,
       });
 
-      const prices = await this.coinGecko.getMarketData(this.config.coins);
+      const markets = await this.coinGecko.getCoinMarkets('usd', this.config.coins);
+      // Convert CoinGeckoMarket to our format
+      const prices = markets.map(m => ({
+        id: m.id,
+        symbol: m.symbol,
+        name: m.name,
+        current_price: m.current_price,
+        price_change_24h: m.price_change_24h,
+        price_change_percentage_24h: m.price_change_percentage_24h,
+        high_24h: m.high_24h,
+        low_24h: m.low_24h,
+        total_volume: m.total_volume,
+        market_cap: m.market_cap,
+      }));
 
       for (const price of prices) {
         const dataPoint = this.dataStore.get(price.id) || {
@@ -266,17 +289,19 @@ export class AIDataFeeder extends EventEmitter {
 
       const symbols = this.config.coins.map(c => c.toUpperCase());
       const articles = await this.cryptoPanicNews.fetchNews({
-        limit: this.config.maxNewsArticles,
+        currencies: symbols,
       });
+      // Limit articles to maxNewsArticles
+      const limitedArticles = articles.slice(0, this.config.maxNewsArticles);
 
       // Analyze sentiment
-      const analyses = this.cryptoPanicSentiment.analyzeBatch(articles);
+      const analyses = this.cryptoPanicSentiment.analyzeBatch(limitedArticles);
       const overview = this.cryptoPanicSentiment.getMarketSentimentOverview();
 
       // Update news data for each coin
       for (const coin of this.config.coins) {
         const symbol = coin.toUpperCase();
-        const coinArticles = articles.filter(a => 
+        const coinArticles = limitedArticles.filter(a => 
           a.currencies.some(c => c.code === symbol)
         );
 
@@ -342,7 +367,7 @@ export class AIDataFeeder extends EventEmitter {
       }
 
       logger.info('News updated', { 
-        articles: articles.length,
+        articles: limitedArticles.length,
         avgSentiment: overview.averageSentimentScore,
         avgPanic: overview.averagePanicScore,
       });
