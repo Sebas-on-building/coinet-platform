@@ -35,9 +35,9 @@ async function main() {
     
     logger.info('✅ AI Data Feeder started successfully');
     logger.info(`📊 Tracking ${config.coins.length} coins`);
-    logger.info(`⏱️  Price updates: every ${config.priceUpdateInterval / 1000}s`);
-    logger.info(`📰 News updates: every ${config.newsUpdateInterval / 1000}s`);
-    logger.info(`🤖 AI analysis: every ${config.aiAnalysisInterval / 1000}s`);
+    logger.info(`⏱️  Price updates: every ${(config.priceUpdateInterval || 60000) / 1000}s`);
+    logger.info(`📰 News updates: every ${(config.newsUpdateInterval || 300000) / 1000}s`);
+    logger.info(`🤖 AI analysis: every ${(config.aiAnalysisInterval || 600000) / 1000}s`);
     
     // Handle graceful shutdown
     const shutdown = async (signal: string) => {
