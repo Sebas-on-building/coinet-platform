@@ -10,9 +10,8 @@ RUN npm install -g pnpm
 
 # Copy workspace configuration first (for better caching)
 COPY pnpm-workspace.yaml ./
-
-# Copy pnpm-lock.yaml if it exists (optional - use wildcard)
-COPY pnpm-lock.yaml* ./
+COPY package.json* ./ 2>/dev/null || true
+COPY pnpm-lock.yaml* ./ 2>/dev/null || true
 
 # Copy market-prices service (workspace dependency)
 COPY services/market-prices ./services/market-prices
@@ -20,11 +19,14 @@ COPY services/market-prices ./services/market-prices
 # Copy this service
 COPY services/ai-data-feeder ./services/ai-data-feeder
 
-# Install all workspace dependencies
-RUN pnpm install --no-frozen-lockfile
+# Install dependencies for market-prices first (its dependencies)
+RUN cd services/market-prices && pnpm install --no-frozen-lockfile
 
-# Build market-prices first (dependency)
+# Build market-prices
 RUN cd services/market-prices && pnpm build
+
+# Install dependencies for ai-data-feeder (including workspace dependency)
+RUN cd services/ai-data-feeder && pnpm install --no-frozen-lockfile
 
 # Build this service
 RUN cd services/ai-data-feeder && pnpm build
