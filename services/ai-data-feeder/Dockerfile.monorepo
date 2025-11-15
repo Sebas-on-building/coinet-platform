@@ -8,17 +8,11 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy workspace configuration (with error handling)
-COPY pnpm-workspace.yaml* ./ 2>/dev/null || echo "pnpm-workspace.yaml not found, continuing..."
-COPY pnpm-lock.yaml* ./ 2>/dev/null || echo "pnpm-lock.yaml not found, continuing..."
+# Copy workspace configuration (copy everything first, then specific files)
+# Railway might have issues with COPY, so we'll copy the whole repo structure
+COPY . .
 
-# Copy market-prices service (workspace dependency)
-COPY services/market-prices ./services/market-prices
-
-# Copy this service
-COPY services/ai-data-feeder ./services/ai-data-feeder
-
-# Create pnpm-workspace.yaml if it doesn't exist
+# Create pnpm-workspace.yaml if it doesn't exist (fallback)
 RUN if [ ! -f pnpm-workspace.yaml ]; then \
       echo "packages:" > pnpm-workspace.yaml && \
       echo "  - 'services/*'" >> pnpm-workspace.yaml && \
