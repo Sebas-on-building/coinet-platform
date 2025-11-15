@@ -10,8 +10,8 @@ RUN npm install -g pnpm
 COPY package.json ./
 COPY tsconfig.json ./
 
-# Install dependencies (pnpm will create lockfile if needed)
-RUN pnpm install --frozen-lockfile=false
+# Install dependencies (without lock file - standalone)
+RUN pnpm install --no-frozen-lockfile
 
 # Copy source code
 COPY src ./src
@@ -22,6 +22,8 @@ RUN pnpm build
 # Create logs directory
 RUN mkdir -p logs
 
+# Expose health check endpoint (optional)
+EXPOSE 8080
+
 # Run the service
 CMD ["node", "dist/index.js"]
-
