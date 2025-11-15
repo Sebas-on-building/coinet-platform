@@ -30,15 +30,18 @@ RUN echo "=== Building market-prices ===" && \
     echo "=== Market-prices build complete ===" && \
     ls -la dist/ 2>/dev/null || echo "No dist directory"
 
+# Install dependencies in ai-data-feeder service directory to ensure node_modules available
+RUN echo "=== Installing dependencies for ai-data-feeder ===" && \
+    cd services/ai-data-feeder && \
+    pnpm install --no-frozen-lockfile
+
 # Build this service - run tsc with explicit config path
 RUN echo "=== Building AI Data Feeder ===" && \
     cd services/ai-data-feeder && \
-    echo "=== Checking files ===" && \
-    ls -la | head -20 && \
     echo "=== Checking tsconfig.json ===" && \
     test -f tsconfig.json && echo "✅ tsconfig.json found" || (echo "❌ tsconfig.json missing!" && exit 1) && \
     echo "=== Running TypeScript compiler ===" && \
-    npx tsc -p tsconfig.json && \
+    npx tsc -p tsconfig.json || (echo "TypeScript errors occurred but continuing..." && exit 1) && \
     echo "=== Build output ===" && \
     ls -la dist/ && \
     echo "=== Verifying index.js ===" && \
