@@ -22,7 +22,7 @@ COPY services/ai-data-feeder ./services/ai-data-feeder
 # Install all workspace dependencies from root (including devDependencies for build)
 RUN pnpm install --no-frozen-lockfile --include-workspace-root
 
-# Build market-prices first (dependency) - build directly in service directory
+# Build market-prices first (dependency) - use pnpm run build to use service's own script
 RUN cd services/market-prices && \
     echo "=== Building market-prices ===" && \
     pnpm run build && \
@@ -34,7 +34,7 @@ RUN cd services/ai-data-feeder && \
     echo "=== Installing dependencies for ai-data-feeder ===" && \
     pnpm install --no-frozen-lockfile && \
     echo "=== Building AI Data Feeder ===" && \
-    pnpm build && \
+    pnpm run build && \
     echo "=== Build output ===" && \
     ls -la dist/ && \
     echo "=== Verifying index.js ===" && \
