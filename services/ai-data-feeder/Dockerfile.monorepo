@@ -22,8 +22,12 @@ COPY services/ai-data-feeder ./services/ai-data-feeder
 # Install all workspace dependencies from root (including devDependencies for build)
 RUN pnpm install --no-frozen-lockfile --include-workspace-root
 
-# Build market-prices first (dependency)
-RUN cd services/market-prices && pnpm build
+# Build market-prices first (dependency) - build directly in service directory
+RUN cd services/market-prices && \
+    echo "=== Building market-prices ===" && \
+    pnpm run build && \
+    echo "=== Market-prices build complete ===" && \
+    ls -la dist/ 2>/dev/null || echo "No dist directory"
 
 # Build this service - install dependencies locally first, then build
 RUN cd services/ai-data-feeder && \
