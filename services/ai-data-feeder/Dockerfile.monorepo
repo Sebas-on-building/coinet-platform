@@ -8,9 +8,13 @@ WORKDIR /app
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy workspace configuration and root package.json
+# Copy workspace configuration
 COPY pnpm-workspace.yaml ./
+
+# Copy root package.json (now in branch)
 COPY package.json ./
+
+# Copy pnpm-lock.yaml if it exists (optional)
 COPY pnpm-lock.yaml* ./
 
 # Copy market-prices service (workspace dependency)
@@ -23,10 +27,10 @@ COPY services/ai-data-feeder ./services/ai-data-feeder
 RUN pnpm install --no-frozen-lockfile
 
 # Build market-prices first (dependency)
-RUN pnpm --filter @coinet/market-prices build
+RUN pnpm --filter @coinet/market-prices build || (cd services/market-prices && pnpm build)
 
 # Build this service
-RUN pnpm --filter @coinet/ai-data-feeder build
+RUN pnpm --filter @coinet/ai-data-feeder build || (cd services/ai-data-feeder && pnpm build)
 
 # Set working directory to service
 WORKDIR /app/services/ai-data-feeder
