@@ -1,0 +1,58 @@
+{
+  "name": "@coinet/market-prices",
+  "version": "1.0.0",
+  "description": "Divine market data integration with CoinGecko (primary) and CoinMarketCap (secondary) with WebSocket support",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:defi": "vitest run src/tests/defillama.test.ts",
+    "test:unified": "vitest run src/tests/unified-market-data.test.ts",
+    "test:analytics": "vitest run src/tests/market-analytics.test.ts",
+    "test:streamer": "vitest run src/tests/market-data-streamer.test.ts",
+    "test:cryptopanic": "vitest run src/tests/cryptopanic.test.ts",
+    "test:integration": "vitest run src/tests/*.test.ts",
+    "example:cryptopanic": "ts-node src/examples/cryptopanic-integration.example.ts",
+    "lint": "eslint src/**/*.ts",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "cryptocurrency",
+    "market-data",
+    "coingecko",
+    "coinmarketcap",
+    "websocket",
+    "real-time"
+  ],
+  "author": "Coinet",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "axios-retry": "^4.0.0",
+    "ws": "^8.16.0",
+    "ioredis": "^5.3.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0",
+    "eventemitter3": "^5.0.1",
+    "bottleneck": "^2.19.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/ws": "^8.5.10",
+    "@types/pg": "^8.10.9",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2",
+    "vitest": "^1.6.1",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0"
+  }
+}
+
