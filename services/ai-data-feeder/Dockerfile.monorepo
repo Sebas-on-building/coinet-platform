@@ -13,8 +13,7 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml* ./
 
-# Copy market-prices service (workspace dependency) - copy package.json first, then rest
-COPY services/market-prices/package.json ./services/market-prices/package.json
+# Copy market-prices service (workspace dependency) - copy entire directory
 COPY services/market-prices ./services/market-prices
 
 # Copy this service (entire directory)
