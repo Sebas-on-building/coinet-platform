@@ -9,9 +9,9 @@ import {
   CoinGeckoRestClient,
   CryptoPanicNewsService,
   CryptoPanicSentimentAnalyzer,
-  CryptoPanicRestClient
+  CryptoPanicRestClient,
+  CryptoPanicPlan
 } from '@coinet/market-prices';
-import { CryptoPanicPlan } from '@coinet/market-prices';
 import Redis from 'ioredis';
 import { AIMarketDataPoint, AIAnalysisResult, DataFeederConfig, DataFeedEvent } from './types';
 import { logger } from './logger';
