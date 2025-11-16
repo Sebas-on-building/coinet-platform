@@ -58,10 +58,13 @@ RUN echo "=== Debug: Checking module resolution ===" && \
     test -f node_modules/@coinet/market-prices/package.json && echo "✅ package.json found" || echo "❌ package.json missing" && \
     echo "Checking if dist/index.d.ts exists in symlink..." && \
     test -f node_modules/@coinet/market-prices/dist/index.d.ts && echo "✅ dist/index.d.ts found" || echo "❌ dist/index.d.ts missing" && \
-    echo "Checking symlink target..." && \
-    ls -la node_modules/@coinet/market-prices/ | head -10 && \
-    echo "Checking dist folder..." && \
-    ls -la node_modules/@coinet/market-prices/dist/ 2>/dev/null | head -10 || echo "No dist folder in symlink"
+    echo "Reading package.json types field..." && \
+    cat node_modules/@coinet/market-prices/package.json | grep -E '"types"|"main"' && \
+    echo "Checking dist/index.d.ts contents..." && \
+    head -30 node_modules/@coinet/market-prices/dist/index.d.ts && \
+    echo "Checking if referenced declaration files exist..." && \
+    test -f node_modules/@coinet/market-prices/dist/services/cryptopanic-news.service.d.ts && echo "✅ cryptopanic-news.service.d.ts found" || echo "❌ cryptopanic-news.service.d.ts missing" && \
+    test -f node_modules/@coinet/market-prices/dist/providers/cryptopanic-rest.d.ts && echo "✅ cryptopanic-rest.d.ts found" || echo "❌ cryptopanic-rest.d.ts missing"
 
 # Build this service
 RUN echo "=== Building AI Data Feeder ===" && \
