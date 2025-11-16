@@ -13,7 +13,7 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml* ./
 
-# Copy market-prices service (workspace dependency) - copy entire directory
+# Copy market-prices service (workspace dependency)
 COPY services/market-prices ./services/market-prices
 
 # Copy this service (entire directory)
@@ -36,14 +36,21 @@ RUN echo "=== Building market-prices ===" && \
     test -f tsconfig.json && echo "tsconfig.json found" || echo "tsconfig.json missing" && \
     npx tsc -p tsconfig.json && \
     echo "=== Market-prices build complete ===" && \
-    ls -la dist/ 2>/dev/null || echo "No dist directory"
+    ls -la dist/ && \
+    test -f dist/index.js && echo "✅ market-prices dist/index.js exists" || echo "❌ market-prices dist/index.js missing"
 
 # Install dependencies in ai-data-feeder service directory to ensure node_modules available
 RUN echo "=== Installing dependencies for ai-data-feeder ===" && \
     cd services/ai-data-feeder && \
     pnpm install --no-frozen-lockfile
 
-# Build this service - run tsc with explicit config path, allow errors for now
+# Verify workspace link exists
+RUN echo "=== Verifying workspace link ===" && \
+    ls -la services/ai-data-feeder/node_modules/@coinet/ 2>/dev/null || echo "⚠️  @coinet workspace link not found" && \
+    ls -la services/ai-data-feeder/node_modules/@coinet/market-prices/ 2>/dev/null || echo "⚠️  market-prices link not found" && \
+    test -f services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.js && echo "✅ market-prices dist/index.js found in node_modules" || echo "❌ market-prices dist/index.js not in node_modules"
+
+# Build this service - run tsc with explicit config path
 RUN echo "=== Building AI Data Feeder ===" && \
     cd services/ai-data-feeder && \
     echo "=== Checking tsconfig.json ===" && \
@@ -51,7 +58,7 @@ RUN echo "=== Building AI Data Feeder ===" && \
     echo "=== Running TypeScript compiler ===" && \
     npx tsc -p tsconfig.json --skipLibCheck || echo "⚠️  TypeScript compilation had errors" && \
     echo "=== Build output ===" && \
-    ls -la dist/ 2>/dev/null && \
+    ls -la dist/ && \
     echo "=== Verifying index.js ===" && \
     test -f dist/index.js && echo "✅ dist/index.js found!" || (echo "ERROR: dist/index.js not found!" && pwd && ls -la && exit 1) && \
     echo "✅ Build successful!"
