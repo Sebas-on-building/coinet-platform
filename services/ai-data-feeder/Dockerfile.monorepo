@@ -64,7 +64,11 @@ RUN echo "=== Debug: Checking module resolution ===" && \
     head -30 node_modules/@coinet/market-prices/dist/index.d.ts && \
     echo "Checking if referenced declaration files exist..." && \
     test -f node_modules/@coinet/market-prices/dist/services/cryptopanic-news.service.d.ts && echo "✅ cryptopanic-news.service.d.ts found" || echo "❌ cryptopanic-news.service.d.ts missing" && \
-    test -f node_modules/@coinet/market-prices/dist/providers/cryptopanic-rest.d.ts && echo "✅ cryptopanic-rest.d.ts found" || echo "❌ cryptopanic-rest.d.ts missing"
+    test -f node_modules/@coinet/market-prices/dist/providers/cryptopanic-rest.d.ts && echo "✅ cryptopanic-rest.d.ts found" || echo "❌ cryptopanic-rest.d.ts missing" && \
+    echo "Listing dist folder structure..." && \
+    find node_modules/@coinet/market-prices/dist -type f -name "*.d.ts" | head -10 && \
+    echo "Checking dist/types folder..." && \
+    ls -la node_modules/@coinet/market-prices/dist/types/ 2>/dev/null | head -5 || echo "No types folder"
 
 # Build this service
 RUN echo "=== Building AI Data Feeder ===" && \
