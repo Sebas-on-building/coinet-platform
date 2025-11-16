@@ -38,14 +38,18 @@ RUN echo "=== Installing dependencies for ai-data-feeder ===" && \
 # Verify workspace link and that market-prices dist exists
 RUN echo "=== Verifying workspace link ===" && \
     test -f services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.js && \
-    echo "✅ Workspace link verified: market-prices dist/index.js exists" || \
+    test -f services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.d.ts && \
+    echo "✅ Workspace link verified: market-prices dist files exist" || \
     (echo "⚠️  Workspace link issue, checking alternatives..." && \
      ls -la services/ai-data-feeder/node_modules/@coinet/ 2>/dev/null || echo "No @coinet in node_modules" && \
      ls -la services/market-prices/dist/index.js && \
+     ls -la services/market-prices/dist/index.d.ts && \
      echo "Creating symlink manually..." && \
      mkdir -p services/ai-data-feeder/node_modules/@coinet && \
      ln -sf ../../../market-prices services/ai-data-feeder/node_modules/@coinet/market-prices && \
-     echo "✅ Symlink created")
+     echo "✅ Symlink created" && \
+     echo "Verifying symlink has dist files..." && \
+     ls -la services/ai-data-feeder/node_modules/@coinet/market-prices/dist/ | head -5)
 
 # Build this service
 RUN echo "=== Building AI Data Feeder ===" && \
