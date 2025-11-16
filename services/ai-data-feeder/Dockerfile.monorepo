@@ -51,6 +51,18 @@ RUN echo "=== Verifying workspace link ===" && \
      echo "Verifying symlink has dist files..." && \
      ls -la services/ai-data-feeder/node_modules/@coinet/market-prices/dist/ | head -5)
 
+# Debug: Check what TypeScript sees
+RUN echo "=== Debug: Checking module resolution ===" && \
+    cd services/ai-data-feeder && \
+    echo "Checking if package.json exists in symlink..." && \
+    test -f node_modules/@coinet/market-prices/package.json && echo "✅ package.json found" || echo "❌ package.json missing" && \
+    echo "Checking if dist/index.d.ts exists in symlink..." && \
+    test -f node_modules/@coinet/market-prices/dist/index.d.ts && echo "✅ dist/index.d.ts found" || echo "❌ dist/index.d.ts missing" && \
+    echo "Checking symlink target..." && \
+    ls -la node_modules/@coinet/market-prices/ | head -10 && \
+    echo "Checking dist folder..." && \
+    ls -la node_modules/@coinet/market-prices/dist/ 2>/dev/null | head -10 || echo "No dist folder in symlink"
+
 # Build this service
 RUN echo "=== Building AI Data Feeder ===" && \
     cd services/ai-data-feeder && \
