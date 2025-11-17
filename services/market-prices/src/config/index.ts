@@ -101,7 +101,7 @@ function buildCoinGeckoConfig(): ProviderConfig {
  * Build CoinMarketCap provider configuration
  */
 function buildCoinMarketCapConfig(): ProviderConfig {
-  const apiKey = getEnv('COINMARKETCAP_API_KEY');
+  const apiKey = getEnv('COINMARKETCAP_API_KEY', ''); // Optional - can be empty if not using CoinMarketCap
   const apiUrl = getEnv('COINMARKETCAP_API_URL', 'https://pro-api.coinmarketcap.com/v1');
   
   const rateLimitPerMinute = getEnvNumber('COINMARKETCAP_RATE_LIMIT_PER_MINUTE', 30);
