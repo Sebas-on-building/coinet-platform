@@ -146,7 +146,17 @@ export class AIDataFeeder extends EventEmitter {
     // Initialize Redis if enabled - with proper error handling
     if (this.config.enableRedisCache && process.env.REDIS_URL) {
       try {
-        const redisUrl = process.env.REDIS_URL;
+        let redisUrl = process.env.REDIS_URL;
+        
+        // Fix common issue: Railway sometimes includes variable name in value
+        // e.g., "REDIS_URL=redis://..." instead of just "redis://..."
+        if (redisUrl.startsWith('REDIS_URL=')) {
+          redisUrl = redisUrl.substring('REDIS_URL='.length);
+          logger.debug('Fixed Redis URL format (removed variable name prefix)');
+        }
+        
+        // Trim whitespace
+        redisUrl = redisUrl.trim();
         
         // Validate Redis URL format
         if (!redisUrl || (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://'))) {
