@@ -15,9 +15,9 @@
  * 8. Statistics and analytics
  */
 
-import CryptoPanicRestClient from '../providers/cryptopanic-rest';
-import CryptoPanicNewsService from '../services/cryptopanic-news.service';
-import CryptoPanicSentimentAnalyzer from '../services/cryptopanic-sentiment.service';
+import { CryptoPanicRestClient } from '../providers/cryptopanic-rest';
+import { CryptoPanicNewsService } from '../services/cryptopanic-news.service';
+import { CryptoPanicSentimentAnalyzer } from '../services/cryptopanic-sentiment.service';
 import {
   CryptoPanicPlan,
   CryptoPanicFilter,
@@ -30,7 +30,10 @@ import {
 // ============================================
 
 const CRYPTOPANIC_AUTH_TOKEN = process.env.CRYPTOPANIC_AUTH_TOKEN || '';
-const CRYPTOPANIC_PLAN = (process.env.CRYPTOPANIC_PLAN || 'growth') as CryptoPanicPlan;
+const planEnv = process.env.CRYPTOPANIC_PLAN || 'development';
+const CRYPTOPANIC_PLAN = (planEnv === 'development' ? CryptoPanicPlan.DEVELOPMENT :
+                          planEnv === 'growth' ? CryptoPanicPlan.GROWTH :
+                          CryptoPanicPlan.ENTERPRISE);
 
 // ============================================
 // EXAMPLE 1: BASIC NEWS FETCHING
@@ -63,11 +66,13 @@ async function example1_BasicNewsFetching() {
       const firstPost = posts.results[0];
       console.log(`\n📄 Latest Post:`);
       console.log(`   Title: ${firstPost.title}`);
-      console.log(`   Source: ${firstPost.source.title}`);
-      console.log(`   URL: ${firstPost.url}`);
+      console.log(`   Source: ${firstPost.source?.title || firstPost.source?.domain || 'Unknown'}`);
+      console.log(`   URL: ${firstPost.url || firstPost.original_url || 'N/A'}`);
       console.log(`   Published: ${firstPost.published_at}`);
-      console.log(`   Votes: +${firstPost.votes.positive} -${firstPost.votes.negative}`);
-      console.log(`   Important: ${firstPost.votes.important}`);
+      if (firstPost.votes) {
+        console.log(`   Votes: +${firstPost.votes.positive} -${firstPost.votes.negative}`);
+        console.log(`   Important: ${firstPost.votes.important}`);
+      }
     }
 
     // Show rate limit status
@@ -104,8 +109,10 @@ async function example2_CurrencySpecificNews() {
     console.log(`✅ Found ${btcNews.results.length} important BTC articles`);
     btcNews.results.slice(0, 3).forEach((post, idx) => {
       console.log(`\n${idx + 1}. ${post.title}`);
-      console.log(`   Source: ${post.source.title}`);
-      console.log(`   Importance: ${post.votes.important}`);
+      console.log(`   Source: ${post.source?.title || post.source?.domain || 'Unknown'}`);
+      if (post.votes) {
+        console.log(`   Importance: ${post.votes.important}`);
+      }
     });
 
     // Fetch Ethereum news
