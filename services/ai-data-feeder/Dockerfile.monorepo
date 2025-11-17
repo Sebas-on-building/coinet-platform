@@ -32,6 +32,10 @@ RUN echo "=== Cleaning and Building market-prices ===" && \
     echo "=== Verifying market-prices build ===" && \
     test -f dist/index.js || (echo "ERROR: market-prices dist/index.js not found!" && exit 1) && \
     test -f dist/index.d.ts || (echo "ERROR: market-prices dist/index.d.ts not found!" && exit 1) && \
+    echo "=== Verifying provider files exist ===" && \
+    test -f dist/providers/dexscreener-rest.js || (echo "ERROR: dist/providers/dexscreener-rest.js not found!" && echo "Listing dist/providers:" && ls -la dist/providers/ 2>/dev/null || echo "dist/providers directory does not exist" && exit 1) && \
+    test -f dist/providers/cryptopanic-rest.js || (echo "ERROR: dist/providers/cryptopanic-rest.js not found!" && exit 1) && \
+    test -f dist/providers/coingecko-rest.js || (echo "ERROR: dist/providers/coingecko-rest.js not found!" && exit 1) && \
     echo "=== CRITICAL: Inspecting declaration file ===" && \
     echo "=== Source file exports (lines with CryptoPanic) ===" && \
     grep -n "CryptoPanic" src/index.ts || echo "No CryptoPanic in source" && \
