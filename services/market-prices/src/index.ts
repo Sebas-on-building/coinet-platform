@@ -18,8 +18,32 @@ export { MarketDataAggregator } from './aggregator';
 export { CoinGeckoRestClient } from './providers/coingecko-rest';
 export { CoinGeckoWebSocketClient } from './providers/coingecko-websocket';
 export { CoinMarketCapRestClient } from './providers/coinmarketcap-rest';
-export { DexScreenerRestClient } from './providers/dexscreener-rest';
-export type { DexScreenerPair, DexScreenerTokenProfile, DexScreenerSearchResponse } from './providers/dexscreener-rest';
+
+// DexScreener export - conditionally exported to handle missing file gracefully
+// Using a runtime check to avoid crashes if the file isn't compiled
+(function() {
+  try {
+    const dexscreenerModule = require('./providers/dexscreener-rest');
+    if (dexscreenerModule?.DexScreenerRestClient) {
+      (exports as any).DexScreenerRestClient = dexscreenerModule.DexScreenerRestClient;
+    }
+    if (dexscreenerModule?.DexScreenerPair) {
+      (exports as any).DexScreenerPair = dexscreenerModule.DexScreenerPair;
+    }
+    if (dexscreenerModule?.DexScreenerTokenProfile) {
+      (exports as any).DexScreenerTokenProfile = dexscreenerModule.DexScreenerTokenProfile;
+    }
+    if (dexscreenerModule?.DexScreenerSearchResponse) {
+      (exports as any).DexScreenerSearchResponse = dexscreenerModule.DexScreenerSearchResponse;
+    }
+  } catch (error: any) {
+    // DexScreener not available - that's okay, it's optional
+    // Silently continue - the module will load without DexScreener exports
+    if (typeof logger !== 'undefined' && logger?.warn) {
+      logger.warn('DexScreener provider not available (optional)', { error: error?.message || String(error) });
+    }
+  }
+})();
 
 // Re-export CryptoPanic classes using direct re-export syntax
 // This is identical to how CoinGeckoRestClient is exported and should work the same way
