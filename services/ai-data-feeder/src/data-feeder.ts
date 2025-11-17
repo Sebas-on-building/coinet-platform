@@ -42,7 +42,22 @@ export class AIDataFeeder extends EventEmitter {
    */
   private async loadMarketPricesModules() {
     try {
-      const marketPrices = await import('@coinet/market-prices');
+      // Try package name first, then fallback to absolute/relative paths
+      let marketPrices;
+      try {
+        marketPrices = await import('@coinet/market-prices');
+      } catch (packageError) {
+        // Fallback to absolute path in Docker container
+        logger.warn('Package import failed, trying absolute path', { error: packageError });
+        try {
+          // In Docker: /app/services/market-prices/dist/index.js
+          marketPrices = await import('/app/services/market-prices/dist/index.js');
+        } catch (absoluteError) {
+          // Fallback to relative path (from dist/data-feeder.js to market-prices/dist/index.js)
+          logger.warn('Absolute path failed, trying relative path', { error: absoluteError });
+          marketPrices = await import('../../market-prices/dist/index.js');
+        }
+      }
       const { CoinGeckoRestClient, CryptoPanicRestClient, CryptoPanicNewsService, CryptoPanicSentimentAnalyzer, CryptoPanicPlan } = marketPrices;
       
       // Initialize CoinGecko
