@@ -203,7 +203,7 @@ export function buildConfig(): ServiceConfig {
     maxRetryAttempts: getEnvNumber('MAX_RETRY_ATTEMPTS', 3),
     enableWebSocket: getEnvBoolean('ENABLE_WEBSOCKET', true),
     enableRestFallback: getEnvBoolean('ENABLE_REST_FALLBACK', true),
-    enableCMCFallback: getEnvBoolean('ENABLE_CMC_FALLBACK', true),
+    enableCMCFallback: getEnvBoolean('ENABLE_CMC_FALLBACK', false), // Disabled by default - requires API key
     logLevel: getEnv('LOG_LEVEL', 'info'),
   };
 }
