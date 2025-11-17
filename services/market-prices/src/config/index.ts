@@ -53,7 +53,7 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
  * Build CoinGecko provider configuration
  */
 function buildCoinGeckoConfig(): ProviderConfig {
-  const apiKey = getEnv('COINGECKO_API_KEY');
+  const apiKey = getEnv('COINGECKO_API_KEY', ''); // Optional - can be empty for free tier
   const tier = getEnv('COINGECKO_TIER', 'demo');
   const apiUrl = tier === 'demo' 
     ? getEnv('COINGECKO_API_URL', 'https://api.coingecko.com/api/v3')
@@ -131,14 +131,60 @@ function buildCoinMarketCapConfig(): ProviderConfig {
 }
 
 /**
+ * Build DexScreener provider configuration
+ * DexScreener free tier doesn't require an API key
+ */
+function buildDexScreenerConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.DEXSCREENER_API_KEY || ''; // Optional - free tier doesn't require key
+  const apiUrl = getEnv('DEXSCREENER_API_URL', 'https://api.dexscreener.com/latest/dex');
+  
+  // DexScreener has different rate limits for different endpoints:
+  // Search: 300 rpm, Profile/Boost: 60 rpm
+  // We'll use 60 rpm as the base (for profile endpoints)
+  const rateLimitPerMinute = getEnvNumber('DEXSCREENER_RATE_LIMIT_PER_MINUTE', 60);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000, // 1 minute
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('DEXSCREENER_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('DEXSCREENER_RETRY_DELAY_MS', 1000),
+    retryCondition: (error: any) => {
+      return !error.response || error.response.status >= 500;
+    },
+  };
+
+  // Return config even without API key (free tier support)
+  return {
+    apiKey: apiKey || 'free-tier', // Use placeholder for free tier
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 3, // Lower priority (DEX data source)
+  };
+}
+
+/**
  * Build complete service configuration
  */
 export function buildConfig(): ServiceConfig {
+  const dexscreenerConfig = buildDexScreenerConfig();
+  
+  const providers: ServiceConfig['providers'] = {
+    coingecko: buildCoinGeckoConfig(),
+    coinmarketcap: buildCoinMarketCapConfig(),
+  };
+  
+  if (dexscreenerConfig) {
+    providers.dexscreener = dexscreenerConfig;
+  }
+  
   return {
-    providers: {
-      coingecko: buildCoinGeckoConfig(),
-      coinmarketcap: buildCoinMarketCapConfig(),
-    },
+    providers,
     database: {
       host: getEnv('TIMESCALE_HOST', 'localhost'),
       port: getEnvNumber('TIMESCALE_PORT', 5432),
