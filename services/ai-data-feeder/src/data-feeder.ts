@@ -47,33 +47,58 @@ export class AIDataFeeder extends EventEmitter {
       const path = require('path');
       const fs = require('fs');
       
+      // Debug: Log current directory and check file existence
+      const currentDir = __dirname;
+      logger.info('Loading market-prices modules', { currentDir });
+      
+      // Check multiple possible locations
+      const possiblePaths = [
+        '/app/services/market-prices/dist/index.js',
+        path.resolve(currentDir, '../../market-prices/dist/index.js'),
+        path.resolve(currentDir, '../../../market-prices/dist/index.js'),
+        path.resolve('/app', 'services/market-prices/dist/index.js'),
+      ];
+      
+      logger.info('Checking possible paths', { paths: possiblePaths });
+      
       let marketPrices;
+      let foundPath: string | null = null;
+      
+      // Try package name first
       try {
-        // Try package name first
         marketPrices = require('@coinet/market-prices');
-      } catch (packageError) {
-        // Fallback to absolute path in Docker container
-        logger.warn('Package require failed, trying absolute path', { error: packageError });
-        try {
-          // In Docker: /app/services/market-prices/dist/index.js
-          const absolutePath = '/app/services/market-prices/dist/index.js';
-          if (fs.existsSync(absolutePath)) {
-            marketPrices = require(absolutePath);
-          } else {
-            throw new Error(`File not found: ${absolutePath}`);
+        foundPath = '@coinet/market-prices';
+        logger.info('✅ Successfully loaded via package name');
+      } catch (packageError: any) {
+        logger.warn('Package require failed', { error: packageError?.message || String(packageError) });
+        
+        // Try all possible paths
+        for (const tryPath of possiblePaths) {
+          try {
+            if (fs.existsSync(tryPath)) {
+              logger.info(`Found file at ${tryPath}, attempting require...`);
+              marketPrices = require(tryPath);
+              foundPath = tryPath;
+              logger.info(`✅ Successfully loaded from ${tryPath}`);
+              break;
+            } else {
+              logger.debug(`File not found: ${tryPath}`);
+            }
+          } catch (pathError: any) {
+            logger.warn(`Failed to require ${tryPath}`, { error: pathError?.message || String(pathError) });
+            continue;
           }
-        } catch (absoluteError) {
-          // Fallback to relative path (from dist/data-feeder.js to market-prices/dist/index.js)
-          logger.warn('Absolute path failed, trying relative path', { error: absoluteError });
-          const currentDir = __dirname;
-          const relativePath = path.resolve(currentDir, '../../market-prices/dist/index.js');
-          
-          if (!fs.existsSync(relativePath)) {
-            throw new Error(`Module not found at ${relativePath} (current dir: ${currentDir})`);
-          }
-          marketPrices = require(relativePath);
+        }
+        
+        if (!foundPath) {
+          throw new Error(`Could not find market-prices module. Checked paths: ${possiblePaths.join(', ')}. Current dir: ${currentDir}`);
         }
       }
+      
+      if (!marketPrices) {
+        throw new Error('marketPrices is null/undefined after loading');
+      }
+      
       const { CoinGeckoRestClient, CryptoPanicRestClient, CryptoPanicNewsService, CryptoPanicSentimentAnalyzer, CryptoPanicPlan } = marketPrices;
       
       // Initialize CoinGecko
