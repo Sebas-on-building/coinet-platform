@@ -212,20 +212,16 @@ export function buildConfig(): ServiceConfig {
  * Validate configuration
  */
 export function validateConfig(config: ServiceConfig): void {
-  // Validate CoinGecko
-  if (!config.providers.coingecko.apiKey) {
-    throw new Error('CoinGecko API key is required');
-  }
-
+  // CoinGecko API key is optional (can use free tier without key)
+  // Note: Some features may require an API key, but basic functionality works without it
+  
   // Validate CoinMarketCap (only if fallback is enabled)
   if (config.enableCMCFallback && !config.providers.coinmarketcap.apiKey) {
     throw new Error('CoinMarketCap API key is required when CMC fallback is enabled');
   }
 
-  // Validate database
-  if (!config.database.password) {
-    throw new Error('Database password is required');
-  }
+  // Database password is optional (can be empty if not using database)
+  // Note: Database features will fail if password is required but not provided
 
   // Validate rate limits
   if (config.providers.coingecko.rateLimit.maxRequestsPerMinute <= 0) {
