@@ -176,7 +176,7 @@ export class AIDataFeeder extends EventEmitter {
           },
           maxRetriesPerRequest: 3,
           enableReadyCheck: true,
-          enableOfflineQueue: false, // Don't queue commands when offline
+          enableOfflineQueue: true, // Allow queuing commands when offline (needed for initial ping)
           connectTimeout: 10000, // 10 seconds
           lazyConnect: false, // Connect immediately
         });
@@ -188,6 +188,13 @@ export class AIDataFeeder extends EventEmitter {
         
         this.redis.on('ready', () => {
           logger.info('Redis ready to accept commands');
+          // Test connection with a ping after ready
+          this.redis!.ping().then(() => {
+            logger.info('Redis cache enabled and connected');
+          }).catch((error: Error) => {
+            logger.warn('Redis ping failed after ready event', { error: error.message });
+            // Don't disable Redis here - connection is established, ping might fail for other reasons
+          });
         });
         
         this.redis.on('error', (error: Error) => {
@@ -196,8 +203,10 @@ export class AIDataFeeder extends EventEmitter {
             error: error.message,
             code: (error as any).code,
           });
-          // Disable Redis on persistent errors
-          this.redis = undefined;
+          // Only disable Redis on critical connection errors
+          if ((error as any).code === 'ECONNREFUSED' || (error as any).code === 'ENOTFOUND') {
+            this.redis = undefined;
+          }
         });
         
         this.redis.on('close', () => {
@@ -206,14 +215,6 @@ export class AIDataFeeder extends EventEmitter {
         
         this.redis.on('reconnecting', (delay: number) => {
           logger.info(`Redis reconnecting in ${delay}ms`);
-        });
-        
-        // Test connection with a ping
-        this.redis.ping().then(() => {
-          logger.info('Redis cache enabled and connected');
-        }).catch((error: Error) => {
-          logger.warn('Redis ping failed, disabling cache', { error: error.message });
-          this.redis = undefined;
         });
         
       } catch (error: any) {
