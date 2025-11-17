@@ -190,7 +190,7 @@ export function buildConfig(): ServiceConfig {
       port: getEnvNumber('TIMESCALE_PORT', 5432),
       database: getEnv('TIMESCALE_DATABASE', 'coinet'),
       user: getEnv('TIMESCALE_USER', 'coinet_user'),
-      password: getEnv('TIMESCALE_PASSWORD'),
+      password: getEnv('TIMESCALE_PASSWORD', ''), // Optional - can be empty if not using database
     },
     redis: {
       host: getEnv('REDIS_HOST', 'localhost'),
