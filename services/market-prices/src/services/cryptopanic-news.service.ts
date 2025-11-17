@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import CryptoPanicRestClient from '../providers/cryptopanic-rest';
+import { CryptoPanicRestClient } from '../providers/cryptopanic-rest';
 import {
   CryptoPanicPost,
   CryptoPanicPostsResponse,
@@ -125,6 +125,7 @@ export class CryptoPanicNewsService extends EventEmitter {
    */
   private calculatePanicScore(post: CryptoPanicPost): number {
     const votes = post.votes;
+    if (!votes) return 0;
     const totalVotes = votes.positive + votes.negative + votes.important;
 
     if (totalVotes === 0) return 0;
@@ -146,6 +147,7 @@ export class CryptoPanicNewsService extends EventEmitter {
    */
   private calculateSentimentScore(post: CryptoPanicPost): number {
     const votes = post.votes;
+    if (!votes) return 0;
     const totalVotes = votes.positive + votes.negative;
 
     if (totalVotes === 0) return 0;
@@ -170,6 +172,7 @@ export class CryptoPanicNewsService extends EventEmitter {
    */
   private calculateImportance(post: CryptoPanicPost): number {
     const votes = post.votes;
+    if (!votes) return 0;
 
     // Important votes are the primary factor
     const importantWeight = Math.min(votes.important * 5, 50);
@@ -252,26 +255,26 @@ export class CryptoPanicNewsService extends EventEmitter {
     const normalized: NormalizedNewsArticle = {
       id: `cryptopanic-${post.id}`,
       title: post.title,
-      description: post.metadata?.description,
-      url: post.url,
+      description: post.metadata?.description || post.description,
+      url: post.url || post.original_url || '',
       publishedAt: new Date(post.published_at),
       createdAt: new Date(post.created_at),
       source: {
-        name: post.source.title,
-        domain: post.domain,
-        region: post.source.region,
+        name: post.source?.title || post.source?.domain || post.domain || 'Unknown',
+        domain: post.domain || post.source?.domain || 'unknown',
+        region: post.source?.region || 'en',
       },
       sentiment,
       panicScore,
       sentimentScore,
       importance,
       engagement: {
-        likes: post.votes.liked,
-        dislikes: post.votes.disliked,
-        comments: post.votes.comments,
-        saves: post.votes.saved,
+        likes: post.votes?.liked || 0,
+        dislikes: post.votes?.disliked || 0,
+        comments: post.votes?.comments || 0,
+        saves: post.votes?.saved || 0,
       },
-      currencies: (post.currencies || []).map((c) => ({
+      currencies: (post.currencies || post.instruments || []).map((c) => ({
         code: c.code,
         name: c.title,
         slug: c.slug,
@@ -310,12 +313,12 @@ export class CryptoPanicNewsService extends EventEmitter {
     tags.push(post.kind);
 
     // Add importance tag
-    if (post.votes.important > 10) {
+    if (post.votes && post.votes.important > 10) {
       tags.push('important');
     }
 
     // Add trending tag
-    if (post.votes.liked > 50) {
+    if (post.votes && post.votes.liked > 50) {
       tags.push('trending');
     }
 
@@ -326,7 +329,7 @@ export class CryptoPanicNewsService extends EventEmitter {
     }
 
     // Add region tag
-    if (post.source.region) {
+    if (post.source?.region) {
       tags.push(`region-${post.source.region}`);
     }
 
@@ -631,6 +634,4 @@ export class CryptoPanicNewsService extends EventEmitter {
     logger.info('CryptoPanic News Service destroyed');
   }
 }
-
-export default CryptoPanicNewsService;
 

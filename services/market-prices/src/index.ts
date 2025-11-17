@@ -8,6 +8,7 @@
 import { MarketDataAggregator } from './aggregator';
 import { getConfig } from './config';
 import { logger } from './utils/logger';
+import { MarketPrice, PriceUpdateEvent } from './types';
 
 // Export all types
 export * from './types';
@@ -17,12 +18,23 @@ export { MarketDataAggregator } from './aggregator';
 export { CoinGeckoRestClient } from './providers/coingecko-rest';
 export { CoinGeckoWebSocketClient } from './providers/coingecko-websocket';
 export { CoinMarketCapRestClient } from './providers/coinmarketcap-rest';
+export { DexScreenerRestClient } from './providers/dexscreener-rest';
+export type { DexScreenerPair, DexScreenerTokenProfile, DexScreenerSearchResponse } from './providers/dexscreener-rest';
+
+// Re-export CryptoPanic classes using direct re-export syntax
+// This is identical to how CoinGeckoRestClient is exported and should work the same way
+export { CryptoPanicRestClient } from './providers/cryptopanic-rest';
+export { CryptoPanicNewsService } from './services/cryptopanic-news.service';
+export { CryptoPanicSentimentAnalyzer } from './services/cryptopanic-sentiment.service';
 export { TimescaleStorage } from './storage/timescale';
 export { CacheStorage } from './storage/cache';
 export { DataNormalizer, SymbolRegistry, getDataNormalizer, getSymbolRegistry } from './utils/normalizer';
 export { getRateLimiter, resetRateLimiter } from './middleware/rateLimiter';
 export { getConfig, buildConfig, validateConfig, resetConfig } from './config';
 export { logger } from './utils/logger';
+
+// Export CryptoPanic types
+export * from './types/cryptopanic.types';
 
 /**
  * Create and initialize a new MarketDataAggregator instance
@@ -73,7 +85,7 @@ export async function main(): Promise<void> {
     const prices = await aggregator.getMarketPrices(symbols);
     logger.info('Fetched market prices', {
       count: prices.length,
-      prices: prices.map((p) => ({
+      prices: prices.map((p: MarketPrice) => ({
         symbol: p.symbol,
         price: p.price,
         source: p.source,
@@ -81,12 +93,13 @@ export async function main(): Promise<void> {
     });
 
     // Listen for price updates
-    aggregator.on('price_update', (event) => {
+    aggregator.on('price_update', (event: PriceUpdateEvent) => {
+      const priceData = event.data as MarketPrice;
       logger.info('Price update received', {
-        coinId: (event.data as any).coinId,
-        price: (event.data as any).price,
+        coinId: priceData.coinId,
+        price: priceData.price,
         source: event.source,
-        updateType: (event.data as any).updateType,
+        updateType: priceData.updateType,
       });
     });
 

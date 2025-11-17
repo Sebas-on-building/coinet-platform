@@ -75,9 +75,18 @@ export class CryptoPanicRestClient {
     // Configure rate limiter based on plan
     this.limiter = this.createRateLimiter();
 
+    // Map plan names to API endpoint paths
+    const planPathMap: Record<CryptoPanicPlan, string> = {
+      [CryptoPanicPlan.DEVELOPMENT]: 'developer',
+      [CryptoPanicPlan.GROWTH]: 'growth',
+      [CryptoPanicPlan.ENTERPRISE]: 'enterprise',
+    };
+    
+    const planPath = planPathMap[this.config.plan];
+    
     // Initialize axios instance
     this.axios = axios.create({
-      baseURL: `${this.config.baseUrl}/${this.config.plan}/v2`,
+      baseURL: `${this.config.baseUrl}/${planPath}/v2`,
       timeout: 30000,
       headers: {
         'Accept': 'application/json',
@@ -594,6 +603,4 @@ export class CryptoPanicRestClient {
     };
   }
 }
-
-export default CryptoPanicRestClient;
 
