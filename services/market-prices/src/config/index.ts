@@ -228,11 +228,12 @@ export function validateConfig(config: ServiceConfig): void {
     throw new Error('CoinGecko rate limit must be greater than 0');
   }
 
-  if (config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute <= 0) {
+  // Only validate CoinMarketCap rate limits if CMC fallback is enabled
+  if (config.enableCMCFallback && config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute <= 0) {
     throw new Error('CoinMarketCap rate limit must be greater than 0');
   }
 
-  // Validate WebSocket config
+  // Validate WebSocket config (only if WebSocket is enabled and config exists)
   if (config.enableWebSocket && config.providers.coingecko.websocket) {
     const ws = config.providers.coingecko.websocket;
     if (ws.maxConnections <= 0) {
@@ -242,6 +243,7 @@ export function validateConfig(config: ServiceConfig): void {
       throw new Error('WebSocket max subscriptions per channel must be greater than 0');
     }
   }
+  // If WebSocket is disabled or config doesn't exist, skip validation (it's optional)
 }
 
 // Export singleton instance
