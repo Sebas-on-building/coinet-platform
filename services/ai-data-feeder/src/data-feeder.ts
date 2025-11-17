@@ -5,13 +5,13 @@
 
 import EventEmitter from 'eventemitter3';
 import cron from 'node-cron';
-import { 
-  CoinGeckoRestClient,
-  CryptoPanicNewsService,
-  CryptoPanicSentimentAnalyzer,
-  CryptoPanicRestClient,
-  CryptoPanicPlan
-} from '@coinet/market-prices';
+// Import from market-prices package
+// Using direct imports to avoid TypeScript module resolution issues with symlinks
+import { CoinGeckoRestClient } from '@coinet/market-prices';
+import { CryptoPanicNewsService } from '@coinet/market-prices';
+import { CryptoPanicSentimentAnalyzer } from '@coinet/market-prices';
+import { CryptoPanicRestClient } from '@coinet/market-prices';
+import { CryptoPanicPlan } from '@coinet/market-prices';
 import Redis from 'ioredis';
 import { AIMarketDataPoint, AIAnalysisResult, DataFeederConfig, DataFeedEvent } from './types';
 import { logger } from './logger';
