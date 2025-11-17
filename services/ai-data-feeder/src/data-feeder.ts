@@ -143,15 +143,78 @@ export class AIDataFeeder extends EventEmitter {
       throw error;
     }
     
-    // Initialize Redis if enabled
-    try {
-      if (this.config.enableRedisCache && process.env.REDIS_URL) {
-        this.redis = new Redis(process.env.REDIS_URL);
-        logger.info('Redis cache enabled');
+    // Initialize Redis if enabled - with proper error handling
+    if (this.config.enableRedisCache && process.env.REDIS_URL) {
+      try {
+        const redisUrl = process.env.REDIS_URL;
+        
+        // Validate Redis URL format
+        if (!redisUrl || (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://'))) {
+          logger.warn('Invalid Redis URL format (should start with redis:// or rediss://), disabling Redis cache', { 
+            url: redisUrl ? `${redisUrl.substring(0, 20)}...` : 'undefined' 
+          });
+          return;
+        }
+        
+        // Create Redis client with connection options
+        this.redis = new Redis(redisUrl, {
+          retryStrategy: (times: number) => {
+            // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, max 3000ms
+            const delay = Math.min(times * 50, 3000);
+            logger.debug(`Redis retry attempt ${times}, waiting ${delay}ms`);
+            return delay;
+          },
+          maxRetriesPerRequest: 3,
+          enableReadyCheck: true,
+          enableOfflineQueue: false, // Don't queue commands when offline
+          connectTimeout: 10000, // 10 seconds
+          lazyConnect: false, // Connect immediately
+        });
+        
+        // Handle connection events
+        this.redis.on('connect', () => {
+          logger.info('Redis connected successfully');
+        });
+        
+        this.redis.on('ready', () => {
+          logger.info('Redis ready to accept commands');
+        });
+        
+        this.redis.on('error', (error: Error) => {
+          // Log error but don't crash - Redis is optional
+          logger.warn('Redis connection error (continuing without cache)', { 
+            error: error.message,
+            code: (error as any).code,
+          });
+          // Disable Redis on persistent errors
+          this.redis = undefined;
+        });
+        
+        this.redis.on('close', () => {
+          logger.warn('Redis connection closed');
+        });
+        
+        this.redis.on('reconnecting', (delay: number) => {
+          logger.info(`Redis reconnecting in ${delay}ms`);
+        });
+        
+        // Test connection with a ping
+        this.redis.ping().then(() => {
+          logger.info('Redis cache enabled and connected');
+        }).catch((error: Error) => {
+          logger.warn('Redis ping failed, disabling cache', { error: error.message });
+          this.redis = undefined;
+        });
+        
+      } catch (error: any) {
+        logger.warn('Failed to initialize Redis (continuing without cache)', { 
+          error: error?.message || String(error) 
+        });
+        this.redis = undefined;
+        // Don't throw - Redis is optional
       }
-    } catch (error) {
-      logger.warn('Failed to initialize Redis (continuing without cache)', { error });
-      // Don't throw - Redis is optional
+    } else {
+      logger.info('Redis cache disabled (not configured)');
     }
   }
 
@@ -207,9 +270,21 @@ export class AIDataFeeder extends EventEmitter {
     if (this.newsScheduler) this.newsScheduler.stop();
     if (this.aiScheduler) this.aiScheduler.stop();
 
-    // Disconnect Redis
+    // Disconnect Redis gracefully
     if (this.redis) {
-      await this.redis.quit();
+      try {
+        await this.redis.quit();
+        logger.info('Redis disconnected gracefully');
+      } catch (error: any) {
+        logger.warn('Error disconnecting Redis', { error: error?.message || String(error) });
+        // Force disconnect if quit fails
+        try {
+          this.redis.disconnect();
+        } catch (disconnectError) {
+          // Ignore disconnect errors
+        }
+      }
+      this.redis = undefined;
     }
 
     this.isRunning = false;
