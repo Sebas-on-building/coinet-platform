@@ -39,23 +39,39 @@ export class AIDataFeeder extends EventEmitter {
 
   /**
    * Lazy load market-prices modules to avoid crashes on import
+   * Using require() since compiled code is CommonJS
    */
   private async loadMarketPricesModules() {
     try {
-      // Try package name first, then fallback to absolute/relative paths
+      // Use dynamic require() - this will be CommonJS at runtime
+      const path = require('path');
+      const fs = require('fs');
+      
       let marketPrices;
       try {
-        marketPrices = await import('@coinet/market-prices');
+        // Try package name first
+        marketPrices = require('@coinet/market-prices');
       } catch (packageError) {
         // Fallback to absolute path in Docker container
-        logger.warn('Package import failed, trying absolute path', { error: packageError });
+        logger.warn('Package require failed, trying absolute path', { error: packageError });
         try {
           // In Docker: /app/services/market-prices/dist/index.js
-          marketPrices = await import('/app/services/market-prices/dist/index.js');
+          const absolutePath = '/app/services/market-prices/dist/index.js';
+          if (fs.existsSync(absolutePath)) {
+            marketPrices = require(absolutePath);
+          } else {
+            throw new Error(`File not found: ${absolutePath}`);
+          }
         } catch (absoluteError) {
           // Fallback to relative path (from dist/data-feeder.js to market-prices/dist/index.js)
           logger.warn('Absolute path failed, trying relative path', { error: absoluteError });
-          marketPrices = await import('../../market-prices/dist/index.js');
+          const currentDir = __dirname;
+          const relativePath = path.resolve(currentDir, '../../market-prices/dist/index.js');
+          
+          if (!fs.existsSync(relativePath)) {
+            throw new Error(`Module not found at ${relativePath} (current dir: ${currentDir})`);
+          }
+          marketPrices = require(relativePath);
         }
       }
       const { CoinGeckoRestClient, CryptoPanicRestClient, CryptoPanicNewsService, CryptoPanicSentimentAnalyzer, CryptoPanicPlan } = marketPrices;
