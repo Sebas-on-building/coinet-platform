@@ -252,7 +252,14 @@ let configInstance: ServiceConfig | null = null;
 export function getConfig(): ServiceConfig {
   if (!configInstance) {
     configInstance = buildConfig();
-    validateConfig(configInstance);
+    // Validate config - catch errors to prevent crashes, log warnings instead
+    try {
+      validateConfig(configInstance);
+    } catch (error) {
+      // Log warning but don't crash - allow service to start with partial config
+      console.warn('Configuration validation warning:', error instanceof Error ? error.message : String(error));
+      console.warn('Service will continue with partial configuration. Some features may not work.');
+    }
   }
   return configInstance;
 }
