@@ -5,20 +5,22 @@
 
 import EventEmitter from 'eventemitter3';
 import cron from 'node-cron';
-// Import from market-prices package
-// Using direct imports to avoid TypeScript module resolution issues with symlinks
-import { CoinGeckoRestClient } from '@coinet/market-prices';
-import { CryptoPanicNewsService } from '@coinet/market-prices';
-import { CryptoPanicSentimentAnalyzer } from '@coinet/market-prices';
-import { CryptoPanicRestClient } from '@coinet/market-prices';
-import { CryptoPanicPlan } from '@coinet/market-prices';
+// Lazy imports from market-prices package to avoid crashes on module load
+// We'll import these dynamically when needed
 import Redis from 'ioredis';
 import { AIMarketDataPoint, AIAnalysisResult, DataFeederConfig, DataFeedEvent } from './types';
 import { logger } from './logger';
 
+// Type imports (these are safe - no runtime code)
+import type { CoinGeckoRestClient } from '@coinet/market-prices';
+import type { CryptoPanicNewsService } from '@coinet/market-prices';
+import type { CryptoPanicSentimentAnalyzer } from '@coinet/market-prices';
+import type { CryptoPanicRestClient } from '@coinet/market-prices';
+import type { CryptoPanicPlan } from '@coinet/market-prices';
+
 export class AIDataFeeder extends EventEmitter {
   private config: DataFeederConfig;
-  private coinGecko: CoinGeckoRestClient;
+  private coinGecko!: CoinGeckoRestClient;
   private cryptoPanicNews?: CryptoPanicNewsService;
   private cryptoPanicSentiment?: CryptoPanicSentimentAnalyzer;
   private redis?: Redis;
@@ -33,44 +35,67 @@ export class AIDataFeeder extends EventEmitter {
   constructor(config: DataFeederConfig) {
     super();
     this.config = config;
-    
-    // Initialize CoinGecko
-    this.coinGecko = new CoinGeckoRestClient({
-      apiKey: process.env.COINGECKO_API_KEY || '',
-      apiUrl: process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3',
-      rateLimit: {
-        maxRequestsPerMinute: 50,
-        reservoir: 50,
-        reservoirRefreshAmount: 50,
-        reservoirRefreshInterval: 60 * 1000,
-      },
-      retry: {
-        retries: 3,
-        retryDelay: 1000,
-      },
-      priority: 1,
-    });
-    
-    // Initialize CryptoPanic if token available
-    if (process.env.CRYPTOPANIC_AUTH_TOKEN) {
-      const cryptoPanicClient = new CryptoPanicRestClient({
-        authToken: process.env.CRYPTOPANIC_AUTH_TOKEN,
-        plan: (process.env.CRYPTOPANIC_PLAN as CryptoPanicPlan) || CryptoPanicPlan.DEVELOPMENT,
-        enableCaching: true,
+  }
+
+  /**
+   * Lazy load market-prices modules to avoid crashes on import
+   */
+  private async loadMarketPricesModules() {
+    try {
+      const marketPrices = await import('@coinet/market-prices');
+      const { CoinGeckoRestClient, CryptoPanicRestClient, CryptoPanicNewsService, CryptoPanicSentimentAnalyzer, CryptoPanicPlan } = marketPrices;
+      
+      // Initialize CoinGecko
+      this.coinGecko = new CoinGeckoRestClient({
+        apiKey: process.env.COINGECKO_API_KEY || '',
+        apiUrl: process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3',
+        rateLimit: {
+          maxRequestsPerMinute: 50,
+          reservoir: 50,
+          reservoirRefreshAmount: 50,
+          reservoirRefreshInterval: 60 * 1000,
+        },
+        retry: {
+          retries: 3,
+          retryDelay: 1000,
+        },
+        priority: 1,
       });
       
-      this.cryptoPanicNews = new CryptoPanicNewsService({
-        client: cryptoPanicClient,
-        enableCaching: true,
-      });
-      
-      this.cryptoPanicSentiment = new CryptoPanicSentimentAnalyzer();
+      // Initialize CryptoPanic if token available
+      if (process.env.CRYPTOPANIC_AUTH_TOKEN) {
+        try {
+          const cryptoPanicClient = new CryptoPanicRestClient({
+            authToken: process.env.CRYPTOPANIC_AUTH_TOKEN,
+            plan: (process.env.CRYPTOPANIC_PLAN as CryptoPanicPlan) || CryptoPanicPlan.DEVELOPMENT,
+            enableCaching: true,
+          });
+          
+          this.cryptoPanicNews = new CryptoPanicNewsService({
+            client: cryptoPanicClient,
+            enableCaching: true,
+          });
+          
+          this.cryptoPanicSentiment = new CryptoPanicSentimentAnalyzer();
+        } catch (error) {
+          logger.warn('Failed to initialize CryptoPanic (continuing without it)', { error });
+          // Don't throw - CryptoPanic is optional
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to load market-prices modules', { error });
+      throw error;
     }
     
     // Initialize Redis if enabled
-    if (config.enableRedisCache && process.env.REDIS_URL) {
-      this.redis = new Redis(process.env.REDIS_URL);
-      logger.info('Redis cache enabled');
+    try {
+      if (this.config.enableRedisCache && process.env.REDIS_URL) {
+        this.redis = new Redis(process.env.REDIS_URL);
+        logger.info('Redis cache enabled');
+      }
+    } catch (error) {
+      logger.warn('Failed to initialize Redis (continuing without cache)', { error });
+      // Don't throw - Redis is optional
     }
   }
 
@@ -89,6 +114,9 @@ export class AIDataFeeder extends EventEmitter {
       newsInterval: `${this.config.newsUpdateInterval / 1000}s`,
       aiInterval: `${this.config.aiAnalysisInterval / 1000}s`,
     });
+
+    // Lazy load market-prices modules first
+    await this.loadMarketPricesModules();
 
     // Initial data fetch
     await this.fetchAllData();
