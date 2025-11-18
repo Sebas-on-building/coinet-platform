@@ -7,6 +7,8 @@ export enum DataSource {
   COINGECKO = 'coingecko',
   COINMARKETCAP = 'coinmarketcap',
   DEFILLAMA = 'defillama',
+  DEXSCREENER = 'dexscreener',
+  CRYPTOPANIC = 'cryptopanic',
 }
 
 export enum PriceUpdateType {
@@ -143,6 +145,7 @@ export interface ServiceConfig {
   providers: {
     coingecko: ProviderConfig;
     coinmarketcap: ProviderConfig;
+    dexscreener?: ProviderConfig;
   };
   database: {
     host: string;
