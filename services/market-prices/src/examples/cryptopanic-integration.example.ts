@@ -67,7 +67,7 @@ async function example1_BasicNewsFetching() {
       console.log(`\n📄 Latest Post:`);
       console.log(`   Title: ${firstPost.title}`);
       console.log(`   Source: ${firstPost.source?.title || firstPost.source?.domain || 'Unknown'}`);
-      console.log(`   URL: ${firstPost.url || firstPost.original_url || 'N/A'}`);
+      console.log(`   URL: ${firstPost.url || (firstPost as any).original_url || 'N/A'}`);
       console.log(`   Published: ${firstPost.published_at}`);
       if (firstPost.votes) {
         console.log(`   Votes: +${firstPost.votes.positive} -${firstPost.votes.negative}`);

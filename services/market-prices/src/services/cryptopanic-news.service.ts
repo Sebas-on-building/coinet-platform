@@ -18,6 +18,7 @@ import {
   CryptoPanicRegion,
   NewsStatistics,
   CachedNewsItem,
+  CryptoPanicCurrency,
 } from '../types/cryptopanic.types';
 import { logger } from '../utils/logger';
 
@@ -255,8 +256,8 @@ export class CryptoPanicNewsService extends EventEmitter {
     const normalized: NormalizedNewsArticle = {
       id: `cryptopanic-${post.id}`,
       title: post.title,
-      description: post.metadata?.description || post.description,
-      url: post.url || post.original_url || '',
+      description: post.metadata?.description || (post as any).description,
+      url: post.url || (post as any).original_url || '',
       publishedAt: new Date(post.published_at),
       createdAt: new Date(post.created_at),
       source: {
@@ -274,7 +275,7 @@ export class CryptoPanicNewsService extends EventEmitter {
         comments: post.votes?.comments || 0,
         saves: post.votes?.saved || 0,
       },
-      currencies: (post.currencies || post.instruments || []).map((c) => ({
+      currencies: (post.currencies || (post as any).instruments || []).map((c: CryptoPanicCurrency) => ({
         code: c.code,
         name: c.title,
         slug: c.slug,
