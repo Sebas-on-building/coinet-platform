@@ -169,10 +169,144 @@ function buildDexScreenerConfig(): ProviderConfig | undefined {
 }
 
 /**
+ * Build DeFiLlama provider configuration
+ */
+function buildDefiLlamaConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.DEFILLAMA_API_KEY || ''; // Optional - free tier works without key
+  const apiUrl = getEnv('DEFILLAMA_API_URL', 'https://api.llama.fi');
+  
+  const rateLimitPerMinute = getEnvNumber('DEFILLAMA_RATE_LIMIT_PER_MINUTE', 300);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('DEFILLAMA_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('DEFILLAMA_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey: apiKey || 'free-tier',
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 4,
+  };
+}
+
+/**
+ * Build CryptoPanic provider configuration
+ */
+function buildCryptoPanicConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.CRYPTOPANIC_API_KEY;
+  if (!apiKey) return undefined;
+  
+  const apiUrl = getEnv('CRYPTOPANIC_API_URL', 'https://cryptopanic.com/api');
+  const plan = getEnv('CRYPTOPANIC_PLAN', 'growth'); // development, growth, enterprise
+  
+  // Rate limits vary by plan
+  let rateLimitPerSecond = 5; // growth default
+  if (plan === 'development') rateLimitPerSecond = 2;
+  if (plan === 'enterprise') rateLimitPerSecond = 100;
+  
+  const rateLimitPerMinute = rateLimitPerSecond * 60;
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerSecond * 10,
+    reservoirRefreshAmount: rateLimitPerSecond,
+    reservoirRefreshInterval: 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('CRYPTOPANIC_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('CRYPTOPANIC_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey,
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 5,
+  };
+}
+
+/**
+ * Build Messari provider configuration
+ */
+function buildMessariConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.MESSARI_API_KEY;
+  if (!apiKey) return undefined;
+  
+  const apiUrl = getEnv('MESSARI_API_URL', 'https://data.messari.io/api/v1');
+  const rateLimitPerMinute = getEnvNumber('MESSARI_RATE_LIMIT_PER_MINUTE', 60);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('MESSARI_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('MESSARI_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey,
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 6,
+  };
+}
+
+/**
+ * Build The Tie provider configuration
+ */
+function buildTheTieConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.THETIE_API_KEY;
+  if (!apiKey) return undefined;
+  
+  const apiUrl = getEnv('THETIE_API_URL', 'https://api.thetie.io/v1');
+  const rateLimitPerMinute = getEnvNumber('THETIE_RATE_LIMIT_PER_MINUTE', 60);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('THETIE_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('THETIE_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey,
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 7,
+  };
+}
+
+/**
  * Build complete service configuration
  */
 export function buildConfig(): ServiceConfig {
   const dexscreenerConfig = buildDexScreenerConfig();
+  const defillamaConfig = buildDefiLlamaConfig();
+  const cryptopanicConfig = buildCryptoPanicConfig();
+  const messariConfig = buildMessariConfig();
+  const thetieConfig = buildTheTieConfig();
   
   const providers: ServiceConfig['providers'] = {
     coingecko: buildCoinGeckoConfig(),
@@ -181,6 +315,22 @@ export function buildConfig(): ServiceConfig {
   
   if (dexscreenerConfig) {
     providers.dexscreener = dexscreenerConfig;
+  }
+  
+  if (defillamaConfig) {
+    providers.defillama = defillamaConfig;
+  }
+  
+  if (cryptopanicConfig) {
+    providers.cryptopanic = cryptopanicConfig;
+  }
+  
+  if (messariConfig) {
+    providers.messari = messariConfig;
+  }
+  
+  if (thetieConfig) {
+    providers.thetie = thetieConfig;
   }
   
   return {
@@ -204,6 +354,8 @@ export function buildConfig(): ServiceConfig {
     enableWebSocket: getEnvBoolean('ENABLE_WEBSOCKET', true),
     enableRestFallback: getEnvBoolean('ENABLE_REST_FALLBACK', true),
     enableCMCFallback: getEnvBoolean('ENABLE_CMC_FALLBACK', false), // Disabled by default - requires API key
+    enableMessari: getEnvBoolean('ENABLE_MESSARI', false), // Disabled by default - requires API key
+    enableTheTie: getEnvBoolean('ENABLE_THETIE', false), // Disabled by default - requires API key
     logLevel: getEnv('LOG_LEVEL', 'info'),
   };
 }

@@ -57,6 +57,17 @@ export { logger } from './utils/logger';
 // Export CryptoPanic types
 export * from './types/cryptopanic.types';
 
+// Export Messari provider and types
+export { MessariRestClient } from './providers/messari-rest';
+export * from './types/messari.types';
+
+// Export The Tie provider and types
+export { TheTieRestClient } from './providers/thetie-rest';
+export * from './types/thetie.types';
+
+// Export Secrets Manager
+export * from './utils/secrets-manager';
+
 /**
  * Create and initialize a new MarketDataAggregator instance
  */
