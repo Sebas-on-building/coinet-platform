@@ -3,12 +3,10 @@
  * Run with: npx ts-node test-cryptopanic.ts
  */
 
-import {
-  CryptoPanicRestClient,
-  CryptoPanicNewsService,
-  CryptoPanicSentimentAnalyzer,
-  CryptoPanicPlan,
-} from './src/index';
+import CryptoPanicRestClient from './src/providers/cryptopanic-rest';
+import CryptoPanicNewsService from './src/services/cryptopanic-news.service';
+import CryptoPanicSentimentAnalyzer from './src/services/cryptopanic-sentiment.service';
+import { CryptoPanicPlan, CryptoPanicFilter } from './src/types/cryptopanic.types';
 
 async function quickTest() {
   console.log('🚀 Testing CryptoPanic Integration...\n');
@@ -28,9 +26,12 @@ async function quickTest() {
   try {
     // Initialize client
     console.log('✅ Initializing CryptoPanic client...');
+    const plan = (process.env.CRYPTOPANIC_PLAN || 'development') as CryptoPanicPlan;
     const client = new CryptoPanicRestClient({
       authToken,
-      plan: CryptoPanicPlan.GROWTH,
+      plan: plan === 'development' ? CryptoPanicPlan.DEVELOPMENT : 
+            plan === 'growth' ? CryptoPanicPlan.GROWTH : 
+            CryptoPanicPlan.ENTERPRISE,
       enableCaching: true,
     });
 
@@ -43,14 +44,14 @@ async function quickTest() {
       const first = response.results[0];
       console.log(`\n📄 Latest Article:`);
       console.log(`   Title: ${first.title}`);
-      console.log(`   Source: ${first.source.title}`);
-      console.log(`   URL: ${first.url}`);
+      console.log(`   Source: ${first.source?.title || first.source?.domain || 'Unknown'}`);
+      console.log(`   URL: ${first.url || first.original_url || 'N/A'}`);
     }
 
     // Test 2: Currency-specific news
     console.log('\n\n📊 Test 2: Fetching Bitcoin news...');
     const btcNews = await client.fetchNewsByCurrency('BTC', {
-      filter: 'important' as any,
+      filter: CryptoPanicFilter.IMPORTANT,
     });
     console.log(`✅ Found ${btcNews.results.length} important BTC articles`);
 

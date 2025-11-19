@@ -1,4 +1,22 @@
-/**
+#!/usr/bin/env python3
+"""
+Create all market-prices enhancement files in Codespace
+Run: python3 create-files.py
+"""
+
+import os
+
+# Ensure directories exist
+os.makedirs('src/services', exist_ok=True)
+os.makedirs('src/utils', exist_ok=True)
+
+# Read file contents from local machine and create them
+# Since we can't read from local, we'll embed the content
+
+print("Creating files...")
+
+# File 1: unified-market-data.ts
+unified_content = '''/**
  * Unified Market Data Service
  * Provides best-price aggregation and unified data access across all providers
  * Divine perfection in data aggregation
@@ -13,7 +31,6 @@ import {
 import { CoinGeckoRestClient } from '../providers/coingecko-rest';
 import { CoinMarketCapRestClient } from '../providers/coinmarketcap-rest';
 import { DefiLlamaRestClient } from '../providers/defillama-rest';
-import { DexScreenerRestClient } from '../providers/dexscreener-rest';
 import { logger } from '../utils/logger';
 
 /**
@@ -46,7 +63,6 @@ export interface AggregatedMarketData {
     coingecko?: MarketPrice;
     coinmarketcap?: MarketPrice;
     defillama?: any;
-    dexscreener?: any;
   };
   confidence: number;
   lastUpdated: Date;
@@ -61,14 +77,12 @@ interface ProviderWeights {
   coingecko: number;
   coinmarketcap: number;
   defillama: number;
-  dexscreener: number;
 }
 
 const DEFAULT_WEIGHTS: ProviderWeights = {
-  coingecko: 0.4,      // Primary source - highest weight
-  coinmarketcap: 0.25, // Secondary source
-  defillama: 0.15,     // Tertiary source (mainly for DeFi data)
-  dexscreener: 0.2,    // DEX data source
+  coingecko: 0.5,      // Primary source - highest weight
+  coinmarketcap: 0.3,  // Secondary source
+  defillama: 0.2,      // Tertiary source (mainly for DeFi data)
 };
 
 /**
@@ -79,20 +93,17 @@ export class UnifiedMarketDataService {
   private geckoClient: CoinGeckoRestClient;
   private cmcClient?: CoinMarketCapRestClient;
   private defillamaClient?: DefiLlamaRestClient;
-  private dexscreenerClient?: DexScreenerRestClient;
   private weights: ProviderWeights;
 
   constructor(
     geckoClient: CoinGeckoRestClient,
     cmcClient?: CoinMarketCapRestClient,
     defillamaClient?: DefiLlamaRestClient,
-    dexscreenerClient?: DexScreenerRestClient,
     weights: ProviderWeights = DEFAULT_WEIGHTS
   ) {
     this.geckoClient = geckoClient;
     this.cmcClient = cmcClient;
     this.defillamaClient = defillamaClient;
-    this.dexscreenerClient = dexscreenerClient;
     this.weights = weights;
   }
 
@@ -155,39 +166,6 @@ export class UnifiedMarketDataService {
         }
       } catch (error) {
         logger.warn('CoinMarketCap price fetch failed', { symbol, error });
-      }
-    }
-
-    // Fetch from DexScreener (DEX data source)
-    if (this.dexscreenerClient) {
-      try {
-        // Search for pairs matching the symbol
-        const dexPairs = await this.dexscreenerClient.searchPairsByQuery(symbol);
-        if (dexPairs && dexPairs.length > 0) {
-          // Find the pair with highest liquidity (most reliable)
-          const bestPair = dexPairs.reduce((best, current) => {
-            const bestLiquidity = best.liquidity?.usd || 0;
-            const currentLiquidity = current.liquidity?.usd || 0;
-            return currentLiquidity > bestLiquidity ? current : best;
-          });
-
-          // Use USD price if available, otherwise convert from native price
-          if (bestPair.priceUsd) {
-            const price = parseFloat(bestPair.priceUsd);
-            if (price > 0) {
-              prices.push({
-                price,
-                source: DataSource.DEXSCREENER,
-                timestamp: bestPair.pairCreatedAt
-                  ? new Date(bestPair.pairCreatedAt * 1000)
-                  : new Date(),
-                weight: this.weights.dexscreener,
-              });
-            }
-          }
-        }
-      } catch (error) {
-        logger.warn('DexScreener price fetch failed', { symbol, error });
       }
     }
 
@@ -255,8 +233,7 @@ export class UnifiedMarketDataService {
     const prices: number[] = [];
     const volumes: number[] = [];
     const marketCaps: number[] = [];
-    const priceChanges24h: number[] = []; // Absolute price changes
-    const priceChangePercentages24h: number[] = []; // Percentage changes
+    const priceChanges24h: number[] = [];
 
     // Fetch from CoinGecko
     try {
@@ -278,7 +255,7 @@ export class UnifiedMarketDataService {
           priceChangePercentage24h: market.price_change_percentage_24h || 0,
           marketCap: market.market_cap || 0,
           volume24h: market.total_volume || 0,
-          lastUpdated: (market as any).last_updated ? new Date((market as any).last_updated) : new Date(),
+          lastUpdated: new Date(market.last_updated || Date.now()),
           source: DataSource.COINGECKO,
           updateType: PriceUpdateType.REST,
         };
@@ -286,8 +263,7 @@ export class UnifiedMarketDataService {
         prices.push(geckoPrice.price);
         volumes.push(geckoPrice.volume24h);
         marketCaps.push(geckoPrice.marketCap);
-        priceChanges24h.push(geckoPrice.priceChange24h || 0);
-        priceChangePercentages24h.push(geckoPrice.priceChangePercentage24h || 0);
+        priceChanges24h.push(geckoPrice.priceChangePercentage24h);
       }
     } catch (error) {
       logger.warn('CoinGecko data fetch failed', { symbol, error });
@@ -316,59 +292,10 @@ export class UnifiedMarketDataService {
           prices.push(cmcPrice.price);
           volumes.push(cmcPrice.volume24h);
           marketCaps.push(cmcPrice.marketCap);
-          priceChanges24h.push(cmcPrice.priceChange24h || 0);
-          priceChangePercentages24h.push(cmcPrice.priceChangePercentage24h || 0);
+          priceChanges24h.push(cmcPrice.priceChangePercentage24h);
         }
       } catch (error) {
         logger.warn('CoinMarketCap data fetch failed', { symbol, error });
-      }
-    }
-
-    // Fetch from DexScreener (DEX data source)
-    if (this.dexscreenerClient) {
-      try {
-        const dexPairs = await this.dexscreenerClient.searchPairsByQuery(symbol);
-        if (dexPairs && dexPairs.length > 0) {
-          // Find the pair with highest liquidity
-          const bestPair = dexPairs.reduce((best, current) => {
-            const bestLiquidity = best.liquidity?.usd || 0;
-            const currentLiquidity = current.liquidity?.usd || 0;
-            return currentLiquidity > bestLiquidity ? current : best;
-          });
-
-          if (bestPair.priceUsd) {
-            const dexPrice = parseFloat(bestPair.priceUsd);
-            const dexVolume = bestPair.volume?.h24 || 0;
-            const dexPriceChange = bestPair.priceChange?.h24 || 0;
-
-            if (dexPrice > 0) {
-              // Store DexScreener data in sources
-              sources.dexscreener = {
-                symbol: `${bestPair.baseToken.symbol}/${bestPair.quoteToken.symbol}`,
-                coinId: bestPair.baseToken.address,
-                price: dexPrice,
-                priceChange24h: 0, // DexScreener doesn't provide absolute change
-                priceChangePercentage24h: dexPriceChange,
-                marketCap: bestPair.fdv || 0,
-                volume24h: dexVolume,
-                lastUpdated: bestPair.pairCreatedAt
-                  ? new Date(bestPair.pairCreatedAt * 1000)
-                  : new Date(),
-                source: DataSource.DEXSCREENER,
-                updateType: PriceUpdateType.REST,
-              };
-
-              prices.push(dexPrice);
-              volumes.push(dexVolume);
-              if (bestPair.fdv) {
-                marketCaps.push(bestPair.fdv);
-              }
-              priceChangePercentages24h.push(dexPriceChange);
-            }
-          }
-        }
-      } catch (error) {
-        logger.warn('DexScreener data fetch failed', { symbol, error });
       }
     }
 
@@ -385,7 +312,6 @@ export class UnifiedMarketDataService {
     const avgVolume = this.calculateAverage(volumes);
     const avgMarketCap = this.calculateAverage(marketCaps);
     const avgPriceChange24h = this.calculateAverage(priceChanges24h);
-    const avgPriceChangePercentage24h = this.calculateAverage(priceChangePercentages24h);
 
     // Calculate confidence and variance
     const priceVariance = this.calculateVariance(prices);
@@ -404,7 +330,7 @@ export class UnifiedMarketDataService {
       coinId,
       price: avgPrice,
       priceChange24h: avgPriceChange24h,
-      priceChangePercentage24h: avgPriceChangePercentage24h,
+      priceChangePercentage24h: avgPriceChange24h,
       marketCap: avgMarketCap,
       volume24h: avgVolume,
       sources,
@@ -504,4 +430,12 @@ export class UnifiedMarketDataService {
 }
 
 export default UnifiedMarketDataService;
+'''
+
+print("✅ Creating unified-market-data.ts...")
+with open('src/services/unified-market-data.ts', 'w') as f:
+    f.write(unified_content)
+
+print("✅ Files created successfully!")
+print("\nNext step: Run 'git add' command to stage the files")
 
