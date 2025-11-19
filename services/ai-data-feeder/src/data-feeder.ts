@@ -381,11 +381,22 @@ export class AIDataFeeder extends EventEmitter {
    */
   private async fetchPrices(): Promise<void> {
     try {
+      // Clean and validate coins array
+      const coins = this.config.coins
+        .map(coin => coin.trim().toLowerCase())
+        .filter(coin => coin.length > 0 && !coin.includes('=')); // Remove any malformed entries
+      
+      if (coins.length === 0) {
+        logger.warn('No valid coins to fetch, using defaults');
+        coins.push('bitcoin', 'ethereum', 'solana', 'cardano', 'avalanche-2');
+      }
+      
       logger.debug('Fetching prices from CoinGecko', {
-        coins: this.config.coins.length,
+        coins: coins.length,
+        coinIds: coins.slice(0, 5), // Log first 5 for debugging
       });
 
-      const markets = await this.coinGecko.getCoinMarkets('usd', this.config.coins);
+      const markets = await this.coinGecko.getCoinMarkets('usd', coins);
       // Convert CoinGeckoMarket to our format
       const prices = markets.map(m => ({
         id: m.id,
