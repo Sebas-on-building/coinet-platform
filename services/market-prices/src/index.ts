@@ -61,6 +61,15 @@ export * from './types/cryptopanic.types';
 export { MessariRestClient } from './providers/messari-rest';
 export * from './types/messari.types';
 
+// Export Token Unlocks & Vesting System
+export { TokenUnlocksService } from './services/token-unlocks.service';
+export { TokenUnlocksScheduler } from './services/token-unlocks-scheduler';
+export { TokenUnlocksAnalytics } from './services/token-unlocks-analytics';
+export { TokenUnlocksMonitoring } from './services/token-unlocks-monitoring';
+export { TokenUnlocksSystem, createTokenUnlocksSystem } from './services/token-unlocks-integration';
+export { TokenUnlocksCache } from './storage/token-unlocks-cache';
+export { TokenUnlocksStorage } from './storage/token-unlocks-storage';
+
 // Export The Tie provider and types
 export { TheTieRestClient } from './providers/thetie-rest';
 export * from './types/thetie.types';
