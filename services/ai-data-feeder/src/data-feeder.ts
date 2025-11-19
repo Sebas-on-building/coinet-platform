@@ -121,9 +121,27 @@ export class AIDataFeeder extends EventEmitter {
       // Initialize CryptoPanic if token available
       if (process.env.CRYPTOPANIC_AUTH_TOKEN) {
         try {
+          // Parse plan from environment variable (handle cases where it might include variable name)
+          let planEnv = process.env.CRYPTOPANIC_PLAN || 'development';
+          // Fix: Remove variable name prefix if present (e.g., "CRYPTOPANIC_PLAN=development" -> "development")
+          if (planEnv.includes('=')) {
+            planEnv = planEnv.split('=').pop() || 'development';
+          }
+          planEnv = planEnv.trim().toLowerCase();
+          
+          // Convert string to CryptoPanicPlan enum
+          let plan: CryptoPanicPlan = CryptoPanicPlan.DEVELOPMENT;
+          if (planEnv === 'development' || planEnv === 'developer') {
+            plan = CryptoPanicPlan.DEVELOPMENT;
+          } else if (planEnv === 'growth') {
+            plan = CryptoPanicPlan.GROWTH;
+          } else if (planEnv === 'enterprise') {
+            plan = CryptoPanicPlan.ENTERPRISE;
+          }
+          
           const cryptoPanicClient = new CryptoPanicRestClient({
             authToken: process.env.CRYPTOPANIC_AUTH_TOKEN,
-            plan: (process.env.CRYPTOPANIC_PLAN as CryptoPanicPlan) || CryptoPanicPlan.DEVELOPMENT,
+            plan,
             enableCaching: true,
           });
           
