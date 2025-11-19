@@ -202,7 +202,8 @@ function buildDefiLlamaConfig(): ProviderConfig | undefined {
  * Build CryptoPanic provider configuration
  */
 function buildCryptoPanicConfig(): ProviderConfig | undefined {
-  const apiKey = process.env.CRYPTOPANIC_API_KEY;
+  // CryptoPanic uses AUTH_TOKEN, but also check API_KEY for backwards compatibility
+  const apiKey = process.env.CRYPTOPANIC_AUTH_TOKEN || process.env.CRYPTOPANIC_API_KEY;
   if (!apiKey) return undefined;
   
   const apiUrl = getEnv('CRYPTOPANIC_API_URL', 'https://cryptopanic.com/api');
