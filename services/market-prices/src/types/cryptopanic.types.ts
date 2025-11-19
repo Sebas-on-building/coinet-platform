@@ -65,10 +65,11 @@ export interface CryptoPanicCurrency {
 }
 
 export interface CryptoPanicSource {
-  title: string;
-  region: string;
-  domain: string;
-  path: string | null;
+  title?: string;
+  region?: string;
+  domain?: string;
+  path?: string | null;
+  type?: string;
 }
 
 export interface CryptoPanicMetadata {
@@ -79,17 +80,23 @@ export interface CryptoPanicMetadata {
 
 export interface CryptoPanicPost {
   kind: CryptoPanicKind;
-  domain: string;
-  source: CryptoPanicSource;
+  domain?: string;
+  source?: CryptoPanicSource;
   title: string;
   published_at: string;
   slug: string;
   id: number;
-  url: string;
+  url?: string;
+  original_url?: string;
   created_at: string;
-  votes: CryptoPanicVotes;
+  votes?: CryptoPanicVotes;
   currencies?: CryptoPanicCurrency[];
   metadata?: CryptoPanicMetadata;
+  description?: string;
+  image?: string;
+  instruments?: CryptoPanicCurrency[];
+  panic_score?: number;
+  author?: string;
 }
 
 export interface CryptoPanicPostsResponse {

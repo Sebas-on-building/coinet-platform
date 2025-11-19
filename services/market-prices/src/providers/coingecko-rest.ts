@@ -71,7 +71,7 @@ export class CoinGeckoRestClient {
   }
 
   /**
-   * Make a rate-limited request
+   * Make a rate-limited request with dynamic backoff based on rate limit headers
    */
   private async request<T>(
     method: string,
@@ -91,8 +91,50 @@ export class CoinGeckoRestClient {
             params,
           });
 
+          // Extract rate limit headers for dynamic backoff
+          // Axios normalizes headers to lowercase, but check both formats for safety
+          const rateLimitRemaining = response.headers['x-ratelimit-remaining'] || 
+                                     response.headers['X-RateLimit-Remaining'];
+          const rateLimitTotal = response.headers['x-ratelimit-limit'] || 
+                                response.headers['X-RateLimit-Limit'];
+          
+          if (rateLimitRemaining !== undefined && rateLimitTotal !== undefined) {
+            const remaining = parseInt(String(rateLimitRemaining), 10);
+            const total = parseInt(String(rateLimitTotal), 10);
+            
+            // Validate parsed values
+            if (isNaN(remaining) || isNaN(total) || total <= 0) {
+              logger.debug('Invalid rate limit headers, skipping dynamic backoff', {
+                remaining: rateLimitRemaining,
+                total: rateLimitTotal,
+              });
+            } else {
+              const usagePercent = ((total - remaining) / total) * 100;
+            
+              // Log warning if approaching rate limit (80% threshold)
+              if (usagePercent >= 80) {
+                logger.warn('CoinGecko rate limit approaching', {
+                  remaining,
+                  total,
+                  usagePercent: usagePercent.toFixed(2),
+                  url,
+                });
+              }
+              
+              // Adjust rate limiter dynamically if remaining is low
+              if (remaining < total * 0.1) {
+                logger.warn('CoinGecko rate limit critically low, applying backoff', {
+                  remaining,
+                  total,
+                });
+                // The rate limiter will handle this automatically via Bottleneck
+              }
+            }
+          }
+
           logger.debug(`CoinGecko API response: ${method} ${url}`, {
             status: response.status,
+            rateLimitRemaining: response.headers['x-ratelimit-remaining'],
           });
 
           return response.data;

@@ -206,6 +206,8 @@ export class DefiLlamaRestClient {
   private rateLimiter = getRateLimiter();
   private cache: Map<string, CacheEntry<any>> = new Map();
   private cacheTTL: number = 60000; // 1 minute default
+  private dailyMetricsCache: Map<string, CacheEntry<any>> = new Map();
+  private dailyCacheTTL: number = 24 * 60 * 60 * 1000; // 24 hours for daily metrics
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -251,22 +253,34 @@ export class DefiLlamaRestClient {
   }
 
   /**
-   * Make a rate-limited request
+   * Make a rate-limited request with caching support
    */
   private async request<T>(
     method: string,
     url: string,
     params?: any,
     priority?: number,
-    useCache: boolean = true
+    useCache: boolean = true,
+    isDailyMetric: boolean = false
   ): Promise<T> {
     // Check cache first
     if (useCache && method === 'GET') {
       const cacheKey = `${method}:${url}:${JSON.stringify(params || {})}`;
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
-        logger.debug(`DeFiLlama cache hit: ${url}`);
-        return cached.data as T;
+      
+      // Use daily metrics cache for daily metrics (24h TTL)
+      if (isDailyMetric) {
+        const cached = this.dailyMetricsCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.dailyCacheTTL) {
+          logger.debug(`DeFiLlama daily metrics cache hit: ${url}`);
+          return cached.data as T;
+        }
+      } else {
+        // Use regular cache for other requests (1 min TTL)
+        const cached = this.cache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+          logger.debug(`DeFiLlama cache hit: ${url}`);
+          return cached.data as T;
+        }
       }
     }
 
@@ -292,10 +306,21 @@ export class DefiLlamaRestClient {
           // Cache the response
           if (useCache && method === 'GET') {
             const cacheKey = `${method}:${url}:${JSON.stringify(params || {})}`;
-            this.cache.set(cacheKey, {
-              data,
-              timestamp: Date.now(),
-            });
+            
+            // Use daily metrics cache for daily metrics (24h TTL)
+            if (isDailyMetric) {
+              this.dailyMetricsCache.set(cacheKey, {
+                data,
+                timestamp: Date.now(),
+              });
+              logger.debug(`DeFiLlama daily metrics cached: ${url} (24h TTL)`);
+            } else {
+              // Use regular cache for other requests (1 min TTL)
+              this.cache.set(cacheKey, {
+                data,
+                timestamp: Date.now(),
+              });
+            }
           }
 
           return data;
@@ -390,7 +415,7 @@ export class DefiLlamaRestClient {
    * Get all protocols
    */
   async getProtocols(): Promise<DeFiLlamaProtocol[]> {
-    const response = await this.request<any>('GET', '/protocols');
+    const response = await this.request<any>('GET', '/protocols', undefined, undefined, true, true); // Daily metric - 24h cache
     // DeFiLlama returns an array directly
     return Array.isArray(response) ? response : [];
   }
@@ -398,9 +423,9 @@ export class DefiLlamaRestClient {
   /**
    * Get specific protocol by ID or slug
    */
-  async getProtocol(protocolId: string): Promise<DeFiLlamaProtocol | null> {
+  async getProtocol(protocolId: string, useDailyCache: boolean = true): Promise<DeFiLlamaProtocol | null> {
     try {
-      const response = await this.request<any>('GET', `/protocol/${protocolId}`);
+      const response = await this.request<any>('GET', `/protocol/${protocolId}`, undefined, undefined, true, useDailyCache); // Daily metric - 24h cache
       return response || null;
     } catch (error) {
       logger.error('Failed to get protocol', { protocolId, error });
@@ -420,7 +445,7 @@ export class DefiLlamaRestClient {
    * Get all chains
    */
   async getChains(): Promise<string[]> {
-    const response = await this.request<any>('GET', '/chains');
+    const response = await this.request<any>('GET', '/chains', undefined, undefined, true, true); // Daily metric - 24h cache
     return Array.isArray(response) ? response : [];
   }
 
@@ -872,7 +897,7 @@ export class DefiLlamaRestClient {
    * Get all chains with their current TVL
    */
   async getChainsWithTVL(): Promise<Array<{ name: string; tvl: number; tokenSymbol?: string }>> {
-    return this.request<any>('GET', '/v2/chains');
+    return this.request<any>('GET', '/v2/chains', undefined, undefined, true, true); // Daily metric - 24h cache
   }
 
   /**

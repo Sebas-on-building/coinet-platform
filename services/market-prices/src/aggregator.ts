@@ -34,6 +34,12 @@ export class MarketDataAggregator extends EventEmitter {
   private normalizer: DataNormalizer;
   private isInitialized: boolean = false;
   private lastHealthCheck: Date | null = null;
+  
+  // Fallback tracking for monitoring
+  private coinGeckoFailureStartTime: Date | null = null;
+  private fallbackCount: number = 0;
+  private totalRequests: number = 0;
+  private lastFallbackAlert: Date | null = null;
 
   constructor(config: ServiceConfig) {
     super();
@@ -184,6 +190,18 @@ export class MarketDataAggregator extends EventEmitter {
       logger.info('Fetching prices from CoinGecko', { symbols });
       const geckoData = await this.geckoRest.getCoinMarkets('usd', symbols);
       
+      // Reset failure tracking on success
+      if (this.coinGeckoFailureStartTime !== null) {
+        const outageDuration = Date.now() - this.coinGeckoFailureStartTime.getTime();
+        logger.info('CoinGecko recovered', {
+          outageDurationMs: outageDuration,
+          outageDurationMinutes: Math.round(outageDuration / 60000),
+        });
+        this.coinGeckoFailureStartTime = null;
+      }
+      
+      this.totalRequests++;
+      
       for (const market of geckoData) {
         const price = this.normalizer.normalizeCoinGeckoMarket(market);
         prices.push(price);
@@ -196,13 +214,37 @@ export class MarketDataAggregator extends EventEmitter {
       return prices;
     } catch (error) {
       logger.error('CoinGecko request failed', { error });
+      
+      // Track failure start time (only set once per outage)
+      if (this.coinGeckoFailureStartTime === null) {
+        this.coinGeckoFailureStartTime = new Date();
+        logger.warn('CoinGecko failure detected, starting outage timer', {
+          symbols,
+        });
+      }
+      
+      this.totalRequests++;
 
-      // Failover to CoinMarketCap
-      if (this.config.enableCMCFallback && this.cmcRest) {
+      // Only failover to CoinMarketCap if CoinGecko has been down for >5 minutes
+      const outageDuration = this.coinGeckoFailureStartTime 
+        ? Date.now() - this.coinGeckoFailureStartTime.getTime()
+        : 0;
+      const outageMinutes = outageDuration / 60000;
+      
+      if (this.config.enableCMCFallback && this.cmcRest && outageMinutes >= 5) {
+        logger.warn('CoinGecko outage exceeds 5 minutes, activating CoinMarketCap fallback', {
+          outageMinutes: outageMinutes.toFixed(2),
+          symbols,
+        });
         return this.getMarketPricesFromCMC(symbols);
+      } else if (this.config.enableCMCFallback && this.cmcRest && outageMinutes < 5) {
+        logger.info('CoinGecko outage < 5 minutes, waiting before fallback', {
+          outageMinutes: outageMinutes.toFixed(2),
+          symbols,
+        });
       }
 
-      // If no fallback, try database
+      // If no fallback or outage too short, try database
       return this.getMarketPricesFromDB(symbols);
     }
   }
@@ -215,7 +257,40 @@ export class MarketDataAggregator extends EventEmitter {
       throw new Error('CoinMarketCap client not available');
     }
 
-    logger.info('Falling back to CoinMarketCap', { symbols });
+    this.fallbackCount++;
+    // Calculate failover rate based on total requests (only count successful CoinGecko requests + fallbacks)
+    const failoverRate = this.totalRequests > 0 
+      ? (this.fallbackCount / this.totalRequests) * 100 
+      : 0;
+
+    logger.info('Falling back to CoinMarketCap', { 
+      symbols,
+      failoverRate: failoverRate.toFixed(2),
+      totalFallbacks: this.fallbackCount,
+      totalRequests: this.totalRequests,
+    });
+
+    // Alert if failover rate exceeds 10%
+    if (failoverRate > 10) {
+      const now = new Date();
+      // Only alert once per hour to avoid spam
+      if (!this.lastFallbackAlert || (now.getTime() - this.lastFallbackAlert.getTime()) > 3600000) {
+        logger.error('HIGH FAILOVER RATE ALERT: CoinGecko failover rate exceeds 10%', {
+          failoverRate: failoverRate.toFixed(2),
+          totalFallbacks: this.fallbackCount,
+          totalRequests: this.totalRequests,
+          coinGeckoOutageDuration: this.coinGeckoFailureStartTime 
+            ? Math.round((Date.now() - this.coinGeckoFailureStartTime.getTime()) / 60000)
+            : 0,
+        });
+        this.emit('high_failover_rate', {
+          failoverRate,
+          totalFallbacks: this.fallbackCount,
+          totalRequests: this.totalRequests,
+        });
+        this.lastFallbackAlert = now;
+      }
+    }
 
     try {
       await new Promise((resolve) => setTimeout(resolve, this.config.failoverRetryDelay));
@@ -239,6 +314,7 @@ export class MarketDataAggregator extends EventEmitter {
 
       logger.info('Prices fetched from CoinMarketCap (fallback)', {
         count: prices.length,
+        failoverRate: failoverRate.toFixed(2),
       });
 
       return prices;

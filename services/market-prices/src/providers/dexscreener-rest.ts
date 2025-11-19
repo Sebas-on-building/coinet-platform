@@ -16,6 +16,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import axiosRetry from 'axios-retry';
 import Bottleneck from 'bottleneck';
+import Redis from 'ioredis';
 import {
   ProviderConfig,
   DataSource,
@@ -211,8 +212,10 @@ export class DexScreenerRestClient {
   private searchRateLimiter: any; // Separate limiter for search endpoints (300 rpm)
   private profileRateLimiter: any; // Limiter for profile/boost endpoints (60 rpm)
   
-  // Advanced caching layer
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  // Advanced caching layer - Redis for distributed cache, Map as fallback
+  private redis: Redis | null = null;
+  private cache: Map<string, CacheEntry<any>> = new Map(); // Fallback in-memory cache
+  private useRedisCache: boolean = false;
   private trendingPairsCache: Map<string, DexScreenerPair[]> = new Map();
   
   // Historical data tracking
@@ -233,7 +236,7 @@ export class DexScreenerRestClient {
   // Pre-caching job
   private preCachingInterval?: NodeJS.Timeout;
 
-  constructor(config: ProviderConfig) {
+  constructor(config: ProviderConfig, redisConfig?: { host: string; port: number; password?: string; db: number }) {
     this.config = config;
 
     // Initialize axios instance
@@ -291,16 +294,59 @@ export class DexScreenerRestClient {
       minTime: Math.floor(60000 / 60), // 1 second between requests
     });
 
+    // Initialize Redis cache if config provided
+    if (redisConfig) {
+      try {
+        this.redis = new Redis({
+          host: redisConfig.host,
+          port: redisConfig.port,
+          password: redisConfig.password || undefined,
+          db: redisConfig.db || 0,
+          keyPrefix: 'dexscreener:',
+          retryStrategy: (times: number) => {
+            const delay = Math.min(times * 50, 2000);
+            return delay;
+          },
+          maxRetriesPerRequest: 3,
+        });
+
+        this.redis.on('error', (err) => {
+          logger.warn('DexScreener Redis error, falling back to in-memory cache', { error: err.message });
+          this.useRedisCache = false;
+        });
+
+        this.redis.on('connect', () => {
+          logger.info('DexScreener Redis cache connected', {
+            host: redisConfig.host,
+            port: redisConfig.port,
+          });
+          this.useRedisCache = true;
+        });
+
+        // Test connection
+        this.redis.ping().then(() => {
+          this.useRedisCache = true;
+        }).catch(() => {
+          logger.warn('DexScreener Redis ping failed, using in-memory cache');
+          this.useRedisCache = false;
+        });
+      } catch (error) {
+        logger.warn('DexScreener Redis initialization failed, using in-memory cache', { error });
+        this.useRedisCache = false;
+      }
+    }
+
     logger.info('DexScreener REST client initialized', {
       baseURL: this.axios.defaults.baseURL,
       searchRateLimit: '300 rpm',
       profileRateLimit: '60 rpm',
+      redisCacheEnabled: this.useRedisCache,
     });
   }
 
   /**
    * Make a rate-limited request with endpoint-specific rate limiting
-   * Enhanced with intelligent caching, metrics and header-based backoff
+   * Enhanced with intelligent caching (Redis + in-memory fallback), metrics and header-based backoff
    */
   private async request<T>(
     method: string,
@@ -311,14 +357,44 @@ export class DexScreenerRestClient {
     cacheTTL: number = 60000 // Default 1 minute cache
   ): Promise<T> {
     // Generate cache key
-    const cacheKey = `${method}:${url}:${JSON.stringify(params || {})}`;
+    const cacheKey = `req:${method}:${url}:${JSON.stringify(params || {})}`;
     
     // Check cache first (only for GET requests)
     if (method === 'GET') {
+      // Try Redis cache first if available
+      if (this.useRedisCache && this.redis) {
+        try {
+          const cachedValue = await this.redis.get(cacheKey);
+          if (cachedValue) {
+            const cached = JSON.parse(cachedValue) as CacheEntry<T>;
+            if (Date.now() < cached.expiresAt) {
+              this.metrics.cacheHits++;
+              logger.debug(`DexScreener Redis cache hit: ${url}`);
+              return cached.data;
+            } else {
+              // Expired, remove from Redis
+              await this.redis.del(cacheKey).catch(() => {
+                // Ignore deletion errors
+              });
+            }
+          }
+        } catch (error: any) {
+          logger.debug('DexScreener Redis cache read error, falling back to in-memory', { 
+            error: error?.message || String(error) 
+          });
+          // Disable Redis cache if connection is lost
+          if (error?.code === 'ECONNREFUSED' || error?.message?.includes('Connection')) {
+            this.useRedisCache = false;
+            logger.warn('DexScreener Redis connection lost, disabling Redis cache');
+          }
+        }
+      }
+      
+      // Fallback to in-memory cache
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() < cached.expiresAt) {
         this.metrics.cacheHits++;
-        logger.debug(`DexScreener cache hit: ${url}`);
+        logger.debug(`DexScreener in-memory cache hit: ${url}`);
         return cached.data as T;
       }
       this.metrics.cacheMisses++;
@@ -355,11 +431,36 @@ export class DexScreenerRestClient {
 
         // Cache successful GET responses
         if (method === 'GET') {
-          this.cache.set(cacheKey, {
+          const cacheEntry: CacheEntry<T> = {
             data: response.data,
             timestamp: Date.now(),
             expiresAt: Date.now() + cacheTTL,
-          });
+          };
+          
+          // Store in Redis if available
+          if (this.useRedisCache && this.redis) {
+            try {
+              const ttlSeconds = Math.floor(cacheTTL / 1000);
+              if (ttlSeconds > 0) {
+                await this.redis.setex(cacheKey, ttlSeconds, JSON.stringify(cacheEntry));
+              } else {
+                // If TTL is 0 or negative, use SET without expiration
+                await this.redis.set(cacheKey, JSON.stringify(cacheEntry));
+              }
+            } catch (error: any) {
+              logger.debug('DexScreener Redis cache write error, using in-memory fallback', { 
+                error: error?.message || String(error) 
+              });
+              // Disable Redis cache if connection is lost
+              if (error?.code === 'ECONNREFUSED' || error?.message?.includes('Connection')) {
+                this.useRedisCache = false;
+                logger.warn('DexScreener Redis connection lost, disabling Redis cache');
+              }
+            }
+          }
+          
+          // Always store in in-memory cache as fallback
+          this.cache.set(cacheKey, cacheEntry);
         }
 
         return response.data;
@@ -1327,9 +1428,19 @@ export class DexScreenerRestClient {
   }
 
   /**
+   * Close Redis connection
+   */
+  async close(): Promise<void> {
+    if (this.redis) {
+      await this.redis.quit();
+      logger.info('DexScreener Redis connection closed');
+    }
+  }
+
+  /**
    * Get cache statistics
    */
-  getCacheStats(): { size: number; hitRate: number; trendingPairsCached: number } {
+  getCacheStats(): { size: number; hitRate: number; trendingPairsCached: number; redisEnabled: boolean } {
     const totalCacheAccess = this.metrics.cacheHits + this.metrics.cacheMisses;
     const hitRate = totalCacheAccess > 0 
       ? (this.metrics.cacheHits / totalCacheAccess) * 100 
@@ -1337,6 +1448,7 @@ export class DexScreenerRestClient {
     
     return {
       size: this.cache.size,
+      redisEnabled: this.useRedisCache,
       hitRate,
       trendingPairsCached: this.trendingPairsCache.size,
     };
