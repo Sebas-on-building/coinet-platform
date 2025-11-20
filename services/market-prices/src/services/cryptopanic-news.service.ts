@@ -19,6 +19,7 @@ import {
   NewsStatistics,
   CachedNewsItem,
   CryptoPanicCurrency,
+  CryptoPanicPushConfig,
 } from '../types/cryptopanic.types';
 import { logger } from '../utils/logger';
 

@@ -310,7 +310,7 @@ export class RateLimiter {
   getStats(): Record<string, any> {
     const stats: Record<string, any> = {};
 
-    for (const [source, limiter] of this.limiters.entries()) {
+    for (const [source, limiter] of Array.from(this.limiters.entries())) {
       const config = this.configs.get(source);
       stats[source] = {
         counts: {

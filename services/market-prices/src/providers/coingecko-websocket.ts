@@ -104,7 +104,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   private performHealthCheck(): void {
     const now = Date.now();
     
-    for (const [connectionId, metadata] of this.connectionMetadata.entries()) {
+    for (const [connectionId, metadata] of Array.from(this.connectionMetadata.entries())) {
       const ws = this.connections.get(connectionId);
       
       // Check if connection is stale (no messages received)
@@ -525,7 +525,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   async unsubscribe(coins: string[]): Promise<void> {
     logger.info('Unsubscribing from coins', { coins });
 
-    for (const [connectionId, ws] of this.connections.entries()) {
+    for (const [connectionId, ws] of Array.from(this.connections.entries())) {
       const subscribed = this.subscriptions.get(connectionId);
       if (!subscribed) continue;
 
@@ -555,7 +555,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   getSubscriptions(): string[] {
     const allSubscriptions: Set<string> = new Set();
     
-    for (const subscribed of this.subscriptions.values()) {
+    for (const subscribed of Array.from(this.subscriptions.values())) {
       subscribed.forEach(coin => allSubscriptions.add(coin));
     }
 
@@ -588,7 +588,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     }
 
     // Check if at least one connection is open
-    for (const ws of this.connections.values()) {
+    for (const ws of Array.from(this.connections.values())) {
       if (ws.readyState === WebSocket.OPEN) {
         return true;
       }
@@ -611,13 +611,13 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     }
 
     // Clear all timers
-    for (const connectionId of this.connections.keys()) {
+    for (const connectionId of Array.from(this.connections.keys())) {
       this.stopHeartbeat(connectionId);
       this.clearReconnectTimer(connectionId);
     }
 
     // Close all connections
-    for (const [connectionId, ws] of this.connections.entries()) {
+    for (const [connectionId, ws] of Array.from(this.connections.entries())) {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         logger.info(`Closing WebSocket connection ${connectionId}`);
         ws.close(1000, 'Client disconnect');

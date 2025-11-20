@@ -10,7 +10,7 @@
  * - Performance metrics and monitoring
  */
 
-import * as cron from 'node-cron';
+import cron from 'node-cron';
 import EventEmitter from 'eventemitter3';
 import { logger } from '../utils/logger';
 import { MessariRestClient } from '../providers/messari-rest';
