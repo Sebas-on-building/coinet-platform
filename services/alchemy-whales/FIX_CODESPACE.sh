@@ -7,15 +7,20 @@ set -e
 echo "🔧 Fixing Alchemy Whales Service setup in Codespace..."
 echo ""
 
-cd /workspaces/coinet-platform/services/alchemy-whales
+# Get the script's directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # 1. Ensure we're in the right directory
 if [ ! -f "package.json" ]; then
-    echo "❌ Error: package.json not found. Are you in the right directory?"
+    echo "❌ Error: package.json not found in $SCRIPT_DIR"
+    echo "Current directory: $(pwd)"
+    echo "Files in directory:"
+    ls -la
     exit 1
 fi
 
-echo "✅ Found package.json"
+echo "✅ Found package.json in $(pwd)"
 
 # 2. Create .env.example if it doesn't exist
 if [ ! -f ".env.example" ]; then
@@ -109,8 +114,16 @@ fi
 
 # 3. Install dependencies (standalone, not as workspace)
 echo "📦 Installing dependencies..."
+echo "Current directory: $(pwd)"
+echo "Using package.json: $(pwd)/package.json"
+
+# Remove any existing node_modules and lock files
 rm -rf node_modules package-lock.json
-npm install --legacy-peer-deps || npm install
+
+# Install with explicit package.json path to avoid workspace issues
+npm install --legacy-peer-deps --prefix . || \
+npm install --prefix . || \
+(cd "$SCRIPT_DIR" && npm install --legacy-peer-deps)
 
 # 4. Build the service
 echo "🔨 Building service..."
