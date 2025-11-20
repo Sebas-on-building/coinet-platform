@@ -10,7 +10,7 @@
  * - Performance metrics and monitoring
  */
 
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import EventEmitter from 'eventemitter3';
 import { logger } from '../utils/logger';
 import { MessariRestClient } from '../providers/messari-rest';
@@ -314,7 +314,8 @@ export class TokenUnlocksScheduler extends EventEmitter {
             symbolMap.get(unlock.symbol)!.push(unlock);
           });
 
-          for (const [symbol, symbolUnlocks] of symbolMap) {
+          const symbolEntries = Array.from(symbolMap.entries());
+          for (const [symbol, symbolUnlocks] of symbolEntries) {
             await this.cache.cacheUpcomingUnlocksBySymbol(symbol, symbolUnlocks);
           }
 

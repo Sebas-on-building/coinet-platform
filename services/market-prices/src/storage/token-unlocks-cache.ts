@@ -481,7 +481,8 @@ export class TokenUnlocksCache {
     const now = Date.now();
     let removed = 0;
 
-    for (const [key, value] of this.memoryCache.entries()) {
+    const entries = Array.from(this.memoryCache.entries());
+    for (const [key, value] of entries) {
       if (now > value.expiry) {
         this.memoryCache.delete(key);
         removed++;
