@@ -258,8 +258,9 @@ export class UnifiedTokenUnlocksService extends EventEmitter {
     );
 
     // Filter by quality if specified
-    if (options?.minQuality) {
-      return unified.filter(u => u.quality.score >= options.minQuality);
+    if (options?.minQuality !== undefined) {
+      const minQuality = options.minQuality;
+      return unified.filter(u => u.quality.score >= minQuality);
     }
 
     return unified;
