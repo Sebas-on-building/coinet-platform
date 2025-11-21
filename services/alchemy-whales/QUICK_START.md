@@ -87,7 +87,7 @@ curl https://your-app.railway.app/health
 
 ### Codespace
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 curl http://localhost:9090/metrics
 ```
 

@@ -47,7 +47,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 WEBHOOK_PORT=3001
 METRICS_PORT=9090
-HEALTH_CHECK_PORT=8080
+METRICS_PORT=9090
 LOG_LEVEL=info
 NODE_ENV=development
 EOF
@@ -75,13 +75,13 @@ In **another terminal**, run:
 
 ```bash
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 
 # Metrics
 curl http://localhost:9090/metrics
 
 # Info
-curl http://localhost:8080/info
+curl http://localhost:9090/info
 ```
 
 ## 🐛 If Still Having Issues

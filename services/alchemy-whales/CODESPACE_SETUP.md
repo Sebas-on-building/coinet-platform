@@ -58,8 +58,8 @@ npm start
 
 Codespace automatically forwards ports:
 - **Webhooks**: `https://your-codespace-xxxxx.preview.app.github.dev:3001`
-- **Health**: `https://your-codespace-xxxxx.preview.app.github.dev:8080`
-- **Metrics**: `https://your-codespace-xxxxx.preview.app.github.dev:9090`
+- **Health**: `https://your-codespace-xxxxx.preview.app.github.dev:9090/health`
+- **Metrics**: `https://your-codespace-xxxxx.preview.app.github.dev:9090/metrics`
 
 ## 🔧 DevContainer Features
 
@@ -175,7 +175,7 @@ npm start | tee logs/app.log
 
 ```bash
 # In another terminal
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 curl http://localhost:9090/metrics
 ```
 

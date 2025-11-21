@@ -39,9 +39,6 @@ spec:
         - name: webhook
           containerPort: 3001
           protocol: TCP
-        - name: health
-          containerPort: 8080
-          protocol: TCP
         - name: metrics
           containerPort: 9090
           protocol: TCP
@@ -65,7 +62,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health/live
-            port: health
+            port: metrics
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -73,7 +70,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health/ready
-            port: health
+            port: metrics
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
@@ -101,9 +98,9 @@ spec:
     port: 3001
     targetPort: webhook
     protocol: TCP
-  - name: health
-    port: 8080
-    targetPort: health
+  - name: metrics
+    port: 9090
+    targetPort: metrics
     protocol: TCP
   - name: metrics
     port: 9090

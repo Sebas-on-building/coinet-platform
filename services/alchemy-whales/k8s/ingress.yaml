@@ -31,7 +31,7 @@ spec:
           service:
             name: alchemy-whales
             port:
-              number: 8080
+              number: 9090
       - path: /metrics
         pathType: Prefix
         backend:

@@ -46,7 +46,7 @@ node dist/index.js
 
 ```bash
 # Check health
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 
 # Check metrics
 curl http://localhost:9090/metrics

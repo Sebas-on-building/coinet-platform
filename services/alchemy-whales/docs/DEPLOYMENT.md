@@ -50,7 +50,7 @@ services:
     image: coinet/alchemy-whales:latest
     ports:
       - "3001:3001"  # Webhooks
-      - "8080:8080"  # Health
+      - "9090:9090"  # Health & Metrics
       - "9090:9090"  # Metrics
     environment:
       - NODE_ENV=production
@@ -61,7 +61,7 @@ services:
       - redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:9090/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -154,8 +154,8 @@ kubectl get svc -n coinet -l app=alchemy-whales
 kubectl logs -n coinet -l app=alchemy-whales --tail=100 -f
 
 # Check health
-kubectl port-forward -n coinet svc/alchemy-whales 8080:8080
-curl http://localhost:8080/health
+kubectl port-forward -n coinet svc/alchemy-whales 9090:9090
+curl http://localhost:9090/health
 ```
 
 ## 🔧 Configuration
@@ -241,16 +241,16 @@ Import the dashboard from `docs/grafana-dashboard.json`.
 
 ```bash
 # Overall health
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 
 # Liveness probe
-curl http://localhost:8080/health/live
+curl http://localhost:9090/health/live
 
 # Readiness probe
-curl http://localhost:8080/health/ready
+curl http://localhost:9090/health/ready
 
 # Service info
-curl http://localhost:8080/info
+curl http://localhost:9090/info
 ```
 
 ## 🔐 Security
@@ -329,7 +329,7 @@ kubectl exec -it <pod-name> -n coinet -- \
   psql -h $DATABASE_HOST -U $DATABASE_USER -d $DATABASE_NAME
 
 # Check connection pool
-curl http://localhost:8080/health | jq '.components.database'
+curl http://localhost:9090/health | jq '.components.database'
 ```
 
 #### High Memory Usage

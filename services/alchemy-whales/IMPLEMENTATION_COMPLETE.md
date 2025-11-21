@@ -413,7 +413,7 @@ npm start
 
 **Service will be available at:**
 - Webhooks: `http://localhost:3001/webhooks/alchemy`
-- Health: `http://localhost:8080/health`
+- Health: `http://localhost:9090/health`
 - Metrics: `http://localhost:9090/metrics`
 
 ---
