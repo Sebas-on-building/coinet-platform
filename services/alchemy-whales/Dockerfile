@@ -11,8 +11,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --omit=dev && \
+# Install ALL dependencies (including dev dependencies needed for TypeScript build)
+RUN npm ci && \
     npm cache clean --force
 
 # Copy source code
