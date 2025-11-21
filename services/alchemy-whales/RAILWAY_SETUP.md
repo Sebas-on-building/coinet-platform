@@ -34,14 +34,40 @@ railway link
 ### Step 5: Set Environment Variables
 
 ```bash
+# ========================================
 # Required Alchemy API Keys
+# ========================================
 railway variables set ALCHEMY_API_KEY_ETH=your_ethereum_key
 railway variables set ALCHEMY_API_KEY_POLYGON=your_polygon_key
 railway variables set ALCHEMY_API_KEY_ARBITRUM=your_arbitrum_key
 railway variables set ALCHEMY_API_KEY_OPTIMISM=your_optimism_key
 railway variables set ALCHEMY_API_KEY_BASE=your_base_key
 
+# ========================================
+# QuickNode Configuration (NEW!)
+# ========================================
+# Enable QuickNode integration
+railway variables set QUICKNODE_ENABLED=true
+railway variables set QUICKNODE_DEFAULT_CU_PER_SEC=300
+
+# Solana Mainnet (for memecoin detection)
+railway variables set QUICKNODE_SOLANA_HTTP_URL=https://your-solana-endpoint.quiknode.pro/xxxxx/
+railway variables set QUICKNODE_SOLANA_WS_URL=wss://your-solana-endpoint.quiknode.pro/xxxxx/
+railway variables set QUICKNODE_SOLANA_CU_PER_SEC=300
+
+# Ethereum (optional - for whale tracking)
+railway variables set QUICKNODE_ETH_HTTP_URL=https://your-ethereum-endpoint.quiknode.pro/xxxxx/
+railway variables set QUICKNODE_ETH_WS_URL=wss://your-ethereum-endpoint.quiknode.pro/xxxxx/
+railway variables set QUICKNODE_ETH_CU_PER_SEC=300
+
+# Other chains (optional)
+# railway variables set QUICKNODE_POLYGON_HTTP_URL=https://...
+# railway variables set QUICKNODE_ARBITRUM_HTTP_URL=https://...
+# railway variables set QUICKNODE_BASE_HTTP_URL=https://...
+
+# ========================================
 # Database Configuration
+# ========================================
 railway variables set DATABASE_HOST=your_postgres_host
 railway variables set DATABASE_PORT=5432
 railway variables set DATABASE_NAME=coinet_whales
@@ -49,18 +75,41 @@ railway variables set DATABASE_USER=postgres
 railway variables set DATABASE_PASSWORD=your_password
 railway variables set DATABASE_SSL=true
 
+# ========================================
 # Redis Configuration (if using Railway Redis)
+# ========================================
 railway variables set REDIS_HOST=your_redis_host
 railway variables set REDIS_PORT=6379
 railway variables set REDIS_PASSWORD=your_redis_password
 
+# ========================================
 # Webhook Configuration
+# ========================================
 railway variables set WEBHOOK_SECRET=your_secure_random_secret
 
+# ========================================
+# Provider Orchestration (Optional)
+# ========================================
+railway variables set DEFAULT_PROVIDER=alchemy
+railway variables set ENABLE_LOAD_BALANCING=true
+railway variables set ENABLE_FALLBACK=true
+railway variables set QUOTA_AWARE_ROUTING=true
+
+# ========================================
+# Cross-Validation (Optional)
+# ========================================
+railway variables set CROSS_VALIDATION_ENABLED=true
+railway variables set CROSS_VALIDATION_THRESHOLD_USD=100000
+railway variables set CROSS_VALIDATION_MAX_DISCREPANCY=5
+railway variables set CROSS_VALIDATION_MIN_CONFIDENCE=85
+
+# ========================================
 # Optional Configuration
+# ========================================
 railway variables set NODE_ENV=production
 railway variables set LOG_LEVEL=info
 railway variables set ENABLE_NOTIFICATIONS=true
+railway variables set REQUIRE_API_KEYS=true
 ```
 
 ### Step 6: Add PostgreSQL Service (Railway)
