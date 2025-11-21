@@ -134,6 +134,20 @@ const quickNodeEndpoints: QuickNodeEndpoint[] = [
       supportsArchive: true,
     },
   },
+  {
+    chain: QuickNodeChain.SOLANA,
+    httpUrl: getOptionalEnv('QUICKNODE_SOLANA_HTTP_URL', 'https://your-solana-endpoint.quiknode.pro/'),
+    wsUrl: getOptionalEnv('QUICKNODE_SOLANA_WS_URL', ''),
+    computeUnitsPerSecond: getNumberEnv('QUICKNODE_SOLANA_CU_PER_SEC', 300),
+    features: {
+      supportsTransfers: true,
+      supportsTokenBalance: true,
+      supportsNFTs: true,
+      supportsTracing: false, // Solana uses different tracing
+      supportsDebug: false,
+      supportsArchive: true,
+    },
+  },
   // Additional chains can be configured via environment variables
 ].filter(endpoint => !endpoint.httpUrl.includes('your-')); // Filter out unconfigured endpoints
 
