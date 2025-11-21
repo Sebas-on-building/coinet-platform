@@ -115,6 +115,7 @@ export interface UltimateFraudPrediction extends FraudPrediction {
   
   // Confidence breakdown
   confidenceBreakdown: {
+    overall: number; // Overall confidence score
     dataQuality: number; // How complete is the data?
     modelAgreement: number; // Do all models agree?
     historicalValidation: number; // Based on historical accuracy
@@ -682,6 +683,7 @@ export class UltimateFraudDetector extends EventEmitter {
       
       // Confidence breakdown
       confidenceBreakdown: {
+        overall: confidenceBreakdown.overall,
         dataQuality: confidenceBreakdown.dataQuality,
         modelAgreement: confidenceBreakdown.modelAgreement,
         historicalValidation: confidenceBreakdown.historicalValidation,
