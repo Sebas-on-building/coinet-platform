@@ -1,0 +1,26 @@
+# 🎯 NAVIGATE TO THE RIGHT DIRECTORY
+
+## Copy & Paste This Command:
+
+cd /workspaces/coinet-platform/services/alchemy-whales
+
+## Then Verify You're in the Right Place:
+
+pwd
+# Should show: /workspaces/coinet-platform/services/alchemy-whales
+
+ls -la | grep package.json
+# Should show: package.json exists
+
+## Then Run Setup:
+
+./SETUP_DIRECTORY.sh
+
+## Or Start Directly:
+
+./START_SERVICE.sh
+
+## Quick One-Liner:
+
+cd /workspaces/coinet-platform/services/alchemy-whales && ./SETUP_DIRECTORY.sh && ./START_SERVICE.sh
+
