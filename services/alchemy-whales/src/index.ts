@@ -31,12 +31,12 @@ async function main() {
 
   // Handle graceful shutdown
   const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down gracefully...`);
+    logger.info({ msg: `Received ${signal}, shutting down gracefully...` });
     try {
       await service.shutdown();
       process.exit(0);
     } catch (error) {
-      logger.error('Error during shutdown', { error });
+      logger.error({ msg: 'Error during shutdown', error });
       process.exit(1);
     }
   };
@@ -46,12 +46,16 @@ async function main() {
 
   // Handle uncaught errors
   process.on('uncaughtException', (error) => {
-    logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+    logger.error({ 
+      msg: 'Uncaught exception', 
+      error: error.message, 
+      stack: error.stack 
+    });
     process.exit(1);
   });
 
   process.on('unhandledRejection', (reason, promise) => {
-    logger.error('Unhandled rejection', { reason, promise });
+    logger.error({ msg: 'Unhandled rejection', reason, promise });
     process.exit(1);
   });
 
@@ -59,12 +63,12 @@ async function main() {
     // Initialize service
     await service.initialize();
 
-    logger.info('🚀 Alchemy Whales Service is running!');
-    logger.info('📊 Metrics available at http://localhost:9090/metrics');
-    logger.info('🏥 Health check at http://localhost:8080/health');
-    logger.info('🔔 Webhooks listening at http://localhost:3001/webhooks/alchemy');
+    logger.info({ msg: '🚀 Alchemy Whales Service is running!' });
+    logger.info({ msg: '📊 Metrics available at http://localhost:9090/metrics' });
+    logger.info({ msg: '🏥 Health check at http://localhost:8080/health' });
+    logger.info({ msg: '🔔 Webhooks listening at http://localhost:3001/webhooks/alchemy' });
   } catch (error: any) {
-    logger.error('Failed to start service', { error: error.message });
+    logger.error({ msg: 'Failed to start service', error: error.message });
     process.exit(1);
   }
 }
@@ -72,7 +76,8 @@ async function main() {
 // Run if executed directly
 if (require.main === module) {
   main().catch((error: Error) => {
-    logger.error('Fatal error', { 
+    logger.error({ 
+      msg: 'Fatal error',
       error: error.message,
       stack: error.stack 
     });

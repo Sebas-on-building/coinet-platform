@@ -76,7 +76,8 @@ export async function withRetry<T>(
         opts.backoffMultiplier
       );
 
-      logger.warn('Retrying after error', {
+      logger.warn({
+        msg: 'Retrying after error',
         attempt,
         maxAttempts: opts.maxAttempts,
         delayMs,
@@ -180,7 +181,8 @@ export class CircuitBreaker {
     if (this.failureCount >= this.failureThreshold) {
       this.state = CircuitState.OPEN;
       this.nextAttempt = Date.now() + this.timeout;
-      logger.error('Circuit breaker OPEN', {
+      logger.error({
+        msg: 'Circuit breaker OPEN',
         failureCount: this.failureCount,
         timeout: this.timeout,
       });

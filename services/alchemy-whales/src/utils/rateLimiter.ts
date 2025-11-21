@@ -29,7 +29,8 @@ export class RateLimiterManager {
       this.createLimiter(chain);
     });
 
-    logger.info('Rate limiter manager initialized', {
+    logger.info({
+      msg: 'Rate limiter manager initialized',
       maxRequestsPerSecond: config.maxRequestsPerSecond,
       maxConcurrent: config.maxConcurrent,
       reservoir: config.reservoir,
@@ -64,12 +65,13 @@ export class RateLimiterManager {
 
     // Event handlers
     limiter.on('error', (error) => {
-      logger.error(`Rate limiter error for ${chain}`, { error: error.message });
+      logger.error({ msg: `Rate limiter error for ${chain}`, error: error.message });
       this.incrementMetric(chain, 'errors');
     });
 
     limiter.on('failed', async (error, jobInfo) => {
-      logger.warn(`Rate limiter job failed for ${chain}`, {
+      logger.warn({
+        msg: `Rate limiter job failed for ${chain}`,
         error: error.message,
         retryCount: jobInfo.retryCount,
       });
@@ -81,7 +83,8 @@ export class RateLimiterManager {
         // Exponential backoff for retries
         const retryDelay = this.calculateRetryDelay(jobInfo.retryCount);
         
-        logger.info(`Retrying after rate limit for ${chain}`, {
+        logger.info({
+          msg: `Retrying after rate limit for ${chain}`,
           retryCount: jobInfo.retryCount,
           retryDelay,
         });
@@ -94,17 +97,18 @@ export class RateLimiterManager {
     });
 
     limiter.on('retry', (_message, jobInfo) => {
-      logger.info(`Retrying job for ${chain}`, {
+      logger.info({
+        msg: `Retrying job for ${chain}`,
         retryCount: jobInfo.retryCount,
       });
     });
 
     limiter.on('depleted', () => {
-      logger.warn(`Rate limiter depleted for ${chain}`);
+      logger.warn({ msg: `Rate limiter depleted for ${chain}` });
     });
 
     limiter.on('debug', (message, data) => {
-      logger.debug(`Rate limiter debug for ${chain}`, { message, data });
+      logger.debug({ msg: `Rate limiter debug for ${chain}`, message, data });
     });
 
     this.limiters.set(chain, limiter);
@@ -170,7 +174,8 @@ export class RateLimiterManager {
       );
       results.push(...batchResults);
       
-      logger.debug(`Processed batch for ${chain}`, {
+      logger.debug({
+        msg: `Processed batch for ${chain}`,
         processed: results.length,
         total: operations.length,
       });
@@ -295,7 +300,7 @@ export class RateLimiterManager {
       }, duration);
     }
     
-    logger.info(`Rate limiter paused for ${chain}`, { duration });
+    logger.info({ msg: `Rate limiter paused for ${chain}`, duration });
   }
 
   /**
@@ -306,7 +311,7 @@ export class RateLimiterManager {
     if (!limiter) return;
     
     // Note: Bottleneck doesn't have a start() method, limiter automatically resumes
-    logger.info(`Rate limiter resumed for ${chain}`);
+    logger.info({ msg: `Rate limiter resumed for ${chain}` });
   }
 
   /**
@@ -330,7 +335,8 @@ export class RateLimiterManager {
         reservoirRefreshAmount: Math.floor(newReservoir * 0.25),
       });
       
-      logger.warn(`Reduced reservoir for ${chain} due to high usage`, {
+      logger.warn({
+        msg: `Reduced reservoir for ${chain} due to high usage`,
         usagePercent,
         newReservoir,
         remaining,
@@ -348,19 +354,19 @@ export class RateLimiterManager {
       await limiter.disconnect();
       this.createLimiter(chain);
     }
-    logger.info('All rate limiters reset');
+    logger.info({ msg: 'All rate limiters reset' });
   }
 
   /**
    * Shutdown all limiters
    */
   async shutdown(): Promise<void> {
-    logger.info('Shutting down rate limiters...');
+    logger.info({ msg: 'Shutting down rate limiters...' });
     
     for (const [chain, limiter] of this.limiters) {
       await limiter.stop({ dropWaitingJobs: false });
       await limiter.disconnect();
-      logger.info(`Rate limiter shutdown for ${chain}`);
+      logger.info({ msg: `Rate limiter shutdown for ${chain}` });
     }
   }
 }

@@ -38,6 +38,19 @@ export const logger = pino({
 });
 
 /**
+ * Helper function to log with message and context
+ * Pino expects: logger.info(obj) or logger.info(obj, msg)
+ */
+export function logWithContext(
+  level: 'info' | 'warn' | 'error' | 'debug',
+  message: string,
+  context?: Record<string, any>
+) {
+  const logObj = { msg: message, ...context };
+  logger[level](logObj);
+}
+
+/**
  * Create child logger with context
  */
 export function createLogger(context: Record<string, any>) {
