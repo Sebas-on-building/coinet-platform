@@ -29,6 +29,7 @@ import { SolanaTokenMonitor } from './SolanaTokenMonitor';
 import { QuickNodeClientManager } from '../clients/QuickNodeClient';
 import { QuickNodeChain } from '../types/quicknode';
 import { quickNodeConfig } from '../config';
+import { AlertNotificationService, AlertNotificationConfig } from '../notifications/AlertNotificationService';
 
 export class AlchemyWhalesService {
   private logger: any;
@@ -45,6 +46,7 @@ export class AlchemyWhalesService {
   private ultimateFraudDetector: UltimateFraudDetector | null = null;
   private solanaTokenMonitor: SolanaTokenMonitor | null = null;
   private quickNodeClient: QuickNodeClientManager | null = null;
+  private alertNotificationService: AlertNotificationService | null = null;
   private isInitialized: boolean = false;
 
   constructor() {
@@ -164,6 +166,53 @@ export class AlchemyWhalesService {
         }
       }
 
+      // Initialize Alert Notification Service if enabled
+      const notificationsEnabled = process.env.TELEGRAM_ENABLED === 'true' || 
+                                     process.env.EMAIL_ENABLED === 'true' ||
+                                     process.env.DISCORD_ENABLED === 'true' ||
+                                     process.env.SLACK_ENABLED === 'true';
+      
+      if (notificationsEnabled) {
+        try {
+          const alertConfig: AlertNotificationConfig = {
+            telegramEnabled: process.env.TELEGRAM_ENABLED === 'true',
+            telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+            telegramChatId: process.env.TELEGRAM_CHAT_ID,
+            
+            emailEnabled: process.env.EMAIL_ENABLED === 'true',
+            emailHost: process.env.EMAIL_HOST,
+            emailPort: parseInt(process.env.EMAIL_PORT || '587'),
+            emailUser: process.env.EMAIL_USER,
+            emailPassword: process.env.EMAIL_PASSWORD,
+            emailFrom: process.env.EMAIL_FROM,
+            emailTo: process.env.EMAIL_TO?.split(','),
+            
+            discordEnabled: process.env.DISCORD_ENABLED === 'true',
+            discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL,
+            
+            slackEnabled: process.env.SLACK_ENABLED === 'true',
+            slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
+            
+            minAlertIntervalSeconds: parseInt(process.env.MIN_ALERT_INTERVAL_SECONDS || '30'),
+            maxAlertsPerHour: parseInt(process.env.MAX_ALERTS_PER_HOUR || '50'),
+            
+            fraudRiskThreshold: parseInt(process.env.FRAUD_RISK_THRESHOLD || '60'),
+            highPotentialThreshold: parseInt(process.env.HIGH_POTENTIAL_THRESHOLD || '80'),
+            
+            alertOnNewToken: process.env.ALERT_ON_NEW_TOKEN === 'true',
+            alertOnHighRisk: process.env.ALERT_ON_HIGH_RISK === 'true',
+            alertOnHighPotential: process.env.ALERT_ON_HIGH_POTENTIAL === 'true',
+            alertOnCritical: process.env.ALERT_ON_CRITICAL === 'true',
+          };
+          
+          this.alertNotificationService = new AlertNotificationService(alertConfig);
+          await this.alertNotificationService.initialize();
+          this.logger.info('✅ Alert Notification Service initialized');
+        } catch (error: any) {
+          this.logger.warn('Failed to initialize Alert Notification Service', { error: error.message });
+        }
+      }
+
       // Initialize Solana Token Monitor if enabled
       if (process.env.SOLANA_REALTIME_MONITORING === 'true' && this.quickNodeClient) {
         try {
@@ -178,6 +227,8 @@ export class AlchemyWhalesService {
               maxTokenAgeSeconds: parseInt(process.env.SOLANA_MAX_TOKEN_AGE_SECONDS || '60'),
               blockCheckIntervalMs: parseInt(process.env.SOLANA_BLOCK_CHECK_INTERVAL_MS || '400'),
               aiAnalysisEnabled: process.env.AI_ULTIMATE_FRAUD_ENABLED === 'true' || process.env.AI_FRAUD_DETECTION_ENABLED === 'true',
+              ultimateFraudDetector: this.ultimateFraudDetector,
+              alertNotificationService: this.alertNotificationService,
               onTokenDetected: async (token) => {
                 this.logger.info('New Solana token detected', { tokenAddress: token.tokenAddress });
               },
@@ -464,6 +515,12 @@ export class AlchemyWhalesService {
       if (this.solanaTokenMonitor) {
         await this.solanaTokenMonitor.stop();
         this.logger.info('Solana token monitoring stopped');
+      }
+
+      // Stop alert notification service
+      if (this.alertNotificationService) {
+        await this.alertNotificationService.shutdown();
+        this.logger.info('Alert notification service stopped');
       }
 
       await this.webhookServer.stop();

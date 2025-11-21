@@ -11,6 +11,7 @@
     "example:quicknode": "npx ts-node examples/quicknode-usage.ts",
     "example:ml-fraud": "npx ts-node examples/ml-fraud-detection.ts",
     "example:ultimate-fraud": "npx ts-node examples/ultimate-fraud-detection.ts",
+    "example:alerts": "npx ts-node examples/alert-notifications.ts",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts || true",
@@ -46,6 +47,7 @@
   "author": "Coinet",
   "license": "MIT",
   "dependencies": {
+    "@types/nodemailer": "^7.0.4",
     "alchemy-sdk": "^3.3.0",
     "axios": "^1.6.2",
     "axios-retry": "^4.0.0",
@@ -53,10 +55,12 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "ioredis": "^5.3.2",
+    "nodemailer": "^7.0.10",
     "pg": "^8.11.3",
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
     "prom-client": "^15.1.0",
+    "telegraf": "^4.16.3",
     "uuid": "^9.0.1",
     "zod": "^3.22.4"
   },
@@ -79,4 +83,3 @@
     "npm": ">=9.0.0"
   }
 }
-
