@@ -90,33 +90,71 @@ export class AlchemyWhalesService {
     this.logger.info('Initializing Alchemy Whales Service...');
 
     try {
-      // Connect to database
-      await this.db.connect();
-      this.logger.info('✅ Database connected');
+      // Connect to database (optional in development)
+      const requireDatabase = process.env.REQUIRE_DATABASE === 'true' || process.env.NODE_ENV === 'production';
+      
+      if (requireDatabase) {
+        await this.db.connect();
+        this.logger.info({ msg: '✅ Database connected' });
+      } else {
+        this.logger.warn({ 
+          msg: '⚠️  Database connection skipped (development mode). Set REQUIRE_DATABASE=true to enable.' 
+        });
+      }
 
-      // Test cache connection
-      await this.cache.healthCheck();
-      this.logger.info('✅ Cache connected');
+      // Test cache connection (optional)
+      const requireCache = process.env.REQUIRE_CACHE === 'true' || process.env.NODE_ENV === 'production';
+      
+      if (requireCache) {
+        const cacheHealthy = await this.cache.healthCheck();
+        if (cacheHealthy) {
+          this.logger.info({ msg: '✅ Cache connected' });
+        } else {
+          this.logger.warn({ msg: '⚠️  Cache not available, continuing without cache' });
+        }
+      } else {
+        this.logger.warn({ 
+          msg: '⚠️  Cache connection skipped (development mode). Set REQUIRE_CACHE=true to enable.' 
+        });
+      }
 
       // Start webhook server
       await this.webhookServer.start();
-      this.logger.info('✅ Webhook server started');
+      this.logger.info({ msg: '✅ Webhook server started' });
 
       // Start monitoring server
       await this.monitoringServer.start();
-      this.logger.info('✅ Monitoring server started');
+      this.logger.info({ msg: '✅ Monitoring server started' });
 
-      // Test notification service
-      if (config.features.enableNotifications) {
-        await this.notifications.testNotification();
-        this.logger.info('✅ Notifications configured');
+      // Test notification service (optional)
+      if (config.features.enableNotifications && process.env.NODE_ENV === 'production') {
+        try {
+          await this.notifications.testNotification();
+          this.logger.info({ msg: '✅ Notifications configured' });
+        } catch (error: any) {
+          this.logger.warn({ msg: '⚠️  Notification service not available', error: error.message });
+        }
       }
 
       this.isInitialized = true;
-      this.logger.info('🚀 Alchemy Whales Service initialized successfully');
+      this.logger.info({ msg: '🚀 Alchemy Whales Service initialized successfully' });
     } catch (error: any) {
-      this.logger.error('Failed to initialize service', { error: error.message });
-      throw error;
+      this.logger.error({ 
+        msg: 'Failed to initialize service', 
+        error: error.message,
+        hint: 'Set REQUIRE_DATABASE=false and REQUIRE_CACHE=false to start without database/cache'
+      });
+      
+      // In development, allow starting with warnings
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.warn({ 
+          msg: '⚠️  Starting in degraded mode (some features disabled)',
+          error: error.message 
+        });
+        this.isInitialized = true; // Mark as initialized anyway
+      } else {
+        throw error;
+      }
     }
   }
 
