@@ -10,6 +10,7 @@
     "dev": "npx ts-node src/index.ts",
     "example:quicknode": "npx ts-node examples/quicknode-usage.ts",
     "example:ml-fraud": "npx ts-node examples/ml-fraud-detection.ts",
+    "example:ultimate-fraud": "npx ts-node examples/ultimate-fraud-detection.ts",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts || true",
