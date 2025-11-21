@@ -483,17 +483,17 @@ async function example7_HealthMonitoring() {
     console.log('');
   }
 
-  // Get optimal client
-  const optimalClient = quickNodeClient.getOptimalClient([
-    QuickNodeChain.ETHEREUM,
-    QuickNodeChain.POLYGON,
-    QuickNodeChain.ARBITRUM,
-  ]);
-
-  if (optimalClient) {
-    const optimalMetrics = optimalClient.getMetrics();
-    console.log(`🎯 Optimal client: ${optimalMetrics.chain}`);
-    console.log(`   Compute utilization: ${optimalMetrics.computeUtilization.toFixed(2)}%`);
+  // Get optimal client (use available chains)
+  const availableChains = quickNodeClient.getActiveChains();
+  if (availableChains.length > 0) {
+    const optimalClient = quickNodeClient.getOptimalClient(availableChains as any[]);
+    if (optimalClient) {
+      const optimalMetrics = optimalClient.getMetrics();
+      console.log(`🎯 Optimal client: ${optimalMetrics.chain}`);
+      console.log(`   Compute utilization: ${optimalMetrics.computeUtilization.toFixed(2)}%`);
+    }
+  } else {
+    console.log('⚠️  No chains available for optimal client selection.');
   }
 }
 
