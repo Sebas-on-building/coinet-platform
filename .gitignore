@@ -184,6 +184,7 @@ grafana_data/
 
 # Generated artifacts (should not be committed)
 .turbo/
+**/.turbo/
 prisma/generated/
 **/prisma/generated/
 src/generated/prisma-client/
@@ -191,7 +192,29 @@ src/generated/prisma-client/
 # Build outputs
 dist/
 build/
-.next/ 
+.next/
+**/dist/
+**/build/
+
+# Backup files
+*.backup
+*.bak
+
+# Environment files (except example)
+.env
+.env.*
+!.env.example
+.env.bak
+.env.ci
+.env.production
+
+# IDE and editor files
+.cursor/
+.vscode/
+.idea/
+
+# Temporary directories
+Arbeit/ 
 # Alchemy Whales Service
 services/alchemy-whales/.env
 services/alchemy-whales/.turbo/
