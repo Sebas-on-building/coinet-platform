@@ -1,9 +1,11 @@
 /**
  * Configuration loader for Alchemy Whales Service
+ * Now includes QuickNode integration for 70+ chain support
  */
 
 import * as dotenv from 'dotenv';
 import { ServiceConfig, Chain, RateLimiterConfig } from '../types';
+import { QuickNodeChain, QuickNodeEndpoint } from '../types/quicknode';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +58,80 @@ const rateLimiterConfig: RateLimiterConfig = {
   highWater: getNumberEnv('RATE_LIMIT_RESERVOIR', 100) * 0.8,
   strategy: 'leak',
 };
+
+/**
+ * QuickNode endpoints configuration (70+ chains supported)
+ */
+const quickNodeEndpoints: QuickNodeEndpoint[] = [
+  // Primary chains
+  {
+    chain: QuickNodeChain.ETHEREUM,
+    httpUrl: getOptionalEnv('QUICKNODE_ETH_HTTP_URL', 'https://your-ethereum-endpoint.quiknode.pro/'),
+    wsUrl: getOptionalEnv('QUICKNODE_ETH_WS_URL', ''),
+    computeUnitsPerSecond: getNumberEnv('QUICKNODE_ETH_CU_PER_SEC', 300),
+    features: {
+      supportsTransfers: true,
+      supportsTokenBalance: true,
+      supportsNFTs: true,
+      supportsTracing: true,
+      supportsDebug: true,
+      supportsArchive: true,
+    },
+  },
+  {
+    chain: QuickNodeChain.POLYGON,
+    httpUrl: getOptionalEnv('QUICKNODE_POLYGON_HTTP_URL', 'https://your-polygon-endpoint.quiknode.pro/'),
+    computeUnitsPerSecond: getNumberEnv('QUICKNODE_POLYGON_CU_PER_SEC', 300),
+    features: {
+      supportsTransfers: true,
+      supportsTokenBalance: true,
+      supportsNFTs: true,
+      supportsTracing: true,
+      supportsDebug: false,
+      supportsArchive: true,
+    },
+  },
+  {
+    chain: QuickNodeChain.ARBITRUM,
+    httpUrl: getOptionalEnv('QUICKNODE_ARBITRUM_HTTP_URL', 'https://your-arbitrum-endpoint.quiknode.pro/'),
+    computeUnitsPerSecond: getNumberEnv('QUICKNODE_ARBITRUM_CU_PER_SEC', 300),
+    features: {
+      supportsTransfers: true,
+      supportsTokenBalance: true,
+      supportsNFTs: true,
+      supportsTracing: true,
+      supportsDebug: false,
+      supportsArchive: true,
+    },
+  },
+  {
+    chain: QuickNodeChain.OPTIMISM,
+    httpUrl: getOptionalEnv('QUICKNODE_OPTIMISM_HTTP_URL', 'https://your-optimism-endpoint.quiknode.pro/'),
+    computeUnitsPerSecond: getNumberEnv('QUICKNODE_OPTIMISM_CU_PER_SEC', 300),
+    features: {
+      supportsTransfers: true,
+      supportsTokenBalance: true,
+      supportsNFTs: true,
+      supportsTracing: true,
+      supportsDebug: false,
+      supportsArchive: true,
+    },
+  },
+  {
+    chain: QuickNodeChain.BASE,
+    httpUrl: getOptionalEnv('QUICKNODE_BASE_HTTP_URL', 'https://your-base-endpoint.quiknode.pro/'),
+    computeUnitsPerSecond: getNumberEnv('QUICKNODE_BASE_CU_PER_SEC', 300),
+    features: {
+      supportsTransfers: true,
+      supportsTokenBalance: true,
+      supportsNFTs: true,
+      supportsTracing: true,
+      supportsDebug: false,
+      supportsArchive: true,
+    },
+  },
+  // Additional chains can be configured via environment variables
+].filter(endpoint => !endpoint.httpUrl.includes('your-')); // Filter out unconfigured endpoints
 
 /**
  * Load and validate service configuration
@@ -113,6 +189,38 @@ export const config: ServiceConfig = {
     enableEntityLabeling: getBooleanEnv('ENABLE_ENTITY_LABELING', false),
     notificationServiceUrl: getOptionalEnv('NOTIFICATION_SERVICE_URL', ''),
   },
+};
+
+/**
+ * QuickNode configuration
+ */
+export const quickNodeConfig = {
+  endpoints: quickNodeEndpoints,
+  enabled: getBooleanEnv('QUICKNODE_ENABLED', false),
+  defaultComputeUnitsPerSecond: getNumberEnv('QUICKNODE_DEFAULT_CU_PER_SEC', 300),
+};
+
+/**
+ * Cross-validation configuration
+ */
+export const crossValidationConfig = {
+  enableAutoValidation: getBooleanEnv('CROSS_VALIDATION_ENABLED', true),
+  validationThresholdUsd: getNumberEnv('CROSS_VALIDATION_THRESHOLD_USD', 100000), // Validate transfers >$100K
+  maxDiscrepancyPercent: getNumberEnv('CROSS_VALIDATION_MAX_DISCREPANCY', 5), // Max 5% difference
+  minConfidenceScore: getNumberEnv('CROSS_VALIDATION_MIN_CONFIDENCE', 85), // Min 85% confidence
+  cacheValidationResults: getBooleanEnv('CROSS_VALIDATION_CACHE', true),
+  validationCacheTtl: getNumberEnv('CROSS_VALIDATION_CACHE_TTL', 3600000), // 1 hour
+};
+
+/**
+ * Multi-provider strategy configuration
+ */
+export const multiProviderConfig = {
+  defaultProvider: getOptionalEnv('DEFAULT_PROVIDER', 'alchemy'), // 'alchemy' | 'quicknode'
+  enableLoadBalancing: getBooleanEnv('ENABLE_LOAD_BALANCING', true),
+  enableFallback: getBooleanEnv('ENABLE_FALLBACK', true),
+  quotaAwareRouting: getBooleanEnv('QUOTA_AWARE_ROUTING', true),
+  preferAlchemyForChains: [Chain.ETHEREUM, Chain.POLYGON], // Chains where Alchemy is preferred
 };
 
 /**
