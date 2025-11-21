@@ -38,7 +38,7 @@ async function example1_BasicSetup() {
   if (quickNodeConfig.endpoints.length === 0) {
     console.log('⚠️  QuickNode endpoints not configured. Skipping example.');
     console.log('   To run this example, configure QuickNode endpoints in .env:');
-    console.log('   QUICKNODE_ETH_HTTP_URL=https://your-endpoint.quiknode.pro/xxxxx/');
+    console.log('   QUICKNODE_SOLANA_HTTP_URL=https://your-endpoint.quiknode.pro/xxxxx/');
     console.log('   QUICKNODE_ENABLED=true\n');
     return;
   }
@@ -52,22 +52,32 @@ async function example1_BasicSetup() {
     rateLimiter
   );
 
-  // Get client for Ethereum
-  const ethClient = quickNodeClient.getClient(QuickNodeChain.ETHEREUM);
+  // Get available chains
+  const availableChains = quickNodeClient.getActiveChains();
+  console.log(`✅ Available QuickNode chains: ${availableChains.join(', ')}\n`);
 
-  // Get transfers
-  const transfers = await ethClient.getTransfersByAddress({
-    address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-    fromBlock: 18000000,
-    toBlock: 18001000,
-    maxCount: 100,
-  });
+  // Use first available chain (likely Solana)
+  const chainToUse = availableChains[0];
+  if (!chainToUse) {
+    console.log('⚠️  No QuickNode chains available\n');
+    return;
+  }
 
-  console.log(`✅ Found ${transfers.transfers.length} transfers`);
-  console.log('First transfer:', transfers.transfers[0]);
+  console.log(`Using chain: ${chainToUse}\n`);
+
+  // Get client for the available chain
+  const client = quickNodeClient.getClient(chainToUse);
+
+  // Note: Solana uses different RPC methods than EVM chains
+  // For Solana, we'd use different methods like getSignaturesForAddress
+  // This example demonstrates the client setup and metrics
+  
+  console.log(`✅ QuickNode client ready for ${chainToUse}`);
+  console.log('Note: Solana uses different RPC methods than EVM chains.');
+  console.log('For Solana transfers, use Solana-specific RPC methods.\n');
   
   // Get metrics
-  const metrics = ethClient.getMetrics();
+  const metrics = client.getMetrics();
   console.log('\n📊 Client Metrics:', {
     requests: metrics.requests,
     errors: metrics.errors,
@@ -95,26 +105,34 @@ async function example2_WalletBalance() {
     rateLimiter
   );
 
-  const ethClient = quickNodeClient.getClient(QuickNodeChain.ETHEREUM);
-
-  // Get wallet balance
-  const balance = await ethClient.getWalletTokenBalance({
-    wallet: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-    perPage: 50,
-  });
-
-  console.log(`✅ Wallet Address: ${balance.address}`);
-  console.log(`💰 Total Portfolio Value: $${balance.totalValueUsd.toLocaleString()}`);
-  console.log(`🪙 Number of Tokens: ${balance.tokens.length}`);
+  const availableChains = quickNodeClient.getActiveChains();
+  const chainToUse = availableChains.find(c => c === QuickNodeChain.SOLANA) || availableChains[0];
   
-  // Display top 5 tokens
-  console.log('\n🏆 Top 5 Tokens by Value:');
-  balance.tokens
-    .sort((a, b) => (b.totalValueUsd || 0) - (a.totalValueUsd || 0))
-    .slice(0, 5)
-    .forEach((token, index) => {
-      console.log(`${index + 1}. ${token.symbol}: ${token.balanceWithDecimals} ($${token.totalValueUsd?.toLocaleString()})`);
-    });
+  if (!chainToUse) {
+    console.log('⚠️  No QuickNode chains available\n');
+    return;
+  }
+
+  console.log(`Using chain: ${chainToUse}\n`);
+  const client = quickNodeClient.getClient(chainToUse);
+
+  // Note: Solana uses different RPC methods
+  // For EVM chains: getWalletTokenBalance
+  // For Solana: Use Solana RPC methods like getTokenAccountsByOwner
+  console.log(`✅ QuickNode client ready for ${chainToUse}`);
+  console.log('Note: Token balance methods vary by chain type (EVM vs Solana).\n');
+  
+  // For demonstration, show client metrics instead
+  const metrics = client.getMetrics();
+
+  console.log('📊 Client Metrics:');
+  console.log({
+    chain: metrics.chain,
+    requests: metrics.requests,
+    errors: metrics.errors,
+    computeUtilization: `${metrics.computeUtilization.toFixed(2)}%`,
+    averageLatency: `${metrics.averageLatency}ms`,
+  });
 }
 
 // ========================================
@@ -135,31 +153,30 @@ async function example3_NFTsByOwner() {
     rateLimiter
   );
 
-  const ethClient = quickNodeClient.getClient(QuickNodeChain.ETHEREUM);
-
-  // Get NFTs owned by address
-  const nfts = await ethClient.getNFTsByOwner({
-    owner: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-    perPage: 50,
-  });
-
-  console.log(`✅ Owner: ${nfts.owner}`);
-  console.log(`🖼️  Total NFTs: ${nfts.nfts.length}`);
+  const availableChains = quickNodeClient.getActiveChains();
+  const chainToUse = availableChains.find(c => c === QuickNodeChain.SOLANA) || availableChains[0];
   
-  // Group by collection
-  const collections = new Map<string, number>();
-  nfts.nfts.forEach(nft => {
-    const count = collections.get(nft.collectionName) || 0;
-    collections.set(nft.collectionName, count + 1);
-  });
+  if (!chainToUse) {
+    console.log('⚠️  No QuickNode chains available\n');
+    return;
+  }
 
-  console.log('\n📦 NFTs by Collection:');
-  Array.from(collections.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .forEach(([collection, count]) => {
-      console.log(`  ${collection}: ${count} NFTs`);
-    });
+  console.log(`Using chain: ${chainToUse}\n`);
+  const client = quickNodeClient.getClient(chainToUse);
+
+  // Note: Solana uses different NFT methods
+  // For EVM: getNFTsByOwner
+  // For Solana: Use Metaplex DAS API or Solana RPC methods
+  console.log(`✅ QuickNode client ready for ${chainToUse}`);
+  console.log('Note: NFT enumeration methods vary by chain type.\n');
+  console.log('For Solana NFTs, use Metaplex Digital Asset API (DAS) methods.\n');
+  
+  const metrics = client.getMetrics();
+  console.log('📊 Client Metrics:', {
+    chain: metrics.chain,
+    requests: metrics.requests,
+    nftsFetched: metrics.nftsFetched,
+  });
 }
 
 // ========================================
