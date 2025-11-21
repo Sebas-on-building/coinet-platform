@@ -29,7 +29,7 @@ node dist/index.js
 
 ✅ Service starts successfully  
 ✅ Webhook server runs (port 3001)  
-✅ Health check endpoint (port 8080)  
+✅ Health check endpoint (port 9090)  
 ✅ Metrics endpoint (port 9090)  
 ✅ Monitoring server  
 ⚠️  Database features disabled  
@@ -40,13 +40,13 @@ node dist/index.js
 
 ```bash
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 
 # Metrics
 curl http://localhost:9090/metrics
 
 # Info
-curl http://localhost:8080/info
+curl http://localhost:9090/info
 ```
 
 ## Full Setup (When Ready)

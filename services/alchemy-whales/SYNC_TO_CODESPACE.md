@@ -110,13 +110,13 @@ Then restart your Codespace - secrets will be available as environment variables
 
 ```bash
 # Check if service is running
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 
 # Check metrics
 curl http://localhost:9090/metrics
 
 # Check info
-curl http://localhost:8080/info
+curl http://localhost:9090/info
 ```
 
 ## 🐛 Troubleshooting
@@ -160,7 +160,7 @@ gh codespace ports list
 
 # Forward manually
 gh codespace ports forward 3001:3001
-gh codespace ports forward 8080:8080
+gh codespace ports forward 9090:9090
 gh codespace ports forward 9090:9090
 ```
 
@@ -172,7 +172,7 @@ gh codespace ports forward 9090:9090
 - [ ] Service built (`npm run build`)
 - [ ] Database setup (if using local PostgreSQL)
 - [ ] Service started (`npm start`)
-- [ ] Health check passes (`curl http://localhost:8080/health`)
+- [ ] Health check passes (`curl http://localhost:9090/health`)
 
 ## 🎯 Quick Start Script
 

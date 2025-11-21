@@ -248,9 +248,9 @@ await service.syncHistoricalTransfers(
 | Endpoint | Port | Purpose |
 |----------|------|---------|
 | `/webhooks/alchemy` | 3001 | Webhook receiver |
-| `/health` | 8080 | Full health check |
-| `/health/live` | 8080 | Liveness probe |
-| `/health/ready` | 8080 | Readiness probe |
+| `/health` | 9090 | Full health check |
+| `/health/live` | 9090 | Liveness probe |
+| `/health/ready` | 9090 | Readiness probe |
 | `/metrics` | 9090 | Prometheus metrics |
 | `/info` | 9090 | Service information |
 
@@ -310,7 +310,7 @@ npm start
 ### 4. Docker Deployment
 ```bash
 docker build -t coinet/alchemy-whales .
-docker run -p 3001:3001 -p 8080:8080 -p 9090:9090 coinet/alchemy-whales
+docker run -p 3001:3001 -p 9090:9090 coinet/alchemy-whales
 ```
 
 ### 5. Kubernetes Deployment

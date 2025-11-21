@@ -66,7 +66,7 @@ docker build -t coinet/alchemy-whales:latest .
 docker run -d \
   --name alchemy-whales \
   -p 3001:3001 \
-  -p 8080:8080 \
+  -p 9090:9090 \
   -p 9090:9090 \
   --env-file .env \
   coinet/alchemy-whales:latest
@@ -97,13 +97,13 @@ After deployment, verify:
 
 ```bash
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 
 # Metrics
 curl http://localhost:9090/metrics
 
 # Info
-curl http://localhost:8080/info
+curl http://localhost:9090/info
 ```
 
 ## 🐛 Troubleshooting

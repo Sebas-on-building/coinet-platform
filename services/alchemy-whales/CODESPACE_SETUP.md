@@ -175,7 +175,7 @@ npm start | tee logs/app.log
 
 ```bash
 # In another terminal
-curl http://localhost:8080/health
+curl http://localhost:9090/health
 curl http://localhost:9090/metrics
 ```
 
