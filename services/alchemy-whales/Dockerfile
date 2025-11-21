@@ -43,9 +43,6 @@ RUN npm ci --omit=dev && \
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy environment example (if exists)
-COPY .env.example* ./ || true
-
 # Change ownership
 RUN chown -R whales:whales /app
 
