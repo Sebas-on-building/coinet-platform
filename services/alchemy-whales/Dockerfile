@@ -50,11 +50,11 @@ RUN chown -R whales:whales /app
 USER whales
 
 # Expose ports
-EXPOSE 3001 8080 9090
+EXPOSE 3001 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:8080/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "require('http').get('http://localhost:9090/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
