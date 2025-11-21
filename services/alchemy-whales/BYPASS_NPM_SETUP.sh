@@ -14,10 +14,42 @@ cd "$SCRIPT_DIR"
 echo "📍 Working directory: $SCRIPT_DIR"
 echo ""
 
+# Debug: List files
+echo "📁 Files in directory:"
+ls -la | grep -E "(tsconfig|package)" | head -5
+echo ""
+
 # Verify tsconfig.json exists
 if [ ! -f "tsconfig.json" ]; then
-    echo "❌ tsconfig.json not found!"
-    exit 1
+    echo "⚠️  tsconfig.json not found in $SCRIPT_DIR"
+    echo "Checking parent directory..."
+    if [ -f "../tsconfig.json" ]; then
+        echo "Found tsconfig.json in parent, using that"
+        cd ..
+        SCRIPT_DIR="$(pwd)"
+    else
+        echo "❌ tsconfig.json not found anywhere!"
+        echo "Creating basic tsconfig.json..."
+        cat > tsconfig.json << 'TSCONFIGEOF'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+TSCONFIGEOF
+        echo "✅ Created tsconfig.json"
+    fi
 fi
 
 # 1. Create .env if missing
