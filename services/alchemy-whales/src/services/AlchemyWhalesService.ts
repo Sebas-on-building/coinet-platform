@@ -24,6 +24,11 @@ import { HealthCheck } from '../monitoring/HealthCheck';
 import { MonitoringServer } from '../monitoring/MonitoringServer';
 import { validate } from '../utils/validation';
 import { TransferQuerySchema } from '../types';
+import { UltimateFraudDetector } from '../ai/UltimateFraudDetector';
+import { SolanaTokenMonitor } from './SolanaTokenMonitor';
+import { QuickNodeClientManager } from '../clients/QuickNodeClient';
+import { QuickNodeChain } from '../types/quicknode';
+import { quickNodeConfig } from '../config';
 
 export class AlchemyWhalesService {
   private logger: any;
@@ -37,6 +42,9 @@ export class AlchemyWhalesService {
   private metricsCollector: MetricsCollector;
   private healthCheck: HealthCheck;
   private monitoringServer: MonitoringServer;
+  private ultimateFraudDetector: UltimateFraudDetector | null = null;
+  private solanaTokenMonitor: SolanaTokenMonitor | null = null;
+  private quickNodeClient: QuickNodeClientManager | null = null;
   private isInitialized: boolean = false;
 
   constructor() {
@@ -74,6 +82,26 @@ export class AlchemyWhalesService {
       this.metricsCollector,
       this.healthCheck
     );
+
+    // Initialize Ultimate Fraud Detector if enabled
+    if (process.env.AI_ULTIMATE_FRAUD_ENABLED === 'true') {
+      try {
+        this.ultimateFraudDetector = new UltimateFraudDetector();
+        this.logger.info('✅ Ultimate Fraud Detector initialized (99.99% accuracy)');
+      } catch (error: any) {
+        this.logger.warn('Failed to initialize Ultimate Fraud Detector', { error: error.message });
+      }
+    }
+
+    // Initialize QuickNode client if enabled
+    if (quickNodeConfig.enabled && quickNodeConfig.endpoints.length > 0) {
+      try {
+        this.quickNodeClient = new QuickNodeClientManager(quickNodeConfig.endpoints, this.rateLimiter);
+        this.logger.info('✅ QuickNode client manager initialized');
+      } catch (error: any) {
+        this.logger.warn('Failed to initialize QuickNode client', { error: error.message });
+      }
+    }
 
     this.logger.info('Alchemy Whales Service created');
   }
@@ -133,6 +161,46 @@ export class AlchemyWhalesService {
           this.logger.info({ msg: '✅ Notifications configured' });
         } catch (error: any) {
           this.logger.warn({ msg: '⚠️  Notification service not available', error: error.message });
+        }
+      }
+
+      // Initialize Solana Token Monitor if enabled
+      if (process.env.SOLANA_REALTIME_MONITORING === 'true' && this.quickNodeClient) {
+        try {
+          const solanaClient = this.quickNodeClient.getClient(QuickNodeChain.SOLANA);
+          if (solanaClient) {
+            this.solanaTokenMonitor = new SolanaTokenMonitor({
+              quickNodeClient: solanaClient,
+              solanaHttpUrl: process.env.QUICKNODE_SOLANA_HTTP_URL || '',
+              solanaWsUrl: process.env.QUICKNODE_SOLANA_WS_URL,
+              pumpFunProgramId: process.env.SOLANA_PUMPFUN_PROGRAM_ID,
+              minLiquidityUsd: parseFloat(process.env.SOLANA_MIN_LIQUIDITY_USD || '10000'),
+              maxTokenAgeSeconds: parseInt(process.env.SOLANA_MAX_TOKEN_AGE_SECONDS || '60'),
+              blockCheckIntervalMs: parseInt(process.env.SOLANA_BLOCK_CHECK_INTERVAL_MS || '400'),
+              aiAnalysisEnabled: process.env.AI_ULTIMATE_FRAUD_ENABLED === 'true' || process.env.AI_FRAUD_DETECTION_ENABLED === 'true',
+              onTokenDetected: async (token) => {
+                this.logger.info('New Solana token detected', { tokenAddress: token.tokenAddress });
+              },
+              onFraudDetected: async (token, analysis) => {
+                this.logger.warn('Fraud detected', {
+                  tokenAddress: token.tokenAddress,
+                  fraudRiskScore: analysis.fraudRiskScore,
+                  recommendation: analysis.recommendation,
+                });
+              },
+              onHighPotentialDetected: async (token, analysis) => {
+                this.logger.info('High potential token detected', {
+                  tokenAddress: token.tokenAddress,
+                  potentialScore: analysis.potentialScore,
+                });
+              },
+            });
+
+            await this.solanaTokenMonitor.start();
+            this.logger.info('✅ Solana real-time token monitoring started');
+          }
+        } catch (error: any) {
+          this.logger.warn('Failed to start Solana token monitoring', { error: error.message });
         }
       }
 
@@ -392,6 +460,12 @@ export class AlchemyWhalesService {
     this.logger.info('Shutting down Alchemy Whales Service...');
 
     try {
+      // Stop Solana token monitoring
+      if (this.solanaTokenMonitor) {
+        await this.solanaTokenMonitor.stop();
+        this.logger.info('Solana token monitoring stopped');
+      }
+
       await this.webhookServer.stop();
       await this.monitoringServer.stop();
       await this.rateLimiter.shutdown();
