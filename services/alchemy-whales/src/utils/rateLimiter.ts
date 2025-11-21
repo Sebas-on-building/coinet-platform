@@ -296,7 +296,7 @@ export class RateLimiterManager {
     if (duration) {
       setTimeout(() => {
         // Note: Bottleneck doesn't have a start() method, limiter automatically resumes
-        logger.info(`Rate limiter resumed for ${chain}`);
+        logger.info({ msg: `Rate limiter resumed for ${chain}` });
       }, duration);
     }
     
