@@ -7,7 +7,7 @@
 
 import { EventEmitter } from 'events';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { QuickNodeClient } from '../clients/QuickNodeClient';
+import { ChainQuickNodeClient } from '../clients/QuickNodeClient';
 import { createLogger } from '../utils/logger';
 import { FraudMLModel, TokenFeatures, FraudPrediction } from '../ai/FraudMLModel';
 
@@ -37,7 +37,9 @@ interface FraudAnalysis {
 }
 
 interface SolanaTokenMonitorConfig {
-  quickNodeClient: QuickNodeClient;
+  quickNodeClient: ChainQuickNodeClient;
+  solanaHttpUrl: string;
+  solanaWsUrl?: string;
   pumpFunProgramId?: string;
   minLiquidityUsd?: number;
   maxTokenAgeSeconds?: number;
@@ -52,7 +54,7 @@ interface SolanaTokenMonitorConfig {
 export class SolanaTokenMonitor extends EventEmitter {
   private logger: any;
   private connection: Connection | null = null;
-  private quickNodeClient: QuickNodeClient;
+  private quickNodeClient: ChainQuickNodeClient;
   private config: Required<SolanaTokenMonitorConfig>;
   private isMonitoring: boolean = false;
   private monitoringInterval: NodeJS.Timeout | null = null;
@@ -80,6 +82,8 @@ export class SolanaTokenMonitor extends EventEmitter {
     
     this.config = {
       quickNodeClient: config.quickNodeClient,
+      solanaHttpUrl: config.solanaHttpUrl || '',
+      solanaWsUrl: config.solanaWsUrl || '',
       pumpFunProgramId: config.pumpFunProgramId || '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',
       minLiquidityUsd: config.minLiquidityUsd || 1000,
       maxTokenAgeSeconds: config.maxTokenAgeSeconds || 60,
@@ -111,12 +115,11 @@ export class SolanaTokenMonitor extends EventEmitter {
     });
 
     // Initialize Solana connection
-    const endpoint = this.quickNodeClient.getEndpoint();
-    if (!endpoint) {
-      throw new Error('QuickNode Solana endpoint not configured');
+    if (!this.config.solanaHttpUrl) {
+      throw new Error('QuickNode Solana HTTP URL not configured');
     }
 
-    this.connection = new Connection(endpoint.httpUrl, 'confirmed');
+    this.connection = new Connection(this.config.solanaHttpUrl, 'confirmed');
     this.isMonitoring = true;
 
     // Start monitoring loop
@@ -424,8 +427,8 @@ export class SolanaTokenMonitor extends EventEmitter {
         throw new Error(`AI service returned ${response.status}`);
       }
 
-      const data = await response.json();
-      return data.analysis;
+      const data: any = await response.json();
+      return data.analysis as FraudAnalysis;
     } catch (error: any) {
       this.logger.warn('AI service call failed, using default analysis', {
         error: error.message,
