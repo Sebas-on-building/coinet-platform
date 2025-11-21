@@ -4,6 +4,12 @@
  * Comprehensive examples demonstrating world-class QuickNode integration
  */
 
+// Allow defaults for examples (set before importing config)
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'development';
+}
+process.env.ALLOW_DEFAULTS = 'true';
+
 import { 
   QuickNodeClientManager,
   ChainQuickNodeClient,
