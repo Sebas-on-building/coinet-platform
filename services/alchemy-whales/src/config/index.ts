@@ -119,12 +119,23 @@ export const config: ServiceConfig = {
  * Validate configuration
  */
 export function validateConfig(): void {
-  // Validate API keys
-  Object.entries(config.alchemy.apiKeys).forEach(([chain, key]) => {
-    if (!key || key === 'your_' + chain + '_api_key_here') {
-      throw new Error(`Invalid API key for chain: ${chain}`);
-    }
-  });
+  // Validate API keys (only in production or if explicitly required)
+  const requireApiKeys = process.env.REQUIRE_API_KEYS === 'true' || process.env.NODE_ENV === 'production';
+  
+  if (requireApiKeys) {
+    Object.entries(config.alchemy.apiKeys).forEach(([chain, key]) => {
+      if (!key || key === 'your_' + chain + '_api_key_here' || key.includes('your_')) {
+        throw new Error(`Invalid API key for chain: ${chain}. Please set ALCHEMY_API_KEY_${chain.toUpperCase()} in your .env file`);
+      }
+    });
+  } else {
+    // In development, just warn about missing keys
+    Object.entries(config.alchemy.apiKeys).forEach(([chain, key]) => {
+      if (!key || key === 'your_' + chain + '_api_key_here' || key.includes('your_')) {
+        console.warn(`⚠️  Warning: API key not configured for chain: ${chain}. Set ALCHEMY_API_KEY_${chain.toUpperCase()} in .env`);
+      }
+    });
+  }
 
   // Validate thresholds
   if (config.whaleThresholds.whale >= config.whaleThresholds.largeWhale) {

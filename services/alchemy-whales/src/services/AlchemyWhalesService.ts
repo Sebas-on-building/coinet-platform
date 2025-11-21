@@ -46,8 +46,17 @@ export class AlchemyWhalesService {
     try {
       validateConfig();
     } catch (error: any) {
-      this.logger.error('Configuration validation failed', { error: error.message });
-      throw error;
+      this.logger.error({ 
+        msg: 'Configuration validation failed', 
+        error: error.message,
+        hint: 'Set REQUIRE_API_KEYS=false to start without API keys, or configure your Alchemy API keys in .env file'
+      });
+      // In development, allow starting without API keys
+      if (process.env.NODE_ENV !== 'production' && process.env.REQUIRE_API_KEYS !== 'true') {
+        this.logger.warn({ msg: 'Starting in development mode without API keys. Some features will be disabled.' });
+      } else {
+        throw error;
+      }
     }
 
     // Initialize components
