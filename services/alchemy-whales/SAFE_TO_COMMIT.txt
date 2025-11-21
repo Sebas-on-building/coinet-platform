@@ -1,0 +1,29 @@
+# ✅ SAFE TO COMMIT - Copy & Paste
+
+# These files are SAFE to commit:
+git add .gitignore
+git add services/alchemy-whales/src/
+git add services/alchemy-whales/*.md
+git add services/alchemy-whales/*.sh
+git add services/alchemy-whales/*.json
+git add services/alchemy-whales/*.yaml
+git add services/alchemy-whales/Dockerfile
+git add services/alchemy-whales/k8s/
+git add services/alchemy-whales/docs/
+git add services/alchemy-whales/examples/
+
+# Verify what you're committing
+git status
+
+# Commit
+git commit -m "feat: Complete Alchemy Whales Service implementation"
+
+# ============================================
+# ❌ DO NOT COMMIT:
+# - .env (contains secrets)
+# - .turbo/ (build cache)
+# - dist/ (build output)
+# - node_modules/ (dependencies)
+
+# These are already in .gitignore and will be ignored automatically!
+
