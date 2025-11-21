@@ -9,20 +9,22 @@ const logLevel = process.env.LOG_LEVEL || 'info';
 const enablePrettyLogs = process.env.ENABLE_PRETTY_LOGS === 'true' || isDev;
 
 /**
+ * Check if pino-pretty is available
+ */
+function hasPinoPretty(): boolean {
+  try {
+    require.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Create logger instance
  */
-export const logger = pino({
+const loggerConfig: pino.LoggerOptions = {
   level: logLevel,
-  ...(enablePrettyLogs && {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'HH:MM:ss Z',
-        ignore: 'pid,hostname',
-      },
-    },
-  }),
   formatters: {
     level: (label) => {
       return { level: label };
@@ -35,7 +37,21 @@ export const logger = pino({
   base: {
     service: 'alchemy-whales',
   },
-});
+};
+
+// Only add pretty transport if enabled AND pino-pretty is available
+if (enablePrettyLogs && hasPinoPretty()) {
+  loggerConfig.transport = {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'HH:MM:ss Z',
+      ignore: 'pid,hostname',
+    },
+  };
+}
+
+export const logger = pino(loggerConfig);
 
 /**
  * Helper function to log with message and context
