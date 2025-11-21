@@ -1,0 +1,89 @@
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    transform: scale(0.96) translateY(16px);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 8 20 / 60%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 0.2s;
+}
+
+.modal {
+  background: var(--modal-bg, #fff);
+  color: var(--modal-fg, #222);
+  border-radius: 1.5rem;
+  box-shadow: 0 8px 32px rgb(61 130 255 / 12%), 0 4px 24px rgb(0 0 0 / 10%);
+  min-width: 320px;
+  max-width: 90vw;
+  min-height: 120px;
+  max-height: 90vh;
+  padding: 2em;
+  position: relative;
+  outline: none;
+  transition: box-shadow 0.2s, background 0.2s, transform 0.1s;
+  animation: modal-in 0.2s cubic-bezier(.4,1.4,.6,1);
+}
+
+.modal.glow {
+  box-shadow: 0 0 32px 8px var(--glow-color, #7ddfff), 0 8px 32px rgb(61 130 255 / 12%), 0 4px 24px rgb(0 0 0 / 10%);
+}
+
+.modal.gradient {
+  background: linear-gradient(135deg, #7ddfff 0%, #3a8dde 100%);
+  color: #fff;
+}
+
+.header {
+  font-size: 1.3em;
+  font-weight: 700;
+  margin-bottom: 1em;
+}
+
+.body {
+  margin-bottom: 1em;
+}
+
+.footer {
+  margin-top: 1em;
+  text-align: right;
+}
+
+.close {
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+
+.close:hover, .close:focus-visible {
+  background: rgb(61 130 255 / 10%);
+} 

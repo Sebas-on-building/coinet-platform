@@ -1,0 +1,45 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.feature {
+  background: var(--color-primary, #6366f1);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.95rem;
+}
+
+.ask-ai {
+  background: var(--color-secondary, #f1f5f9);
+  color: var(--color-text, #22223b);
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.ask-ai:hover {
+  background: var(--color-primary, #6366f1);
+  color: #fff;
+}
+
+.ai-response {
+  margin-top: 0.5rem;
+  background: var(--color-bg, #f8fafc);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  color: var(--color-text, #22223b);
+  font-size: 0.98rem;
+} 

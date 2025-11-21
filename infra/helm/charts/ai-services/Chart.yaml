@@ -1,0 +1,17 @@
+apiVersion: v2
+name: coinet-ai-services
+description: Coinet AI Services Helm Chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - coinet
+  - ai
+  - microservices
+  - cryptocurrency
+home: https://github.com/your-org/coinet-ai
+sources:
+  - https://github.com/your-org/coinet-ai
+maintainers:
+  - name: Coinet AI Team
+    email: team@coinet.ai 

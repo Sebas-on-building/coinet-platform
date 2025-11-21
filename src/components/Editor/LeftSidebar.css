@@ -1,0 +1,28 @@
+.left-sidebar {
+  width: var(--sidebar-width-expanded);
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  transition: width var(--transition);
+  min-width: 0;
+  z-index: 10;
+}
+
+.sidebar-tabs {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+@media (width <= 900px) {
+  .left-sidebar {
+    width: var(--sidebar-width);
+  }
+
+  .sidebar-tabs {
+    flex-direction: column;
+  }
+} 

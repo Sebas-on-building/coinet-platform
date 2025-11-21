@@ -1,0 +1,36 @@
+button:
+  base:
+    color: primary
+    radius: md
+    shadow: sm
+    font: fontFamily
+    size: md
+    transition: fast
+  variants:
+    filled:
+      background: primary
+      color: surface
+    outlined:
+      background: surface
+      color: primary
+      border: 2px solid primary
+    ghost:
+      background: transparent
+      color: primary
+      border: none
+card:
+  base:
+    background: surface
+    radius: lg
+    shadow: md
+    padding: md
+    font: fontFamily
+    transition: normal
+panel:
+  base:
+    background: background
+    radius: md
+    shadow: sm
+    padding: md
+    font: fontFamily
+    transition: normal 

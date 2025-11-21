@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Backend Connection</title>
+</head>
+<body>
+    <h1>Backend Connection Test</h1>
+    <button onclick="testBackend()">Test Connection</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function testBackend() {
+            const output = document.getElementById('output');
+            
+            // Test 1: Detect backend URL
+            const hostname = window.location.hostname;
+            const backendUrl = hostname.includes('github.dev')
+                ? `https://${hostname.replace(/-\d+\.app\.github\.dev$/, '-3000.app.github.dev')}`
+                : 'http://localhost:3000';
+            
+            output.textContent = `Testing backend at: ${backendUrl}\n\n`;
+            
+            // Test 2: Health check
+            try {
+                output.textContent += 'Testing /api/health...\n';
+                const healthResponse = await fetch(`${backendUrl}/api/health`);
+                const healthData = await healthResponse.json();
+                output.textContent += `✅ Health check passed!\n${JSON.stringify(healthData, null, 2)}\n\n`;
+            } catch (error) {
+                output.textContent += `❌ Health check failed: ${error.message}\n\n`;
+                return;
+            }
+            
+            // Test 3: Chat message
+            try {
+                output.textContent += 'Testing /api/chat/message...\n';
+                const chatResponse = await fetch(`${backendUrl}/api/chat/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': 'test-user'
+                    },
+                    body: JSON.stringify({ message: 'Test' })
+                });
+                const chatData = await chatResponse.json();
+                output.textContent += `✅ Chat API response:\n${JSON.stringify(chatData, null, 2)}\n`;
+            } catch (error) {
+                output.textContent += `❌ Chat API failed: ${error.message}\n`;
+            }
+        }
+    </script>
+</body>
+</html>
+

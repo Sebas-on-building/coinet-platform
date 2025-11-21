@@ -1,0 +1,33 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.name {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-text, #22223b);
+}
+
+.version {
+  font-size: 1rem;
+  color: var(--color-text-muted, #888);
+}
+
+.author {
+  font-size: 1rem;
+  color: var(--color-text-muted, #888);
+}
+
+.description {
+  font-size: 1.05rem;
+  color: var(--color-text, #22223b);
+} 

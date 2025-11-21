@@ -1,0 +1,456 @@
+# =============================================================================
+# COINET PLATFORM - NETWORK POLICIES
+# =============================================================================
+# Comprehensive network segmentation and micro-segmentation policies
+# for zero-trust networking across the Coinet platform
+# =============================================================================
+
+# =============================================================================
+# TIER-BASED NETWORK SEGMENTATION
+# =============================================================================
+
+# Frontend Tier - Web Applications
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-tier-policy
+  namespace: coinet-platform
+  labels:
+    tier: frontend
+    security-zone: public
+spec:
+  podSelector:
+    matchLabels:
+      tier: frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from load balancer
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 8080
+  egress:
+  # Allow egress to API Gateway only
+  - to:
+    - podSelector:
+        matchLabels:
+          app: coinet-api-gateway
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS for external resources (CDN, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# API Gateway Tier - Service Mesh Entry Point
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-tier-policy
+  namespace: coinet-platform
+  labels:
+    tier: gateway
+    security-zone: dmz
+spec:
+  podSelector:
+    matchLabels:
+      app: coinet-api-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from frontend tier
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: frontend
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow ingress from load balancer
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: coinet-monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  # Allow egress to core services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: core
+    ports:
+    - protocol: TCP
+      port: 8001  # Auth Service
+    - protocol: TCP
+      port: 8005  # User Service
+  # Allow egress to data services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: data
+    ports:
+    - protocol: TCP
+      port: 8004  # Data Service
+  # Allow egress to AI services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: ai
+    ports:
+    - protocol: TCP
+      port: 8002  # Context Service
+    - protocol: TCP
+      port: 8003  # Inference Service
+  # Allow Redis for caching
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow DNS and external HTTPS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 443
+
+---
+# Core Services Tier - Authentication & User Management
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: core-services-tier-policy
+  namespace: coinet-platform
+  labels:
+    tier: core
+    security-zone: internal
+spec:
+  podSelector:
+    matchLabels:
+      tier: core
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from API Gateway only
+  - from:
+    - podSelector:
+        matchLabels:
+          app: coinet-api-gateway
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: coinet-monitoring
+  egress:
+  # Allow egress to databases
+  - to:
+    - podSelector:
+        matchLabels:
+          component: database
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 6379  # Redis
+  # Allow egress to other core services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: core
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS for external APIs (Sentry, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Data Services Tier - Market Data & Analytics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-services-tier-policy
+  namespace: coinet-platform
+  labels:
+    tier: data
+    security-zone: internal
+spec:
+  podSelector:
+    matchLabels:
+      tier: data
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from API Gateway and AI services
+  - from:
+    - podSelector:
+        matchLabels:
+          app: coinet-api-gateway
+    - podSelector:
+        matchLabels:
+          tier: ai
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: coinet-monitoring
+  egress:
+  # Allow egress to databases
+  - to:
+    - podSelector:
+        matchLabels:
+          component: database
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL
+    - protocol: TCP
+      port: 8123  # ClickHouse
+    - protocol: TCP
+      port: 9092  # Kafka
+  # Allow egress to other data services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: data
+  # Allow DNS and external APIs
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+
+---
+# AI Services Tier - Machine Learning & Inference
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-services-tier-policy
+  namespace: coinet-platform
+  labels:
+    tier: ai
+    security-zone: restricted
+spec:
+  podSelector:
+    matchLabels:
+      tier: ai
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from API Gateway only
+  - from:
+    - podSelector:
+        matchLabels:
+          app: coinet-api-gateway
+  # Allow monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: coinet-monitoring
+  egress:
+  # Allow egress to data services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: data
+  # Allow egress to other AI services
+  - to:
+    - podSelector:
+        matchLabels:
+          tier: ai
+  # Allow egress to specialized databases
+  - to:
+    - podSelector:
+        matchLabels:
+          app: timescaledb
+    - podSelector:
+        matchLabels:
+          app: clickhouse
+    ports:
+    - protocol: TCP
+      port: 5432
+    - protocol: TCP
+      port: 8123
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS for ML model APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Database Tier - Data Storage & Persistence
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-tier-policy
+  namespace: coinet-platform
+  labels:
+    tier: database
+    security-zone: restricted
+spec:
+  podSelector:
+    matchLabels:
+      component: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from application tiers only
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: core
+    - podSelector:
+        matchLabels:
+          tier: data
+    - podSelector:
+        matchLabels:
+          tier: ai
+  # Allow monitoring and backup services
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: coinet-monitoring
+    - namespaceSelector:
+        matchLabels:
+          name: backup-system
+  egress:
+  # Database replication and clustering
+  - to:
+    - podSelector:
+        matchLabels:
+          component: database
+  # Allow DNS resolution only
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# =============================================================================
+# MONITORING NETWORK POLICY
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring-network-policy
+  namespace: coinet-monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+  egress:
+  # Allow egress to all Coinet services for scraping
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: coinet-platform
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS for external integrations (PagerDuty, Slack, etc.)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# =============================================================================
+# SECURITY SCANNING POLICY
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: coinet-security-scanning
+  labels:
+    app: coinet-platform
+    security-component: scanning
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+  # Require vulnerability scanning
+  - name: require-vulnerability-scan
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - coinet-platform
+    validate:
+      message: "Container images must be scanned for vulnerabilities"
+      pattern:
+        metadata:
+          annotations:
+            security.coinet.ai/vulnerability-scan: "passed"
+            security.coinet.ai/scan-date: "?*"
+
+  # Require security labels
+  - name: require-security-labels
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          namespaces:
+          - coinet-platform
+    validate:
+      message: "Security labels are required"
+      pattern:
+        metadata:
+          labels:
+            security.coinet.ai/tier: "?*"
+            security.coinet.ai/component: "?*"

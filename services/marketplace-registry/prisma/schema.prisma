@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================
+// Coinet Marketplace Registry Schema (Restored Atomic Core)
+// =========================
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  plugins     Plugin[]
+  users       OrgUser[]
+  billing     Billing?
+  settings    Json?
+}
+
+model OrgUser {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgRole  @default(MEMBER)
+  joinedAt       DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Plugin {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  description  String
+  description_i18n Json?
+  ownerId      String
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  status       PluginStatus @default(DRAFT)
+  tags         String[]
+  iconUrl      String?
+  homepageUrl  String?
+  repoUrl      String?
+  aiMeta       Json?
+  meta         Json?
+  forkedFromId String?
+  forkedFrom   Plugin?  @relation("Fork", fields: [forkedFromId], references: [id])
+  forks        Plugin[] @relation("Fork")
+  versions     PluginVersion[]
+  monetization Monetization?
+  analytics    Analytics?
+  reviews      Review[]
+  security     SecurityReport?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  supportFeatures PluginSupportFeature[]
+  supportFeaturesJson Json?
+}
+
+model PluginVersion {
+  id         String   @id @default(uuid())
+  pluginId   String
+  version    String
+  changelog  String
+  releaseNotes String?
+  createdAt  DateTime @default(now())
+  plugin     Plugin   @relation(fields: [pluginId], references: [id])
+}
+
+model Monetization {
+  id         String   @id @default(uuid())
+  pluginId   String   @unique
+  price      Float
+  currency   String
+  enabled    Boolean  @default(false)
+  plugin     Plugin   @relation(fields: [pluginId], references: [id])
+  meta       Json?
+}
+
+model Analytics {
+  id         String   @id @default(uuid())
+  pluginId   String   @unique
+  installs   Int      @default(0)
+  views      Int      @default(0)
+  plugin     Plugin   @relation(fields: [pluginId], references: [id])
+  meta       Json?
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  pluginId  String
+  userId    String
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sentiment String?
+  status    String   @default("pending")
+  plugin    Plugin   @relation(fields: [pluginId], references: [id])
+}
+
+model SecurityReport {
+  id        String   @id @default(uuid())
+  pluginId  String   @unique
+  report    Json
+  status    String   @default("clean")
+  createdAt DateTime @default(now())
+  plugin    Plugin   @relation(fields: [pluginId], references: [id])
+}
+
+model PluginSupportFeature {
+  id        String   @id @default(uuid())
+  pluginId  String
+  type      String   // e.g., 'UX', 'UI', 'Godlike', etc.
+  value     String?  // e.g., description, label, etc.
+  meta      Json?    // extensible metadata for sub-features
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  plugin    Plugin   @relation(fields: [pluginId], references: [id])
+}
+
+model Billing {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  plan           String
+  status         String
+  renewalDate    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+enum PluginStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+enum CollaboratorRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum PluginListingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DELISTED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  GIF
+  SVG
+  OTHER
+}
+
+enum CompatibilityStatus {
+  COMPATIBLE
+  INCOMPATIBLE
+  PARTIAL
+  UNKNOWN
+}

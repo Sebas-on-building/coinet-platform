@@ -1,0 +1,673 @@
+# =============================================================================
+# COINET AI KAFKA-CLICKHOUSE INTEGRATION
+# Real-time analytics pipeline with stream processing and data validation
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-clickhouse-integration
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kafka-clickhouse-integration
+    app.kubernetes.io/component: analytics-pipeline
+    app.kubernetes.io/part-of: coinet-ai
+data:
+  # ClickHouse Kafka Engine Tables Configuration
+  clickhouse-kafka-tables.sql: |
+    -- =============================================================================
+    -- KAFKA ENGINE TABLES FOR REAL-TIME DATA INGESTION
+    -- =============================================================================
+    
+    -- Market data Kafka engine table
+    CREATE TABLE IF NOT EXISTS market_analytics.kafka_market_data_queue
+    (
+        id String,
+        timestamp DateTime64(3),
+        source String,
+        version String,
+        type String,
+        symbol String,
+        exchange String,
+        price Float64,
+        volume Float64,
+        bid Float64,
+        ask Float64,
+        spread Float64,
+        change24h Float64,
+        changePercent24h Float64
+    )
+    ENGINE = Kafka()
+    SETTINGS
+        kafka_broker_list = 'coinet-kafka:9092',
+        kafka_topic_list = 'market.price.processed',
+        kafka_group_name = 'clickhouse-market-consumer',
+        kafka_format = 'JSONEachRow',
+        kafka_num_consumers = 3,
+        kafka_skip_broken_messages = 1000,
+        kafka_max_block_size = 65536,
+        kafka_flush_interval_ms = 7500;
+    
+    -- News data Kafka engine table
+    CREATE TABLE IF NOT EXISTS news_analytics.kafka_news_data_queue
+    (
+        id String,
+        timestamp DateTime64(3),
+        source String,
+        version String,
+        type String,
+        title String,
+        content String,
+        publishedAt DateTime64(3),
+        sentiment_score Float32,
+        sentiment_label String,
+        sentiment_confidence Float32,
+        symbols Array(String),
+        topics Array(String),
+        importance Float32
+    )
+    ENGINE = Kafka()
+    SETTINGS
+        kafka_broker_list = 'coinet-kafka:9092',
+        kafka_topic_list = 'news.articles.processed',
+        kafka_group_name = 'clickhouse-news-consumer',
+        kafka_format = 'JSONEachRow',
+        kafka_num_consumers = 2,
+        kafka_skip_broken_messages = 1000,
+        kafka_max_block_size = 32768,
+        kafka_flush_interval_ms = 10000;
+    
+    -- Social media Kafka engine table
+    CREATE TABLE IF NOT EXISTS social_analytics.kafka_social_data_queue
+    (
+        id String,
+        timestamp DateTime64(3),
+        source String,
+        version String,
+        type String,
+        platform String,
+        content String,
+        author_username String,
+        author_followers Nullable(UInt64),
+        author_influence Nullable(Float32),
+        sentiment_score Float32,
+        sentiment_label String,
+        sentiment_confidence Float32,
+        engagement_likes UInt64,
+        engagement_shares UInt64,
+        engagement_comments UInt64,
+        symbols Array(String)
+    )
+    ENGINE = Kafka()
+    SETTINGS
+        kafka_broker_list = 'coinet-kafka:9092',
+        kafka_topic_list = 'social.mentions.processed',
+        kafka_group_name = 'clickhouse-social-consumer',
+        kafka_format = 'JSONEachRow',
+        kafka_num_consumers = 2,
+        kafka_skip_broken_messages = 1000,
+        kafka_max_block_size = 32768,
+        kafka_flush_interval_ms = 15000;
+    
+    -- AI context Kafka engine table
+    CREATE TABLE IF NOT EXISTS coinet_analytics.kafka_ai_context_queue
+    (
+        id String,
+        timestamp DateTime64(3),
+        source String,
+        version String,
+        type String,
+        contextId String,
+        symbol String,
+        timeframe String,
+        market_data String,
+        news_data String,
+        social_data String,
+        onchain_data Nullable(String),
+        aggregated_sentiment_overall Float32,
+        aggregated_sentiment_confidence Float32,
+        aggregated_sentiment_trend String,
+        market_conditions_volatility String,
+        market_conditions_momentum String,
+        importance Float32,
+        completeness Float32
+    )
+    ENGINE = Kafka()
+    SETTINGS
+        kafka_broker_list = 'coinet-kafka:9092',
+        kafka_topic_list = 'ai.context.assembled',
+        kafka_group_name = 'clickhouse-ai-consumer',
+        kafka_format = 'JSONEachRow',
+        kafka_num_consumers = 2,
+        kafka_skip_broken_messages = 1000,
+        kafka_max_block_size = 65536,
+        kafka_flush_interval_ms = 5000;
+
+  # Materialized Views for Real-time Processing
+  clickhouse-materialized-views.sql: |
+    -- =============================================================================
+    -- MATERIALIZED VIEWS FOR REAL-TIME DATA PROCESSING
+    -- =============================================================================
+    
+    -- Market data materialized view
+    CREATE MATERIALIZED VIEW IF NOT EXISTS market_analytics.market_data_mv TO market_analytics.price_history AS
+    SELECT
+        id,
+        timestamp,
+        symbol,
+        exchange,
+        price,
+        volume,
+        IF(price > 0, price * volume, 0) as market_cap,
+        toDate(timestamp) as date
+    FROM market_analytics.kafka_market_data_queue
+    WHERE 
+        isNotNull(timestamp) 
+        AND isNotNull(symbol) 
+        AND symbol != ''
+        AND price > 0
+        AND volume >= 0;
+    
+    -- News data materialized view
+    CREATE MATERIALIZED VIEW IF NOT EXISTS news_analytics.news_data_mv TO news_analytics.news_impact AS
+    SELECT
+        timestamp,
+        symbols[1] as symbol,
+        source,
+        title,
+        sentiment_score,
+        importance,
+        0.0 as price_impact,
+        0.0 as volume_spike,
+        toDate(timestamp) as date
+    FROM news_analytics.kafka_news_data_queue
+    WHERE 
+        isNotNull(timestamp)
+        AND length(symbols) > 0
+        AND isNotNull(sentiment_score)
+        AND sentiment_confidence > 0.5;
+    
+    -- Social sentiment materialized view
+    CREATE MATERIALIZED VIEW IF NOT EXISTS social_analytics.social_data_mv TO social_analytics.sentiment_scores AS
+    SELECT
+        timestamp,
+        symbols[1] as symbol,
+        platform,
+        sentiment_score,
+        sentiment_confidence as confidence,
+        1 as volume,
+        coalesce(author_influence, 0.1) as influence_score,
+        toDate(timestamp) as date
+    FROM social_analytics.kafka_social_data_queue
+    WHERE 
+        isNotNull(timestamp)
+        AND length(symbols) > 0
+        AND isNotNull(sentiment_score)
+        AND sentiment_confidence > 0.3;
+    
+    -- AI context data processing view
+    CREATE MATERIALIZED VIEW IF NOT EXISTS coinet_analytics.ai_context_mv TO coinet_analytics.ai_insights AS
+    SELECT
+        contextId,
+        timestamp,
+        symbol,
+        timeframe,
+        aggregated_sentiment_overall as sentiment_score,
+        aggregated_sentiment_confidence as sentiment_confidence,
+        aggregated_sentiment_trend as sentiment_trend,
+        market_conditions_volatility as volatility,
+        market_conditions_momentum as momentum,
+        importance,
+        completeness,
+        toDate(timestamp) as date
+    FROM coinet_analytics.kafka_ai_context_queue
+    WHERE 
+        isNotNull(timestamp)
+        AND isNotNull(symbol)
+        AND symbol != ''
+        AND importance > 0.1;
+
+  # Data Quality Validation Rules
+  data-quality-validation.sql: |
+    -- =============================================================================
+    -- DATA QUALITY VALIDATION AND MONITORING
+    -- =============================================================================
+    
+    -- Create data quality monitoring table
+    CREATE TABLE IF NOT EXISTS coinet_analytics.data_quality_metrics
+    (
+        timestamp DateTime DEFAULT now(),
+        table_name LowCardinality(String),
+        metric_type LowCardinality(String),
+        metric_value Float64,
+        threshold_value Float64,
+        status LowCardinality(String),
+        details String,
+        date Date MATERIALIZED toDate(timestamp)
+    )
+    ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (table_name, metric_type, timestamp)
+    TTL timestamp + INTERVAL 90 DAY;
+    
+    -- Market data quality checks
+    CREATE OR REPLACE FUNCTION validateMarketData()
+    RETURNS String
+    LANGUAGE SQL
+    AS '
+    WITH quality_checks AS (
+        SELECT
+            count() as total_records,
+            countIf(price <= 0) as invalid_prices,
+            countIf(volume < 0) as invalid_volumes,
+            countIf(symbol = '''') as empty_symbols,
+            countIf(timestamp < now() - INTERVAL 1 HOUR) as old_records
+        FROM market_analytics.price_history
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+    )
+    SELECT 
+        CASE 
+            WHEN invalid_prices > total_records * 0.01 THEN ''ERROR: High invalid price ratio''
+            WHEN invalid_volumes > total_records * 0.01 THEN ''ERROR: High invalid volume ratio''
+            WHEN empty_symbols > 0 THEN ''ERROR: Empty symbols detected''
+            WHEN old_records > total_records * 0.1 THEN ''WARNING: High old records ratio''
+            ELSE ''OK''
+        END as status
+    FROM quality_checks
+    ';
+    
+    -- News data quality checks
+    CREATE OR REPLACE FUNCTION validateNewsData()
+    RETURNS String
+    LANGUAGE SQL
+    AS '
+    WITH quality_checks AS (
+        SELECT
+            count() as total_records,
+            countIf(sentiment_score < -1 OR sentiment_score > 1) as invalid_sentiment,
+            countIf(importance < 0 OR importance > 1) as invalid_importance,
+            countIf(title = '''') as empty_titles
+        FROM news_analytics.news_impact
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+    )
+    SELECT 
+        CASE 
+            WHEN invalid_sentiment > 0 THEN ''ERROR: Invalid sentiment scores''
+            WHEN invalid_importance > 0 THEN ''ERROR: Invalid importance values''
+            WHEN empty_titles > 0 THEN ''ERROR: Empty titles detected''
+            ELSE ''OK''
+        END as status
+    FROM quality_checks
+    ';
+
+  # Performance Optimization Settings
+  performance-optimization.sql: |
+    -- =============================================================================
+    -- PERFORMANCE OPTIMIZATION FOR REAL-TIME ANALYTICS
+    -- =============================================================================
+    
+    -- Optimize Kafka consumers for high throughput
+    ALTER TABLE market_analytics.kafka_market_data_queue MODIFY SETTING
+        kafka_poll_timeout_ms = 5000,
+        kafka_max_block_size = 1048576,
+        kafka_flush_interval_ms = 5000;
+    
+    ALTER TABLE news_analytics.kafka_news_data_queue MODIFY SETTING
+        kafka_poll_timeout_ms = 10000,
+        kafka_max_block_size = 524288,
+        kafka_flush_interval_ms = 10000;
+    
+    ALTER TABLE social_analytics.kafka_social_data_queue MODIFY SETTING
+        kafka_poll_timeout_ms = 15000,
+        kafka_max_block_size = 524288,
+        kafka_flush_interval_ms = 15000;
+    
+    -- Create indexes for fast queries
+    CREATE INDEX IF NOT EXISTS idx_price_history_symbol_timestamp 
+    ON market_analytics.price_history (symbol, timestamp) TYPE minmax GRANULARITY 8192;
+    
+    CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_timestamp 
+    ON social_analytics.sentiment_scores (symbol, timestamp) TYPE minmax GRANULARITY 8192;
+    
+    CREATE INDEX IF NOT EXISTS idx_news_symbol_timestamp 
+    ON news_analytics.news_impact (symbol, timestamp) TYPE minmax GRANULARITY 8192;
+    
+    -- Optimize merge tree settings for real-time inserts
+    ALTER TABLE market_analytics.price_history MODIFY SETTING
+        max_parts_in_total = 1000,
+        parts_to_delay_insert = 150,
+        parts_to_throw_insert = 300,
+        max_replicated_merges_in_queue = 16;
+    
+    ALTER TABLE social_analytics.sentiment_scores MODIFY SETTING
+        max_parts_in_total = 500,
+        parts_to_delay_insert = 100,
+        parts_to_throw_insert = 200;
+    
+    ALTER TABLE news_analytics.news_impact MODIFY SETTING
+        max_parts_in_total = 300,
+        parts_to_delay_insert = 75,
+        parts_to_throw_insert = 150;
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-clickhouse-monitoring
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kafka-clickhouse-integration
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: coinet-ai
+data:
+  # Monitoring and alerting queries
+  monitoring-queries.sql: |
+    -- =============================================================================
+    -- KAFKA-CLICKHOUSE INTEGRATION MONITORING
+    -- =============================================================================
+    
+    -- Real-time ingestion rate monitoring
+    CREATE TABLE IF NOT EXISTS coinet_analytics.ingestion_metrics
+    (
+        timestamp DateTime DEFAULT now(),
+        data_source LowCardinality(String),
+        records_per_second Float64,
+        lag_seconds Float64,
+        error_rate Float64,
+        bytes_per_second Float64,
+        partition_count UInt32,
+        consumer_group String,
+        date Date MATERIALIZED toDate(timestamp)
+    )
+    ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (data_source, timestamp)
+    TTL timestamp + INTERVAL 30 DAY;
+    
+    -- Function to calculate ingestion metrics
+    CREATE OR REPLACE FUNCTION calculateIngestionMetrics(data_source String)
+    RETURNS Tuple(Float64, Float64, Float64)
+    LANGUAGE SQL
+    AS '
+    WITH current_metrics AS (
+        SELECT
+            count() as current_count,
+            max(timestamp) as latest_timestamp,
+            min(timestamp) as earliest_timestamp
+        FROM system.tables 
+        WHERE database = ''market_analytics'' AND name = ''price_history''
+        AND timestamp >= now() - INTERVAL 1 MINUTE
+    ),
+    previous_metrics AS (
+        SELECT count() as previous_count
+        FROM market_analytics.price_history
+        WHERE timestamp >= now() - INTERVAL 2 MINUTE 
+        AND timestamp < now() - INTERVAL 1 MINUTE
+    )
+    SELECT (
+        current_metrics.current_count / 60.0,
+        dateDiff(''second'', current_metrics.latest_timestamp, now()),
+        0.0
+    )
+    FROM current_metrics, previous_metrics
+    ';
+    
+    -- Data pipeline health check
+    CREATE OR REPLACE FUNCTION checkPipelineHealth()
+    RETURNS Array(Tuple(String, String, Float64))
+    LANGUAGE SQL
+    AS '
+    WITH health_metrics AS (
+        SELECT
+            ''market_data'' as source,
+            count() as records_5min,
+            max(timestamp) as latest_record
+        FROM market_analytics.price_history
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+        
+        UNION ALL
+        
+        SELECT
+            ''news_data'' as source,
+            count() as records_5min,
+            max(timestamp) as latest_record
+        FROM news_analytics.news_impact
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+        
+        UNION ALL
+        
+        SELECT
+            ''social_data'' as source,
+            count() as records_5min,
+            max(timestamp) as latest_record
+        FROM social_analytics.sentiment_scores
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+    )
+    SELECT 
+        groupArray((
+            source,
+            CASE 
+                WHEN records_5min = 0 THEN ''ERROR: No data received''
+                WHEN dateDiff(''minute'', latest_record, now()) > 10 THEN ''WARNING: Data lag detected''
+                ELSE ''OK''
+            END,
+            records_5min
+        ))
+    FROM health_metrics
+    ';
+
+  # Alert rules for pipeline monitoring
+  alert-rules.sql: |
+    -- =============================================================================
+    -- ALERT RULES FOR KAFKA-CLICKHOUSE PIPELINE
+    -- =============================================================================
+    
+    -- Create alerts table
+    CREATE TABLE IF NOT EXISTS coinet_analytics.pipeline_alerts
+    (
+        timestamp DateTime DEFAULT now(),
+        alert_type LowCardinality(String),
+        severity LowCardinality(String),
+        source LowCardinality(String),
+        message String,
+        metric_value Float64,
+        threshold Float64,
+        status LowCardinality(String),
+        date Date MATERIALIZED toDate(timestamp)
+    )
+    ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (alert_type, source, timestamp)
+    TTL timestamp + INTERVAL 30 DAY;
+    
+    -- Function to generate alerts
+    CREATE OR REPLACE FUNCTION generatePipelineAlerts()
+    RETURNS UInt64
+    LANGUAGE SQL
+    AS '
+    WITH alert_conditions AS (
+        -- High data lag alert
+        SELECT
+            ''data_lag'' as alert_type,
+            ''critical'' as severity,
+            ''market_data'' as source,
+            ''Market data lag exceeds threshold'' as message,
+            dateDiff(''minute'', max(timestamp), now()) as metric_value,
+            5.0 as threshold
+        FROM market_analytics.price_history
+        WHERE timestamp >= now() - INTERVAL 1 HOUR
+        HAVING metric_value > threshold
+        
+        UNION ALL
+        
+        -- Low ingestion rate alert
+        SELECT
+            ''low_ingestion_rate'' as alert_type,
+            ''warning'' as severity,
+            ''market_data'' as source,
+            ''Market data ingestion rate below threshold'' as message,
+            count() / 300.0 as metric_value,
+            10.0 as threshold
+        FROM market_analytics.price_history
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+        HAVING metric_value < threshold
+        
+        UNION ALL
+        
+        -- High error rate alert
+        SELECT
+            ''high_error_rate'' as alert_type,
+            ''critical'' as severity,
+            ''data_quality'' as source,
+            ''Data quality validation errors detected'' as message,
+            countIf(price <= 0) / count() * 100 as metric_value,
+            1.0 as threshold
+        FROM market_analytics.price_history
+        WHERE timestamp >= now() - INTERVAL 5 MINUTE
+        HAVING metric_value > threshold
+    )
+    INSERT INTO coinet_analytics.pipeline_alerts 
+    (alert_type, severity, source, message, metric_value, threshold, status)
+    SELECT 
+        alert_type, 
+        severity, 
+        source, 
+        message, 
+        metric_value, 
+        threshold,
+        ''active'' as status
+    FROM alert_conditions;
+    
+    SELECT count() FROM alert_conditions
+    ';
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kafka-clickhouse-data-quality-monitor
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kafka-clickhouse-integration
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: coinet-ai
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: data-quality-monitor
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: data-quality-monitor
+            image: clickhouse/clickhouse-client:23.12.2.59-alpine
+            command: ["/bin/sh"]
+            args:
+              - -c
+              - |
+                # Data quality validation script
+                clickhouse-client --host=coinet-clickhouse-0-0.default.svc.cluster.local \
+                  --port=9000 \
+                  --user=coinet_etl \
+                  --password=etl-readwrite-2024! \
+                  --multiquery --query="
+                
+                -- Run data quality validations
+                INSERT INTO coinet_analytics.data_quality_metrics 
+                (table_name, metric_type, metric_value, threshold_value, status, details)
+                VALUES
+                ('market_analytics.price_history', 'record_count_5min', 
+                 (SELECT count() FROM market_analytics.price_history WHERE timestamp >= now() - INTERVAL 5 MINUTE),
+                 100, 'OK', 'Records in last 5 minutes'),
+                
+                ('market_analytics.price_history', 'invalid_price_ratio', 
+                 (SELECT countIf(price <= 0) / count() * 100 FROM market_analytics.price_history WHERE timestamp >= now() - INTERVAL 5 MINUTE),
+                 1.0, 'OK', 'Invalid price percentage'),
+                
+                ('social_analytics.sentiment_scores', 'record_count_5min',
+                 (SELECT count() FROM social_analytics.sentiment_scores WHERE timestamp >= now() - INTERVAL 5 MINUTE),
+                 50, 'OK', 'Social records in last 5 minutes'),
+                
+                ('news_analytics.news_impact', 'record_count_5min',
+                 (SELECT count() FROM news_analytics.news_impact WHERE timestamp >= now() - INTERVAL 5 MINUTE),
+                 10, 'OK', 'News records in last 5 minutes');
+                
+                -- Generate alerts if thresholds exceeded
+                SELECT generatePipelineAlerts();
+                "
+            resources:
+              requests:
+                memory: 128Mi
+                cpu: 100m
+              limits:
+                memory: 256Mi
+                cpu: 200m
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kafka-clickhouse-performance-optimizer
+  namespace: default
+  labels:
+    app.kubernetes.io/name: kafka-clickhouse-integration
+    app.kubernetes.io/component: optimization
+    app.kubernetes.io/part-of: coinet-ai
+spec:
+  schedule: "0 */2 * * *"  # Every 2 hours
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: performance-optimizer
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: performance-optimizer
+            image: clickhouse/clickhouse-client:23.12.2.59-alpine
+            command: ["/bin/sh"]
+            args:
+              - -c
+              - |
+                # Performance optimization script
+                clickhouse-client --host=coinet-clickhouse-0-0.default.svc.cluster.local \
+                  --port=9000 \
+                  --user=default \
+                  --password=clickhouse-admin-2024! \
+                  --multiquery --query="
+                
+                -- Optimize partitions
+                OPTIMIZE TABLE market_analytics.price_history FINAL;
+                OPTIMIZE TABLE social_analytics.sentiment_scores FINAL;
+                OPTIMIZE TABLE news_analytics.news_impact FINAL;
+                
+                -- Update statistics
+                INSERT INTO coinet_analytics.ingestion_metrics 
+                (data_source, records_per_second, lag_seconds, error_rate, bytes_per_second, partition_count, consumer_group)
+                SELECT 
+                  'market_data' as data_source,
+                  count() / 7200.0 as records_per_second,
+                  dateDiff('second', max(timestamp), now()) as lag_seconds,
+                  0.0 as error_rate,
+                  sum(length(toString(price)) + length(symbol)) / 7200.0 as bytes_per_second,
+                  uniq(toYYYYMM(timestamp)) as partition_count,
+                  'clickhouse-market-consumer' as consumer_group
+                FROM market_analytics.price_history 
+                WHERE timestamp >= now() - INTERVAL 2 HOUR;
+                
+                -- Cleanup old parts
+                ALTER TABLE market_analytics.price_history DROP PARTITION ID 'all_0_0_0';
+                ALTER TABLE social_analytics.sentiment_scores DROP PARTITION ID 'all_0_0_0';
+                ALTER TABLE news_analytics.news_impact DROP PARTITION ID 'all_0_0_0';
+                "
+            resources:
+              requests:
+                memory: 256Mi
+                cpu: 200m
+              limits:
+                memory: 512Mi
+                cpu: 400m 

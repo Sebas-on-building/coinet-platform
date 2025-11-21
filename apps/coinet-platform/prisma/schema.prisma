@@ -1,0 +1,300 @@
+// Coinet Platform - Divine Database Schema
+// Production-ready, optimized, and scalable
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CONVERSATIONS & MESSAGES
+// ============================================================================
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  
+  // Conversation metadata
+  title     String?  // Auto-generated from first message
+  context   Json?    // Conversation context, preferences, active agent
+  
+  // Relationships
+  messages  Message[]
+  
+  // Agent relationship (optional - if conversation uses a specific agent)
+  agentId   String?
+  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+  
+  // Indexes for performance
+  @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([agentId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  
+  // Message content
+  role           MessageRole
+  content        String   @db.Text
+  
+  // AI enhancements
+  sources        Json?    // Array of source citations
+  charts         Json?    // Chart configurations detected
+  confidence     Float?   // AI confidence score (0-1)
+  
+  // Message metadata
+  tokens         Int?     // Token count for cost tracking
+  model          String?  // AI model used (e.g., "gpt-4", "claude-3")
+  
+  // User actions
+  regeneratedFrom String? // If regenerated, reference to original message
+  userFeedback   MessageFeedback?
+  
+  // Timestamps
+  createdAt      DateTime @default(now())
+  
+  // Relationships
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  // Indexes
+  @@index([conversationId, createdAt(sort: Asc)])
+  @@index([conversationId])
+  @@map("messages")
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+enum MessageFeedback {
+  positive
+  negative
+  neutral
+}
+
+// ============================================================================
+// AGENTS
+// ============================================================================
+
+model Agent {
+  id           String   @id @default(cuid())
+  userId       String
+  
+  // Basic info
+  name         String
+  description  String   @db.Text
+  personality  String   @db.Text
+  systemPrompt String   @db.Text
+  
+  // Agent configuration
+  expertise    String[] // Array of expertise areas
+  triggers     Json     // Array of trigger configurations
+  strategies   Json     // Array of strategy configurations
+  dataSources  Json     // Array of data source configurations
+  
+  // Appearance
+  color        String   @default("#6366f1") // Hex color
+  tags         String[]
+  
+  // Agent status
+  enabled      Boolean  @default(true)
+  isTemplate   Boolean  @default(false) // If from template/marketplace
+  
+  // Performance tracking
+  totalExecutions Int    @default(0)
+  successRate      Float @default(0.0) // 0-1
+  
+  // Relationships
+  conversations Conversation[]
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Indexes
+  @@index([userId])
+  @@index([userId, enabled])
+  @@index([isTemplate])
+  @@map("agents")
+}
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+model Alert {
+  id          String   @id @default(cuid())
+  userId      String
+  
+  // Alert info
+  name        String
+  description String?  @db.Text
+  type        AlertType
+  
+  // Trigger configuration (parsed from natural language)
+  trigger     Json     // Trigger configuration
+  actions     Json?    // Alert actions (notifications, webhooks, etc.)
+  
+  // Alert settings
+  priority    AlertPriority @default(medium)
+  enabled     Boolean  @default(true)
+  
+  // Execution tracking
+  lastTriggered DateTime?
+  triggerCount   Int    @default(0)
+  
+  // Relationships
+  history     AlertHistory[]
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Indexes
+  @@index([userId])
+  @@index([userId, enabled])
+  @@index([type])
+  @@index([enabled, priority])
+  @@map("alerts")
+}
+
+enum AlertType {
+  price
+  technical
+  sentiment
+  volume
+  onchain
+  news
+  custom
+}
+
+enum AlertPriority {
+  low
+  medium
+  high
+  critical
+}
+
+model AlertHistory {
+  id        String   @id @default(cuid())
+  alertId   String
+  
+  // Trigger data
+  triggeredAt DateTime @default(now())
+  conditions  Json     // Condition values at trigger time
+  values      Json     // Actual values when triggered
+  
+  // Result
+  executed  Boolean  @default(true)
+  error     String?  @db.Text
+  
+  // Relationships
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  
+  // Indexes
+  @@index([alertId, triggeredAt(sort: Desc)])
+  @@index([alertId])
+  @@map("alert_history")
+}
+
+// ============================================================================
+// INSIGHTS
+// ============================================================================
+
+model Insight {
+  id          String   @id @default(cuid())
+  
+  // Insight content
+  type        InsightType
+  title       String
+  description String   @db.Text
+  
+  // Quality metrics
+  confidence  Float    // 0-1 confidence score
+  severity    InsightSeverity
+  
+  // Rich metadata
+  metadata    Json     // Type-specific data (asset, price, etc.)
+  
+  // Related assets
+  assets      String[] // Array of related asset symbols
+  
+  // Expiry
+  expiresAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  // Indexes
+  @@index([type])
+  @@index([severity])
+  @@index([createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("insights")
+}
+
+enum InsightType {
+  sentiment
+  catalyst
+  risk
+  opportunity
+  pattern
+  market_indicator
+}
+
+enum InsightSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+// ============================================================================
+// USER PREFERENCES & SETTINGS
+// ============================================================================
+
+model UserPreferences {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  
+  // Chat preferences
+  defaultAgentId String?
+  chatStyle      String?  // "professional", "friendly", "technical"
+  
+  // Alert preferences
+  alertEmail     Boolean  @default(true)
+  alertPush      Boolean  @default(true)
+  alertTimezone  String   @default("UTC")
+  
+  // UI preferences
+  theme          String   @default("light")
+  language       String   @default("en")
+  
+  // Trading preferences (for agent context)
+  preferredAssets String[]
+  riskTolerance   String? // "conservative", "moderate", "aggressive"
+  
+  // Metadata
+  metadata       Json?
+  
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@map("user_preferences")
+}
+
