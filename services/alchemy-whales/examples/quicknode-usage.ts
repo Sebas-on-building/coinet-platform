@@ -395,6 +395,20 @@ async function example6_Pagination() {
     return;
   }
 
+  // Check if we have EVM chains configured
+  const quickNodeChains = quickNodeConfig.endpoints.map(e => e.chain);
+  const hasEVMChain = quickNodeChains.some(c => 
+    c.includes('ethereum') || c.includes('polygon') || c.includes('arbitrum') || 
+    c.includes('optimism') || c.includes('base')
+  );
+
+  if (!hasEVMChain) {
+    console.log('⚠️  Pagination example requires EVM chains.');
+    console.log('   Solana uses different RPC methods for pagination.\n');
+    console.log('✅ QuickNode Solana client supports pagination via Solana RPC methods.\n');
+    return;
+  }
+
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const quickNodeClient = new QuickNodeClientManager(
     quickNodeConfig.endpoints,
