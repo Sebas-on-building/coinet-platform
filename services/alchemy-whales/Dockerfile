@@ -1,32 +1,25 @@
 # Multi-stage Dockerfile for Alchemy Whales Service
-# Optimized for production deployment with pnpm
+# Optimized for production deployment
+# Note: Railway build context is services/alchemy-whales (Root Directory)
 
 # Stage 1: Build
 FROM node:18-alpine AS builder
 
-# Install pnpm
-RUN npm install -g pnpm
-
 WORKDIR /app
 
-# Copy workspace files for pnpm
-COPY pnpm-workspace.yaml ./
-COPY package.json ./
-COPY pnpm-lock.yaml* ./
+# Copy package files (relative to services/alchemy-whales directory)
+COPY package.json package-lock.json* ./
+COPY tsconfig.json ./
 
-# Copy service package files
-COPY services/alchemy-whales/package.json ./services/alchemy-whales/
-COPY services/alchemy-whales/tsconfig.json ./services/alchemy-whales/
-
-# Install dependencies using pnpm
-WORKDIR /app/services/alchemy-whales
-RUN pnpm install --frozen-lockfile
+# Install dependencies
+RUN npm ci --omit=dev && \
+    npm cache clean --force
 
 # Copy source code
-COPY services/alchemy-whales/src ./src
+COPY src ./src
 
 # Build TypeScript
-RUN pnpm run build
+RUN npm run build
 
 # Stage 2: Production
 FROM node:18-alpine
@@ -34,32 +27,24 @@ FROM node:18-alpine
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
 
-# Install pnpm
-RUN npm install -g pnpm
-
 # Create non-root user
 RUN addgroup -g 1001 -S whales && \
     adduser -S -D -H -u 1001 -h /app -s /sbin/nologin -G whales -g whales whales
 
 WORKDIR /app
 
-# Copy workspace files
-COPY pnpm-workspace.yaml ./
-COPY package.json ./
-COPY pnpm-lock.yaml* ./
-
-# Copy service package files
-COPY services/alchemy-whales/package.json ./services/alchemy-whales/
+# Copy package files
+COPY package.json package-lock.json* ./
 
 # Install production dependencies only
-WORKDIR /app/services/alchemy-whales
-RUN pnpm install --frozen-lockfile --prod
+RUN npm ci --omit=dev && \
+    npm cache clean --force
 
 # Copy built application from builder
-COPY --from=builder /app/services/alchemy-whales/dist ./dist
+COPY --from=builder /app/dist ./dist
 
 # Copy environment example (if exists)
-COPY services/alchemy-whales/.env.example* ./ || true
+COPY .env.example* ./ || true
 
 # Change ownership
 RUN chown -R whales:whales /app
@@ -78,7 +63,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Start service
-WORKDIR /app/services/alchemy-whales
 CMD ["node", "dist/index.js"]
 
 # Labels
