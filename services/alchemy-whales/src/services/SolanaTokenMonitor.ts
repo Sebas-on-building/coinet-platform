@@ -9,6 +9,7 @@ import { EventEmitter } from 'events';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { QuickNodeClient } from '../clients/QuickNodeClient';
 import { createLogger } from '../utils/logger';
+import { FraudMLModel, TokenFeatures, FraudPrediction } from '../ai/FraudMLModel';
 
 interface TokenLaunch {
   tokenAddress: string;
@@ -57,11 +58,25 @@ export class SolanaTokenMonitor extends EventEmitter {
   private monitoringInterval: NodeJS.Timeout | null = null;
   private detectedTokens: Set<string> = new Set();
   private pumpFunProgramId: PublicKey;
+  private mlModel: FraudMLModel | null = null;
 
   constructor(config: SolanaTokenMonitorConfig) {
     super();
     this.logger = createLogger({ component: 'SolanaTokenMonitor' });
     this.quickNodeClient = config.quickNodeClient;
+    
+    // Initialize ML model if enabled
+    if (config.aiAnalysisEnabled !== false) {
+      this.mlModel = new FraudMLModel({
+        enabled: true,
+        modelVersion: process.env.AI_MODEL_VERSION || 'v1.0.0',
+        confidenceThreshold: parseInt(process.env.AI_MIN_CONFIDENCE_SCORE || '70'),
+        useEnsemble: process.env.AI_USE_ENSEMBLE !== 'false',
+        enableOnlineLearning: process.env.AI_ONLINE_LEARNING === 'true',
+      });
+      
+      this.logger.info('ML fraud detection model initialized');
+    }
     
     this.config = {
       quickNodeClient: config.quickNodeClient,
@@ -279,13 +294,42 @@ export class SolanaTokenMonitor extends EventEmitter {
   }
 
   /**
-   * Perform fraud analysis using Coinet AI
+   * Perform fraud analysis using ML model
    */
   private async performFraudAnalysis(token: TokenLaunch): Promise<FraudAnalysis> {
     const timeout = parseInt(process.env.AI_ANALYSIS_TIMEOUT_MS || '5000');
     
-    // Call Coinet AI service for fraud analysis
-    // This is a placeholder - actual implementation would call the AI service
+    // Extract features for ML model
+    const features = await this.extractTokenFeatures(token);
+    
+    // Use ML model if available
+    if (this.mlModel) {
+      try {
+        const prediction = await Promise.race([
+          this.mlModel.predict(features),
+          new Promise<FraudPrediction>((_, reject) => 
+            setTimeout(() => reject(new Error('ML analysis timeout')), timeout)
+          ),
+        ]);
+
+        return {
+          fraudRiskScore: prediction.fraudRiskScore,
+          fraudRiskLevel: prediction.fraudRiskLevel,
+          potentialScore: prediction.potentialScore,
+          potentialLevel: prediction.potentialLevel,
+          confidence: prediction.confidence,
+          redFlags: prediction.features.redFlags,
+          greenFlags: prediction.features.greenFlags,
+          recommendation: prediction.recommendation,
+          reasoning: prediction.reasoning,
+        };
+      } catch (error: any) {
+        this.logger.warn('ML model failed, using fallback', { error: error.message });
+        return this.generateDefaultAnalysis(token);
+      }
+    }
+    
+    // Fallback to external AI service
     const analysisPromise = this.callAIService(token);
     const timeoutPromise = new Promise<FraudAnalysis>((resolve) => {
       setTimeout(() => {
@@ -294,6 +338,67 @@ export class SolanaTokenMonitor extends EventEmitter {
     });
 
     return Promise.race([analysisPromise, timeoutPromise]);
+  }
+
+  /**
+   * Extract features for ML model
+   */
+  private async extractTokenFeatures(token: TokenLaunch): Promise<TokenFeatures> {
+    // Fetch comprehensive token data
+    // This is a simplified version - production would fetch from multiple sources
+    
+    return {
+      // Contract features (would fetch from Solana)
+      contractVerified: false, // TODO: Check Solana contract verification
+      ownershipConcentration: 80, // TODO: Calculate from token accounts
+      liquidityLocked: false, // TODO: Check liquidity lock
+      mintAuthority: true, // TODO: Check mint authority
+      freezeAuthority: false, // TODO: Check freeze authority
+      
+      // Economic features
+      initialLiquidityUsd: token.initialLiquidity,
+      initialPriceUsd: 0.0001, // TODO: Fetch from DEX
+      totalSupply: 1000000000, // TODO: Fetch from token account
+      circulatingSupply: 1000000000, // TODO: Calculate
+      marketCapUsd: 100000, // TODO: Calculate
+      
+      // Trading features
+      tradingVolumeUsd: 0, // TODO: Fetch from DEX
+      uniqueHolders: 0, // TODO: Fetch from token accounts
+      buyCount24h: 0, // TODO: Fetch from DEX
+      sellCount24h: 0, // TODO: Fetch from DEX
+      largestBuyUsd: 0, // TODO: Fetch from DEX
+      largestSellUsd: 0, // TODO: Fetch from DEX
+      priceChange5m: 0, // TODO: Calculate
+      priceChange1h: 0, // TODO: Calculate
+      priceChange24h: 0, // TODO: Calculate
+      
+      // Liquidity features
+      liquidityUsd: token.initialLiquidity,
+      liquidityToMarketCapRatio: 0.5, // TODO: Calculate
+      liquidityChange1h: 0, // TODO: Calculate
+      
+      // Social features (would fetch from APIs)
+      twitterFollowers: 0, // TODO: Fetch from Twitter API
+      twitterAccountAgeHours: 0, // TODO: Fetch from Twitter API
+      telegramMembers: 0, // TODO: Fetch from Telegram API
+      telegramAccountAgeHours: 0, // TODO: Fetch from Telegram API
+      redditMentions: 0, // TODO: Fetch from Reddit API
+      websiteExists: false, // TODO: Check metadata URI
+      whitepaperExists: false, // TODO: Check metadata
+      
+      // Behavioral features (would analyze trading patterns)
+      washTradingScore: 0, // TODO: Analyze trading patterns
+      botActivityScore: 0, // TODO: Analyze trading patterns
+      priceManipulationScore: 0, // TODO: Analyze price movements
+      honeypotRisk: 0, // TODO: Simulate sell to check honeypot
+      
+      // Metadata
+      tokenAgeSeconds: token.ageSeconds,
+      isPumpFun: true,
+      isRaydium: false,
+      creatorReputation: 0, // TODO: Fetch creator history
+    };
   }
 
   /**
