@@ -1,12 +1,14 @@
 # Nixpacks configuration for Railway deployment
+# Updated to work with pnpm monorepo structure
+
 [phases.setup]
-nixPkgs = ["nodejs-18_x", "npm"]
+nixPkgs = ["nodejs-18_x", "pnpm"]
 
 [phases.install]
-cmds = ["npm ci --only=production"]
+cmds = ["pnpm install --frozen-lockfile"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["pnpm run build"]
 
 [start]
 cmd = "node dist/index.js"
