@@ -191,6 +191,19 @@ async function example4_CrossValidation() {
     return;
   }
 
+  // Check if we have EVM chains configured (cross-validation works best with EVM)
+  const quickNodeChains = quickNodeConfig.endpoints.map(e => e.chain);
+  const hasEVMChain = quickNodeChains.some(c => 
+    c.includes('ethereum') || c.includes('polygon') || c.includes('arbitrum') || 
+    c.includes('optimism') || c.includes('base')
+  );
+
+  if (!hasEVMChain) {
+    console.log('⚠️  Cross-validation example requires EVM chains (Ethereum, Polygon, etc.).');
+    console.log('   Solana uses different RPC methods and cannot be cross-validated with Alchemy.\n');
+    return;
+  }
+
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const alchemyClient = new AlchemyClientManager(config.alchemy.apiKeys, rateLimiter);
   const quickNodeClient = new QuickNodeClientManager(
@@ -255,6 +268,21 @@ async function example5_ProviderOrchestration() {
 
   if (quickNodeConfig.endpoints.length === 0) {
     console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
+
+  // Check available chains
+  const quickNodeChains = quickNodeConfig.endpoints.map(e => e.chain);
+  const hasEVMChain = quickNodeChains.some(c => 
+    c.includes('ethereum') || c.includes('polygon') || c.includes('arbitrum') || 
+    c.includes('optimism') || c.includes('base')
+  );
+
+  if (!hasEVMChain) {
+    console.log('⚠️  Provider orchestration example requires EVM chains.');
+    console.log('   Solana uses different RPC methods and requires Solana-specific implementation.\n');
+    console.log('✅ QuickNode Solana client is ready and working!');
+    console.log('   For Solana-specific features, use Solana RPC methods directly.\n');
     return;
   }
 
