@@ -65,7 +65,7 @@ async function main() {
 
     logger.info({ msg: '🚀 Alchemy Whales Service is running!' });
     logger.info({ msg: '📊 Metrics available at http://localhost:9090/metrics' });
-    logger.info({ msg: '🏥 Health check at http://localhost:8080/health' });
+    logger.info({ msg: '🏥 Health check at http://localhost:9090/health' });
     logger.info({ msg: '🔔 Webhooks listening at http://localhost:3001/webhooks/alchemy' });
   } catch (error: any) {
     logger.error({ msg: 'Failed to start service', error: error.message });
