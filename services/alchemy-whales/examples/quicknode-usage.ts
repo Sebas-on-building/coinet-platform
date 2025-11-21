@@ -34,6 +34,15 @@ import { config, quickNodeConfig, crossValidationConfig, multiProviderConfig } f
 async function example1_BasicSetup() {
   console.log('Example 1: Basic QuickNode Setup\n');
 
+  // Check if QuickNode endpoints are configured
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.');
+    console.log('   To run this example, configure QuickNode endpoints in .env:');
+    console.log('   QUICKNODE_ETH_HTTP_URL=https://your-endpoint.quiknode.pro/xxxxx/');
+    console.log('   QUICKNODE_ENABLED=true\n');
+    return;
+  }
+
   // Create rate limiter
   const rateLimiter = new RateLimiterManager(config.rateLimit);
 
@@ -75,6 +84,11 @@ async function example1_BasicSetup() {
 async function example2_WalletBalance() {
   console.log('\n\nExample 2: Wallet Token Balance\n');
 
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
+
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const quickNodeClient = new QuickNodeClientManager(
     quickNodeConfig.endpoints,
@@ -109,6 +123,11 @@ async function example2_WalletBalance() {
 
 async function example3_NFTsByOwner() {
   console.log('\n\nExample 3: NFT Enumeration\n');
+
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
 
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const quickNodeClient = new QuickNodeClientManager(
@@ -149,6 +168,11 @@ async function example3_NFTsByOwner() {
 
 async function example4_CrossValidation() {
   console.log('\n\nExample 4: Cross-Validation between Alchemy & QuickNode\n');
+
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
 
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const alchemyClient = new AlchemyClientManager(config.alchemy.apiKeys, rateLimiter);
@@ -211,6 +235,11 @@ async function example4_CrossValidation() {
 
 async function example5_ProviderOrchestration() {
   console.log('\n\nExample 5: Provider Orchestration with Smart Routing\n');
+
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
 
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const alchemyClient = new AlchemyClientManager(config.alchemy.apiKeys, rateLimiter);
@@ -316,6 +345,11 @@ async function example5_ProviderOrchestration() {
 async function example6_Pagination() {
   console.log('\n\nExample 6: Automatic Pagination Handling\n');
 
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
+
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const quickNodeClient = new QuickNodeClientManager(
     quickNodeConfig.endpoints,
@@ -352,6 +386,11 @@ async function example6_Pagination() {
 
 async function example7_HealthMonitoring() {
   console.log('\n\nExample 7: Health Monitoring & Metrics\n');
+
+  if (quickNodeConfig.endpoints.length === 0) {
+    console.log('⚠️  QuickNode endpoints not configured. Skipping example.\n');
+    return;
+  }
 
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const quickNodeClient = new QuickNodeClientManager(
@@ -406,12 +445,14 @@ async function example7_HealthMonitoring() {
 async function example8_ErrorHandling() {
   console.log('\n\nExample 8: Error Handling & Fallback\n');
 
+  // This example can work with just Alchemy, but QuickNode is optional
   const rateLimiter = new RateLimiterManager(config.rateLimit);
   const alchemyClient = new AlchemyClientManager(config.alchemy.apiKeys, rateLimiter);
-  const quickNodeClient = new QuickNodeClientManager(
-    quickNodeConfig.endpoints,
-    rateLimiter
-  );
+  
+  // QuickNode is optional for this example (fallback demonstration)
+  const quickNodeClient = quickNodeConfig.endpoints.length > 0
+    ? new QuickNodeClientManager(quickNodeConfig.endpoints, rateLimiter)
+    : null;
 
   const cache = new CacheManager(config.redis);
   // CacheManager connects automatically
