@@ -13,9 +13,13 @@ dotenv.config();
 /**
  * Get required environment variable or throw error
  */
-function getRequiredEnv(key: string): string {
+function getRequiredEnv(key: string, defaultValue?: string): string {
   const value = process.env[key];
   if (!value) {
+    // In development/example mode, allow defaults for non-critical vars
+    if (defaultValue !== undefined && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEFAULTS === 'true')) {
+      return defaultValue;
+    }
     throw new Error(`Missing required environment variable: ${key}`);
   }
   return value;
@@ -139,11 +143,11 @@ const quickNodeEndpoints: QuickNodeEndpoint[] = [
 export const config: ServiceConfig = {
   alchemy: {
     apiKeys: {
-      [Chain.ETHEREUM]: getRequiredEnv('ALCHEMY_API_KEY_ETH'),
-      [Chain.POLYGON]: getRequiredEnv('ALCHEMY_API_KEY_POLYGON'),
-      [Chain.ARBITRUM]: getRequiredEnv('ALCHEMY_API_KEY_ARBITRUM'),
-      [Chain.OPTIMISM]: getRequiredEnv('ALCHEMY_API_KEY_OPTIMISM'),
-      [Chain.BASE]: getRequiredEnv('ALCHEMY_API_KEY_BASE'),
+      [Chain.ETHEREUM]: getRequiredEnv('ALCHEMY_API_KEY_ETH', 'demo-key'),
+      [Chain.POLYGON]: getRequiredEnv('ALCHEMY_API_KEY_POLYGON', 'demo-key'),
+      [Chain.ARBITRUM]: getRequiredEnv('ALCHEMY_API_KEY_ARBITRUM', 'demo-key'),
+      [Chain.OPTIMISM]: getRequiredEnv('ALCHEMY_API_KEY_OPTIMISM', 'demo-key'),
+      [Chain.BASE]: getRequiredEnv('ALCHEMY_API_KEY_BASE', 'demo-key'),
     },
   },
   rateLimit: rateLimiterConfig,
@@ -157,7 +161,7 @@ export const config: ServiceConfig = {
     port: getNumberEnv('DATABASE_PORT', 5432),
     database: getOptionalEnv('DATABASE_NAME', 'coinet_whales'),
     user: getOptionalEnv('DATABASE_USER', 'postgres'),
-    password: getRequiredEnv('DATABASE_PASSWORD'),
+    password: getOptionalEnv('DATABASE_PASSWORD', 'postgres'), // Allow default for examples
     ssl: getBooleanEnv('DATABASE_SSL', false),
     poolMin: getNumberEnv('DATABASE_POOL_MIN', 2),
     poolMax: getNumberEnv('DATABASE_POOL_MAX', 10),
@@ -172,7 +176,7 @@ export const config: ServiceConfig = {
   webhook: {
     port: getNumberEnv('WEBHOOK_PORT', 3001),
     path: getOptionalEnv('WEBHOOK_PATH', '/webhooks/alchemy'),
-    secret: getRequiredEnv('WEBHOOK_SECRET'),
+    secret: getOptionalEnv('WEBHOOK_SECRET', 'dev-secret-change-in-production'), // Allow default for examples
   },
   metrics: {
     port: getNumberEnv('METRICS_PORT', 9090),
