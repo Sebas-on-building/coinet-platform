@@ -152,7 +152,7 @@ async function example4_CrossValidation() {
   );
 
   const cache = new CacheManager(config.redis);
-  await cache.connect();
+  // CacheManager connects automatically in constructor, no need to call connect()
 
   const crossValidation = new CrossValidationService(
     alchemyClient,
@@ -196,7 +196,7 @@ async function example4_CrossValidation() {
     quotaSaved: metrics.quotaSaved,
   });
 
-  await cache.disconnect();
+  await cache.close();
 }
 
 // ========================================
@@ -214,7 +214,7 @@ async function example5_ProviderOrchestration() {
   );
 
   const cache = new CacheManager(config.redis);
-  await cache.connect();
+  // CacheManager connects automatically in constructor
 
   const crossValidation = new CrossValidationService(
     alchemyClient,
@@ -300,7 +300,7 @@ async function example5_ProviderOrchestration() {
   });
 
   await orchestrator.shutdown();
-  await cache.disconnect();
+  await cache.close();
 }
 
 // ========================================
@@ -408,7 +408,7 @@ async function example8_ErrorHandling() {
   );
 
   const cache = new CacheManager(config.redis);
-  await cache.connect();
+  // CacheManager connects automatically
 
   const orchestrator = new ProviderOrchestrator(
     alchemyClient,
@@ -448,7 +448,7 @@ async function example8_ErrorHandling() {
     }
   } finally {
     await orchestrator.shutdown();
-    await cache.disconnect();
+    await cache.close();
   }
 }
 
