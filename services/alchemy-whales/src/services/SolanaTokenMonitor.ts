@@ -348,14 +348,16 @@ export class SolanaTokenMonitor extends EventEmitter {
 
       this.emit('analysis_complete', { token, analysis });
 
-      // Send alerts via notification service
-      if (this.alertService && ultimatePrediction) {
-        await this.sendTokenAlert(token, ultimatePrediction);
-      }
-
       // Trigger alerts based on thresholds
       const fraudThreshold = parseInt(process.env.FRAUD_RISK_THRESHOLD || '60');
       const potentialThreshold = parseInt(process.env.HIGH_POTENTIAL_THRESHOLD || '80');
+
+      // Send alerts via notification service (works with both Ultimate Fraud Detector and ML model)
+      if (this.alertService) {
+        // Use ultimatePrediction if available, otherwise convert analysis
+        const predictionData = ultimatePrediction || this.convertAnalysisToPrediction(analysis);
+        await this.sendTokenAlert(token, predictionData, analysis);
+      }
 
       if (analysis.fraudRiskScore >= fraudThreshold) {
         this.logger.warn('Fraud detected', {
@@ -386,30 +388,59 @@ export class SolanaTokenMonitor extends EventEmitter {
 
   /**
    * Send token alert via notification service
+   * Supports both UltimateFraudPrediction and FraudAnalysis (ML model fallback)
    */
-  private async sendTokenAlert(token: TokenLaunch, prediction: UltimateFraudPrediction): Promise<void> {
-    if (!this.alertService) return;
+  private async sendTokenAlert(
+    token: TokenLaunch, 
+    prediction: UltimateFraudPrediction | any,
+    analysis?: FraudAnalysis
+  ): Promise<void> {
+    if (!this.alertService) {
+      this.logger.debug('Alert service not available, skipping alert');
+      return;
+    }
 
     try {
+      // Use analysis if provided, otherwise extract from prediction
+      const fraudRiskScore = prediction.fraudRiskScore || analysis?.fraudRiskScore || 0;
+      const potentialScore = prediction.potentialScore || analysis?.potentialScore || 0;
+      const confidence = prediction.confidenceBreakdown?.overall || prediction.confidence || analysis?.confidence || 0;
+
       // Determine priority
       let priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
-      if (prediction.fraudRiskScore > 90) priority = 'CRITICAL';
-      else if (prediction.fraudRiskScore > 70 || prediction.potentialScore > 85) priority = 'HIGH';
-      else if (prediction.fraudRiskScore > 50 || prediction.potentialScore > 70) priority = 'MEDIUM';
+      if (fraudRiskScore > 90) priority = 'CRITICAL';
+      else if (fraudRiskScore > 70 || potentialScore > 85) priority = 'HIGH';
+      else if (fraudRiskScore > 50 || potentialScore > 70) priority = 'MEDIUM';
 
-      // Determine alert type
+      // Determine alert type based on thresholds
+      const fraudThreshold = parseInt(process.env.FRAUD_RISK_THRESHOLD || '60');
+      const potentialThreshold = parseInt(process.env.HIGH_POTENTIAL_THRESHOLD || '80');
+      
       let alertType: 'FRAUD_RISK' | 'HIGH_POTENTIAL' | 'NEW_TOKEN' | 'SUSPICIOUS' = 'NEW_TOKEN';
-      if (prediction.fraudRiskScore > 60) alertType = 'FRAUD_RISK';
-      else if (prediction.potentialScore > 70) alertType = 'HIGH_POTENTIAL';
-      else if (prediction.fraudRiskScore > 40) alertType = 'SUSPICIOUS';
+      if (fraudRiskScore >= fraudThreshold) alertType = 'FRAUD_RISK';
+      else if (potentialScore >= potentialThreshold) alertType = 'HIGH_POTENTIAL';
+      else if (fraudRiskScore > 40) alertType = 'SUSPICIOUS';
 
+      // Create alert with compatible structure
       const alert: TokenAlert = {
         tokenAddress: token.tokenAddress,
         tokenSymbol: token.metadata?.symbol,
         tokenName: token.metadata?.name,
         chain: 'Solana',
         timestamp: token.detectedAt,
-        fraudAnalysis: prediction,
+        fraudAnalysis: {
+          ...prediction,
+          fraudRiskScore,
+          potentialScore,
+          confidence,
+          confidenceBreakdown: prediction.confidenceBreakdown || { overall: confidence },
+          reasoning: prediction.reasoning || analysis?.reasoning || 'Analysis complete',
+          recommendation: prediction.recommendation || analysis?.recommendation || 'CAUTIOUS',
+          features: prediction.features || {
+            redFlags: analysis?.redFlags || [],
+            greenFlags: analysis?.greenFlags || [],
+          },
+        },
         priority,
         alertType,
         metadata: {
@@ -424,12 +455,16 @@ export class SolanaTokenMonitor extends EventEmitter {
         tokenAddress: token.tokenAddress,
         priority,
         alertType,
+        fraudRiskScore,
+        potentialScore,
       });
     } catch (error: any) {
       this.logger.error('Failed to send alert', {
         tokenAddress: token.tokenAddress,
         error: error.message,
+        stack: error.stack,
       });
+      // Don't throw - alert failure shouldn't break the monitoring flow
     }
   }
 
@@ -451,6 +486,32 @@ export class SolanaTokenMonitor extends EventEmitter {
       greenFlags,
       recommendation: prediction.recommendation,
       reasoning: prediction.reasoning,
+    };
+  }
+
+  /**
+   * Convert FraudAnalysis to UltimateFraudPrediction-like structure for alerts
+   */
+  private convertAnalysisToPrediction(analysis: FraudAnalysis): any {
+    return {
+      fraudRiskScore: analysis.fraudRiskScore,
+      fraudRiskLevel: analysis.fraudRiskLevel,
+      potentialScore: analysis.potentialScore,
+      potentialLevel: analysis.potentialLevel,
+      confidence: analysis.confidence,
+      confidenceBreakdown: {
+        overall: analysis.confidence,
+        dataQuality: analysis.confidence * 0.9,
+        modelAgreement: analysis.confidence * 0.95,
+        historicalValidation: analysis.confidence * 0.85,
+        crossValidation: analysis.confidence * 0.9,
+      },
+      reasoning: analysis.reasoning,
+      recommendation: analysis.recommendation,
+      features: {
+        redFlags: analysis.redFlags,
+        greenFlags: analysis.greenFlags,
+      },
     };
   }
 

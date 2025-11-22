@@ -523,6 +523,9 @@ export class AlchemyWhalesService {
         this.logger.info('Alert notification service stopped');
       }
 
+      // Note: UltimateFraudDetector and QuickNodeClientManager don't require shutdown
+      // They are stateless and don't hold resources that need cleanup
+
       await this.webhookServer.stop();
       await this.monitoringServer.stop();
       await this.rateLimiter.shutdown();

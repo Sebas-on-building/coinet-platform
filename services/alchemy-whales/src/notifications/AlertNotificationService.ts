@@ -167,8 +167,16 @@ export class AlertNotificationService {
    * Send alert for token analysis
    */
   async sendTokenAlert(alert: TokenAlert): Promise<void> {
+    // Validate alert structure
+    if (!alert || !alert.tokenAddress) {
+      this.logger.error('Invalid alert: missing tokenAddress', { alert });
+      return;
+    }
+
     if (!this.isInitialized) {
-      this.logger.warn('Notification service not initialized, queueing alert');
+      this.logger.warn('Notification service not initialized, queueing alert', {
+        tokenAddress: alert.tokenAddress,
+      });
       this.alertQueue.push(alert);
       return;
     }
@@ -325,10 +333,14 @@ export class AlertNotificationService {
    */
   private formatTelegramMessage(alert: TokenAlert): string {
     const emoji = this.getAlertEmoji(alert);
-    const riskEmoji = alert.fraudAnalysis.fraudRiskScore > 70 ? '🚨' : 
-                      alert.fraudAnalysis.fraudRiskScore > 50 ? '⚠️' : '✅';
-    const potentialEmoji = alert.fraudAnalysis.potentialScore > 70 ? '🚀' : 
-                           alert.fraudAnalysis.potentialScore > 50 ? '📈' : '📊';
+    const fraudRiskScore = alert.fraudAnalysis?.fraudRiskScore ?? 0;
+    const potentialScore = alert.fraudAnalysis?.potentialScore ?? 0;
+    const confidence = alert.fraudAnalysis?.confidenceBreakdown?.overall || alert.fraudAnalysis?.confidence || 0;
+    
+    const riskEmoji = fraudRiskScore > 70 ? '🚨' : 
+                      fraudRiskScore > 50 ? '⚠️' : '✅';
+    const potentialEmoji = potentialScore > 70 ? '🚀' : 
+                           potentialScore > 50 ? '📈' : '📊';
 
     return `
 ${emoji} <b>${alert.alertType.replace('_', ' ')}</b>
@@ -337,15 +349,15 @@ ${emoji} <b>${alert.alertType.replace('_', ' ')}</b>
 <b>Address:</b> <code>${alert.tokenAddress}</code>
 <b>Chain:</b> ${alert.chain}
 
-${riskEmoji} <b>Fraud Risk:</b> ${alert.fraudAnalysis.fraudRiskScore.toFixed(1)}%
-${potentialEmoji} <b>Potential:</b> ${alert.fraudAnalysis.potentialScore.toFixed(1)}%
-<b>Confidence:</b> ${(alert.fraudAnalysis.confidenceBreakdown?.overall || alert.fraudAnalysis.confidence || 0).toFixed(1)}%
+${riskEmoji} <b>Fraud Risk:</b> ${fraudRiskScore.toFixed(1)}%
+${potentialEmoji} <b>Potential:</b> ${potentialScore.toFixed(1)}%
+<b>Confidence:</b> ${confidence.toFixed(1)}%
 
 <b>Risk Factors:</b>
-${this.formatRiskFactors(alert.fraudAnalysis)}
+${this.formatRiskFactors(alert.fraudAnalysis || {})}
 
-<b>Verdict:</b> ${alert.fraudAnalysis.reasoning || 'Analysis complete'}
-${alert.fraudAnalysis.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAnalysis.recommendation}` : ''}
+<b>Verdict:</b> ${alert.fraudAnalysis?.reasoning || 'Analysis complete'}
+${alert.fraudAnalysis?.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAnalysis.recommendation}` : ''}
 
 <b>Priority:</b> ${alert.priority}
 <b>Detected:</b> ${alert.timestamp.toLocaleString()}
@@ -393,29 +405,29 @@ ${alert.fraudAnalysis.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAn
       
       <div class="metric">
         <div class="metric-label">Fraud Risk Score</div>
-        <div class="metric-value ${alert.fraudAnalysis.fraudRiskScore > 70 ? 'risk-high' : alert.fraudAnalysis.fraudRiskScore > 50 ? 'risk-medium' : 'risk-low'}">
-          ${alert.fraudAnalysis.fraudRiskScore.toFixed(1)}%
+        <div class="metric-value ${(alert.fraudAnalysis?.fraudRiskScore ?? 0) > 70 ? 'risk-high' : (alert.fraudAnalysis?.fraudRiskScore ?? 0) > 50 ? 'risk-medium' : 'risk-low'}">
+          ${(alert.fraudAnalysis?.fraudRiskScore ?? 0).toFixed(1)}%
         </div>
       </div>
       
       <div class="metric">
         <div class="metric-label">Potential Score</div>
         <div class="metric-value">
-          ${alert.fraudAnalysis.potentialScore.toFixed(1)}%
+          ${(alert.fraudAnalysis?.potentialScore ?? 0).toFixed(1)}%
         </div>
       </div>
       
       <div class="metric">
         <div class="metric-label">Confidence Level</div>
         <div class="metric-value">
-          ${(alert.fraudAnalysis.confidenceBreakdown?.overall || alert.fraudAnalysis.confidence || 0).toFixed(1)}%
+          ${(alert.fraudAnalysis?.confidenceBreakdown?.overall || alert.fraudAnalysis?.confidence || 0).toFixed(1)}%
         </div>
       </div>
       
       <h3>Analysis Summary</h3>
-      <p><strong>Reasoning:</strong> ${alert.fraudAnalysis.reasoning || 'Analysis complete'}</p>
+      <p><strong>Reasoning:</strong> ${alert.fraudAnalysis?.reasoning || 'Analysis complete'}</p>
       
-      ${alert.fraudAnalysis.recommendation ? `
+      ${alert.fraudAnalysis?.recommendation ? `
       <h3>Recommendation</h3>
       <p>${alert.fraudAnalysis.recommendation}</p>
       ` : ''}
@@ -454,22 +466,22 @@ ${alert.fraudAnalysis.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAn
         },
         {
           name: '🚨 Fraud Risk',
-          value: `${alert.fraudAnalysis.fraudRiskScore.toFixed(1)}%`,
+          value: `${(alert.fraudAnalysis?.fraudRiskScore ?? 0).toFixed(1)}%`,
           inline: true,
         },
         {
           name: '🚀 Potential',
-          value: `${alert.fraudAnalysis.potentialScore.toFixed(1)}%`,
+          value: `${(alert.fraudAnalysis?.potentialScore ?? 0).toFixed(1)}%`,
           inline: true,
         },
         {
           name: '✅ Confidence',
-          value: `${(alert.fraudAnalysis.confidenceBreakdown?.overall || alert.fraudAnalysis.confidence || 0).toFixed(1)}%`,
+          value: `${(alert.fraudAnalysis?.confidenceBreakdown?.overall || alert.fraudAnalysis?.confidence || 0).toFixed(1)}%`,
           inline: true,
         },
         {
           name: '⚖️ Analysis',
-          value: alert.fraudAnalysis.reasoning || alert.fraudAnalysis.recommendation || 'Complete',
+          value: alert.fraudAnalysis?.reasoning || alert.fraudAnalysis?.recommendation || 'Complete',
           inline: false,
         },
       ],
@@ -507,11 +519,11 @@ ${alert.fraudAnalysis.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAn
           },
           {
             type: 'mrkdwn',
-            text: `*Fraud Risk:*\n${alert.fraudAnalysis.fraudRiskScore.toFixed(1)}%`,
+            text: `*Fraud Risk:*\n${(alert.fraudAnalysis?.fraudRiskScore ?? 0).toFixed(1)}%`,
           },
           {
             type: 'mrkdwn',
-            text: `*Potential:*\n${alert.fraudAnalysis.potentialScore.toFixed(1)}%`,
+            text: `*Potential:*\n${(alert.fraudAnalysis?.potentialScore ?? 0).toFixed(1)}%`,
           },
         ],
       },
@@ -526,7 +538,7 @@ ${alert.fraudAnalysis.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAn
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Analysis:* ${alert.fraudAnalysis.reasoning || alert.fraudAnalysis.recommendation || 'Complete'}`,
+          text: `*Analysis:* ${alert.fraudAnalysis?.reasoning || alert.fraudAnalysis?.recommendation || 'Complete'}`,
         },
       },
       {
@@ -556,6 +568,10 @@ ${alert.fraudAnalysis.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudAn
    * Format risk factors
    */
   private formatRiskFactors(analysis: any): string {
+    if (!analysis || typeof analysis !== 'object') {
+      return '• None detected';
+    }
+    
     const factors: string[] = [];
     
     // Check for features property (ML model)
