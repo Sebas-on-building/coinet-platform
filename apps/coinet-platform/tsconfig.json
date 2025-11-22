@@ -5,7 +5,6 @@
     "lib": ["es2020"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./src",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
