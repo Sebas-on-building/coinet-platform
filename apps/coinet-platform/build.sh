@@ -2,8 +2,11 @@
 set -e
 
 # Change to service directory if building from monorepo root
-if [ -d apps/coinet-platform ]; then
+if [ -d apps/coinet-platform ] && [ ! -f package.json ]; then
+  echo "Changing to apps/coinet-platform directory..."
   cd apps/coinet-platform
+elif [ -f package.json ]; then
+  echo "Already in service directory: $(pwd)"
 fi
 
 # Verify we're in the right directory

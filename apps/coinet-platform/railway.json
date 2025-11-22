@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "nixpacks",
-    "buildCommand": "bash apps/coinet-platform/build.sh || bash build.sh"
+    "buildCommand": "if [ -f apps/coinet-platform/build.sh ]; then bash apps/coinet-platform/build.sh; elif [ -f build.sh ]; then bash build.sh; else cd apps/coinet-platform && bash build.sh; fi"
   },
   "deploy": {
     "startCommand": "npm start",
