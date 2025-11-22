@@ -19,11 +19,16 @@ import {
 } from '../types';
 import { getRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../utils/logger';
+import { getQuotaMonitor } from '../services/quota-monitor.service';
+import { getCircuitBreakerManager } from '../middleware/circuit-breaker';
+import { RateLimitHandler } from '../middleware/rate-limit-handler';
 
 export class CoinMarketCapRestClient {
   private axios: AxiosInstance;
   private config: ProviderConfig;
   private rateLimiter = getRateLimiter();
+  private quotaMonitor = getQuotaMonitor();
+  private circuitBreaker = getCircuitBreakerManager().getBreaker(DataSource.COINMARKETCAP);
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -69,7 +74,7 @@ export class CoinMarketCapRestClient {
   }
 
   /**
-   * Make a rate-limited request
+   * Make a rate-limited request with circuit breaker protection
    */
   private async request<T>(
     method: string,
@@ -80,24 +85,42 @@ export class CoinMarketCapRestClient {
     return this.rateLimiter.schedule<T>(
       DataSource.COINMARKETCAP,
       async () => {
-        try {
-          logger.debug(`CoinMarketCap API request: ${method} ${url}`, { params });
-          
-          const response = await this.axios.request<T>({
-            method,
-            url,
-            params,
-          });
+        return this.circuitBreaker.execute(async () => {
+          try {
+            logger.debug(`CoinMarketCap API request: ${method} ${url}`, { params });
+            
+            const response = await this.axios.request<T>({
+              method,
+              url,
+              params,
+            });
 
-          logger.debug(`CoinMarketCap API response: ${method} ${url}`, {
-            status: response.status,
-          });
+            // Record quota usage
+            this.quotaMonitor.recordUsage(DataSource.COINMARKETCAP, response.headers);
 
-          return response.data;
-        } catch (error) {
-          this.handleError(error as AxiosError, url);
-          throw error;
-        }
+            logger.debug(`CoinMarketCap API response: ${method} ${url}`, {
+              status: response.status,
+              creditsUsed: response.headers['x-cmc-credits-used'],
+              creditsRemaining: response.headers['x-cmc-credits-remaining'],
+            });
+
+            return response.data;
+          } catch (error) {
+            const axiosError = error as AxiosError;
+            
+            // Handle 429 rate limit errors with proper retry-after
+            if (axiosError.response?.status === 429) {
+              const rateLimitError = RateLimitHandler.createRateLimitError(
+                axiosError,
+                DataSource.COINMARKETCAP
+              );
+              throw rateLimitError;
+            }
+            
+            this.handleError(axiosError, url);
+            throw error;
+          }
+        });
       },
       priority
     );

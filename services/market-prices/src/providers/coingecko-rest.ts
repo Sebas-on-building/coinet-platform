@@ -21,11 +21,16 @@ import {
 } from '../types';
 import { getRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../utils/logger';
+import { getQuotaMonitor } from '../services/quota-monitor.service';
+import { getCircuitBreakerManager } from '../middleware/circuit-breaker';
+import { RateLimitHandler } from '../middleware/rate-limit-handler';
 
 export class CoinGeckoRestClient {
   private axios: AxiosInstance;
   private config: ProviderConfig;
   private rateLimiter = getRateLimiter();
+  private quotaMonitor = getQuotaMonitor();
+  private circuitBreaker = getCircuitBreakerManager().getBreaker(DataSource.COINGECKO);
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -71,7 +76,7 @@ export class CoinGeckoRestClient {
   }
 
   /**
-   * Make a rate-limited request
+   * Make a rate-limited request with circuit breaker protection
    */
   private async request<T>(
     method: string,
@@ -82,24 +87,42 @@ export class CoinGeckoRestClient {
     return this.rateLimiter.schedule<T>(
       DataSource.COINGECKO,
       async () => {
-        try {
-          logger.debug(`CoinGecko API request: ${method} ${url}`, { params });
-          
-          const response = await this.axios.request<T>({
-            method,
-            url,
-            params,
-          });
+        return this.circuitBreaker.execute(async () => {
+          try {
+            logger.debug(`CoinGecko API request: ${method} ${url}`, { params });
+            
+            const response = await this.axios.request<T>({
+              method,
+              url,
+              params,
+            });
 
-          logger.debug(`CoinGecko API response: ${method} ${url}`, {
-            status: response.status,
-          });
+            // Record quota usage
+            this.quotaMonitor.recordUsage(DataSource.COINGECKO, response.headers);
 
-          return response.data;
-        } catch (error) {
-          this.handleError(error as AxiosError, url);
-          throw error;
-        }
+            logger.debug(`CoinGecko API response: ${method} ${url}`, {
+              status: response.status,
+              quotaRemaining: response.headers['x-ratelimit-remaining'],
+              creditsUsed: response.headers['x-cg-credits-used'],
+            });
+
+            return response.data;
+          } catch (error) {
+            const axiosError = error as AxiosError;
+            
+            // Handle 429 rate limit errors with proper retry-after
+            if (axiosError.response?.status === 429) {
+              const rateLimitError = RateLimitHandler.createRateLimitError(
+                axiosError,
+                DataSource.COINGECKO
+              );
+              throw rateLimitError;
+            }
+            
+            this.handleError(axiosError, url);
+            throw error;
+          }
+        });
       },
       priority
     );

@@ -23,6 +23,8 @@ import { TimescaleStorage } from './storage/timescale';
 import { CacheStorage } from './storage/cache';
 import { DataNormalizer, getDataNormalizer } from './utils/normalizer';
 import { logger } from './utils/logger';
+import { getCircuitBreakerManager } from './middleware/circuit-breaker';
+import { InputValidator } from './utils/validation';
 
 export class MarketDataAggregator extends EventEmitter {
   private config: ServiceConfig;
@@ -129,7 +131,93 @@ export class MarketDataAggregator extends EventEmitter {
       });
     } catch (error) {
       logger.error('Failed to handle price update', { error, event });
+      // Don't throw - continue processing other updates
     }
+  }
+
+  /**
+   * Enhanced WebSocket subscription with automatic REST fallback
+   */
+  async subscribeToWebSocketWithFallback(
+    coins: string[],
+    fallbackInterval: number = 60000 // Fallback to REST every 60s if WS fails
+  ): Promise<void> {
+    if (!this.geckoWs) {
+      logger.warn('WebSocket not available, using REST fallback');
+      // Fallback to periodic REST polling
+      this.startRESTFallback(coins, fallbackInterval);
+      return;
+    }
+
+    try {
+      await this.subscribeToWebSocket(coins);
+      
+      // Monitor WebSocket health and fallback if needed
+      this.monitorWebSocketHealth(coins, fallbackInterval);
+    } catch (error) {
+      logger.error('WebSocket subscription failed, falling back to REST', { error });
+      this.startRESTFallback(coins, fallbackInterval);
+    }
+  }
+
+  /**
+   * Monitor WebSocket health and fallback to REST if unhealthy
+   */
+  private monitorWebSocketHealth(
+    coins: string[],
+    fallbackInterval: number
+  ): void {
+    const healthCheckInterval = setInterval(async () => {
+      if (!this.geckoWs || !this.geckoWs.isHealthy()) {
+        logger.warn('WebSocket unhealthy, switching to REST fallback');
+        clearInterval(healthCheckInterval);
+        this.startRESTFallback(coins, fallbackInterval);
+      }
+    }, 30000); // Check every 30 seconds
+
+    // Clean up on shutdown
+    this.once('shutdown', () => {
+      clearInterval(healthCheckInterval);
+    });
+  }
+
+  /**
+   * Start REST fallback polling
+   */
+  private restFallbackTimers: Map<string, NodeJS.Timeout> = new Map();
+
+  private startRESTFallback(coins: string[], interval: number): void {
+    // Clear existing timers for these coins
+    coins.forEach((coin) => {
+      const existing = this.restFallbackTimers.get(coin);
+      if (existing) {
+        clearInterval(existing);
+      }
+    });
+
+    // Start periodic REST polling
+    const timer = setInterval(async () => {
+      try {
+        const symbols = coins.map((coin) => {
+          // Convert CoinGecko ID to symbol if needed
+          return coin.split('-')[0].toUpperCase();
+        });
+        
+        await this.getMarketPrices(symbols, false); // Don't use cache
+        logger.debug('REST fallback polling completed', { coins: symbols });
+      } catch (error) {
+        logger.error('REST fallback polling failed', { error, coins });
+      }
+    }, interval);
+
+    coins.forEach((coin) => {
+      this.restFallbackTimers.set(coin, timer);
+    });
+
+    logger.info('REST fallback polling started', {
+      coins: coins.length,
+      interval,
+    });
   }
 
   /**
@@ -157,6 +245,8 @@ export class MarketDataAggregator extends EventEmitter {
     symbols: string[],
     useCache: boolean = true
   ): Promise<MarketPrice[]> {
+    // Validate and sanitize input
+    const validatedSymbols = InputValidator.validateSymbols(symbols);
     const prices: MarketPrice[] = [];
 
     // Try cache first
@@ -181,8 +271,8 @@ export class MarketDataAggregator extends EventEmitter {
 
     // Try CoinGecko first
     try {
-      logger.info('Fetching prices from CoinGecko', { symbols });
-      const geckoData = await this.geckoRest.getCoinMarkets('usd', symbols);
+      logger.info('Fetching prices from CoinGecko', { symbols: validatedSymbols });
+      const geckoData = await this.geckoRest.getCoinMarkets('usd', validatedSymbols);
       
       for (const market of geckoData) {
         const price = this.normalizer.normalizeCoinGeckoMarket(market);
@@ -199,11 +289,11 @@ export class MarketDataAggregator extends EventEmitter {
 
       // Failover to CoinMarketCap
       if (this.config.enableCMCFallback && this.cmcRest) {
-        return this.getMarketPricesFromCMC(symbols);
+        return this.getMarketPricesFromCMC(validatedSymbols);
       }
 
       // If no fallback, try database
-      return this.getMarketPricesFromDB(symbols);
+      return this.getMarketPricesFromDB(validatedSymbols);
     }
   }
 
@@ -462,10 +552,23 @@ export class MarketDataAggregator extends EventEmitter {
       },
     };
 
+    // Get circuit breaker stats
+    const circuitBreakers = getCircuitBreakerManager().getAllStats();
+
     // Check CoinGecko REST
     try {
       status.providers.coingecko.rest = await this.geckoRest.healthCheck();
       status.providers.coingecko.lastSuccessfulRequest = now;
+      
+      // Add circuit breaker status
+      const cgBreaker = circuitBreakers[DataSource.COINGECKO];
+      if (cgBreaker) {
+        (status.providers.coingecko as any).circuitBreaker = {
+          state: cgBreaker.state,
+          failures: cgBreaker.failures,
+          isOpen: cgBreaker.state === 'open',
+        };
+      }
     } catch (error) {
       status.providers.coingecko.lastError = (error as Error).message;
     }
@@ -480,6 +583,16 @@ export class MarketDataAggregator extends EventEmitter {
       try {
         status.providers.coinmarketcap.rest = await this.cmcRest.healthCheck();
         status.providers.coinmarketcap.lastSuccessfulRequest = now;
+        
+        // Add circuit breaker status
+        const cmcBreaker = circuitBreakers[DataSource.COINMARKETCAP];
+        if (cmcBreaker) {
+          (status.providers.coinmarketcap as any).circuitBreaker = {
+            state: cmcBreaker.state,
+            failures: cmcBreaker.failures,
+            isOpen: cmcBreaker.state === 'open',
+          };
+        }
       } catch (error) {
         status.providers.coinmarketcap.lastError = (error as Error).message;
       }
@@ -520,6 +633,15 @@ export class MarketDataAggregator extends EventEmitter {
    */
   async shutdown(): Promise<void> {
     logger.info('Shutting down market data aggregator...');
+
+    // Emit shutdown event
+    this.emit('shutdown');
+
+    // Clear REST fallback timers
+    for (const timer of this.restFallbackTimers.values()) {
+      clearInterval(timer);
+    }
+    this.restFallbackTimers.clear();
 
     // Disconnect WebSocket
     if (this.geckoWs) {

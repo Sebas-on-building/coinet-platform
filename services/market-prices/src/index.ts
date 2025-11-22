@@ -24,6 +24,23 @@ export { getRateLimiter, resetRateLimiter } from './middleware/rateLimiter';
 export { getConfig, buildConfig, validateConfig, resetConfig } from './config';
 export { logger } from './utils/logger';
 
+// Export new services
+export { QuotaMonitorService, getQuotaMonitor, resetQuotaMonitor } from './services/quota-monitor.service';
+export { MetricsService, getMetricsService, resetMetricsService } from './services/metrics.service';
+export { WebSocketManagerService, getWebSocketManager, resetWebSocketManager } from './services/websocket-manager.service';
+export { AlertIntegrationsService, getAlertIntegrations, resetAlertIntegrations } from './services/alert-integrations.service';
+export { CircuitBreaker, CircuitBreakerManager, getCircuitBreakerManager, resetCircuitBreakerManager } from './middleware/circuit-breaker';
+export { RateLimitHandler } from './middleware/rate-limit-handler';
+export { InputValidator, ValidationError } from './utils/validation';
+
+// Export types
+export type { QuotaUsage, QuotaAlert, QuotaThresholds } from './services/quota-monitor.service';
+export type { MetricsSnapshot } from './services/metrics.service';
+export type { WebSocketStats, SubscriptionPriority } from './services/websocket-manager.service';
+export type { AlertIntegrationConfig, SlackConfig, PagerDutyConfig } from './services/alert-integrations.service';
+export type { CircuitBreakerConfig, CircuitBreakerStats } from './middleware/circuit-breaker';
+export type { RateLimitInfo } from './middleware/rate-limit-handler';
+
 /**
  * Create and initialize a new MarketDataAggregator instance
  */

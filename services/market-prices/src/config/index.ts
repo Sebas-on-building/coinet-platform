@@ -53,13 +53,24 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
  * Build CoinGecko provider configuration
  */
 function buildCoinGeckoConfig(): ProviderConfig {
-  const apiKey = getEnv('COINGECKO_API_KEY');
+  const nodeEnv = getEnv('NODE_ENV', 'development');
+  
+  // Use production key in production, otherwise use development key
+  const apiKey = nodeEnv === 'production' 
+    ? getEnv('COINGECKO_API_KEY_PROD', getEnv('COINGECKO_API_KEY'))
+    : getEnv('COINGECKO_API_KEY');
+  
   const tier = getEnv('COINGECKO_TIER', 'demo');
   const apiUrl = tier === 'demo' 
     ? getEnv('COINGECKO_API_URL', 'https://api.coingecko.com/api/v3')
     : getEnv('COINGECKO_PRO_API_URL', 'https://pro-api.coingecko.com/api/v3');
   
-  const rateLimitPerMinute = getEnvNumber('COINGECKO_RATE_LIMIT_PER_MINUTE', 30);
+  // Auto-adjust rate limits based on tier
+  let defaultRateLimit = 30; // demo
+  if (tier === 'analyst') defaultRateLimit = 500;
+  if (tier === 'lite' || tier === 'pro' || tier === 'pro_plus') defaultRateLimit = 1000;
+  
+  const rateLimitPerMinute = getEnvNumber('COINGECKO_RATE_LIMIT_PER_MINUTE', defaultRateLimit);
   
   const rateLimit: RateLimitConfig = {
     maxRequestsPerMinute: rateLimitPerMinute,
@@ -101,8 +112,23 @@ function buildCoinGeckoConfig(): ProviderConfig {
  * Build CoinMarketCap provider configuration
  */
 function buildCoinMarketCapConfig(): ProviderConfig {
-  const apiKey = getEnv('COINMARKETCAP_API_KEY');
+  const nodeEnv = getEnv('NODE_ENV', 'development');
+  
+  // Use production key in production, otherwise use development key
+  const apiKey = nodeEnv === 'production'
+    ? getEnv('COINMARKETCAP_API_KEY_PROD', getEnv('COINMARKETCAP_API_KEY'))
+    : getEnv('COINMARKETCAP_API_KEY');
+  
   const apiUrl = getEnv('COINMARKETCAP_API_URL', 'https://pro-api.coinmarketcap.com/v1');
+  
+  // Commercial license check for production/commercial use
+  const hasCommercialLicense = getEnvBoolean('COINMARKETCAP_COMMERCIAL_LICENSE', false);
+  if (nodeEnv === 'production' && !hasCommercialLicense) {
+    console.warn(
+      '⚠️  WARNING: CoinMarketCap requires a commercial license for commercial use. ' +
+      'Set COINMARKETCAP_COMMERCIAL_LICENSE=true to acknowledge compliance.'
+    );
+  }
   
   const rateLimitPerMinute = getEnvNumber('COINMARKETCAP_RATE_LIMIT_PER_MINUTE', 30);
   
@@ -163,42 +189,124 @@ export function buildConfig(): ServiceConfig {
 }
 
 /**
- * Validate configuration
+ * Comprehensive configuration validation
  */
 export function validateConfig(config: ServiceConfig): void {
+  const errors: string[] = [];
+
   // Validate CoinGecko
   if (!config.providers.coingecko.apiKey) {
-    throw new Error('CoinGecko API key is required');
+    errors.push('CoinGecko API key is required');
+  } else if (config.providers.coingecko.apiKey.length < 10) {
+    errors.push('CoinGecko API key appears invalid (too short)');
+  }
+
+  // Validate CoinGecko rate limits
+  if (config.providers.coingecko.rateLimit.maxRequestsPerMinute <= 0) {
+    errors.push('CoinGecko rate limit must be greater than 0');
+  }
+  if (config.providers.coingecko.rateLimit.maxRequestsPerMinute > 10000) {
+    errors.push('CoinGecko rate limit exceeds reasonable maximum (10000)');
   }
 
   // Validate CoinMarketCap (only if fallback is enabled)
-  if (config.enableCMCFallback && !config.providers.coinmarketcap.apiKey) {
-    throw new Error('CoinMarketCap API key is required when CMC fallback is enabled');
+  if (config.enableCMCFallback) {
+    if (!config.providers.coinmarketcap.apiKey) {
+      errors.push('CoinMarketCap API key is required when CMC fallback is enabled');
+    } else if (config.providers.coinmarketcap.apiKey.length < 10) {
+      errors.push('CoinMarketCap API key appears invalid (too short)');
+    }
+
+    if (config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute <= 0) {
+      errors.push('CoinMarketCap rate limit must be greater than 0');
+    }
+    if (config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute > 10000) {
+      errors.push('CoinMarketCap rate limit exceeds reasonable maximum (10000)');
+    }
   }
 
   // Validate database
-  if (!config.database.password) {
-    throw new Error('Database password is required');
+  if (!config.database.host || typeof config.database.host !== 'string') {
+    errors.push('Database host is required');
+  }
+  if (!config.database.port || config.database.port < 1 || config.database.port > 65535) {
+    errors.push(`Invalid database port: ${config.database.port}`);
+  }
+  if (!config.database.database || typeof config.database.database !== 'string') {
+    errors.push('Database name is required');
+  }
+  if (!config.database.user || typeof config.database.user !== 'string') {
+    errors.push('Database user is required');
+  }
+  if (!config.database.password || typeof config.database.password !== 'string') {
+    errors.push('Database password is required');
   }
 
-  // Validate rate limits
-  if (config.providers.coingecko.rateLimit.maxRequestsPerMinute <= 0) {
-    throw new Error('CoinGecko rate limit must be greater than 0');
+  // Validate Redis
+  if (!config.redis.host || typeof config.redis.host !== 'string') {
+    errors.push('Redis host is required');
+  }
+  if (!config.redis.port || config.redis.port < 1 || config.redis.port > 65535) {
+    errors.push(`Invalid Redis port: ${config.redis.port}`);
+  }
+  if (typeof config.redis.db !== 'number' || config.redis.db < 0 || config.redis.db > 15) {
+    errors.push(`Invalid Redis DB: ${config.redis.db} (must be 0-15)`);
   }
 
-  if (config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute <= 0) {
-    throw new Error('CoinMarketCap rate limit must be greater than 0');
+  // Validate cache TTL
+  if (config.cacheTTL <= 0) {
+    errors.push('Cache TTL must be greater than 0');
+  }
+  if (config.cacheTTL > 3600) {
+    errors.push('Cache TTL exceeds reasonable maximum (3600 seconds)');
   }
 
   // Validate WebSocket config
   if (config.enableWebSocket && config.providers.coingecko.websocket) {
     const ws = config.providers.coingecko.websocket;
-    if (ws.maxConnections <= 0) {
-      throw new Error('WebSocket max connections must be greater than 0');
+    if (ws.maxConnections <= 0 || ws.maxConnections > 10) {
+      errors.push(`WebSocket max connections must be between 1 and 10, got: ${ws.maxConnections}`);
     }
-    if (ws.maxSubscriptionsPerChannel <= 0) {
-      throw new Error('WebSocket max subscriptions per channel must be greater than 0');
+    if (ws.maxSubscriptionsPerChannel <= 0 || ws.maxSubscriptionsPerChannel > 100) {
+      errors.push(
+        `WebSocket max subscriptions per channel must be between 1 and 100, got: ${ws.maxSubscriptionsPerChannel}`
+      );
     }
+    if (ws.reconnectInterval < 1000) {
+      errors.push(`WebSocket reconnect interval too short: ${ws.reconnectInterval}ms (minimum 1000ms)`);
+    }
+    if (ws.heartbeatInterval < 10000) {
+      errors.push(`WebSocket heartbeat interval too short: ${ws.heartbeatInterval}ms (minimum 10000ms)`);
+    }
+  }
+
+  // Validate retry configs
+  if (config.providers.coingecko.retry.retries < 0 || config.providers.coingecko.retry.retries > 10) {
+    errors.push(`CoinGecko retries must be between 0 and 10, got: ${config.providers.coingecko.retry.retries}`);
+  }
+  if (config.providers.coinmarketcap.retry.retries < 0 || config.providers.coinmarketcap.retry.retries > 10) {
+    errors.push(`CoinMarketCap retries must be between 0 and 10, got: ${config.providers.coinmarketcap.retry.retries}`);
+  }
+
+  // Validate failover delay
+  if (config.failoverRetryDelay < 0) {
+    errors.push('Failover retry delay must be non-negative');
+  }
+
+  // Validate max retry attempts
+  if (config.maxRetryAttempts < 0 || config.maxRetryAttempts > 10) {
+    errors.push(`Max retry attempts must be between 0 and 10, got: ${config.maxRetryAttempts}`);
+  }
+
+  // Validate log level
+  const validLogLevels = ['error', 'warn', 'info', 'debug', 'verbose'];
+  if (!validLogLevels.includes(config.logLevel.toLowerCase())) {
+    errors.push(`Invalid log level: ${config.logLevel}. Valid: ${validLogLevels.join(', ')}`);
+  }
+
+  // Throw if any errors found
+  if (errors.length > 0) {
+    throw new Error(`Configuration validation failed:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
   }
 }
 
