@@ -19,16 +19,16 @@ import {
 } from '../types';
 import { getRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../utils/logger';
-import { getQuotaMonitor } from '../services/quota-monitor.service';
-import { getCircuitBreakerManager } from '../middleware/circuit-breaker';
-import { RateLimitHandler } from '../middleware/rate-limit-handler';
 
 export class CoinMarketCapRestClient {
   private axios: AxiosInstance;
   private config: ProviderConfig;
   private rateLimiter = getRateLimiter();
-  private quotaMonitor = getQuotaMonitor();
-  private circuitBreaker = getCircuitBreakerManager().getBreaker(DataSource.COINMARKETCAP);
+  
+  // Monthly quota tracking
+  private monthlyRequestCount: number = 0;
+  private monthlyQuotaLimit: number = 10000; // Default monthly limit (adjust based on plan)
+  private currentMonth: string = '';
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -67,14 +67,91 @@ export class CoinMarketCapRestClient {
     // Register rate limiter
     this.rateLimiter.register(DataSource.COINMARKETCAP, config.rateLimit);
 
+    // Initialize monthly tracking
+    this.initializeMonthlyTracking();
+
     logger.info('CoinMarketCap REST client initialized', {
       baseURL: config.apiUrl,
       rateLimitPerMinute: config.rateLimit.maxRequestsPerMinute,
+      monthlyQuotaLimit: this.monthlyQuotaLimit,
     });
   }
 
   /**
-   * Make a rate-limited request with circuit breaker protection
+   * Initialize monthly quota tracking
+   */
+  private initializeMonthlyTracking(): void {
+    const now = new Date();
+    this.currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    this.monthlyRequestCount = 0;
+    
+    // Check if month changed (for persistence across restarts, would need Redis/DB)
+    logger.info('CoinMarketCap monthly quota tracking initialized', {
+      currentMonth: this.currentMonth,
+      monthlyQuotaLimit: this.monthlyQuotaLimit,
+    });
+  }
+
+  /**
+   * Check and update monthly quota
+   */
+  private checkMonthlyQuota(): void {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Reset if month changed
+    if (currentMonth !== this.currentMonth) {
+      logger.info('CoinMarketCap monthly quota reset', {
+        previousMonth: this.currentMonth,
+        previousCount: this.monthlyRequestCount,
+        newMonth: currentMonth,
+      });
+      this.currentMonth = currentMonth;
+      this.monthlyRequestCount = 0;
+    }
+    
+    this.monthlyRequestCount++;
+    const usagePercent = (this.monthlyRequestCount / this.monthlyQuotaLimit) * 100;
+    
+    // Log warning at 90% usage
+    if (usagePercent >= 90) {
+      logger.error('CoinMarketCap monthly quota CRITICAL: Approaching limit', {
+        currentCount: this.monthlyRequestCount,
+        quotaLimit: this.monthlyQuotaLimit,
+        usagePercent: usagePercent.toFixed(2),
+        remaining: this.monthlyQuotaLimit - this.monthlyRequestCount,
+      });
+    } else if (usagePercent >= 75) {
+      logger.warn('CoinMarketCap monthly quota WARNING: High usage', {
+        currentCount: this.monthlyRequestCount,
+        quotaLimit: this.monthlyQuotaLimit,
+        usagePercent: usagePercent.toFixed(2),
+        remaining: this.monthlyQuotaLimit - this.monthlyRequestCount,
+      });
+    }
+  }
+
+  /**
+   * Get monthly quota status
+   */
+  getMonthlyQuotaStatus(): {
+    currentCount: number;
+    quotaLimit: number;
+    usagePercent: number;
+    remaining: number;
+    currentMonth: string;
+  } {
+    return {
+      currentCount: this.monthlyRequestCount,
+      quotaLimit: this.monthlyQuotaLimit,
+      usagePercent: (this.monthlyRequestCount / this.monthlyQuotaLimit) * 100,
+      remaining: this.monthlyQuotaLimit - this.monthlyRequestCount,
+      currentMonth: this.currentMonth,
+    };
+  }
+
+  /**
+   * Make a rate-limited request with monthly quota tracking
    */
   private async request<T>(
     method: string,
@@ -82,45 +159,31 @@ export class CoinMarketCapRestClient {
     params?: any,
     priority?: number
   ): Promise<T> {
+    // Check monthly quota before making request
+    this.checkMonthlyQuota();
+    
     return this.rateLimiter.schedule<T>(
       DataSource.COINMARKETCAP,
       async () => {
-        return this.circuitBreaker.execute(async () => {
-          try {
-            logger.debug(`CoinMarketCap API request: ${method} ${url}`, { params });
-            
-            const response = await this.axios.request<T>({
-              method,
-              url,
-              params,
-            });
+        try {
+          logger.debug(`CoinMarketCap API request: ${method} ${url}`, { params });
+          
+          const response = await this.axios.request<T>({
+            method,
+            url,
+            params,
+          });
 
-            // Record quota usage
-            this.quotaMonitor.recordUsage(DataSource.COINMARKETCAP, response.headers);
+          logger.debug(`CoinMarketCap API response: ${method} ${url}`, {
+            status: response.status,
+            monthlyQuota: this.getMonthlyQuotaStatus(),
+          });
 
-            logger.debug(`CoinMarketCap API response: ${method} ${url}`, {
-              status: response.status,
-              creditsUsed: response.headers['x-cmc-credits-used'],
-              creditsRemaining: response.headers['x-cmc-credits-remaining'],
-            });
-
-            return response.data;
-          } catch (error) {
-            const axiosError = error as AxiosError;
-            
-            // Handle 429 rate limit errors with proper retry-after
-            if (axiosError.response?.status === 429) {
-              const rateLimitError = RateLimitHandler.createRateLimitError(
-                axiosError,
-                DataSource.COINMARKETCAP
-              );
-              throw rateLimitError;
-            }
-            
-            this.handleError(axiosError, url);
-            throw error;
-          }
-        });
+          return response.data;
+        } catch (error) {
+          this.handleError(error as AxiosError, url);
+          throw error;
+        }
       },
       priority
     );

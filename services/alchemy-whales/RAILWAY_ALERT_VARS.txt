@@ -1,0 +1,48 @@
+# Copy-paste these variables to Railway for alert notifications
+# Railway > alchemy-whales service > Variables
+
+# === TELEGRAM (RECOMMENDED - EASIEST) ===
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN_HERE
+TELEGRAM_CHAT_ID=YOUR_CHAT_ID_HERE
+
+# === EMAIL (PROFESSIONAL REPORTS) ===
+EMAIL_ENABLED=false
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your.email@gmail.com
+EMAIL_PASSWORD=your_app_password
+EMAIL_FROM=Coinet Alerts <your.email@gmail.com>
+EMAIL_TO=recipient@example.com
+
+# === DISCORD (TEAM ALERTS) ===
+DISCORD_ENABLED=false
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK
+
+# === SLACK (WORKSPACE) ===
+SLACK_ENABLED=false
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR_WEBHOOK
+
+# === RATE LIMITING ===
+MIN_ALERT_INTERVAL_SECONDS=30
+MAX_ALERTS_PER_HOUR=50
+
+# === THRESHOLDS ===
+FRAUD_RISK_THRESHOLD=60
+HIGH_POTENTIAL_THRESHOLD=80
+
+# === ALERT TYPES ===
+ALERT_ON_NEW_TOKEN=false
+ALERT_ON_HIGH_RISK=true
+ALERT_ON_HIGH_POTENTIAL=true
+ALERT_ON_CRITICAL=true
+
+# === QUICK START ===
+# 1. Get Telegram bot token: Message @BotFather, send /newbot
+# 2. Get chat ID: Visit https://api.telegram.org/bot<TOKEN>/getUpdates
+# 3. Replace YOUR_BOT_TOKEN_HERE and YOUR_CHAT_ID_HERE above
+# 4. Set TELEGRAM_ENABLED=true
+# 5. Save in Railway - service will auto-deploy
+# 6. Check logs for: "✅ Alert Notification Service initialized"
+# 7. Start receiving alerts!
+

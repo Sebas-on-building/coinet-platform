@@ -8,6 +8,7 @@
 import { MarketDataAggregator } from './aggregator';
 import { getConfig } from './config';
 import { logger } from './utils/logger';
+import { MarketPrice, PriceUpdateEvent } from './types';
 
 // Export all types
 export * from './types';
@@ -17,6 +18,35 @@ export { MarketDataAggregator } from './aggregator';
 export { CoinGeckoRestClient } from './providers/coingecko-rest';
 export { CoinGeckoWebSocketClient } from './providers/coingecko-websocket';
 export { CoinMarketCapRestClient } from './providers/coinmarketcap-rest';
+export { DefiLlamaRestClient } from './providers/defillama-rest';
+export type {
+  DeFiLlamaProtocol,
+  DeFiLlamaYieldPool,
+  DeFiLlamaStablecoin,
+  DeFiLlamaFees,
+  DeFiLlamaTokenUnlock,
+} from './providers/defillama-rest';
+
+// DexScreener exports - now building correctly with all advanced features
+export { DexScreenerRestClient } from './providers/dexscreener-rest';
+export type { 
+  DexScreenerPair, 
+  DexScreenerToken,
+  DexScreenerTokenProfile, 
+  DexScreenerSearchResponse,
+  DexScreenerBoostResponse,
+  DexScreenerLiquiditySpike,
+  PairQualityScore,
+  LiquidityDepthAnalysis,
+  VolumeAnalysis,
+  MultiChainAggregatedData,
+} from './providers/dexscreener-rest';
+
+// Re-export CryptoPanic classes using direct re-export syntax
+// This is identical to how CoinGeckoRestClient is exported and should work the same way
+export { CryptoPanicRestClient } from './providers/cryptopanic-rest';
+export { CryptoPanicNewsService } from './services/cryptopanic-news.service';
+export { CryptoPanicSentimentAnalyzer } from './services/cryptopanic-sentiment.service';
 export { TimescaleStorage } from './storage/timescale';
 export { CacheStorage } from './storage/cache';
 export { DataNormalizer, SymbolRegistry, getDataNormalizer, getSymbolRegistry } from './utils/normalizer';
@@ -24,22 +54,32 @@ export { getRateLimiter, resetRateLimiter } from './middleware/rateLimiter';
 export { getConfig, buildConfig, validateConfig, resetConfig } from './config';
 export { logger } from './utils/logger';
 
-// Export new services
-export { QuotaMonitorService, getQuotaMonitor, resetQuotaMonitor } from './services/quota-monitor.service';
-export { MetricsService, getMetricsService, resetMetricsService } from './services/metrics.service';
-export { WebSocketManagerService, getWebSocketManager, resetWebSocketManager } from './services/websocket-manager.service';
-export { AlertIntegrationsService, getAlertIntegrations, resetAlertIntegrations } from './services/alert-integrations.service';
-export { CircuitBreaker, CircuitBreakerManager, getCircuitBreakerManager, resetCircuitBreakerManager } from './middleware/circuit-breaker';
-export { RateLimitHandler } from './middleware/rate-limit-handler';
-export { InputValidator, ValidationError } from './utils/validation';
+// Export CryptoPanic types
+export * from './types/cryptopanic.types';
 
-// Export types
-export type { QuotaUsage, QuotaAlert, QuotaThresholds } from './services/quota-monitor.service';
-export type { MetricsSnapshot } from './services/metrics.service';
-export type { WebSocketStats, SubscriptionPriority } from './services/websocket-manager.service';
-export type { AlertIntegrationConfig, SlackConfig, PagerDutyConfig } from './services/alert-integrations.service';
-export type { CircuitBreakerConfig, CircuitBreakerStats } from './middleware/circuit-breaker';
-export type { RateLimitInfo } from './middleware/rate-limit-handler';
+// Export Messari provider and types
+export { MessariRestClient } from './providers/messari-rest';
+export * from './types/messari.types';
+
+// Export Token Unlocks & Vesting System (Section 3.1 - Messari)
+export { TokenUnlocksService } from './services/token-unlocks.service';
+export { TokenUnlocksScheduler } from './services/token-unlocks-scheduler';
+export { TokenUnlocksAnalytics } from './services/token-unlocks-analytics';
+export { TokenUnlocksMonitoring } from './services/token-unlocks-monitoring';
+export { TokenUnlocksSystem, createTokenUnlocksSystem } from './services/token-unlocks-integration';
+export { TokenUnlocksCache } from './storage/token-unlocks-cache';
+export { TokenUnlocksStorage } from './storage/token-unlocks-storage';
+
+// Export Dual-Source Token Unlocks System (Section 3.1 + 3.2 - Messari + The Tie)
+export { UnifiedTokenUnlocksService } from './services/unified-token-unlocks.service';
+export { DualSourceUnlocksReconciliation } from './services/dual-source-unlocks-reconciliation';
+
+// Export The Tie provider and types
+export { TheTieRestClient } from './providers/thetie-rest';
+export * from './types/thetie.types';
+
+// Export Secrets Manager
+export * from './utils/secrets-manager';
 
 /**
  * Create and initialize a new MarketDataAggregator instance
@@ -90,7 +130,7 @@ export async function main(): Promise<void> {
     const prices = await aggregator.getMarketPrices(symbols);
     logger.info('Fetched market prices', {
       count: prices.length,
-      prices: prices.map((p) => ({
+      prices: prices.map((p: MarketPrice) => ({
         symbol: p.symbol,
         price: p.price,
         source: p.source,
@@ -98,12 +138,13 @@ export async function main(): Promise<void> {
     });
 
     // Listen for price updates
-    aggregator.on('price_update', (event) => {
+    aggregator.on('price_update', (event: PriceUpdateEvent) => {
+      const priceData = event.data as MarketPrice;
       logger.info('Price update received', {
-        coinId: (event.data as any).coinId,
-        price: (event.data as any).price,
+        coinId: priceData.coinId,
+        price: priceData.price,
         source: event.source,
-        updateType: (event.data as any).updateType,
+        updateType: priceData.updateType,
       });
     });
 

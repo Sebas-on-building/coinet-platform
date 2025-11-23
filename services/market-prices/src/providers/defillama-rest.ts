@@ -206,6 +206,8 @@ export class DefiLlamaRestClient {
   private rateLimiter = getRateLimiter();
   private cache: Map<string, CacheEntry<any>> = new Map();
   private cacheTTL: number = 60000; // 1 minute default
+  private dailyMetricsCache: Map<string, CacheEntry<any>> = new Map();
+  private dailyCacheTTL: number = 24 * 60 * 60 * 1000; // 24 hours for daily metrics
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -251,22 +253,34 @@ export class DefiLlamaRestClient {
   }
 
   /**
-   * Make a rate-limited request
+   * Make a rate-limited request with caching support
    */
   private async request<T>(
     method: string,
     url: string,
     params?: any,
     priority?: number,
-    useCache: boolean = true
+    useCache: boolean = true,
+    isDailyMetric: boolean = false
   ): Promise<T> {
     // Check cache first
     if (useCache && method === 'GET') {
       const cacheKey = `${method}:${url}:${JSON.stringify(params || {})}`;
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
-        logger.debug(`DeFiLlama cache hit: ${url}`);
-        return cached.data as T;
+      
+      // Use daily metrics cache for daily metrics (24h TTL)
+      if (isDailyMetric) {
+        const cached = this.dailyMetricsCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.dailyCacheTTL) {
+          logger.debug(`DeFiLlama daily metrics cache hit: ${url}`);
+          return cached.data as T;
+        }
+      } else {
+        // Use regular cache for other requests (1 min TTL)
+        const cached = this.cache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+          logger.debug(`DeFiLlama cache hit: ${url}`);
+          return cached.data as T;
+        }
       }
     }
 
@@ -292,15 +306,28 @@ export class DefiLlamaRestClient {
           // Cache the response
           if (useCache && method === 'GET') {
             const cacheKey = `${method}:${url}:${JSON.stringify(params || {})}`;
-            this.cache.set(cacheKey, {
-              data,
-              timestamp: Date.now(),
-            });
+            
+            // Use daily metrics cache for daily metrics (24h TTL)
+            if (isDailyMetric) {
+              this.dailyMetricsCache.set(cacheKey, {
+                data,
+                timestamp: Date.now(),
+              });
+              logger.debug(`DeFiLlama daily metrics cached: ${url} (24h TTL)`);
+            } else {
+              // Use regular cache for other requests (1 min TTL)
+              this.cache.set(cacheKey, {
+                data,
+                timestamp: Date.now(),
+              });
+            }
           }
 
           return data;
         } catch (error) {
+          // handleError always throws, so this is unreachable but TypeScript needs it
           this.handleError(error as AxiosError, url);
+          // This line is unreachable but satisfies TypeScript
           throw error;
         }
       },
@@ -311,26 +338,33 @@ export class DefiLlamaRestClient {
   /**
    * Handle API errors with comprehensive error handling
    */
-  private handleError(error: AxiosError, endpoint: string): void {
-    // Safely check for error.response before accessing properties
-    if (error.response) {
+  private handleError(error: AxiosError | Error, endpoint: string): never {
+    // Handle AxiosError with response
+    if ('response' in error && error.response) {
       const status = error.response.status;
-      const data = error.response.data as any;
+      // Safely access response.data - it might be undefined
+      const data = (error.response as any)?.data;
+
+      const errorMessage = 
+        (data && typeof data === 'object' && (data.error || data.status?.error_message)) ||
+        error.message ||
+        `HTTP ${status}`;
 
       logger.error(`DeFiLlama API error: ${status}`, {
         endpoint,
         status,
-        error: data?.error || data?.status?.error_message || error.message,
+        error: errorMessage,
       });
 
       throw new ProviderError(
-        `DeFiLlama API error: ${status} - ${data?.error || data?.status?.error_message || error.message}`,
+        `DeFiLlama API error: ${status} - ${errorMessage}`,
         DataSource.DEFILLAMA,
         status,
         error
       );
-    } else if (error.request) {
-      // The request was made but no response was received
+    } 
+    // Handle AxiosError with request but no response (network error)
+    else if ('request' in error && error.request) {
       logger.error('DeFiLlama network error', {
         endpoint,
         error: error.message,
@@ -342,8 +376,9 @@ export class DefiLlamaRestClient {
         undefined,
         error
       );
-    } else {
-      // Something happened in setting up the request that triggered an Error
+    } 
+    // Handle any other error type
+    else {
       logger.error('DeFiLlama request error', {
         endpoint,
         error: error.message,
@@ -380,7 +415,7 @@ export class DefiLlamaRestClient {
    * Get all protocols
    */
   async getProtocols(): Promise<DeFiLlamaProtocol[]> {
-    const response = await this.request<any>('GET', '/protocols');
+    const response = await this.request<any>('GET', '/protocols', undefined, undefined, true, true); // Daily metric - 24h cache
     // DeFiLlama returns an array directly
     return Array.isArray(response) ? response : [];
   }
@@ -388,9 +423,9 @@ export class DefiLlamaRestClient {
   /**
    * Get specific protocol by ID or slug
    */
-  async getProtocol(protocolId: string): Promise<DeFiLlamaProtocol | null> {
+  async getProtocol(protocolId: string, useDailyCache: boolean = true): Promise<DeFiLlamaProtocol | null> {
     try {
-      const response = await this.request<any>('GET', `/protocol/${protocolId}`);
+      const response = await this.request<any>('GET', `/protocol/${protocolId}`, undefined, undefined, true, useDailyCache); // Daily metric - 24h cache
       return response || null;
     } catch (error) {
       logger.error('Failed to get protocol', { protocolId, error });
@@ -410,7 +445,7 @@ export class DefiLlamaRestClient {
    * Get all chains
    */
   async getChains(): Promise<string[]> {
-    const response = await this.request<any>('GET', '/chains');
+    const response = await this.request<any>('GET', '/chains', undefined, undefined, true, true); // Daily metric - 24h cache
     return Array.isArray(response) ? response : [];
   }
 
@@ -767,6 +802,214 @@ export class DefiLlamaRestClient {
 
   async getUnlocks(): Promise<DeFiLlamaTokenUnlock[]> {
     return this.getTokenUnlocks();
+  }
+
+  /**
+   * Get volumes across all protocols
+   * @param chain Optional chain filter
+   */
+  async getVolumes(chain?: string): Promise<any[]> {
+    const url = chain ? `/overview/dexs/${chain}` : '/overview/dexs';
+    return this.request<any[]>('GET', url);
+  }
+
+  /**
+   * Get protocol volumes
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolVolumes(protocolId: string): Promise<any> {
+    return this.request<any>('GET', `/summary/dexs/${protocolId}`);
+  }
+
+  /**
+   * Get derivatives (perps) volume data
+   * @param chain Optional chain filter
+   */
+  async getPerpsVolume(chain?: string): Promise<any[]> {
+    const url = chain ? `/overview/derivatives/${chain}` : '/overview/derivatives';
+    return this.request<any[]>('GET', url);
+  }
+
+  /**
+   * Get protocol perpetuals volume
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolPerpsVolume(protocolId: string): Promise<any> {
+    return this.request<any>('GET', `/summary/derivatives/${protocolId}`);
+  }
+
+  /**
+   * Get active users data across protocols
+   * @param chain Optional chain filter
+   */
+  async getActiveUsers(chain?: string): Promise<any[]> {
+    const url = chain ? `/overview/users/${chain}` : '/overview/users';
+    return this.request<any[]>('GET', url);
+  }
+
+  /**
+   * Get protocol active users
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolActiveUsers(protocolId: string): Promise<any> {
+    return this.request<any>('GET', `/summary/users/${protocolId}`);
+  }
+
+  /**
+   * Get historical TVL for a specific protocol with detailed time-series data
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolHistoricalTVL(protocolId: string): Promise<any> {
+    return this.request<any>('GET', `/protocol/${protocolId}`);
+  }
+
+  /**
+   * Get historical TVL for a specific chain
+   * @param chain Chain name
+   */
+  async getChainHistoricalTVL(chain: string): Promise<any> {
+    return this.request<any>('GET', `/v2/historicalChainTvl/${chain}`);
+  }
+
+  /**
+   * Get historical TVL for all chains
+   */
+  async getAllChainsHistoricalTVL(): Promise<any> {
+    return this.request<any>('GET', '/v2/historicalChainTvl');
+  }
+
+  /**
+   * Get options volume data
+   */
+  async getOptionsVolume(): Promise<any[]> {
+    return this.request<any[]>('GET', '/overview/options');
+  }
+
+  /**
+   * Get protocol options volume
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolOptionsVolume(protocolId: string): Promise<any> {
+    return this.request<any>('GET', `/summary/options/${protocolId}`);
+  }
+
+  /**
+   * Get all chains with their current TVL
+   */
+  async getChainsWithTVL(): Promise<Array<{ name: string; tvl: number; tokenSymbol?: string }>> {
+    return this.request<any>('GET', '/v2/chains', undefined, undefined, true, true); // Daily metric - 24h cache
+  }
+
+  /**
+   * Get protocol treasury data
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolTreasury(protocolId: string): Promise<any> {
+    return this.request<any>('GET', `/treasury/${protocolId}`);
+  }
+
+  /**
+   * Get all protocols with treasury
+   */
+  async getAllTreasuries(): Promise<any[]> {
+    return this.request<any[]>('GET', '/protocols');
+  }
+
+  /**
+   * Get raises (funding rounds) data
+   */
+  async getRaises(): Promise<any[]> {
+    return this.request<any[]>('GET', '/raises');
+  }
+
+  /**
+   * Get hacks/exploits data
+   */
+  async getHacks(): Promise<any[]> {
+    return this.request<any[]>('GET', '/hacks');
+  }
+
+  /**
+   * Get correlation data between protocols
+   * @param protocols Array of protocol IDs
+   */
+  async getCorrelation(protocols: string[]): Promise<any> {
+    return this.request<any>('GET', '/correlation', {
+      protocols: protocols.join(','),
+    });
+  }
+
+  /**
+   * Get liquidations data
+   * @param chain Optional chain filter
+   */
+  async getLiquidations(chain?: string): Promise<any[]> {
+    const url = chain ? `/liquidations/${chain}` : '/liquidations';
+    return this.request<any[]>('GET', url);
+  }
+
+  /**
+   * Get comprehensive protocol analytics (aggregates multiple endpoints)
+   * @param protocolId Protocol ID or slug
+   */
+  async getProtocolAnalytics(protocolId: string): Promise<{
+    protocol: DeFiLlamaProtocol | null;
+    historicalTVL: any;
+    volumes?: any;
+    fees?: DeFiLlamaFees[];
+    revenue?: DeFiLlamaRevenue[];
+    users?: any;
+    perpsVolume?: any;
+    treasury?: any;
+  }> {
+    // Fetch all data in parallel for performance
+    const [protocol, historicalTVL, volumes, fees, revenue, users, perpsVolume, treasury] = 
+      await Promise.allSettled([
+        this.getProtocol(protocolId),
+        this.getProtocolHistoricalTVL(protocolId).catch(() => null),
+        this.getProtocolVolumes(protocolId).catch(() => null),
+        this.getProtocolFees(protocolId).catch(() => null),
+        this.getProtocolRevenue(protocolId).catch(() => null),
+        this.getProtocolActiveUsers(protocolId).catch(() => null),
+        this.getProtocolPerpsVolume(protocolId).catch(() => null),
+        this.getProtocolTreasury(protocolId).catch(() => null),
+      ]);
+
+    return {
+      protocol: protocol.status === 'fulfilled' ? protocol.value : null,
+      historicalTVL: historicalTVL.status === 'fulfilled' ? historicalTVL.value : null,
+      volumes: volumes.status === 'fulfilled' ? volumes.value : undefined,
+      fees: fees.status === 'fulfilled' ? (fees.value ?? undefined) : undefined,
+      revenue: revenue.status === 'fulfilled' ? (revenue.value ?? undefined) : undefined,
+      users: users.status === 'fulfilled' ? users.value : undefined,
+      perpsVolume: perpsVolume.status === 'fulfilled' ? perpsVolume.value : undefined,
+      treasury: treasury.status === 'fulfilled' ? treasury.value : undefined,
+    };
+  }
+
+  /**
+   * Get comprehensive chain analytics
+   * @param chain Chain name
+   */
+  async getChainAnalytics(chain: string): Promise<{
+    historicalTVL: any;
+    volumes: any;
+    users: any;
+    liquidations: any;
+  }> {
+    const [historicalTVL, volumes, users, liquidations] = await Promise.allSettled([
+      this.getChainHistoricalTVL(chain),
+      this.getVolumes(chain).catch(() => null),
+      this.getActiveUsers(chain).catch(() => null),
+      this.getLiquidations(chain).catch(() => null),
+    ]);
+
+    return {
+      historicalTVL: historicalTVL.status === 'fulfilled' ? historicalTVL.value : null,
+      volumes: volumes.status === 'fulfilled' ? volumes.value : null,
+      users: users.status === 'fulfilled' ? users.value : null,
+      liquidations: liquidations.status === 'fulfilled' ? liquidations.value : null,
+    };
   }
 }
 

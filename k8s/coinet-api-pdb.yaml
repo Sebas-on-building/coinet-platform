@@ -1,0 +1,11 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: coinet-api-pdb
+  labels:
+    app: coinet-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: coinet-api 

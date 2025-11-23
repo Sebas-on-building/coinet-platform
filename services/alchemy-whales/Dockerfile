@@ -1,56 +1,69 @@
-# Alchemy Whales Service - Production Dockerfile
+# Multi-stage Dockerfile for Alchemy Whales Service
+# Optimized for production deployment
+# Note: Railway build context is services/alchemy-whales (Root Directory)
 
-# Build stage
-FROM node:20-alpine AS builder
+# Stage 1: Build
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files (relative to services/alchemy-whales directory)
+COPY package.json package-lock.json* ./
+COPY tsconfig.json ./
+
+# Install ALL dependencies (including dev dependencies needed for TypeScript build)
+RUN npm ci && \
+    npm cache clean --force
+
+# Copy source code
+COPY src ./src
+
+# Build TypeScript
+RUN npm run build
+
+# Stage 2: Production
+FROM node:18-alpine
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create non-root user
+RUN addgroup -g 1001 -S whales && \
+    adduser -S -D -H -u 1001 -h /app -s /sbin/nologin -G whales -g whales whales
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-
-# Install all dependencies (including devDependencies for build)
-RUN npm ci && \
-    npm cache clean --force
-
-# Copy TypeScript config if it exists
-COPY tsconfig.json* ./
-
-# Copy source code if it exists
-COPY src ./src
-
-# Build TypeScript (will fail gracefully if src doesn't exist, but dist should)
-RUN npm run build || echo "Build skipped - using pre-built dist"
-
-# Production stage
-FROM node:20-alpine
-
-LABEL maintainer="Coinet Team <dev@coinet.com>"
-LABEL description="Alchemy Whales Service - Monitor and track large cryptocurrency transactions"
-
-WORKDIR /app
+COPY package.json package-lock.json* ./
 
 # Install production dependencies only
-COPY package*.json ./
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
-# Copy built application from builder stage
+# Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
-# Create logs directory
-RUN mkdir -p /app/logs && \
-    chown -R node:node /app
+# Change ownership
+RUN chown -R whales:whales /app
 
 # Switch to non-root user
-USER node
+USER whales
 
-# Expose ports for health check, metrics, and webhooks
-EXPOSE 9090 3001
+# Expose ports
+EXPOSE 3001 9090
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:9090/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:9090/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the service
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start service
 CMD ["node", "dist/index.js"]
+
+# Labels
+LABEL maintainer="Coinet <support@coinet.io>"
+LABEL description="Alchemy Whales & Transfers Monitoring Service"
+LABEL version="1.0.0"
 

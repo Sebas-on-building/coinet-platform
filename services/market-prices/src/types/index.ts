@@ -7,6 +7,10 @@ export enum DataSource {
   COINGECKO = 'coingecko',
   COINMARKETCAP = 'coinmarketcap',
   DEFILLAMA = 'defillama',
+  DEXSCREENER = 'dexscreener',
+  CRYPTOPANIC = 'cryptopanic',
+  MESSARI = 'messari',
+  THETIE = 'thetie',
 }
 
 export enum PriceUpdateType {
@@ -143,6 +147,11 @@ export interface ServiceConfig {
   providers: {
     coingecko: ProviderConfig;
     coinmarketcap: ProviderConfig;
+    dexscreener?: ProviderConfig;
+    defillama?: ProviderConfig;
+    cryptopanic?: ProviderConfig;
+    messari?: ProviderConfig;
+    thetie?: ProviderConfig;
   };
   database: {
     host: string;
@@ -163,6 +172,8 @@ export interface ServiceConfig {
   enableWebSocket: boolean;
   enableRestFallback: boolean;
   enableCMCFallback: boolean;
+  enableMessari: boolean;
+  enableTheTie: boolean;
   logLevel: string;
 }
 

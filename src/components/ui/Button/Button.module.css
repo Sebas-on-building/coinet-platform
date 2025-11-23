@@ -1,0 +1,108 @@
+.button {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--border-radius-lg);
+  padding: 0.75rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  transition: background 0.2s, color 0.2s;
+  cursor: pointer;
+}
+
+.button:focus {
+  outline: 2px solid var(--color-accent);
+}
+
+.button:focus-visible {
+  box-shadow: 0 0 0 4px var(--focus-glow, #7ddfff99), 0 2px 8px rgb(0 0 0 / 8%);
+  outline: none;
+}
+
+.button.primary {
+  background: linear-gradient(90deg, #7ddfff 0%, #3a8dde 100%);
+  color: #fff;
+}
+
+.button.secondary {
+  background: #f5f7fa;
+  color: #222;
+}
+
+.button.ghost {
+  background: transparent;
+  color: var(--button-fg, #222);
+  border: 1px solid #e0e6ef;
+}
+
+.button.destructive {
+  background: linear-gradient(90deg, #ff7d7d 0%, #de3a3a 100%);
+  color: #fff;
+}
+
+.button.glow {
+  box-shadow: 0 0 24px 4px var(--glow-color, #7ddfff), 0 2px 8px rgb(0 0 0 / 8%);
+}
+
+.button.gradient {
+  background: linear-gradient(90deg, #9945FF 0%, #14F195 100%);
+  color: #fff;
+}
+
+.button:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 8px rgb(61 130 255 / 18%), 0 0 0 2px var(--focus-glow, #7ddfff);
+}
+
+.button:hover, .button:focus-visible {
+  transform: scale(1.03);
+  box-shadow: 0 4px 24px rgb(61 130 255 / 18%), 0 0 0 4px var(--focus-glow, #7ddfff);
+  filter: brightness(1.05) saturate(1.1);
+}
+
+.button:disabled, .button[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+}
+
+.notification-dot {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  width: 0.7em;
+  height: 0.7em;
+  background: linear-gradient(135deg, #ff7d7d, #ffb37d);
+  border-radius: 50%;
+  box-shadow: 0 0 6px #ff7d7d99;
+  border: 2px solid #fff;
+}
+
+.badge {
+  background: linear-gradient(90deg, #7ddfff 0%, #3a8dde 100%);
+  color: #fff;
+  border-radius: 1em;
+  padding: 0.1em 0.7em;
+  font-size: 0.85em;
+  margin-left: 0.7em;
+  font-weight: 700;
+  box-shadow: 0 1px 4px #7ddfff44;
+}
+
+.button .ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: ripple 0.6s linear;
+  background: rgb(255 255 255 / 40%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+} 

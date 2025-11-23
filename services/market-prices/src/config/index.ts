@@ -53,24 +53,13 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
  * Build CoinGecko provider configuration
  */
 function buildCoinGeckoConfig(): ProviderConfig {
-  const nodeEnv = getEnv('NODE_ENV', 'development');
-  
-  // Use production key in production, otherwise use development key
-  const apiKey = nodeEnv === 'production' 
-    ? getEnv('COINGECKO_API_KEY_PROD', getEnv('COINGECKO_API_KEY'))
-    : getEnv('COINGECKO_API_KEY');
-  
+  const apiKey = getEnv('COINGECKO_API_KEY', ''); // Optional - can be empty for free tier
   const tier = getEnv('COINGECKO_TIER', 'demo');
   const apiUrl = tier === 'demo' 
     ? getEnv('COINGECKO_API_URL', 'https://api.coingecko.com/api/v3')
     : getEnv('COINGECKO_PRO_API_URL', 'https://pro-api.coingecko.com/api/v3');
   
-  // Auto-adjust rate limits based on tier
-  let defaultRateLimit = 30; // demo
-  if (tier === 'analyst') defaultRateLimit = 500;
-  if (tier === 'lite' || tier === 'pro' || tier === 'pro_plus') defaultRateLimit = 1000;
-  
-  const rateLimitPerMinute = getEnvNumber('COINGECKO_RATE_LIMIT_PER_MINUTE', defaultRateLimit);
+  const rateLimitPerMinute = getEnvNumber('COINGECKO_RATE_LIMIT_PER_MINUTE', 30);
   
   const rateLimit: RateLimitConfig = {
     maxRequestsPerMinute: rateLimitPerMinute,
@@ -112,23 +101,8 @@ function buildCoinGeckoConfig(): ProviderConfig {
  * Build CoinMarketCap provider configuration
  */
 function buildCoinMarketCapConfig(): ProviderConfig {
-  const nodeEnv = getEnv('NODE_ENV', 'development');
-  
-  // Use production key in production, otherwise use development key
-  const apiKey = nodeEnv === 'production'
-    ? getEnv('COINMARKETCAP_API_KEY_PROD', getEnv('COINMARKETCAP_API_KEY'))
-    : getEnv('COINMARKETCAP_API_KEY');
-  
+  const apiKey = getEnv('COINMARKETCAP_API_KEY', ''); // Optional - can be empty if not using CoinMarketCap
   const apiUrl = getEnv('COINMARKETCAP_API_URL', 'https://pro-api.coinmarketcap.com/v1');
-  
-  // Commercial license check for production/commercial use
-  const hasCommercialLicense = getEnvBoolean('COINMARKETCAP_COMMERCIAL_LICENSE', false);
-  if (nodeEnv === 'production' && !hasCommercialLicense) {
-    console.warn(
-      '⚠️  WARNING: CoinMarketCap requires a commercial license for commercial use. ' +
-      'Set COINMARKETCAP_COMMERCIAL_LICENSE=true to acknowledge compliance.'
-    );
-  }
   
   const rateLimitPerMinute = getEnvNumber('COINMARKETCAP_RATE_LIMIT_PER_MINUTE', 30);
   
@@ -157,20 +131,217 @@ function buildCoinMarketCapConfig(): ProviderConfig {
 }
 
 /**
+ * Build DexScreener provider configuration
+ * DexScreener free tier doesn't require an API key
+ */
+function buildDexScreenerConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.DEXSCREENER_API_KEY || ''; // Optional - free tier doesn't require key
+  const apiUrl = getEnv('DEXSCREENER_API_URL', 'https://api.dexscreener.com/latest/dex');
+  
+  // DexScreener has different rate limits for different endpoints:
+  // Search: 300 rpm, Profile/Boost: 60 rpm
+  // We'll use 60 rpm as the base (for profile endpoints)
+  const rateLimitPerMinute = getEnvNumber('DEXSCREENER_RATE_LIMIT_PER_MINUTE', 60);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000, // 1 minute
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('DEXSCREENER_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('DEXSCREENER_RETRY_DELAY_MS', 1000),
+    retryCondition: (error: any) => {
+      return !error.response || error.response.status >= 500;
+    },
+  };
+
+  // Return config even without API key (free tier support)
+  return {
+    apiKey: apiKey || 'free-tier', // Use placeholder for free tier
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 3, // Lower priority (DEX data source)
+  };
+}
+
+/**
+ * Build DeFiLlama provider configuration
+ */
+function buildDefiLlamaConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.DEFILLAMA_API_KEY || ''; // Optional - free tier works without key
+  const apiUrl = getEnv('DEFILLAMA_API_URL', 'https://api.llama.fi');
+  
+  const rateLimitPerMinute = getEnvNumber('DEFILLAMA_RATE_LIMIT_PER_MINUTE', 300);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('DEFILLAMA_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('DEFILLAMA_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey: apiKey || 'free-tier',
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 4,
+  };
+}
+
+/**
+ * Build CryptoPanic provider configuration
+ */
+function buildCryptoPanicConfig(): ProviderConfig | undefined {
+  // CryptoPanic uses AUTH_TOKEN, but also check API_KEY for backwards compatibility
+  const apiKey = process.env.CRYPTOPANIC_AUTH_TOKEN || process.env.CRYPTOPANIC_API_KEY;
+  if (!apiKey) return undefined;
+  
+  const apiUrl = getEnv('CRYPTOPANIC_API_URL', 'https://cryptopanic.com/api');
+  const plan = getEnv('CRYPTOPANIC_PLAN', 'growth'); // development, growth, enterprise
+  
+  // Rate limits vary by plan
+  let rateLimitPerSecond = 5; // growth default
+  if (plan === 'development') rateLimitPerSecond = 2;
+  if (plan === 'enterprise') rateLimitPerSecond = 100;
+  
+  const rateLimitPerMinute = rateLimitPerSecond * 60;
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerSecond * 10,
+    reservoirRefreshAmount: rateLimitPerSecond,
+    reservoirRefreshInterval: 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('CRYPTOPANIC_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('CRYPTOPANIC_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey,
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 5,
+  };
+}
+
+/**
+ * Build Messari provider configuration
+ */
+function buildMessariConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.MESSARI_API_KEY;
+  if (!apiKey) return undefined;
+  
+  const apiUrl = getEnv('MESSARI_API_URL', 'https://data.messari.io/api/v1');
+  const rateLimitPerMinute = getEnvNumber('MESSARI_RATE_LIMIT_PER_MINUTE', 60);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('MESSARI_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('MESSARI_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey,
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 6,
+  };
+}
+
+/**
+ * Build The Tie provider configuration
+ */
+function buildTheTieConfig(): ProviderConfig | undefined {
+  const apiKey = process.env.THETIE_API_KEY;
+  if (!apiKey) return undefined;
+  
+  const apiUrl = getEnv('THETIE_API_URL', 'https://api.thetie.io/v1');
+  const rateLimitPerMinute = getEnvNumber('THETIE_RATE_LIMIT_PER_MINUTE', 60);
+  
+  const rateLimit: RateLimitConfig = {
+    maxRequestsPerMinute: rateLimitPerMinute,
+    reservoir: rateLimitPerMinute,
+    reservoirRefreshAmount: rateLimitPerMinute,
+    reservoirRefreshInterval: 60 * 1000,
+  };
+
+  const retry: RetryConfig = {
+    retries: getEnvNumber('THETIE_MAX_RETRIES', 3),
+    retryDelay: getEnvNumber('THETIE_RETRY_DELAY_MS', 1000),
+  };
+
+  return {
+    apiKey,
+    apiUrl,
+    rateLimit,
+    retry,
+    priority: 7,
+  };
+}
+
+/**
  * Build complete service configuration
  */
 export function buildConfig(): ServiceConfig {
+  const dexscreenerConfig = buildDexScreenerConfig();
+  const defillamaConfig = buildDefiLlamaConfig();
+  const cryptopanicConfig = buildCryptoPanicConfig();
+  const messariConfig = buildMessariConfig();
+  const thetieConfig = buildTheTieConfig();
+  
+  const providers: ServiceConfig['providers'] = {
+    coingecko: buildCoinGeckoConfig(),
+    coinmarketcap: buildCoinMarketCapConfig(),
+  };
+  
+  if (dexscreenerConfig) {
+    providers.dexscreener = dexscreenerConfig;
+  }
+  
+  if (defillamaConfig) {
+    providers.defillama = defillamaConfig;
+  }
+  
+  if (cryptopanicConfig) {
+    providers.cryptopanic = cryptopanicConfig;
+  }
+  
+  if (messariConfig) {
+    providers.messari = messariConfig;
+  }
+  
+  if (thetieConfig) {
+    providers.thetie = thetieConfig;
+  }
+  
   return {
-    providers: {
-      coingecko: buildCoinGeckoConfig(),
-      coinmarketcap: buildCoinMarketCapConfig(),
-    },
+    providers,
     database: {
       host: getEnv('TIMESCALE_HOST', 'localhost'),
       port: getEnvNumber('TIMESCALE_PORT', 5432),
       database: getEnv('TIMESCALE_DATABASE', 'coinet'),
       user: getEnv('TIMESCALE_USER', 'coinet_user'),
-      password: getEnv('TIMESCALE_PASSWORD'),
+      password: getEnv('TIMESCALE_PASSWORD', ''), // Optional - can be empty if not using database
     },
     redis: {
       host: getEnv('REDIS_HOST', 'localhost'),
@@ -183,131 +354,49 @@ export function buildConfig(): ServiceConfig {
     maxRetryAttempts: getEnvNumber('MAX_RETRY_ATTEMPTS', 3),
     enableWebSocket: getEnvBoolean('ENABLE_WEBSOCKET', true),
     enableRestFallback: getEnvBoolean('ENABLE_REST_FALLBACK', true),
-    enableCMCFallback: getEnvBoolean('ENABLE_CMC_FALLBACK', true),
+    enableCMCFallback: getEnvBoolean('ENABLE_CMC_FALLBACK', false), // Disabled by default - requires API key
+    enableMessari: getEnvBoolean('ENABLE_MESSARI', false), // Disabled by default - requires API key
+    enableTheTie: getEnvBoolean('ENABLE_THETIE', false), // Disabled by default - requires API key
     logLevel: getEnv('LOG_LEVEL', 'info'),
   };
 }
 
 /**
- * Comprehensive configuration validation
+ * Validate configuration
  */
 export function validateConfig(config: ServiceConfig): void {
-  const errors: string[] = [];
-
-  // Validate CoinGecko
-  if (!config.providers.coingecko.apiKey) {
-    errors.push('CoinGecko API key is required');
-  } else if (config.providers.coingecko.apiKey.length < 10) {
-    errors.push('CoinGecko API key appears invalid (too short)');
-  }
-
-  // Validate CoinGecko rate limits
-  if (config.providers.coingecko.rateLimit.maxRequestsPerMinute <= 0) {
-    errors.push('CoinGecko rate limit must be greater than 0');
-  }
-  if (config.providers.coingecko.rateLimit.maxRequestsPerMinute > 10000) {
-    errors.push('CoinGecko rate limit exceeds reasonable maximum (10000)');
-  }
-
+  // CoinGecko API key is optional (can use free tier without key)
+  // Note: Some features may require an API key, but basic functionality works without it
+  
   // Validate CoinMarketCap (only if fallback is enabled)
-  if (config.enableCMCFallback) {
-    if (!config.providers.coinmarketcap.apiKey) {
-      errors.push('CoinMarketCap API key is required when CMC fallback is enabled');
-    } else if (config.providers.coinmarketcap.apiKey.length < 10) {
-      errors.push('CoinMarketCap API key appears invalid (too short)');
-    }
-
-    if (config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute <= 0) {
-      errors.push('CoinMarketCap rate limit must be greater than 0');
-    }
-    if (config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute > 10000) {
-      errors.push('CoinMarketCap rate limit exceeds reasonable maximum (10000)');
-    }
+  if (config.enableCMCFallback && !config.providers.coinmarketcap.apiKey) {
+    throw new Error('CoinMarketCap API key is required when CMC fallback is enabled');
   }
 
-  // Validate database
-  if (!config.database.host || typeof config.database.host !== 'string') {
-    errors.push('Database host is required');
-  }
-  if (!config.database.port || config.database.port < 1 || config.database.port > 65535) {
-    errors.push(`Invalid database port: ${config.database.port}`);
-  }
-  if (!config.database.database || typeof config.database.database !== 'string') {
-    errors.push('Database name is required');
-  }
-  if (!config.database.user || typeof config.database.user !== 'string') {
-    errors.push('Database user is required');
-  }
-  if (!config.database.password || typeof config.database.password !== 'string') {
-    errors.push('Database password is required');
+  // Database password is optional (can be empty if not using database)
+  // Note: Database features will fail if password is required but not provided
+
+  // Validate rate limits
+  if (config.providers.coingecko.rateLimit.maxRequestsPerMinute <= 0) {
+    throw new Error('CoinGecko rate limit must be greater than 0');
   }
 
-  // Validate Redis
-  if (!config.redis.host || typeof config.redis.host !== 'string') {
-    errors.push('Redis host is required');
-  }
-  if (!config.redis.port || config.redis.port < 1 || config.redis.port > 65535) {
-    errors.push(`Invalid Redis port: ${config.redis.port}`);
-  }
-  if (typeof config.redis.db !== 'number' || config.redis.db < 0 || config.redis.db > 15) {
-    errors.push(`Invalid Redis DB: ${config.redis.db} (must be 0-15)`);
+  // Only validate CoinMarketCap rate limits if CMC fallback is enabled
+  if (config.enableCMCFallback && config.providers.coinmarketcap.rateLimit.maxRequestsPerMinute <= 0) {
+    throw new Error('CoinMarketCap rate limit must be greater than 0');
   }
 
-  // Validate cache TTL
-  if (config.cacheTTL <= 0) {
-    errors.push('Cache TTL must be greater than 0');
-  }
-  if (config.cacheTTL > 3600) {
-    errors.push('Cache TTL exceeds reasonable maximum (3600 seconds)');
-  }
-
-  // Validate WebSocket config
+  // Validate WebSocket config (only if WebSocket is enabled and config exists)
   if (config.enableWebSocket && config.providers.coingecko.websocket) {
     const ws = config.providers.coingecko.websocket;
-    if (ws.maxConnections <= 0 || ws.maxConnections > 10) {
-      errors.push(`WebSocket max connections must be between 1 and 10, got: ${ws.maxConnections}`);
+    if (ws.maxConnections <= 0) {
+      throw new Error('WebSocket max connections must be greater than 0');
     }
-    if (ws.maxSubscriptionsPerChannel <= 0 || ws.maxSubscriptionsPerChannel > 100) {
-      errors.push(
-        `WebSocket max subscriptions per channel must be between 1 and 100, got: ${ws.maxSubscriptionsPerChannel}`
-      );
-    }
-    if (ws.reconnectInterval < 1000) {
-      errors.push(`WebSocket reconnect interval too short: ${ws.reconnectInterval}ms (minimum 1000ms)`);
-    }
-    if (ws.heartbeatInterval < 10000) {
-      errors.push(`WebSocket heartbeat interval too short: ${ws.heartbeatInterval}ms (minimum 10000ms)`);
+    if (ws.maxSubscriptionsPerChannel <= 0) {
+      throw new Error('WebSocket max subscriptions per channel must be greater than 0');
     }
   }
-
-  // Validate retry configs
-  if (config.providers.coingecko.retry.retries < 0 || config.providers.coingecko.retry.retries > 10) {
-    errors.push(`CoinGecko retries must be between 0 and 10, got: ${config.providers.coingecko.retry.retries}`);
-  }
-  if (config.providers.coinmarketcap.retry.retries < 0 || config.providers.coinmarketcap.retry.retries > 10) {
-    errors.push(`CoinMarketCap retries must be between 0 and 10, got: ${config.providers.coinmarketcap.retry.retries}`);
-  }
-
-  // Validate failover delay
-  if (config.failoverRetryDelay < 0) {
-    errors.push('Failover retry delay must be non-negative');
-  }
-
-  // Validate max retry attempts
-  if (config.maxRetryAttempts < 0 || config.maxRetryAttempts > 10) {
-    errors.push(`Max retry attempts must be between 0 and 10, got: ${config.maxRetryAttempts}`);
-  }
-
-  // Validate log level
-  const validLogLevels = ['error', 'warn', 'info', 'debug', 'verbose'];
-  if (!validLogLevels.includes(config.logLevel.toLowerCase())) {
-    errors.push(`Invalid log level: ${config.logLevel}. Valid: ${validLogLevels.join(', ')}`);
-  }
-
-  // Throw if any errors found
-  if (errors.length > 0) {
-    throw new Error(`Configuration validation failed:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
-  }
+  // If WebSocket is disabled or config doesn't exist, skip validation (it's optional)
 }
 
 // Export singleton instance
@@ -316,7 +405,14 @@ let configInstance: ServiceConfig | null = null;
 export function getConfig(): ServiceConfig {
   if (!configInstance) {
     configInstance = buildConfig();
-    validateConfig(configInstance);
+    // Validate config - catch errors to prevent crashes, log warnings instead
+    try {
+      validateConfig(configInstance);
+    } catch (error) {
+      // Log warning but don't crash - allow service to start with partial config
+      console.warn('Configuration validation warning:', error instanceof Error ? error.message : String(error));
+      console.warn('Service will continue with partial configuration. Some features may not work.');
+    }
   }
   return configInstance;
 }

@@ -1,0 +1,9 @@
+{
+  "type": "record",
+  "name": "OnchainMetric",
+  "fields": [
+    { "name": "metric", "type": "string" },
+    { "name": "value", "type": "double" },
+    { "name": "timestamp", "type": "long" }
+  ]
+}

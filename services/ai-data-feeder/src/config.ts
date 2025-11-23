@@ -5,9 +5,27 @@
 import { DataFeederConfig } from './types';
 
 export function getConfig(): DataFeederConfig {
-  return {
-    // Top coins to track
-    coins: process.env.TRACKED_COINS?.split(',') || [
+  // Parse TRACKED_COINS - handle Railway format issues
+  let trackedCoins: string[] = [];
+  if (process.env.TRACKED_COINS) {
+    let coinsValue = process.env.TRACKED_COINS.trim();
+    
+    // Fix: Remove variable name prefix if present (Railway sometimes includes it)
+    // e.g., "TRACKED_COINS=bitcoin,ethereum" -> "bitcoin,ethereum"
+    if (coinsValue.startsWith('TRACKED_COINS=')) {
+      coinsValue = coinsValue.substring('TRACKED_COINS='.length);
+    }
+    
+    // Split and clean up
+    trackedCoins = coinsValue
+      .split(',')
+      .map(coin => coin.trim())
+      .filter(coin => coin.length > 0);
+  }
+  
+  // Use default if empty or invalid
+  if (trackedCoins.length === 0) {
+    trackedCoins = [
       'bitcoin',
       'ethereum',
       'solana',
@@ -18,7 +36,12 @@ export function getConfig(): DataFeederConfig {
       'polygon',
       'uniswap',
       'aave',
-    ],
+    ];
+  }
+  
+  return {
+    // Top coins to track
+    coins: trackedCoins,
     
     // Update intervals
     priceUpdateInterval: parseInt(process.env.PRICE_UPDATE_INTERVAL || '60000'), // 1 minute

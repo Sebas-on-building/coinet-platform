@@ -1,0 +1,25 @@
+:root {
+  --color-background: #f8f9fb;
+  --color-surface: #fff;
+  --color-accent: #6366f1;
+  --color-accent-gradient: linear-gradient(90deg, #6366f1 0%, #00ffa3 100%);
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-border: #e5e7eb;
+  --color-success: #10b981;
+  --color-warning: #f59e42;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 32px;
+  --shadow-sm: 0 1px 2px rgb(16 30 54 / 4%);
+  --shadow-md: 0 4px 16px rgb(16 30 54 / 8%);
+  --shadow-xl: 0 12px 48px rgb(16 30 54 / 12%);
+  --font-family: 'SF Pro Display', 'Inter', 'Canva Sans', 'Roboto', 'Arial', sans-serif;
+
+
+  /* Add more tokens for spacing, z-index, etc. */
+
+  /* For dark mode, add [data-theme='dark'] overrides */
+} 

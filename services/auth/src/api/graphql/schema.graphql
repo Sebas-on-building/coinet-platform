@@ -1,0 +1,29 @@
+type AuthPayload {
+  accessToken: String!
+}
+
+type PasswordResetPayload {
+  success: Boolean!
+  message: String
+}
+
+type TwoFAPayload {
+  qrCode: String
+  secret: String
+  enabled: Boolean!
+}
+
+type Query {
+  _empty: String
+}
+
+type Mutation {
+  signup(email: String!, password: String!): AuthPayload!
+  login(email: String!, password: String!): AuthPayload!
+  refreshToken: AuthPayload!
+  logout: Boolean!
+  requestPasswordReset(email: String!): PasswordResetPayload!
+  resetPassword(token: String!, newPassword: String!): PasswordResetPayload!
+  enable2FA: TwoFAPayload!
+  verify2FA(token: String!): TwoFAPayload!
+} 

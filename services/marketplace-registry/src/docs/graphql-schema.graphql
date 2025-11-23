@@ -1,0 +1,189 @@
+# Coinet Marketplace GraphQL Schema (SDL)
+
+type Plugin {
+  id: ID!
+  name: String!
+  description: String!
+  description_i18n: JSON
+  ownerId: String!
+  organizationId: String
+  status: PluginStatus!
+  tags: [String!]!
+  iconUrl: String
+  homepageUrl: String
+  repoUrl: String
+  aiMeta: JSON
+  meta: JSON
+  forkedFromId: String
+  versions: [PluginVersion!]!
+  monetization: Monetization
+  analytics: Analytics
+  reviews: [Review!]!
+  security: SecurityReport
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  supportFeatures: [PluginSupportFeature!]!
+  supportFeaturesJson: JSON
+}
+
+type PluginVersion {
+  id: ID!
+  pluginId: String!
+  version: String!
+  changelog: String!
+  releaseNotes: String
+  createdAt: DateTime!
+}
+
+type Monetization {
+  id: ID!
+  pluginId: String!
+  price: Float!
+  currency: String!
+  enabled: Boolean!
+  meta: JSON
+}
+
+type Analytics {
+  id: ID!
+  pluginId: String!
+  installs: Int!
+  views: Int!
+  meta: JSON
+}
+
+type Review {
+  id: ID!
+  pluginId: String!
+  userId: String!
+  rating: Int!
+  comment: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  sentiment: String
+  status: String!
+}
+
+type SecurityReport {
+  id: ID!
+  pluginId: String!
+  report: JSON!
+  status: String!
+  createdAt: DateTime!
+}
+
+type PluginSupportFeature {
+  id: ID!
+  pluginId: String!
+  type: String!
+  value: String
+  meta: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Billing {
+  id: ID!
+  organizationId: String!
+  plan: String!
+  status: String!
+  renewalDate: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum PluginStatus {
+  DRAFT
+  PUBLISHED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+enum CollaboratorRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum PluginListingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DELISTED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  GIF
+  SVG
+  OTHER
+}
+
+enum CompatibilityStatus {
+  COMPATIBLE
+  INCOMPATIBLE
+  PARTIAL
+  UNKNOWN
+}
+
+scalar JSON
+scalar DateTime
+
+# Queries
+
+type Query {
+  plugins(filter: PluginFilter, pagination: Pagination): [Plugin!]!
+  plugin(id: ID!): Plugin
+  pluginSecurityReport(pluginId: ID!): SecurityReport
+  pluginAnalytics(pluginId: ID!): Analytics
+  pluginReviews(pluginId: ID!, filter: ReviewFilter, pagination: Pagination): [Review!]!
+}
+
+# Mutations
+
+type Mutation {
+  installPlugin(pluginId: ID!): PluginInstallResult!
+  uninstallPlugin(pluginId: ID!): PluginUninstallResult!
+  submitReview(pluginId: ID!, input: ReviewInput!): Review!
+}
+
+# Input Types
+
+input PluginFilter {
+  tag: String
+  status: PluginStatus
+}
+
+input Pagination {
+  skip: Int
+  take: Int
+}
+
+input ReviewInput {
+  rating: Int!
+  comment: String!
+}
+
+input ReviewFilter {
+  rating: Int
+  status: String
+}
+
+type PluginInstallResult {
+  success: Boolean!
+  plugin: Plugin
+}
+
+type PluginUninstallResult {
+  success: Boolean!
+  plugin: Plugin
+} 

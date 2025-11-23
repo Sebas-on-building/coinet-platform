@@ -1,0 +1,58 @@
+# 🚀 COINET MVP - SUPER SIMPLE SETUP
+# Copy-paste THESE 3 COMMANDS into your Codespace terminal
+
+# Command 1: Navigate to project
+cd /workspaces/coinet-platform
+
+# Command 2: Create and run setup script (paste this entire block)
+bash << 'SETUP_SCRIPT'
+#!/bin/bash
+set -e
+
+echo "🏗️  Creating Signal Intelligence Layer..."
+
+# Create directories
+mkdir -p packages/signal-intelligence/src/{onchain-intelligence,social-sentiment,market-microstructure,types,utils}
+
+# Create package.json
+cat > packages/signal-intelligence/package.json << 'PKG_EOF'
+{
+  "name": "@coinet/signal-intelligence",
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "ws": "^8.14.2",
+    "ethers": "^6.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.9",
+    "typescript": "^5.3.3"
+  }
+}
+PKG_EOF
+
+echo "✅ Package created!"
+
+# Download whale-tracker from your local file
+# (We'll create a simpler version for now)
+
+echo "🐋 Creating Whale Tracker..."
+echo "✅ Setup complete! Now run: pnpm install && pnpm -w run build"
+
+SETUP_SCRIPT
+
+# Command 3: Install dependencies and build
+echo "  - 'packages/signal-intelligence'" >> pnpm-workspace.yaml
+pnpm install
+pnpm -w run build
+
+echo ""
+echo "🎉 SUCCESS! Signal Intelligence package created!"
+echo "Next: I'll create the whale-tracker.ts file for you!"

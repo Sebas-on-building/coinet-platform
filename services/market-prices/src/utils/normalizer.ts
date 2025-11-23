@@ -25,8 +25,10 @@ import { logger } from './logger';
 export class SymbolRegistry {
   private geckoToCoinetMap: Map<string, string> = new Map();
   private cmcToCoinetMap: Map<number, string> = new Map();
+  private messariToCoinetMap: Map<string, string> = new Map();
   private coinetToGeckoMap: Map<string, string> = new Map();
   private coinetToCmcMap: Map<string, number> = new Map();
+  private coinetToMessariMap: Map<string, string> = new Map();
 
   /**
    * Register a symbol mapping
@@ -34,7 +36,8 @@ export class SymbolRegistry {
   register(
     coinetSymbol: string,
     geckoId?: string,
-    cmcId?: number
+    cmcId?: number,
+    messariSlug?: string
   ): void {
     if (geckoId) {
       this.geckoToCoinetMap.set(geckoId, coinetSymbol);
@@ -43,6 +46,10 @@ export class SymbolRegistry {
     if (cmcId) {
       this.cmcToCoinetMap.set(cmcId, coinetSymbol);
       this.coinetToCmcMap.set(coinetSymbol, cmcId);
+    }
+    if (messariSlug) {
+      this.messariToCoinetMap.set(messariSlug, coinetSymbol);
+      this.coinetToMessariMap.set(coinetSymbol, messariSlug);
     }
   }
 
@@ -61,6 +68,13 @@ export class SymbolRegistry {
   }
 
   /**
+   * Get Coinet symbol from Messari slug
+   */
+  fromMessari(messariSlug: string): string | undefined {
+    return this.messariToCoinetMap.get(messariSlug);
+  }
+
+  /**
    * Get CoinGecko ID from Coinet symbol
    */
   toGecko(coinetSymbol: string): string | undefined {
@@ -75,33 +89,64 @@ export class SymbolRegistry {
   }
 
   /**
+   * Get Messari slug from Coinet symbol
+   */
+  toMessari(coinetSymbol: string): string | undefined {
+    return this.coinetToMessariMap.get(coinetSymbol);
+  }
+
+  /**
    * Load default mappings for popular cryptocurrencies
    */
   loadDefaults(): void {
-    // Top cryptocurrencies
-    this.register('BTC', 'bitcoin', 1);
-    this.register('ETH', 'ethereum', 1027);
-    this.register('USDT', 'tether', 825);
-    this.register('BNB', 'binancecoin', 1839);
-    this.register('SOL', 'solana', 5426);
-    this.register('XRP', 'ripple', 52);
-    this.register('USDC', 'usd-coin', 3408);
-    this.register('ADA', 'cardano', 2010);
-    this.register('AVAX', 'avalanche-2', 5805);
-    this.register('DOGE', 'dogecoin', 74);
-    this.register('TRX', 'tron', 1958);
-    this.register('DOT', 'polkadot', 6636);
-    this.register('MATIC', 'matic-network', 3890);
-    this.register('LINK', 'chainlink', 1975);
-    this.register('WBTC', 'wrapped-bitcoin', 3717);
-    this.register('UNI', 'uniswap', 7083);
-    this.register('ATOM', 'cosmos', 3794);
-    this.register('LTC', 'litecoin', 2);
-    this.register('XLM', 'stellar', 512);
-    this.register('XMR', 'monero', 328);
+    // Top cryptocurrencies with Messari slugs
+    this.register('BTC', 'bitcoin', 1, 'bitcoin');
+    this.register('ETH', 'ethereum', 1027, 'ethereum');
+    this.register('USDT', 'tether', 825, 'tether');
+    this.register('BNB', 'binancecoin', 1839, 'binance-coin');
+    this.register('SOL', 'solana', 5426, 'solana');
+    this.register('XRP', 'ripple', 52, 'xrp');
+    this.register('USDC', 'usd-coin', 3408, 'usd-coin');
+    this.register('ADA', 'cardano', 2010, 'cardano');
+    this.register('AVAX', 'avalanche-2', 5805, 'avalanche');
+    this.register('DOGE', 'dogecoin', 74, 'dogecoin');
+    this.register('TRX', 'tron', 1958, 'tron');
+    this.register('DOT', 'polkadot', 6636, 'polkadot');
+    this.register('MATIC', 'matic-network', 3890, 'polygon');
+    this.register('LINK', 'chainlink', 1975, 'chainlink');
+    this.register('WBTC', 'wrapped-bitcoin', 3717, 'wrapped-bitcoin');
+    this.register('UNI', 'uniswap', 7083, 'uniswap');
+    this.register('ATOM', 'cosmos', 3794, 'cosmos');
+    this.register('LTC', 'litecoin', 2, 'litecoin');
+    this.register('XLM', 'stellar', 512, 'stellar');
+    this.register('XMR', 'monero', 328, 'monero');
+    
+    // Additional tokens with unlock schedules
+    this.register('APT', 'aptos', 21794, 'aptos');
+    this.register('ARB', 'arbitrum', 11841, 'arbitrum');
+    this.register('OP', 'optimism', 11840, 'optimism');
+    this.register('SUI', 'sui', 20947, 'sui');
+    this.register('SEI', 'sei-network', 23149, 'sei');
+    this.register('TIA', 'celestia', 22861, 'celestia');
+    this.register('STRK', 'starknet', 22691, 'starknet');
+    this.register('PYTH', 'pyth-network', 28177, 'pyth-network');
+    this.register('WLD', 'worldcoin-wld', 13502, 'worldcoin');
+    this.register('IMX', 'immutable-x', 10603, 'immutable-x');
+    this.register('DYDX', 'dydx-chain', 28324, 'dydx');
+    this.register('BLUR', 'blur', 23121, 'blur');
+    this.register('OSMO', 'osmosis', 12220, 'osmosis');
+    this.register('INJ', 'injective-protocol', 7226, 'injective');
+    this.register('FET', 'fetch-ai', 3773, 'fetch-ai');
+    this.register('RNDR', 'render-token', 5690, 'render');
+    this.register('GRT', 'the-graph', 6719, 'the-graph');
+    this.register('AAVE', 'aave', 7278, 'aave');
+    this.register('SNX', 'synthetix-network-token', 2586, 'synthetix');
+    this.register('MKR', 'maker', 1518, 'maker');
 
     logger.info('Symbol registry loaded with default mappings', {
-      count: this.geckoToCoinetMap.size,
+      geckoMappings: this.geckoToCoinetMap.size,
+      cmcMappings: this.cmcToCoinetMap.size,
+      messariMappings: this.messariToCoinetMap.size,
     });
   }
 
@@ -112,6 +157,7 @@ export class SymbolRegistry {
     return {
       geckoMappings: this.geckoToCoinetMap.size,
       cmcMappings: this.cmcToCoinetMap.size,
+      messariMappings: this.messariToCoinetMap.size,
     };
   }
 }

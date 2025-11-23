@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'eventemitter3';
-import CryptoPanicRestClient from '../providers/cryptopanic-rest';
+import { CryptoPanicRestClient } from '../providers/cryptopanic-rest';
 import {
   CryptoPanicPost,
   CryptoPanicPostsResponse,
@@ -18,6 +18,8 @@ import {
   CryptoPanicRegion,
   NewsStatistics,
   CachedNewsItem,
+  CryptoPanicCurrency,
+  CryptoPanicPushConfig,
 } from '../types/cryptopanic.types';
 import { logger } from '../utils/logger';
 
@@ -30,6 +32,7 @@ export interface CryptoPanicNewsServiceConfig {
   enableTokenMapping?: boolean;
   tokenMappings?: Record<string, string>; // CryptoPanic code -> Standard symbol
   protocolDetection?: boolean;
+  pushConfig?: CryptoPanicPushConfig; // Push API config for Enterprise plan
 }
 
 export class CryptoPanicNewsService extends EventEmitter {
@@ -40,6 +43,11 @@ export class CryptoPanicNewsService extends EventEmitter {
   private refreshTimer?: NodeJS.Timeout;
   private watchedCurrencies: Set<string>;
   private statistics: NewsStatistics;
+  
+  // Monthly quota tracking
+  private monthlyRequestCount: number = 0;
+  private monthlyQuotaLimit: number = 100000; // Default monthly limit (adjust based on plan)
+  private currentMonth: string = '';
 
   constructor(config: CryptoPanicNewsServiceConfig) {
     super();
@@ -60,12 +68,109 @@ export class CryptoPanicNewsService extends EventEmitter {
     this.articleIndex = new Map();
     this.watchedCurrencies = new Set();
     this.statistics = this.initializeStatistics();
+    
+    // Initialize monthly quota tracking
+    this.initializeMonthlyTracking();
+    
+    // Initialize push config if provided (Enterprise plan)
+    if (this.config.pushConfig?.enabled) {
+      this.initializePushConfig(this.config.pushConfig);
+    }
 
     logger.info('CryptoPanic News Service initialized', {
       caching: this.config.enableCaching,
       autoRefresh: this.config.enableAutoRefresh,
       tokenMapping: this.config.enableTokenMapping,
+      pushEnabled: this.config.pushConfig?.enabled || false,
+      monthlyQuotaLimit: this.monthlyQuotaLimit,
     });
+  }
+
+  /**
+   * Initialize monthly quota tracking
+   */
+  private initializeMonthlyTracking(): void {
+    const now = new Date();
+    this.currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    this.monthlyRequestCount = 0;
+    
+    logger.info('CryptoPanic monthly quota tracking initialized', {
+      currentMonth: this.currentMonth,
+      monthlyQuotaLimit: this.monthlyQuotaLimit,
+    });
+  }
+
+  /**
+   * Initialize push config for Enterprise plan
+   */
+  private initializePushConfig(pushConfig: CryptoPanicPushConfig): void {
+    logger.info('CryptoPanic Push API initialized', {
+      webhookUrl: pushConfig.webhookUrl,
+      events: pushConfig.events,
+      filters: pushConfig.filters,
+    });
+    
+    // Note: Actual push API integration would require CryptoPanic Enterprise API
+    // This is a placeholder for future implementation
+    this.emit('push_config_initialized', pushConfig);
+  }
+
+  /**
+   * Check and update monthly quota
+   */
+  private checkMonthlyQuota(): void {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Reset if month changed
+    if (currentMonth !== this.currentMonth) {
+      logger.info('CryptoPanic monthly quota reset', {
+        previousMonth: this.currentMonth,
+        previousCount: this.monthlyRequestCount,
+        newMonth: currentMonth,
+      });
+      this.currentMonth = currentMonth;
+      this.monthlyRequestCount = 0;
+    }
+    
+    this.monthlyRequestCount++;
+    const usagePercent = (this.monthlyRequestCount / this.monthlyQuotaLimit) * 100;
+    
+    // Log warning at 90% usage
+    if (usagePercent >= 90) {
+      logger.error('CryptoPanic monthly quota CRITICAL: Approaching limit', {
+        currentCount: this.monthlyRequestCount,
+        quotaLimit: this.monthlyQuotaLimit,
+        usagePercent: usagePercent.toFixed(2),
+        remaining: this.monthlyQuotaLimit - this.monthlyRequestCount,
+      });
+    } else if (usagePercent >= 75) {
+      logger.warn('CryptoPanic monthly quota WARNING: High usage', {
+        currentCount: this.monthlyRequestCount,
+        quotaLimit: this.monthlyQuotaLimit,
+        usagePercent: usagePercent.toFixed(2),
+        remaining: this.monthlyQuotaLimit - this.monthlyRequestCount,
+      });
+    }
+  }
+
+  /**
+   * Get monthly quota status
+   */
+  getMonthlyQuotaStatus(): {
+    currentCount: number;
+    quotaLimit: number;
+    usagePercent: number;
+    remaining: number;
+    currentMonth: string;
+  } {
+    return {
+      currentCount: this.monthlyRequestCount,
+      quotaLimit: this.monthlyQuotaLimit,
+      usagePercent: (this.monthlyRequestCount / this.monthlyQuotaLimit) * 100,
+      remaining: this.monthlyQuotaLimit - this.monthlyRequestCount,
+      currentMonth: this.currentMonth,
+    };
   }
 
   /**
@@ -125,6 +230,7 @@ export class CryptoPanicNewsService extends EventEmitter {
    */
   private calculatePanicScore(post: CryptoPanicPost): number {
     const votes = post.votes;
+    if (!votes) return 0;
     const totalVotes = votes.positive + votes.negative + votes.important;
 
     if (totalVotes === 0) return 0;
@@ -146,6 +252,7 @@ export class CryptoPanicNewsService extends EventEmitter {
    */
   private calculateSentimentScore(post: CryptoPanicPost): number {
     const votes = post.votes;
+    if (!votes) return 0;
     const totalVotes = votes.positive + votes.negative;
 
     if (totalVotes === 0) return 0;
@@ -170,6 +277,7 @@ export class CryptoPanicNewsService extends EventEmitter {
    */
   private calculateImportance(post: CryptoPanicPost): number {
     const votes = post.votes;
+    if (!votes) return 0;
 
     // Important votes are the primary factor
     const importantWeight = Math.min(votes.important * 5, 50);
@@ -252,26 +360,26 @@ export class CryptoPanicNewsService extends EventEmitter {
     const normalized: NormalizedNewsArticle = {
       id: `cryptopanic-${post.id}`,
       title: post.title,
-      description: post.metadata?.description,
-      url: post.url,
+      description: post.metadata?.description || (post as any).description,
+      url: post.url || (post as any).original_url || '',
       publishedAt: new Date(post.published_at),
       createdAt: new Date(post.created_at),
       source: {
-        name: post.source.title,
-        domain: post.domain,
-        region: post.source.region,
+        name: post.source?.title || post.source?.domain || post.domain || 'Unknown',
+        domain: post.domain || post.source?.domain || 'unknown',
+        region: post.source?.region || 'en',
       },
       sentiment,
       panicScore,
       sentimentScore,
       importance,
       engagement: {
-        likes: post.votes.liked,
-        dislikes: post.votes.disliked,
-        comments: post.votes.comments,
-        saves: post.votes.saved,
+        likes: post.votes?.liked || 0,
+        dislikes: post.votes?.disliked || 0,
+        comments: post.votes?.comments || 0,
+        saves: post.votes?.saved || 0,
       },
-      currencies: (post.currencies || []).map((c) => ({
+      currencies: (post.currencies || (post as any).instruments || []).map((c: CryptoPanicCurrency) => ({
         code: c.code,
         name: c.title,
         slug: c.slug,
@@ -310,12 +418,12 @@ export class CryptoPanicNewsService extends EventEmitter {
     tags.push(post.kind);
 
     // Add importance tag
-    if (post.votes.important > 10) {
+    if (post.votes && post.votes.important > 10) {
       tags.push('important');
     }
 
     // Add trending tag
-    if (post.votes.liked > 50) {
+    if (post.votes && post.votes.liked > 50) {
       tags.push('trending');
     }
 
@@ -326,7 +434,7 @@ export class CryptoPanicNewsService extends EventEmitter {
     }
 
     // Add region tag
-    if (post.source.region) {
+    if (post.source?.region) {
       tags.push(`region-${post.source.region}`);
     }
 
@@ -415,6 +523,9 @@ export class CryptoPanicNewsService extends EventEmitter {
     page?: number;
   }): Promise<NormalizedNewsArticle[]> {
     try {
+      // Check monthly quota before making request
+      this.checkMonthlyQuota();
+      
       logger.debug('Fetching CryptoPanic news', options);
 
       const response = await this.client.fetchPosts(options);
@@ -631,6 +742,4 @@ export class CryptoPanicNewsService extends EventEmitter {
     logger.info('CryptoPanic News Service destroyed');
   }
 }
-
-export default CryptoPanicNewsService;
 

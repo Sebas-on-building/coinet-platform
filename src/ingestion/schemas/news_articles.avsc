@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "NewsArticle",
+  "fields": [
+    { "name": "title", "type": "string" },
+    { "name": "content", "type": "string" },
+    { "name": "source", "type": "string" },
+    { "name": "published_at", "type": "long" }
+  ]
+}

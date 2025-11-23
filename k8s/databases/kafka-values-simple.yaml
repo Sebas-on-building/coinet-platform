@@ -1,0 +1,91 @@
+# =============================================================================
+# COINET AI KAFKA HELM VALUES - SIMPLIFIED
+# Production-ready Apache Kafka deployment for real-time data streaming
+# =============================================================================
+
+# Global configuration
+global:
+  storageClass: "standard"
+
+# Kafka cluster configuration
+kafka:
+  # Basic replica configuration
+  replicaCount: 1  # Reduced for resource constraints
+  
+  # Listeners configuration
+  listeners:
+    client:
+      protocol: PLAINTEXT
+      port: 9092
+    interbroker:
+      protocol: PLAINTEXT
+      port: 9093
+      
+  # Storage configuration
+  persistence:
+    enabled: true
+    size: 20Gi
+    
+  # Resource limits
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+      
+  # JVM configuration
+  heapOpts: "-Xmx512m -Xms512m"
+  
+  # Kafka configuration
+  config: |
+    num.partitions=3
+    default.replication.factor=1
+    min.insync.replicas=1
+    log.retention.hours=168
+    log.segment.bytes=134217728
+    compression.type=snappy
+
+# Zookeeper configuration
+zookeeper:
+  enabled: true
+  replicaCount: 1
+  
+  # Resource configuration
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 200m
+      
+  # Storage configuration
+  persistence:
+    enabled: true
+    size: 8Gi
+
+# Disable conflicting components
+controller:
+  replicaCount: 0
+
+kraft:
+  enabled: false
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    client: 9092
+    
+# External access (disabled for simplicity)
+externalAccess:
+  enabled: false
+
+# Metrics (simplified)
+metrics:
+  kafka:
+    enabled: false
+  jmx:
+    enabled: false 

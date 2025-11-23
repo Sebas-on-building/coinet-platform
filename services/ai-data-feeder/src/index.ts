@@ -1,6 +1,6 @@
 /**
- * AI Data Feeder Service
- * Main entry point for 24/7 AI data feeding
+ * AI Data Feeder Service - Main Entry Point
+ * 24/7 service that continuously feeds Coinet AI with market data
  */
 
 import dotenv from 'dotenv';
@@ -11,67 +11,59 @@ import { logger } from './logger';
 // Load environment variables
 dotenv.config();
 
-// Export main classes
-export { AIDataFeeder } from './data-feeder';
-export * from './types';
-export { getConfig } from './config';
-
-/**
- * Main function - runs the data feeder
- */
 async function main() {
-  logger.info('Starting AI Data Feeder Service...');
-
-  // Get configuration
-  const config = getConfig();
-
-  // Create data feeder
-  const feeder = new AIDataFeeder(config);
-
-  // Listen for data updates
-  feeder.on('data_update', (event) => {
-    logger.debug('Data update', {
-      type: event.type,
-      coin: event.coin,
-      timestamp: event.timestamp,
+  logger.info('🚀 Starting AI Data Feeder Service...');
+  
+  try {
+    // Get configuration
+    const config = getConfig();
+    
+    // Create and start the feeder
+    const feeder = new AIDataFeeder(config);
+    
+    // Listen for data updates
+    feeder.on('data_update', (event) => {
+      logger.debug('Data update received', {
+        type: event.type,
+        coinId: (event.data as any).coinId,
+        timestamp: new Date().toISOString(),
+      });
     });
-  });
-
-  // Listen for errors
-  feeder.on('error', (event) => {
-    logger.error('Data feeder error', {
-      coin: event.coin,
-      error: event.data,
-    });
-  });
-
-  // Start the feeder
-  await feeder.start();
-
-  // Log status every minute
-  setInterval(() => {
-    const status = feeder.getStatus();
-    logger.info('Status', status);
-  }, 60000);
-
-  // Graceful shutdown
-  const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down gracefully...`);
-    await feeder.stop();
-    process.exit(0);
-  };
-
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
-
-  logger.info('AI Data Feeder Service started successfully ✅');
+    
+    // Start the feeder
+    await feeder.start();
+    
+    logger.info('✅ AI Data Feeder started successfully');
+    logger.info(`📊 Tracking ${config.coins.length} coins`);
+    logger.info(`⏱️  Price updates: every ${(config.priceUpdateInterval || 60000) / 1000}s`);
+    logger.info(`📰 News updates: every ${(config.newsUpdateInterval || 300000) / 1000}s`);
+    logger.info(`🤖 AI analysis: every ${(config.aiAnalysisInterval || 600000) / 1000}s`);
+    
+    // Handle graceful shutdown
+    const shutdown = async (signal: string) => {
+      logger.info(`Received ${signal}, shutting down gracefully...`);
+      await feeder.stop();
+      process.exit(0);
+    };
+    
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    
+  } catch (error) {
+    logger.error('❌ Failed to start AI Data Feeder', { error });
+    process.exit(1);
+  }
 }
 
-// Run if executed directly
+// Run if this is the main module
 if (require.main === module) {
-  main().catch((error) => {
+  main().catch(error => {
     logger.error('Fatal error', { error });
     process.exit(1);
   });
 }
+
+export { AIDataFeeder } from './data-feeder';
+export * from './types';
+export { getConfig } from './config';
 

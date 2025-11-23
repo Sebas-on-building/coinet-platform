@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "SocialMetric",
+  "fields": [
+    { "name": "platform", "type": "string" },
+    { "name": "metric", "type": "string" },
+    { "name": "value", "type": "double" },
+    { "name": "timestamp", "type": "long" }
+  ]
+}

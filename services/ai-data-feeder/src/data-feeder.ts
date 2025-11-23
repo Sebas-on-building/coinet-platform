@@ -5,20 +5,22 @@
 
 import EventEmitter from 'eventemitter3';
 import cron from 'node-cron';
-import { 
-  CoinGeckoRestClient,
-  CryptoPanicNewsService,
-  CryptoPanicSentimentAnalyzer,
-  CryptoPanicPlan,
-  CryptoPanicRestClient
-} from '@coinet/market-prices';
+// Lazy imports from market-prices package to avoid crashes on module load
+// We'll import these dynamically when needed
 import Redis from 'ioredis';
 import { AIMarketDataPoint, AIAnalysisResult, DataFeederConfig, DataFeedEvent } from './types';
 import { logger } from './logger';
 
+// Type imports (these are safe - no runtime code)
+import type { CoinGeckoRestClient } from '@coinet/market-prices';
+import type { CryptoPanicNewsService } from '@coinet/market-prices';
+import type { CryptoPanicSentimentAnalyzer } from '@coinet/market-prices';
+import type { CryptoPanicRestClient } from '@coinet/market-prices';
+import type { CryptoPanicPlan } from '@coinet/market-prices';
+
 export class AIDataFeeder extends EventEmitter {
   private config: DataFeederConfig;
-  private coinGecko: CoinGeckoRestClient;
+  private coinGecko!: CoinGeckoRestClient;
   private cryptoPanicNews?: CryptoPanicNewsService;
   private cryptoPanicSentiment?: CryptoPanicSentimentAnalyzer;
   private redis?: Redis;
@@ -33,34 +35,215 @@ export class AIDataFeeder extends EventEmitter {
   constructor(config: DataFeederConfig) {
     super();
     this.config = config;
-    
-    // Initialize CoinGecko
-    this.coinGecko = new CoinGeckoRestClient({
-      apiKey: process.env.COINGECKO_API_KEY,
-      timeout: 30000,
-      enableCaching: true,
-    });
-    
-    // Initialize CryptoPanic if token available
-    if (process.env.CRYPTOPANIC_AUTH_TOKEN) {
-      const cryptoPanicClient = new CryptoPanicRestClient({
-        authToken: process.env.CRYPTOPANIC_AUTH_TOKEN,
-        plan: (process.env.CRYPTOPANIC_PLAN as CryptoPanicPlan) || CryptoPanicPlan.DEVELOPMENT,
-        enableCaching: true,
+  }
+
+  /**
+   * Lazy load market-prices modules to avoid crashes on import
+   * Using require() since compiled code is CommonJS
+   */
+  private async loadMarketPricesModules() {
+    try {
+      // Use dynamic require() - this will be CommonJS at runtime
+      const path = require('path');
+      const fs = require('fs');
+      
+      // Debug: Log current directory and check file existence
+      const currentDir = __dirname;
+      logger.info('Loading market-prices modules', { currentDir });
+      
+      // Check multiple possible locations
+      const possiblePaths = [
+        '/app/services/market-prices/dist/index.js',
+        path.resolve(currentDir, '../../market-prices/dist/index.js'),
+        path.resolve(currentDir, '../../../market-prices/dist/index.js'),
+        path.resolve('/app', 'services/market-prices/dist/index.js'),
+      ];
+      
+      logger.info('Checking possible paths', { paths: possiblePaths });
+      
+      let marketPrices;
+      let foundPath: string | null = null;
+      
+      // Try package name first
+      try {
+        marketPrices = require('@coinet/market-prices');
+        foundPath = '@coinet/market-prices';
+        logger.info('✅ Successfully loaded via package name');
+      } catch (packageError: any) {
+        logger.warn('Package require failed', { error: packageError?.message || String(packageError) });
+        
+        // Try all possible paths
+        for (const tryPath of possiblePaths) {
+          try {
+            if (fs.existsSync(tryPath)) {
+              logger.info(`Found file at ${tryPath}, attempting require...`);
+              marketPrices = require(tryPath);
+              foundPath = tryPath;
+              logger.info(`✅ Successfully loaded from ${tryPath}`);
+              break;
+            } else {
+              logger.debug(`File not found: ${tryPath}`);
+            }
+          } catch (pathError: any) {
+            logger.warn(`Failed to require ${tryPath}`, { error: pathError?.message || String(pathError) });
+            continue;
+          }
+        }
+        
+        if (!foundPath) {
+          throw new Error(`Could not find market-prices module. Checked paths: ${possiblePaths.join(', ')}. Current dir: ${currentDir}`);
+        }
+      }
+      
+      if (!marketPrices) {
+        throw new Error('marketPrices is null/undefined after loading');
+      }
+      
+      const { CoinGeckoRestClient, CryptoPanicRestClient, CryptoPanicNewsService, CryptoPanicSentimentAnalyzer, CryptoPanicPlan } = marketPrices;
+      
+      // Initialize CoinGecko
+      this.coinGecko = new CoinGeckoRestClient({
+        apiKey: process.env.COINGECKO_API_KEY || '',
+        apiUrl: process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3',
+        rateLimit: {
+          maxRequestsPerMinute: 50,
+          reservoir: 50,
+          reservoirRefreshAmount: 50,
+          reservoirRefreshInterval: 60 * 1000,
+        },
+        retry: {
+          retries: 3,
+          retryDelay: 1000,
+        },
+        priority: 1,
       });
       
-      this.cryptoPanicNews = new CryptoPanicNewsService({
-        client: cryptoPanicClient,
-        enableCaching: true,
-      });
-      
-      this.cryptoPanicSentiment = new CryptoPanicSentimentAnalyzer();
+      // Initialize CryptoPanic if token available
+      if (process.env.CRYPTOPANIC_AUTH_TOKEN) {
+        try {
+          // Parse plan from environment variable (handle cases where it might include variable name)
+          let planEnv = process.env.CRYPTOPANIC_PLAN || 'development';
+          // Fix: Remove variable name prefix if present (e.g., "CRYPTOPANIC_PLAN=development" -> "development")
+          if (planEnv.includes('=')) {
+            planEnv = planEnv.split('=').pop() || 'development';
+          }
+          planEnv = planEnv.trim().toLowerCase();
+          
+          // Convert string to CryptoPanicPlan enum
+          let plan: CryptoPanicPlan = CryptoPanicPlan.DEVELOPMENT;
+          if (planEnv === 'development' || planEnv === 'developer') {
+            plan = CryptoPanicPlan.DEVELOPMENT;
+          } else if (planEnv === 'growth') {
+            plan = CryptoPanicPlan.GROWTH;
+          } else if (planEnv === 'enterprise') {
+            plan = CryptoPanicPlan.ENTERPRISE;
+          }
+          
+          const cryptoPanicClient = new CryptoPanicRestClient({
+            authToken: process.env.CRYPTOPANIC_AUTH_TOKEN,
+            plan,
+            enableCaching: true,
+          });
+          
+          this.cryptoPanicNews = new CryptoPanicNewsService({
+            client: cryptoPanicClient,
+            enableCaching: true,
+          });
+          
+          this.cryptoPanicSentiment = new CryptoPanicSentimentAnalyzer();
+        } catch (error) {
+          logger.warn('Failed to initialize CryptoPanic (continuing without it)', { error });
+          // Don't throw - CryptoPanic is optional
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to load market-prices modules', { error });
+      throw error;
     }
     
-    // Initialize Redis if enabled
-    if (config.enableRedisCache && process.env.REDIS_URL) {
-      this.redis = new Redis(process.env.REDIS_URL);
-      logger.info('Redis cache enabled');
+    // Initialize Redis if enabled - with proper error handling
+    if (this.config.enableRedisCache && process.env.REDIS_URL) {
+      try {
+        let redisUrl = process.env.REDIS_URL;
+        
+        // Fix common issue: Railway sometimes includes variable name in value
+        // e.g., "REDIS_URL=redis://..." instead of just "redis://..."
+        if (redisUrl.startsWith('REDIS_URL=')) {
+          redisUrl = redisUrl.substring('REDIS_URL='.length);
+          logger.debug('Fixed Redis URL format (removed variable name prefix)');
+        }
+        
+        // Trim whitespace
+        redisUrl = redisUrl.trim();
+        
+        // Validate Redis URL format
+        if (!redisUrl || (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://'))) {
+          logger.warn('Invalid Redis URL format (should start with redis:// or rediss://), disabling Redis cache', { 
+            url: redisUrl ? `${redisUrl.substring(0, 20)}...` : 'undefined' 
+          });
+          return;
+        }
+        
+        // Create Redis client with connection options
+        this.redis = new Redis(redisUrl, {
+          retryStrategy: (times: number) => {
+            // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, max 3000ms
+            const delay = Math.min(times * 50, 3000);
+            logger.debug(`Redis retry attempt ${times}, waiting ${delay}ms`);
+            return delay;
+          },
+          maxRetriesPerRequest: 3,
+          enableReadyCheck: true,
+          enableOfflineQueue: true, // Allow queuing commands when offline (needed for initial ping)
+          connectTimeout: 10000, // 10 seconds
+          lazyConnect: false, // Connect immediately
+        });
+        
+        // Handle connection events
+        this.redis.on('connect', () => {
+          logger.info('Redis connected successfully');
+        });
+        
+        this.redis.on('ready', () => {
+          logger.info('Redis ready to accept commands');
+          // Test connection with a ping after ready
+          this.redis!.ping().then(() => {
+            logger.info('Redis cache enabled and connected');
+          }).catch((error: Error) => {
+            logger.warn('Redis ping failed after ready event', { error: error.message });
+            // Don't disable Redis here - connection is established, ping might fail for other reasons
+          });
+        });
+        
+        this.redis.on('error', (error: Error) => {
+          // Log error but don't crash - Redis is optional
+          logger.warn('Redis connection error (continuing without cache)', { 
+            error: error.message,
+            code: (error as any).code,
+          });
+          // Only disable Redis on critical connection errors
+          if ((error as any).code === 'ECONNREFUSED' || (error as any).code === 'ENOTFOUND') {
+            this.redis = undefined;
+          }
+        });
+        
+        this.redis.on('close', () => {
+          logger.warn('Redis connection closed');
+        });
+        
+        this.redis.on('reconnecting', (delay: number) => {
+          logger.info(`Redis reconnecting in ${delay}ms`);
+        });
+        
+      } catch (error: any) {
+        logger.warn('Failed to initialize Redis (continuing without cache)', { 
+          error: error?.message || String(error) 
+        });
+        this.redis = undefined;
+        // Don't throw - Redis is optional
+      }
+    } else {
+      logger.info('Redis cache disabled (not configured)');
     }
   }
 
@@ -79,6 +262,9 @@ export class AIDataFeeder extends EventEmitter {
       newsInterval: `${this.config.newsUpdateInterval / 1000}s`,
       aiInterval: `${this.config.aiAnalysisInterval / 1000}s`,
     });
+
+    // Lazy load market-prices modules first
+    await this.loadMarketPricesModules();
 
     // Initial data fetch
     await this.fetchAllData();
@@ -113,9 +299,21 @@ export class AIDataFeeder extends EventEmitter {
     if (this.newsScheduler) this.newsScheduler.stop();
     if (this.aiScheduler) this.aiScheduler.stop();
 
-    // Disconnect Redis
+    // Disconnect Redis gracefully
     if (this.redis) {
-      await this.redis.quit();
+      try {
+        await this.redis.quit();
+        logger.info('Redis disconnected gracefully');
+      } catch (error: any) {
+        logger.warn('Error disconnecting Redis', { error: error?.message || String(error) });
+        // Force disconnect if quit fails
+        try {
+          this.redis.disconnect();
+        } catch (disconnectError) {
+          // Ignore disconnect errors
+        }
+      }
+      this.redis = undefined;
     }
 
     this.isRunning = false;
@@ -183,11 +381,35 @@ export class AIDataFeeder extends EventEmitter {
    */
   private async fetchPrices(): Promise<void> {
     try {
+      // Clean and validate coins array
+      const coins = this.config.coins
+        .map(coin => coin.trim().toLowerCase())
+        .filter(coin => coin.length > 0 && !coin.includes('=')); // Remove any malformed entries
+      
+      if (coins.length === 0) {
+        logger.warn('No valid coins to fetch, using defaults');
+        coins.push('bitcoin', 'ethereum', 'solana', 'cardano', 'avalanche-2');
+      }
+      
       logger.debug('Fetching prices from CoinGecko', {
-        coins: this.config.coins.length,
+        coins: coins.length,
+        coinIds: coins.slice(0, 5), // Log first 5 for debugging
       });
 
-      const prices = await this.coinGecko.getMarketData(this.config.coins);
+      const markets = await this.coinGecko.getCoinMarkets('usd', coins);
+      // Convert CoinGeckoMarket to our format
+      const prices = markets.map(m => ({
+        id: m.id,
+        symbol: m.symbol,
+        name: m.name,
+        current_price: m.current_price,
+        price_change_24h: m.price_change_24h,
+        price_change_percentage_24h: m.price_change_percentage_24h,
+        high_24h: m.high_24h,
+        low_24h: m.low_24h,
+        total_volume: m.total_volume,
+        market_cap: m.market_cap,
+      }));
 
       for (const price of prices) {
         const dataPoint = this.dataStore.get(price.id) || {
@@ -266,17 +488,19 @@ export class AIDataFeeder extends EventEmitter {
 
       const symbols = this.config.coins.map(c => c.toUpperCase());
       const articles = await this.cryptoPanicNews.fetchNews({
-        limit: this.config.maxNewsArticles,
+        currencies: symbols,
       });
+      // Limit articles to maxNewsArticles
+      const limitedArticles = articles.slice(0, this.config.maxNewsArticles);
 
       // Analyze sentiment
-      const analyses = this.cryptoPanicSentiment.analyzeBatch(articles);
+      const analyses = this.cryptoPanicSentiment.analyzeBatch(limitedArticles);
       const overview = this.cryptoPanicSentiment.getMarketSentimentOverview();
 
       // Update news data for each coin
       for (const coin of this.config.coins) {
         const symbol = coin.toUpperCase();
-        const coinArticles = articles.filter(a => 
+        const coinArticles = limitedArticles.filter(a => 
           a.currencies.some(c => c.code === symbol)
         );
 
@@ -342,7 +566,7 @@ export class AIDataFeeder extends EventEmitter {
       }
 
       logger.info('News updated', { 
-        articles: articles.length,
+        articles: limitedArticles.length,
         avgSentiment: overview.averageSentimentScore,
         avgPanic: overview.averagePanicScore,
       });

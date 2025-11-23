@@ -23,8 +23,6 @@ import { TimescaleStorage } from './storage/timescale';
 import { CacheStorage } from './storage/cache';
 import { DataNormalizer, getDataNormalizer } from './utils/normalizer';
 import { logger } from './utils/logger';
-import { getCircuitBreakerManager } from './middleware/circuit-breaker';
-import { InputValidator } from './utils/validation';
 
 export class MarketDataAggregator extends EventEmitter {
   private config: ServiceConfig;
@@ -36,6 +34,12 @@ export class MarketDataAggregator extends EventEmitter {
   private normalizer: DataNormalizer;
   private isInitialized: boolean = false;
   private lastHealthCheck: Date | null = null;
+  
+  // Fallback tracking for monitoring
+  private coinGeckoFailureStartTime: Date | null = null;
+  private fallbackCount: number = 0;
+  private totalRequests: number = 0;
+  private lastFallbackAlert: Date | null = null;
 
   constructor(config: ServiceConfig) {
     super();
@@ -131,93 +135,7 @@ export class MarketDataAggregator extends EventEmitter {
       });
     } catch (error) {
       logger.error('Failed to handle price update', { error, event });
-      // Don't throw - continue processing other updates
     }
-  }
-
-  /**
-   * Enhanced WebSocket subscription with automatic REST fallback
-   */
-  async subscribeToWebSocketWithFallback(
-    coins: string[],
-    fallbackInterval: number = 60000 // Fallback to REST every 60s if WS fails
-  ): Promise<void> {
-    if (!this.geckoWs) {
-      logger.warn('WebSocket not available, using REST fallback');
-      // Fallback to periodic REST polling
-      this.startRESTFallback(coins, fallbackInterval);
-      return;
-    }
-
-    try {
-      await this.subscribeToWebSocket(coins);
-      
-      // Monitor WebSocket health and fallback if needed
-      this.monitorWebSocketHealth(coins, fallbackInterval);
-    } catch (error) {
-      logger.error('WebSocket subscription failed, falling back to REST', { error });
-      this.startRESTFallback(coins, fallbackInterval);
-    }
-  }
-
-  /**
-   * Monitor WebSocket health and fallback to REST if unhealthy
-   */
-  private monitorWebSocketHealth(
-    coins: string[],
-    fallbackInterval: number
-  ): void {
-    const healthCheckInterval = setInterval(async () => {
-      if (!this.geckoWs || !this.geckoWs.isHealthy()) {
-        logger.warn('WebSocket unhealthy, switching to REST fallback');
-        clearInterval(healthCheckInterval);
-        this.startRESTFallback(coins, fallbackInterval);
-      }
-    }, 30000); // Check every 30 seconds
-
-    // Clean up on shutdown
-    this.once('shutdown', () => {
-      clearInterval(healthCheckInterval);
-    });
-  }
-
-  /**
-   * Start REST fallback polling
-   */
-  private restFallbackTimers: Map<string, NodeJS.Timeout> = new Map();
-
-  private startRESTFallback(coins: string[], interval: number): void {
-    // Clear existing timers for these coins
-    coins.forEach((coin) => {
-      const existing = this.restFallbackTimers.get(coin);
-      if (existing) {
-        clearInterval(existing);
-      }
-    });
-
-    // Start periodic REST polling
-    const timer = setInterval(async () => {
-      try {
-        const symbols = coins.map((coin) => {
-          // Convert CoinGecko ID to symbol if needed
-          return coin.split('-')[0].toUpperCase();
-        });
-        
-        await this.getMarketPrices(symbols, false); // Don't use cache
-        logger.debug('REST fallback polling completed', { coins: symbols });
-      } catch (error) {
-        logger.error('REST fallback polling failed', { error, coins });
-      }
-    }, interval);
-
-    coins.forEach((coin) => {
-      this.restFallbackTimers.set(coin, timer);
-    });
-
-    logger.info('REST fallback polling started', {
-      coins: coins.length,
-      interval,
-    });
   }
 
   /**
@@ -245,8 +163,6 @@ export class MarketDataAggregator extends EventEmitter {
     symbols: string[],
     useCache: boolean = true
   ): Promise<MarketPrice[]> {
-    // Validate and sanitize input
-    const validatedSymbols = InputValidator.validateSymbols(symbols);
     const prices: MarketPrice[] = [];
 
     // Try cache first
@@ -271,8 +187,20 @@ export class MarketDataAggregator extends EventEmitter {
 
     // Try CoinGecko first
     try {
-      logger.info('Fetching prices from CoinGecko', { symbols: validatedSymbols });
-      const geckoData = await this.geckoRest.getCoinMarkets('usd', validatedSymbols);
+      logger.info('Fetching prices from CoinGecko', { symbols });
+      const geckoData = await this.geckoRest.getCoinMarkets('usd', symbols);
+      
+      // Reset failure tracking on success
+      if (this.coinGeckoFailureStartTime !== null) {
+        const outageDuration = Date.now() - this.coinGeckoFailureStartTime.getTime();
+        logger.info('CoinGecko recovered', {
+          outageDurationMs: outageDuration,
+          outageDurationMinutes: Math.round(outageDuration / 60000),
+        });
+        this.coinGeckoFailureStartTime = null;
+      }
+      
+      this.totalRequests++;
       
       for (const market of geckoData) {
         const price = this.normalizer.normalizeCoinGeckoMarket(market);
@@ -286,14 +214,38 @@ export class MarketDataAggregator extends EventEmitter {
       return prices;
     } catch (error) {
       logger.error('CoinGecko request failed', { error });
+      
+      // Track failure start time (only set once per outage)
+      if (this.coinGeckoFailureStartTime === null) {
+        this.coinGeckoFailureStartTime = new Date();
+        logger.warn('CoinGecko failure detected, starting outage timer', {
+          symbols,
+        });
+      }
+      
+      this.totalRequests++;
 
-      // Failover to CoinMarketCap
-      if (this.config.enableCMCFallback && this.cmcRest) {
-        return this.getMarketPricesFromCMC(validatedSymbols);
+      // Only failover to CoinMarketCap if CoinGecko has been down for >5 minutes
+      const outageDuration = this.coinGeckoFailureStartTime 
+        ? Date.now() - this.coinGeckoFailureStartTime.getTime()
+        : 0;
+      const outageMinutes = outageDuration / 60000;
+      
+      if (this.config.enableCMCFallback && this.cmcRest && outageMinutes >= 5) {
+        logger.warn('CoinGecko outage exceeds 5 minutes, activating CoinMarketCap fallback', {
+          outageMinutes: outageMinutes.toFixed(2),
+          symbols,
+        });
+        return this.getMarketPricesFromCMC(symbols);
+      } else if (this.config.enableCMCFallback && this.cmcRest && outageMinutes < 5) {
+        logger.info('CoinGecko outage < 5 minutes, waiting before fallback', {
+          outageMinutes: outageMinutes.toFixed(2),
+          symbols,
+        });
       }
 
-      // If no fallback, try database
-      return this.getMarketPricesFromDB(validatedSymbols);
+      // If no fallback or outage too short, try database
+      return this.getMarketPricesFromDB(symbols);
     }
   }
 
@@ -305,7 +257,40 @@ export class MarketDataAggregator extends EventEmitter {
       throw new Error('CoinMarketCap client not available');
     }
 
-    logger.info('Falling back to CoinMarketCap', { symbols });
+    this.fallbackCount++;
+    // Calculate failover rate based on total requests (only count successful CoinGecko requests + fallbacks)
+    const failoverRate = this.totalRequests > 0 
+      ? (this.fallbackCount / this.totalRequests) * 100 
+      : 0;
+
+    logger.info('Falling back to CoinMarketCap', { 
+      symbols,
+      failoverRate: failoverRate.toFixed(2),
+      totalFallbacks: this.fallbackCount,
+      totalRequests: this.totalRequests,
+    });
+
+    // Alert if failover rate exceeds 10%
+    if (failoverRate > 10) {
+      const now = new Date();
+      // Only alert once per hour to avoid spam
+      if (!this.lastFallbackAlert || (now.getTime() - this.lastFallbackAlert.getTime()) > 3600000) {
+        logger.error('HIGH FAILOVER RATE ALERT: CoinGecko failover rate exceeds 10%', {
+          failoverRate: failoverRate.toFixed(2),
+          totalFallbacks: this.fallbackCount,
+          totalRequests: this.totalRequests,
+          coinGeckoOutageDuration: this.coinGeckoFailureStartTime 
+            ? Math.round((Date.now() - this.coinGeckoFailureStartTime.getTime()) / 60000)
+            : 0,
+        });
+        this.emit('high_failover_rate', {
+          failoverRate,
+          totalFallbacks: this.fallbackCount,
+          totalRequests: this.totalRequests,
+        });
+        this.lastFallbackAlert = now;
+      }
+    }
 
     try {
       await new Promise((resolve) => setTimeout(resolve, this.config.failoverRetryDelay));
@@ -329,6 +314,7 @@ export class MarketDataAggregator extends EventEmitter {
 
       logger.info('Prices fetched from CoinMarketCap (fallback)', {
         count: prices.length,
+        failoverRate: failoverRate.toFixed(2),
       });
 
       return prices;
@@ -552,23 +538,10 @@ export class MarketDataAggregator extends EventEmitter {
       },
     };
 
-    // Get circuit breaker stats
-    const circuitBreakers = getCircuitBreakerManager().getAllStats();
-
     // Check CoinGecko REST
     try {
       status.providers.coingecko.rest = await this.geckoRest.healthCheck();
       status.providers.coingecko.lastSuccessfulRequest = now;
-      
-      // Add circuit breaker status
-      const cgBreaker = circuitBreakers[DataSource.COINGECKO];
-      if (cgBreaker) {
-        (status.providers.coingecko as any).circuitBreaker = {
-          state: cgBreaker.state,
-          failures: cgBreaker.failures,
-          isOpen: cgBreaker.state === 'open',
-        };
-      }
     } catch (error) {
       status.providers.coingecko.lastError = (error as Error).message;
     }
@@ -583,16 +556,6 @@ export class MarketDataAggregator extends EventEmitter {
       try {
         status.providers.coinmarketcap.rest = await this.cmcRest.healthCheck();
         status.providers.coinmarketcap.lastSuccessfulRequest = now;
-        
-        // Add circuit breaker status
-        const cmcBreaker = circuitBreakers[DataSource.COINMARKETCAP];
-        if (cmcBreaker) {
-          (status.providers.coinmarketcap as any).circuitBreaker = {
-            state: cmcBreaker.state,
-            failures: cmcBreaker.failures,
-            isOpen: cmcBreaker.state === 'open',
-          };
-        }
       } catch (error) {
         status.providers.coinmarketcap.lastError = (error as Error).message;
       }
@@ -633,15 +596,6 @@ export class MarketDataAggregator extends EventEmitter {
    */
   async shutdown(): Promise<void> {
     logger.info('Shutting down market data aggregator...');
-
-    // Emit shutdown event
-    this.emit('shutdown');
-
-    // Clear REST fallback timers
-    for (const timer of this.restFallbackTimers.values()) {
-      clearInterval(timer);
-    }
-    this.restFallbackTimers.clear();
 
     // Disconnect WebSocket
     if (this.geckoWs) {

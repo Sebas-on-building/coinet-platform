@@ -1,0 +1,26 @@
+type Asset {
+  symbol: String!
+  amount: Float!
+}
+
+type Portfolio {
+  id: ID!
+  name: String!
+  assets: [Asset!]!
+}
+
+type Query {
+  portfolios: [Portfolio!]!
+  portfolio(id: ID!): Portfolio
+}
+
+type Mutation {
+  createPortfolio(name: String!, assets: [AssetInput!]!): Portfolio!
+  updatePortfolio(id: ID!, name: String, assets: [AssetInput!]): Portfolio!
+  deletePortfolio(id: ID!): Boolean!
+}
+
+input AssetInput {
+  symbol: String!
+  amount: Float!
+} 

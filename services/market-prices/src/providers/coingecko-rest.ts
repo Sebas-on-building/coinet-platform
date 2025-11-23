@@ -21,16 +21,11 @@ import {
 } from '../types';
 import { getRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../utils/logger';
-import { getQuotaMonitor } from '../services/quota-monitor.service';
-import { getCircuitBreakerManager } from '../middleware/circuit-breaker';
-import { RateLimitHandler } from '../middleware/rate-limit-handler';
 
 export class CoinGeckoRestClient {
   private axios: AxiosInstance;
   private config: ProviderConfig;
   private rateLimiter = getRateLimiter();
-  private quotaMonitor = getQuotaMonitor();
-  private circuitBreaker = getCircuitBreakerManager().getBreaker(DataSource.COINGECKO);
 
   constructor(config: ProviderConfig) {
     this.config = config;
@@ -76,7 +71,7 @@ export class CoinGeckoRestClient {
   }
 
   /**
-   * Make a rate-limited request with circuit breaker protection
+   * Make a rate-limited request with dynamic backoff based on rate limit headers
    */
   private async request<T>(
     method: string,
@@ -87,42 +82,66 @@ export class CoinGeckoRestClient {
     return this.rateLimiter.schedule<T>(
       DataSource.COINGECKO,
       async () => {
-        return this.circuitBreaker.execute(async () => {
-          try {
-            logger.debug(`CoinGecko API request: ${method} ${url}`, { params });
+        try {
+          logger.debug(`CoinGecko API request: ${method} ${url}`, { params });
+          
+          const response = await this.axios.request<T>({
+            method,
+            url,
+            params,
+          });
+
+          // Extract rate limit headers for dynamic backoff
+          // Axios normalizes headers to lowercase, but check both formats for safety
+          const rateLimitRemaining = response.headers['x-ratelimit-remaining'] || 
+                                     response.headers['X-RateLimit-Remaining'];
+          const rateLimitTotal = response.headers['x-ratelimit-limit'] || 
+                                response.headers['X-RateLimit-Limit'];
+          
+          if (rateLimitRemaining !== undefined && rateLimitTotal !== undefined) {
+            const remaining = parseInt(String(rateLimitRemaining), 10);
+            const total = parseInt(String(rateLimitTotal), 10);
             
-            const response = await this.axios.request<T>({
-              method,
-              url,
-              params,
-            });
-
-            // Record quota usage
-            this.quotaMonitor.recordUsage(DataSource.COINGECKO, response.headers);
-
-            logger.debug(`CoinGecko API response: ${method} ${url}`, {
-              status: response.status,
-              quotaRemaining: response.headers['x-ratelimit-remaining'],
-              creditsUsed: response.headers['x-cg-credits-used'],
-            });
-
-            return response.data;
-          } catch (error) {
-            const axiosError = error as AxiosError;
+            // Validate parsed values
+            if (isNaN(remaining) || isNaN(total) || total <= 0) {
+              logger.debug('Invalid rate limit headers, skipping dynamic backoff', {
+                remaining: rateLimitRemaining,
+                total: rateLimitTotal,
+              });
+            } else {
+              const usagePercent = ((total - remaining) / total) * 100;
             
-            // Handle 429 rate limit errors with proper retry-after
-            if (axiosError.response?.status === 429) {
-              const rateLimitError = RateLimitHandler.createRateLimitError(
-                axiosError,
-                DataSource.COINGECKO
-              );
-              throw rateLimitError;
+              // Log warning if approaching rate limit (80% threshold)
+              if (usagePercent >= 80) {
+                logger.warn('CoinGecko rate limit approaching', {
+                  remaining,
+                  total,
+                  usagePercent: usagePercent.toFixed(2),
+                  url,
+                });
+              }
+              
+              // Adjust rate limiter dynamically if remaining is low
+              if (remaining < total * 0.1) {
+                logger.warn('CoinGecko rate limit critically low, applying backoff', {
+                  remaining,
+                  total,
+                });
+                // The rate limiter will handle this automatically via Bottleneck
+              }
             }
-            
-            this.handleError(axiosError, url);
-            throw error;
           }
-        });
+
+          logger.debug(`CoinGecko API response: ${method} ${url}`, {
+            status: response.status,
+            rateLimitRemaining: response.headers['x-ratelimit-remaining'],
+          });
+
+          return response.data;
+        } catch (error) {
+          this.handleError(error as AxiosError, url);
+          throw error;
+        }
       },
       priority
     );

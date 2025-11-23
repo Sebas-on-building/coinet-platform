@@ -1,0 +1,14 @@
+.top-toolbar {
+  height: var(--toolbar-height);
+  display: flex;
+  align-items: center;
+  background: #fff;
+  box-shadow: var(--shadow);
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 24px;
+  z-index: 100;
+  position: sticky;
+  top: 0;
+  transition: background var(--transition);
+}
+.toolbar-spacer { flex: 1; } 

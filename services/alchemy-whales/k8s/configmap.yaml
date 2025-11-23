@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alchemy-whales-config
+  namespace: coinet
+data:
+  # Rate Limiting
+  RATE_LIMIT_MAX_REQUESTS_PER_SECOND: "25"
+  RATE_LIMIT_MAX_CONCURRENT: "10"
+  RATE_LIMIT_RESERVOIR: "100"
+  RATE_LIMIT_RESERVOIR_REFRESH_AMOUNT: "25"
+  RATE_LIMIT_RESERVOIR_REFRESH_INTERVAL: "1000"
+  
+  # Whale Thresholds (USD)
+  WHALE_THRESHOLD_USD: "100000"
+  LARGE_WHALE_THRESHOLD_USD: "1000000"
+  MEGA_WHALE_THRESHOLD_USD: "10000000"
+  
+  # Database
+  DATABASE_HOST: "postgres.coinet.svc.cluster.local"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "coinet_whales"
+  DATABASE_USER: "whales_app"
+  DATABASE_SSL: "true"
+  DATABASE_POOL_MIN: "2"
+  DATABASE_POOL_MAX: "10"
+  
+  # Redis
+  REDIS_HOST: "redis.coinet.svc.cluster.local"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_KEY_PREFIX: "coinet:whales:"
+  
+  # Server Ports
+  WEBHOOK_PORT: "3001"
+  WEBHOOK_PATH: "/webhooks/alchemy"
+  METRICS_PORT: "9090"
+  METRICS_PATH: "/metrics"
+  METRICS_PORT: "9090"
+  HEALTH_CHECK_PATH: "/health"
+  
+  # Notifications
+  ENABLE_NOTIFICATIONS: "true"
+  NOTIFICATION_SERVICE_URL: "http://notification-service.coinet.svc.cluster.local:3002/notifications"
+  
+  # Entity Labeling
+  ENABLE_ENTITY_LABELING: "false"
+  
+  # Logging
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  ENABLE_PRETTY_LOGS: "false"
+  
+  # Performance
+  BATCH_SIZE: "100"
+  BATCH_INTERVAL_MS: "5000"
+  MAX_BLOCK_RANGE: "1000"
+  ENABLE_ASYNC_BATCHING: "true"
+  
+  # Chain Configuration
+  ENABLE_ETHEREUM: "true"
+  ENABLE_POLYGON: "true"
+  ENABLE_ARBITRUM: "true"
+  ENABLE_OPTIMISM: "true"
+  ENABLE_BASE: "true"
+

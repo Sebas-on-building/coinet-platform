@@ -1,0 +1,12 @@
+.select {
+  background: var(--color-dropdown-bg, #f1f5f9);
+  border-radius: 12px;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  color: var(--color-text, #22223b);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+  outline: none;
+  min-width: 160px;
+  cursor: pointer;
+} 

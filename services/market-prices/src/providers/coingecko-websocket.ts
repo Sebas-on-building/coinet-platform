@@ -1,6 +1,7 @@
 /**
  * CoinGecko WebSocket Client
- * Real-time price updates with automatic reconnection and subscription management
+ * Enterprise-grade real-time price updates with advanced reconnection logic,
+ * exponential backoff, connection health monitoring, and automatic recovery
  */
 
 import WebSocket from 'ws';
@@ -20,15 +21,36 @@ export interface SubscriptionOptions {
   channels?: string[];
 }
 
+interface ConnectionMetadata {
+  coins: string[];
+  channels: string[];
+  reconnectAttempts: number;
+  lastMessageTime: number;
+  connectionTime: number;
+  messageCount: number;
+  errorCount: number;
+  lastError?: string;
+}
+
 export class CoinGeckoWebSocketClient extends EventEmitter {
   private config: WebSocketConfig;
   private connections: Map<number, WebSocket>;
   private subscriptions: Map<number, Set<string>>;
+  private connectionMetadata: Map<number, ConnectionMetadata>;
   private connectionIndex: number;
   private reconnectTimers: Map<number, NodeJS.Timeout>;
   private heartbeatTimers: Map<number, NodeJS.Timeout>;
+  private healthCheckTimer?: NodeJS.Timeout;
   private isShuttingDown: boolean;
   private apiKey: string;
+  
+  // Advanced reconnection parameters
+  private readonly MAX_RECONNECT_ATTEMPTS = 10;
+  private readonly BASE_RECONNECT_DELAY = 1000; // 1 second
+  private readonly MAX_RECONNECT_DELAY = 60000; // 60 seconds
+  private readonly CONNECTION_TIMEOUT = 10000; // 10 seconds
+  private readonly MESSAGE_TIMEOUT = 60000; // 60 seconds - if no message received, consider stale
+  private readonly HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 
   constructor(config: WebSocketConfig, apiKey: string) {
     super();
@@ -36,15 +58,93 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     this.apiKey = apiKey;
     this.connections = new Map();
     this.subscriptions = new Map();
+    this.connectionMetadata = new Map();
     this.reconnectTimers = new Map();
     this.heartbeatTimers = new Map();
     this.connectionIndex = 0;
     this.isShuttingDown = false;
 
+    // Start global health check
+    this.startHealthCheck();
+
     logger.info('CoinGecko WebSocket client initialized', {
       maxConnections: config.maxConnections,
       maxSubscriptionsPerChannel: config.maxSubscriptionsPerChannel,
+      maxReconnectAttempts: this.MAX_RECONNECT_ATTEMPTS,
+      healthCheckInterval: this.HEALTH_CHECK_INTERVAL,
     });
+  }
+
+  /**
+   * Calculate exponential backoff delay with jitter
+   */
+  private calculateReconnectDelay(attempts: number): number {
+    const exponentialDelay = Math.min(
+      this.BASE_RECONNECT_DELAY * Math.pow(2, attempts),
+      this.MAX_RECONNECT_DELAY
+    );
+    
+    // Add jitter (±20%) to prevent thundering herd
+    const jitter = exponentialDelay * 0.2 * (Math.random() - 0.5);
+    return Math.floor(exponentialDelay + jitter);
+  }
+
+  /**
+   * Start global health check for all connections
+   */
+  private startHealthCheck(): void {
+    this.healthCheckTimer = setInterval(() => {
+      this.performHealthCheck();
+    }, this.HEALTH_CHECK_INTERVAL);
+  }
+
+  /**
+   * Perform health check on all connections
+   */
+  private performHealthCheck(): void {
+    const now = Date.now();
+    
+    for (const [connectionId, metadata] of Array.from(this.connectionMetadata.entries())) {
+      const ws = this.connections.get(connectionId);
+      
+      // Check if connection is stale (no messages received)
+      if (now - metadata.lastMessageTime > this.MESSAGE_TIMEOUT) {
+        logger.warn(`Connection ${connectionId} is stale (no messages in ${this.MESSAGE_TIMEOUT}ms)`, {
+          lastMessageTime: new Date(metadata.lastMessageTime),
+          messageCount: metadata.messageCount,
+        });
+        
+        // Force reconnection
+        if (ws) {
+          ws.terminate();
+        }
+        continue;
+      }
+      
+      // Check if connection is in a bad state
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        logger.warn(`Connection ${connectionId} is in bad state`, {
+          readyState: ws?.readyState,
+        });
+        
+        // Trigger reconnection if not already scheduled
+        if (!this.reconnectTimers.has(connectionId)) {
+          this.handleClose(connectionId, metadata.coins, metadata.channels);
+        }
+      }
+      
+      // Log health metrics
+      const uptime = now - metadata.connectionTime;
+      const messagesPerSecond = metadata.messageCount / (uptime / 1000);
+      
+      logger.debug(`Connection ${connectionId} health metrics`, {
+        uptime: Math.floor(uptime / 1000),
+        messageCount: metadata.messageCount,
+        messagesPerSecond: messagesPerSecond.toFixed(2),
+        errorCount: metadata.errorCount,
+        reconnectAttempts: metadata.reconnectAttempts,
+      });
+    }
   }
 
   /**
@@ -90,22 +190,48 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   }
 
   /**
-   * Create a new WebSocket connection
+   * Create a new WebSocket connection with timeout and metadata tracking
    */
   private async createConnection(
     coins: string[],
-    channels: string[]
+    channels: string[],
+    reconnectAttempt: number = 0
   ): Promise<void> {
     const connectionId = this.connectionIndex++;
     
     return new Promise((resolve, reject) => {
       try {
         const wsUrl = `${this.config.url}?api_key=${this.apiKey}`;
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(wsUrl, {
+          handshakeTimeout: this.CONNECTION_TIMEOUT,
+        });
+
+        // Connection timeout
+        const connectionTimeout = setTimeout(() => {
+          if (ws.readyState !== WebSocket.OPEN) {
+            logger.error(`Connection ${connectionId} timeout after ${this.CONNECTION_TIMEOUT}ms`);
+            ws.terminate();
+            reject(new Error('Connection timeout'));
+          }
+        }, this.CONNECTION_TIMEOUT);
 
         ws.on('open', () => {
+          clearTimeout(connectionTimeout);
+          
           logger.info(`WebSocket connection ${connectionId} opened`, {
             coins: coins.length,
+            reconnectAttempt,
+          });
+
+          // Initialize metadata
+          this.connectionMetadata.set(connectionId, {
+            coins,
+            channels,
+            reconnectAttempts: reconnectAttempt,
+            lastMessageTime: Date.now(),
+            connectionTime: Date.now(),
+            messageCount: 0,
+            errorCount: 0,
           });
 
           this.connections.set(connectionId, ws);
@@ -163,10 +289,17 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   }
 
   /**
-   * Handle incoming WebSocket messages
+   * Handle incoming WebSocket messages with metadata tracking
    */
   private handleMessage(connectionId: number, data: WebSocket.Data): void {
     try {
+      // Update metadata
+      const metadata = this.connectionMetadata.get(connectionId);
+      if (metadata) {
+        metadata.lastMessageTime = Date.now();
+        metadata.messageCount++;
+      }
+
       const message: CoinGeckoWSMessage = JSON.parse(data.toString());
 
       logger.debug(`WebSocket message received on connection ${connectionId}`, {
@@ -181,6 +314,10 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
 
         case 'subscribe':
           logger.info(`Subscription confirmed on connection ${connectionId}`);
+          // Reset reconnect attempts on successful subscription
+          if (metadata) {
+            metadata.reconnectAttempts = 0;
+          }
           break;
 
         case 'unsubscribe':
@@ -191,6 +328,10 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
           logger.error(`WebSocket error on connection ${connectionId}`, {
             error: message.error,
           });
+          if (metadata) {
+            metadata.errorCount++;
+            metadata.lastError = message.error;
+          }
           this.emit('error', new Error(message.error));
           break;
 
@@ -207,6 +348,11 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
       logger.error(`Failed to parse WebSocket message on connection ${connectionId}`, {
         error,
       });
+      
+      const metadata = this.connectionMetadata.get(connectionId);
+      if (metadata) {
+        metadata.errorCount++;
+      }
     }
   }
 
@@ -261,7 +407,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   }
 
   /**
-   * Handle connection close
+   * Handle connection close with exponential backoff reconnection
    */
   private handleClose(
     connectionId: number,
@@ -272,24 +418,63 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     this.stopHeartbeat(connectionId);
     this.clearReconnectTimer(connectionId);
 
+    // Get metadata
+    const metadata = this.connectionMetadata.get(connectionId);
+    const reconnectAttempts = metadata?.reconnectAttempts || 0;
+
     // Remove connection
     this.connections.delete(connectionId);
     this.subscriptions.delete(connectionId);
 
-    // Attempt reconnection if not shutting down
+    // Attempt reconnection if not shutting down and within max attempts
     if (!this.isShuttingDown) {
-      logger.info(`Scheduling reconnection for connection ${connectionId}`);
+      if (reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+        logger.error(`Max reconnection attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached for connection ${connectionId}`, {
+          coins: coins.length,
+        });
+        
+        this.connectionMetadata.delete(connectionId);
+        this.emit('max_reconnects_reached', {
+          connectionId,
+          coins,
+          attempts: reconnectAttempts,
+        });
+        return;
+      }
+
+      const delay = this.calculateReconnectDelay(reconnectAttempts);
       
-      const timer = setTimeout(() => {
-        logger.info(`Reconnecting connection ${connectionId}`);
-        this.createConnection(coins, channels).catch((error) => {
+      logger.info(`Scheduling reconnection for connection ${connectionId}`, {
+        attempt: reconnectAttempts + 1,
+        maxAttempts: this.MAX_RECONNECT_ATTEMPTS,
+        delayMs: delay,
+      });
+      
+      const timer = setTimeout(async () => {
+        logger.info(`Reconnecting connection ${connectionId}`, {
+          attempt: reconnectAttempts + 1,
+        });
+        
+        try {
+          await this.createConnection(coins, channels, reconnectAttempts + 1);
+          logger.info(`Successfully reconnected connection ${connectionId}`, {
+            attempt: reconnectAttempts + 1,
+          });
+        } catch (error) {
           logger.error(`Failed to reconnect connection ${connectionId}`, {
+            attempt: reconnectAttempts + 1,
             error,
           });
-        });
-      }, this.config.reconnectInterval);
+          
+          // Schedule another reconnection attempt
+          this.handleClose(connectionId, coins, channels);
+        }
+      }, delay);
 
       this.reconnectTimers.set(connectionId, timer);
+    } else {
+      // Shutting down - clean up metadata
+      this.connectionMetadata.delete(connectionId);
     }
   }
 
@@ -340,7 +525,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   async unsubscribe(coins: string[]): Promise<void> {
     logger.info('Unsubscribing from coins', { coins });
 
-    for (const [connectionId, ws] of this.connections.entries()) {
+    for (const [connectionId, ws] of Array.from(this.connections.entries())) {
       const subscribed = this.subscriptions.get(connectionId);
       if (!subscribed) continue;
 
@@ -370,7 +555,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   getSubscriptions(): string[] {
     const allSubscriptions: Set<string> = new Set();
     
-    for (const subscribed of this.subscriptions.values()) {
+    for (const subscribed of Array.from(this.subscriptions.values())) {
       subscribed.forEach(coin => allSubscriptions.add(coin));
     }
 
@@ -403,7 +588,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     }
 
     // Check if at least one connection is open
-    for (const ws of this.connections.values()) {
+    for (const ws of Array.from(this.connections.values())) {
       if (ws.readyState === WebSocket.OPEN) {
         return true;
       }
@@ -413,20 +598,26 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   }
 
   /**
-   * Disconnect all connections
+   * Disconnect all connections and stop health check
    */
   async disconnect(): Promise<void> {
     logger.info('Disconnecting all WebSocket connections');
     this.isShuttingDown = true;
 
+    // Stop global health check
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = undefined;
+    }
+
     // Clear all timers
-    for (const connectionId of this.connections.keys()) {
+    for (const connectionId of Array.from(this.connections.keys())) {
       this.stopHeartbeat(connectionId);
       this.clearReconnectTimer(connectionId);
     }
 
     // Close all connections
-    for (const [connectionId, ws] of this.connections.entries()) {
+    for (const [connectionId, ws] of Array.from(this.connections.entries())) {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         logger.info(`Closing WebSocket connection ${connectionId}`);
         ws.close(1000, 'Client disconnect');
@@ -435,6 +626,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
 
     this.connections.clear();
     this.subscriptions.clear();
+    this.connectionMetadata.clear();
     this.removeAllListeners();
   }
 }

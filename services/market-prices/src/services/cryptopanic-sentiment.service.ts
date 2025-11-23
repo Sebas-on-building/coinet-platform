@@ -534,5 +534,3 @@ export class CryptoPanicSentimentAnalyzer {
   }
 }
 
-export default CryptoPanicSentimentAnalyzer;
-
