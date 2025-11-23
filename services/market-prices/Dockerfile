@@ -1,7 +1,10 @@
-# Market Prices Service - Production Dockerfile
+# =========================================
+# COINET MARKET PRICES SERVICE - DOCKERFILE
+# =========================================
+# Production-ready Docker image for Railway deployment
+# Divine perfection in containerization
 
-# Build stage
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -9,46 +12,45 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production && \
-    npm cache clean --force
+# Install dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy source code
-COPY src ./src
+COPY src/ ./src/
+COPY migrations/ ./migrations/
 
 # Build TypeScript
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
-
-LABEL maintainer="Coinet Team <dev@coinet.com>"
-LABEL description="Market Prices Service with CoinGecko and CoinMarketCap integration"
+FROM node:18-alpine AS production
 
 WORKDIR /app
 
-# Install production dependencies only
+# Copy package files
 COPY package*.json ./
-RUN npm ci --only=production && \
-    npm cache clean --force
 
-# Copy built application
+# Install production dependencies only
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built files from builder
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/migrations ./migrations
 
-# Create logs directory
-RUN mkdir -p /app/logs && \
-    chown -R node:node /app
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# Switch to non-root user
-USER node
+# Change ownership
+RUN chown -R nodejs:nodejs /app
+USER nodejs
 
-# Expose health check port (if you add an HTTP server)
+# Expose port
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('./dist/index.js').healthCheck().then(h => h ? process.exit(0) : process.exit(1))" || exit 1
+  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the service
+# Start application
 CMD ["node", "dist/index.js"]
-

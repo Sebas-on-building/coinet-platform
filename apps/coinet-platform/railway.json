@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "nixpacks",
+    "buildCommand": "(DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate || echo 'Prisma generate skipped') && npm run build"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 3
+  }
+}
+

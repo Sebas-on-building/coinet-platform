@@ -1,118 +1,47 @@
-# 🔧 Railway Build Fix - Use Nixpacks Instead of Dockerfile
+# 🔧 Railway Build Fix - alchemy-whales Service
 
 ## ❌ Problem
 
-Railway is detecting the Dockerfile which uses `npm ci`, but the project uses `pnpm` with `pnpm-lock.yaml`. This causes build failures.
+Railway build is failing because:
+- `railway.json` specifies `pnpm` but project uses `npm` (has `package-lock.json`)
+- Mismatch between package manager in config vs actual lock file
 
-## ✅ Solution: Use Nixpacks Builder
+## ✅ Solution Applied
 
-### Step 1: Change Builder in Railway Settings
+Updated `railway.json` to use `npm` instead of `pnpm`:
 
-1. Go to Railway Dashboard → Your Service → **Settings** tab
-2. Find **"Build"** section
-3. Find **"Builder"** dropdown
-4. Change from **"Dockerfile"** to **"Nixpacks"**
-5. **Save**
-
-### Step 2: Verify Root Directory
-
-Make sure **Root Directory** is set to: `services/alchemy-whales`
-
-### Step 3: Redeploy
-
-Railway will automatically redeploy with Nixpacks builder.
-
----
-
-## 🔄 Alternative: Update Nixpacks Config
-
-If Nixpacks doesn't work automatically, we can update `nixpacks.toml`:
-
-```toml
-[phases.setup]
-nixPkgs = ["nodejs-18_x", "pnpm"]
-
-[phases.install]
-cmds = ["pnpm install --frozen-lockfile"]
-
-[phases.build]
-cmds = ["pnpm run build"]
-
-[start]
-cmd = "node dist/index.js"
+```json
+{
+  "build": {
+    "buildCommand": "npm ci && npm run build"
+  }
+}
 ```
 
----
+## 🚀 Next Steps
 
-## 🎯 Quick Fix Steps
+1. **Commit and push the fix**:
+   ```bash
+   git add services/alchemy-whales/railway.json
+   git commit -m "fix(alchemy-whales): Use npm instead of pnpm in Railway build"
+   git push origin main
+   ```
 
-### In Railway Dashboard:
+2. **Railway will auto-redeploy** after the push
 
-1. **Settings** → **Build** section
-2. **Builder**: Change to **"Nixpacks"**
-3. **Root Directory**: `services/alchemy-whales`
-4. **Save** → Auto-redeploys
-
----
+3. **Monitor deployment** in Railway dashboard
 
 ## ✅ Expected Result
 
-After switching to Nixpacks:
+After fix:
+- ✅ Railway detects `package-lock.json`
+- ✅ Uses `npm ci` for install
+- ✅ Builds TypeScript successfully
+- ✅ Service starts correctly
 
-```
-✅ Detected Node.js project
-✅ Installing dependencies with pnpm
-✅ Building TypeScript
-✅ Service started
-```
+## 🔍 Verification
 
----
-
-## 🆘 If Nixpacks Still Fails
-
-### Option 1: Create package-lock.json (Quick Fix)
-
-Run this in Codespace:
-
-```bash
-cd services/alchemy-whales
-npm install --package-lock-only
-git add package-lock.json
-git commit -m "fix: Add package-lock.json for Railway Dockerfile builds"
-git push
-```
-
-Then Railway can use Dockerfile with npm.
-
-### Option 2: Use Custom Build Command
-
-In Railway Settings → Build:
-- **Custom Build Command**: `cd services/alchemy-whales && pnpm install && pnpm run build`
-- **Start Command**: `cd services/alchemy-whales && node dist/index.js`
-
----
-
-## 📋 Recommended Solution
-
-**Best**: Use **Nixpacks** builder (Railway's auto-detection)
-- ✅ Works with monorepos
-- ✅ Auto-detects pnpm
-- ✅ No Dockerfile needed
-
-**Steps**:
-1. Settings → Build → Builder → **Nixpacks**
-2. Save
-3. Wait for redeploy
-
----
-
-## 🎉 That's It!
-
-After switching to Nixpacks, Railway will:
-- ✅ Auto-detect Node.js
-- ✅ Use pnpm (if detected)
-- ✅ Build successfully
-- ✅ Deploy your service
-
-**Most Important**: Change Builder from "Dockerfile" to "Nixpacks"! 🚀
-
+After deployment succeeds:
+- Check health endpoint: `/health/live`
+- Check metrics: `/metrics`
+- Verify service logs show successful startup

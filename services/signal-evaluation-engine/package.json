@@ -1,0 +1,66 @@
+{
+  "name": "signal-evaluation-engine",
+  "version": "1.0.0",
+  "description": "Real-time signal evaluation engine for Coinet platform with Kafka Streams processing",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "clean": "rm -rf dist",
+    "build:demo": "tsc examples/anomaly-detection-demo.ts --outDir dist/examples --module commonjs && mv dist/examples/anomaly-detection-demo.js dist/examples/anomaly-detection-demo.cjs"
+  },
+  "keywords": [
+    "signal-evaluation",
+    "kafka-streams",
+    "real-time",
+    "stream-processing",
+    "fusion-engine",
+    "anomaly-detection",
+    "z-score-normalization",
+    "feature-extraction",
+    "coinet"
+  ],
+  "author": "Coinet",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^20.8.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "ioredis": "^5.3.2",
+    "kafkajs": "^2.2.4",
+    "lodash": "^4.17.21",
+    "ml-regression": "^6.0.1",
+    "node-cache": "^5.1.2",
+    "simple-statistics": "^7.8.2",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/bad-words": "^3.0.3",
+    "@types/dompurify": "^3.0.5",
+    "@types/express-rate-limit": "^5.1.3",
+    "@types/firebase": "^2.4.32",
+    "@types/ioredis": "^4.28.10",
+    "@types/jest": "^29.5.5",
+    "@types/lodash": "^4.14.202",
+    "@types/node": "^20.8.0",
+    "@types/node-cache": "^4.2.5",
+    "@types/node-schedule": "^2.1.8",
+    "@types/nodemailer": "^7.0.2",
+    "@types/redux-persist": "^4.0.0",
+    "@types/twilio": "^3.19.2",
+    "@types/zxcvbn": "^4.4.5",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

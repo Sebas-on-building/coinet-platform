@@ -1,0 +1,3 @@
+# Railway ignore file
+# This ensures Railway builds from the root of apps/coinet-platform, not src/
+

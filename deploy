@@ -1,0 +1,20 @@
+#!/bin/bash
+# One-command deployment to Railway & GitHub
+set -e
+
+echo "🚀 Deploying Coinet..."
+
+# Build
+cd services/market-prices && npm run build && cd ../..
+
+# Commit & Push
+git add . && git commit -m "deploy: Phase 1 Week 1-2 complete" && git push
+
+# Deploy to Railway (if CLI installed)
+if command -v railway &> /dev/null; then
+  cd services/market-prices && railway up && cd ../..
+else
+  echo "✅ Pushed to GitHub. Deploy via Railway dashboard: https://railway.app"
+fi
+
+echo "✅ Done! Your app will auto-deploy on Railway."

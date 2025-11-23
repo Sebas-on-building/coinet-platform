@@ -148,7 +148,14 @@ checkpoints/
 
 # Data files
 *.csv
+# Ignore data JSON files but allow config files (package.json, tsconfig.json, etc.)
 *.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.*.json
+!railway.json
+!*.config.json
 *.parquet
 data/
 datasets/

@@ -15,20 +15,20 @@ World-class AI-powered cryptocurrency trading platform with divine chat capabili
 ### 1. Install Dependencies
 
 ```bash
-pnpm install
+npm install
 ```
 
 ### 2. Database Setup
 
 ```bash
 # Generate Prisma client
-pnpm db:generate
+npm run db:generate
 
 # Run migrations
-pnpm db:migrate
+npm run db:migrate
 
 # (Optional) Open Prisma Studio
-pnpm db:studio
+npm run db:studio
 ```
 
 ### 3. Environment Variables
@@ -38,12 +38,19 @@ Copy `.env.example` to `.env` and configure:
 ```bash
 DATABASE_URL="postgresql://user:password@localhost:5432/coinet"
 AI_SERVICE_URL="http://localhost:3001"
+PORT=3000
 ```
 
-### 4. Start Development Server
+### 4. Build
 
 ```bash
-pnpm dev
+npm run build
+```
+
+### 5. Start
+
+```bash
+npm start
 ```
 
 ## 🎯 API Endpoints
@@ -60,21 +67,13 @@ pnpm dev
 - `GET /api/health` - Health check
 - `GET /api/status` - Detailed status
 
-## 💬 Chat API Example
+## 🚀 Railway Deployment
 
-```bash
-curl -X POST http://localhost:3000/api/chat/message \
-  -H "Content-Type: application/json" \
-  -H "X-User-Id: user123" \
-  -d '{
-    "message": "What is the current Bitcoin price?",
-    "context": {
-      "includeSources": true,
-      "includeCharts": true,
-      "analysisDepth": "standard"
-    }
-  }'
-```
+This service is configured for Railway deployment. Make sure:
+
+1. Root directory is set to: `apps/coinet-platform`
+2. Environment variables are configured
+3. Database migrations run on deploy
 
 ## 📊 Features
 
@@ -84,32 +83,3 @@ curl -X POST http://localhost:3000/api/chat/message \
 - ✅ Conversation history
 - ✅ Message regeneration
 - ✅ Agent support
-
-## 🗄️ Database Schema
-
-See `prisma/schema.prisma` for complete schema:
-- Conversations
-- Messages
-- Agents
-- Alerts
-- Insights
-
-## 🚀 Deployment
-
-Built for Railway deployment with:
-- Health checks
-- Graceful shutdown
-- Database migrations
-- Environment configuration
-
-## 📝 Development
-
-- **TypeScript** - Strict mode enabled
-- **ESLint** - Code quality
-- **Prisma** - Database management
-- **Zod** - Runtime validation
-
----
-
-**Built with ❤️ for perfection**
-

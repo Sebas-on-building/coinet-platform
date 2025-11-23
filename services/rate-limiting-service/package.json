@@ -1,0 +1,17 @@
+{
+  "name": "@coinet/rate-limiting-service",
+  "version": "1.0.0",
+  "description": "Rate limiting service for Coinet platform",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "eslint": "^8.57.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1"
+  }
+}

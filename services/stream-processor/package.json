@@ -1,0 +1,66 @@
+{
+  "name": "@coinet/stream-processor",
+  "version": "1.0.0",
+  "description": "Coinet AI Kafka-ClickHouse Stream Processing Service",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "clean": "rm -rf dist",
+    "docker:build": "docker build -t coinet/stream-processor .",
+    "docker:run": "docker run -p 3003:3003 coinet/stream-processor"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "express-rate-limit": "^7.1.5",
+    "zod": "^3.22.4",
+    "kafkajs": "^2.2.4",
+    "@clickhouse/client": "^0.2.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.17",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/compression": "^1.7.5",
+    "@types/jest": "^29.5.8",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.0",
+    "supertest": "^6.3.3",
+    "@types/supertest": "^2.0.16"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "kafka",
+    "clickhouse",
+    "stream-processing",
+    "real-time",
+    "analytics",
+    "data-pipeline",
+    "crypto",
+    "intelligence",
+    "coinet"
+  ],
+  "author": "Coinet Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coinet/coinet-platform.git",
+    "directory": "services/stream-processor"
+  }
+} 
