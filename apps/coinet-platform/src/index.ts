@@ -222,6 +222,25 @@ async function startServer() {
         } else {
           const latency = 'latency' in dbHealth ? dbHealth.latency : 0;
           logger.info('✅ Database connected', { latency });
+          
+          // Run database migrations automatically
+          try {
+            logger.info('🔄 Running database migrations...');
+            const { execSync } = require('child_process');
+            const path = require('path');
+            const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
+            execSync(`npx prisma migrate deploy --schema=${schemaPath}`, {
+              stdio: 'inherit',
+              env: process.env,
+              cwd: path.join(__dirname, '..'),
+            });
+            logger.info('✅ Database migrations completed');
+          } catch (migrationError) {
+            // Don't fail startup if migrations fail - might already be up to date
+            logger.warn('⚠️  Database migrations failed or already applied', {
+              error: migrationError instanceof Error ? migrationError.message : 'Unknown error',
+            });
+          }
         }
       } catch (error) {
         logger.warn('⚠️  Database health check failed or timed out. Server will start anyway.');
