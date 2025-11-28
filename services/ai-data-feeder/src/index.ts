@@ -4,12 +4,34 @@
  */
 
 import dotenv from 'dotenv';
+import http from 'http';
 import { AIDataFeeder } from './data-feeder';
 import { getConfig } from './config';
 import { logger } from './logger';
 
 // Load environment variables
 dotenv.config();
+
+// Create simple HTTP server for health checks
+const PORT = process.env.PORT || 8080;
+const server = http.createServer((req, res) => {
+  if (req.url === '/api/health' || req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'healthy',
+      service: 'ai-data-feeder',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
+
+server.listen(PORT, () => {
+  logger.info(`Health check server listening on port ${PORT}`);
+});
 
 async function main() {
   logger.info('🚀 Starting AI Data Feeder Service...');

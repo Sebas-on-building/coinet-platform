@@ -93,12 +93,17 @@ export class AIDataFeeder extends EventEmitter {
         }
         
         if (!foundPath) {
-          throw new Error(`Could not find market-prices module. Checked paths: ${possiblePaths.join(', ')}. Current dir: ${currentDir}`);
+          logger.warn('⚠️  market-prices module not found - service will run with limited functionality', {
+            checkedPaths: possiblePaths,
+            currentDir,
+          });
+          return false; // Return false instead of throwing
         }
       }
       
       if (!marketPrices) {
-        throw new Error('marketPrices is null/undefined after loading');
+        logger.warn('⚠️  market-prices module is null/undefined - service will run with limited functionality');
+        return false; // Return false instead of throwing
       }
       
       const { CoinGeckoRestClient, CryptoPanicRestClient, CryptoPanicNewsService, CryptoPanicSentimentAnalyzer, CryptoPanicPlan } = marketPrices;
@@ -158,9 +163,12 @@ export class AIDataFeeder extends EventEmitter {
           // Don't throw - CryptoPanic is optional
         }
       }
+      
+      return true; // Successfully loaded
     } catch (error) {
       logger.error('Failed to load market-prices modules', { error });
-      throw error;
+      logger.warn('⚠️  Service will continue without market-prices features');
+      return false; // Return false instead of throwing
     }
     
     // Initialize Redis if enabled - with proper error handling
@@ -266,13 +274,27 @@ export class AIDataFeeder extends EventEmitter {
     });
 
     // Lazy load market-prices modules first
-    await this.loadMarketPricesModules();
+    const marketPricesLoaded = await this.loadMarketPricesModules();
+    
+    if (!marketPricesLoaded) {
+      logger.warn('⚠️  market-prices module not available - service will run with limited functionality');
+      logger.warn('⚠️  Price updates and news features will be disabled');
+      // Continue without market-prices - service can still run basic functionality
+    }
 
-    // Initial data fetch
-    await this.fetchAllData();
+    // Initial data fetch (only if market-prices is loaded)
+    if (marketPricesLoaded) {
+      await this.fetchAllData();
+    } else {
+      logger.info('Skipping initial data fetch (market-prices not available)');
+    }
 
-    // Schedule price updates (every minute)
-    this.schedulePriceUpdates();
+    // Schedule price updates (every minute) - only if market-prices is loaded
+    if (marketPricesLoaded && this.coinGecko) {
+      this.schedulePriceUpdates();
+    } else {
+      logger.info('Skipping price updates schedule (market-prices not available)');
+    }
 
     // Schedule news updates (every 5 minutes)
     if (this.cryptoPanicNews) {
@@ -382,6 +404,11 @@ export class AIDataFeeder extends EventEmitter {
    * Fetch prices from CoinGecko
    */
   private async fetchPrices(): Promise<void> {
+    if (!this.coinGecko) {
+      logger.warn('Skipping price fetch - CoinGecko client not available (market-prices module not loaded)');
+      return;
+    }
+    
     try {
       // Clean and validate coins array
       const coins = this.config.coins
