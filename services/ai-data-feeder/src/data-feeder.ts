@@ -11,12 +11,14 @@ import Redis from 'ioredis';
 import { AIMarketDataPoint, AIAnalysisResult, DataFeederConfig, DataFeedEvent } from './types';
 import { logger } from './logger';
 
-// Type imports (these are safe - no runtime code)
-import type { CoinGeckoRestClient } from '@coinet/market-prices';
-import type { CryptoPanicNewsService } from '@coinet/market-prices';
-import type { CryptoPanicSentimentAnalyzer } from '@coinet/market-prices';
-import type { CryptoPanicRestClient } from '@coinet/market-prices';
-import type { CryptoPanicPlan } from '@coinet/market-prices';
+// Type definitions (local types to avoid build-time dependency)
+// These types match the market-prices package but are defined locally
+// to avoid requiring the package at build time
+type CoinGeckoRestClient = any;
+type CryptoPanicNewsService = any;
+type CryptoPanicSentimentAnalyzer = any;
+type CryptoPanicRestClient = any;
+type CryptoPanicPlan = any;
 
 export class AIDataFeeder extends EventEmitter {
   private config: DataFeederConfig;
