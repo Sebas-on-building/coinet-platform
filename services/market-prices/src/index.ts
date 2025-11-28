@@ -131,23 +131,31 @@ export async function main(): Promise<void> {
   try {
     const aggregator = await createAggregator();
 
-    // Example: Subscribe to WebSocket for top coins
+    // Example: Subscribe to WebSocket for top coins (optional - service works without it)
     if (getConfig().enableWebSocket) {
-      const topCoins = [
-        'bitcoin',
-        'ethereum',
-        'tether',
-        'binancecoin',
-        'solana',
-        'ripple',
-        'usd-coin',
-        'cardano',
-        'avalanche-2',
-        'dogecoin',
-      ];
+      try {
+        const topCoins = [
+          'bitcoin',
+          'ethereum',
+          'tether',
+          'binancecoin',
+          'solana',
+          'ripple',
+          'usd-coin',
+          'cardano',
+          'avalanche-2',
+          'dogecoin',
+        ];
 
-      await aggregator.subscribeToWebSocket(topCoins);
-      logger.info('Subscribed to WebSocket for top coins', { count: topCoins.length });
+        await aggregator.subscribeToWebSocket(topCoins);
+        logger.info('Subscribed to WebSocket for top coins', { count: topCoins.length });
+      } catch (error: any) {
+        // WebSocket is optional - service can function without it
+        logger.info('WebSocket subscription skipped (optional)', {
+          error: error.message,
+          hint: 'Service will continue without WebSocket updates'
+        });
+      }
     }
 
     // Example: Fetch market prices

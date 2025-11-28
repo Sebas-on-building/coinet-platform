@@ -31,14 +31,30 @@ const logFormat = winston.format.combine(
   })
 );
 
-// Ensure logs directory exists
+// Ensure logs directory exists (only if we have write permissions)
 const logsDir = path.join(process.cwd(), 'logs');
 try {
   if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
+    // Try to create directory, but don't fail if we don't have permissions
+    try {
+      fs.mkdirSync(logsDir, { recursive: true, mode: 0o755 });
+      // Test write permissions
+      fs.accessSync(logsDir, fs.constants.W_OK);
+    } catch (permError) {
+      // Directory creation or permission check failed - file logging will be disabled
+      // This is expected in some deployment environments
+    }
+  } else {
+    // Directory exists, check if we have write permissions
+    try {
+      fs.accessSync(logsDir, fs.constants.W_OK);
+    } catch (permError) {
+      // No write permissions - file logging will be disabled
+    }
   }
 } catch (error) {
-  console.warn('Could not create logs directory, file logging disabled:', error instanceof Error ? error.message : String(error));
+  // Silently ignore - file logging will be disabled
+  // This is expected in some deployment environments
 }
 
 const transports: winston.transport[] = [

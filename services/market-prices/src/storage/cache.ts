@@ -23,6 +23,7 @@ export class CacheStorage {
   private redis: Redis;
   private ttl: number;
   private ttlTiers: CacheTTLTiers;
+  private errorSuppressed: boolean = false;
 
   constructor(config: ServiceConfig['redis'], ttl: number) {
     this.redis = new Redis({
@@ -31,10 +32,17 @@ export class CacheStorage {
       password: config.password || undefined,
       db: config.db,
       retryStrategy: (times: number) => {
+        // Stop retrying after 10 attempts (about 20 seconds)
+        if (times > 10) {
+          this.errorSuppressed = true;
+          return null; // Stop retrying
+        }
         const delay = Math.min(times * 50, 2000);
         return delay;
       },
       maxRetriesPerRequest: 3,
+      enableReadyCheck: true,
+      lazyConnect: false,
     });
 
     this.ttl = ttl;
@@ -49,10 +57,19 @@ export class CacheStorage {
     };
 
     this.redis.on('error', (err) => {
-      logger.error('Redis error', { error: err });
+      // Suppress repeated errors after initial failure (Redis is optional)
+      if (!this.errorSuppressed) {
+        logger.debug('Redis error (optional component)', { error: err.message || err });
+        // After first error, suppress subsequent errors for 30 seconds
+        setTimeout(() => {
+          this.errorSuppressed = false;
+        }, 30000);
+        this.errorSuppressed = true;
+      }
     });
 
     this.redis.on('connect', () => {
+      this.errorSuppressed = false; // Reset suppression on successful connect
       logger.info('Redis connected', {
         host: config.host,
         port: config.port,

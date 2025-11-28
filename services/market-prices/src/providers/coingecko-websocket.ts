@@ -260,9 +260,21 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
         });
 
         ws.on('error', (error: Error) => {
-          logger.error(`WebSocket connection ${connectionId} error`, {
-            error: error.message,
-          });
+          // Log network/DNS errors as debug (less alarming)
+          // These are often temporary and don't prevent service from functioning
+          const isNetworkError = error.message?.includes('ENOTFOUND') || 
+                                error.message?.includes('ECONNREFUSED') ||
+                                error.message?.includes('getaddrinfo');
+          
+          if (isNetworkError) {
+            logger.debug(`WebSocket connection ${connectionId} network error (non-critical)`, {
+              error: error.message,
+            });
+          } else {
+            logger.error(`WebSocket connection ${connectionId} error`, {
+              error: error.message,
+            });
+          }
           this.emit('error', error);
         });
 
