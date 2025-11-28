@@ -414,7 +414,8 @@ export class CacheStorage {
       const result = await this.redis.ping();
       return result === 'PONG';
     } catch (error) {
-      logger.error('Cache health check failed', { error });
+      // Don't log error - cache is optional
+      // Only return false to indicate cache is not available
       return false;
     }
   }

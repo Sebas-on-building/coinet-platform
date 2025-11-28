@@ -484,7 +484,8 @@ export class TimescaleStorage {
       const result = await this.pool.query('SELECT NOW()');
       return result.rows.length > 0;
     } catch (error) {
-      logger.error('Database health check failed', { error });
+      // Don't log error - database is optional
+      // Only return false to indicate DB is not available
       return false;
     }
   }

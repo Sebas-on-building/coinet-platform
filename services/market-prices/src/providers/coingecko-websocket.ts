@@ -291,10 +291,21 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
           ws.pong();
         });
 
-      } catch (error) {
-        logger.error(`Failed to create WebSocket connection ${connectionId}`, {
-          error,
-        });
+      } catch (error: any) {
+        // Log connection failures as debug (network issues are non-critical)
+        const isNetworkError = error?.message?.includes('ENOTFOUND') || 
+                              error?.message?.includes('ECONNREFUSED') ||
+                              error?.message?.includes('getaddrinfo');
+        
+        if (isNetworkError) {
+          logger.debug(`Failed to create WebSocket connection ${connectionId} (network issue, non-critical)`, {
+            error: error.message || error,
+          });
+        } else {
+          logger.error(`Failed to create WebSocket connection ${connectionId}`, {
+            error: error.message || error,
+          });
+        }
         reject(error);
       }
     });
@@ -337,7 +348,8 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
           break;
 
         case 'error':
-          logger.error(`WebSocket error on connection ${connectionId}`, {
+          // Log WebSocket errors as debug (often network-related and non-critical)
+          logger.debug(`WebSocket error on connection ${connectionId} (non-critical)`, {
             error: message.error,
           });
           if (metadata) {
