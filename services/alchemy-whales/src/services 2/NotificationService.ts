@@ -18,7 +18,7 @@ export class NotificationService {
     this.enabled = config.enableNotifications && !!config.notificationServiceUrl;
 
     if (!this.enabled) {
-      this.logger.debug('Notifications disabled or no service URL configured (optional)');
+      this.logger.warn('Notifications disabled or no service URL configured');
     } else {
       this.logger.info('Notification service initialized', {
         url: config.notificationServiceUrl,

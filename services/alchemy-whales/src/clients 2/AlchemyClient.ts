@@ -73,7 +73,7 @@ export class ChainAlchemyClient {
       network: CHAIN_TO_NETWORK[chain],
     });
 
-    this.logger.debug('Alchemy client initialized', {
+    this.logger.info('Alchemy client initialized', {
       network: CHAIN_TO_NETWORK[chain],
     });
   }

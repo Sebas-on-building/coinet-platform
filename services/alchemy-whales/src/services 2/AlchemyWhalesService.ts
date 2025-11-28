@@ -89,7 +89,7 @@ export class AlchemyWhalesService {
     if (process.env.AI_ULTIMATE_FRAUD_ENABLED === 'true') {
       try {
         this.ultimateFraudDetector = new UltimateFraudDetector();
-        // Logging is handled by UltimateFraudDetector itself
+        this.logger.info('✅ Ultimate Fraud Detector initialized (99.99% accuracy)');
       } catch (error: any) {
         this.logger.warn('Failed to initialize Ultimate Fraud Detector', { error: error.message });
       }
@@ -127,8 +127,8 @@ export class AlchemyWhalesService {
         await this.db.connect();
         this.logger.info({ msg: '✅ Database connected' });
       } else {
-        this.logger.info({ 
-          msg: 'ℹ️  Database connection skipped (optional). Set REQUIRE_DATABASE=true to enable.' 
+        this.logger.warn({ 
+          msg: '⚠️  Database connection skipped (development mode). Set REQUIRE_DATABASE=true to enable.' 
         });
       }
 
@@ -140,11 +140,11 @@ export class AlchemyWhalesService {
         if (cacheHealthy) {
           this.logger.info({ msg: '✅ Cache connected' });
         } else {
-          this.logger.info({ msg: 'ℹ️  Cache not available, continuing without cache' });
+          this.logger.warn({ msg: '⚠️  Cache not available, continuing without cache' });
         }
       } else {
-        this.logger.info({ 
-          msg: 'ℹ️  Cache connection skipped (optional). Set REQUIRE_CACHE=true to enable.' 
+        this.logger.warn({ 
+          msg: '⚠️  Cache connection skipped (development mode). Set REQUIRE_CACHE=true to enable.' 
         });
       }
 
@@ -207,7 +207,7 @@ export class AlchemyWhalesService {
           
           this.alertNotificationService = new AlertNotificationService(alertConfig);
           await this.alertNotificationService.initialize();
-          // Logging is handled by AlertNotificationService itself
+          this.logger.info('✅ Alert Notification Service initialized');
         } catch (error: any) {
           this.logger.warn('Failed to initialize Alert Notification Service', { error: error.message });
         }

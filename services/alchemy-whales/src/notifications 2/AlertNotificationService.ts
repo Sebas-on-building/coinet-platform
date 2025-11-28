@@ -116,7 +116,7 @@ export class AlertNotificationService {
    */
   async initialize(): Promise<void> {
     try {
-      this.logger.debug('Initializing Alert Notification Service');
+      this.logger.info('🚀 Initializing Alert Notification Service');
 
       // Initialize Telegram
       if (this.config.telegramEnabled && this.config.telegramBotToken) {
@@ -710,25 +710,8 @@ ${alert.fraudAnalysis?.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudA
         '✅ Coinet Alert System initialized successfully!',
         { parse_mode: 'HTML' }
       );
-      this.logger.debug('Telegram test message sent successfully');
     } catch (error: any) {
-      // Log as info instead of warn - Telegram is optional and test failure is not critical
-      // Only log if it's a configuration issue (not a network/timeout issue)
-      const isConfigError = error.message?.includes('chat not found') || 
-                           error.message?.includes('bot token') ||
-                           error.message?.includes('unauthorized');
-      
-      if (isConfigError) {
-        this.logger.info('Telegram test message failed - check bot token and chat ID', { 
-          error: error.message,
-          hint: 'Verify TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are correct'
-        });
-      } else {
-        // Network/timeout errors are less critical
-        this.logger.debug('Telegram test message failed (non-critical)', { 
-          error: error.message 
-        });
-      }
+      this.logger.warn('Telegram test message failed', { error: error.message });
     }
   }
 

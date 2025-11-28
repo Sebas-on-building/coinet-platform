@@ -143,7 +143,7 @@ export class ChainQuickNodeClient {
       },
     });
 
-    this.logger.debug('QuickNode client initialized', {
+    this.logger.info('QuickNode client initialized', {
       chain: endpoint.chain,
       computeUnitsPerSecond: endpoint.computeUnitsPerSecond,
     });
@@ -462,7 +462,7 @@ export class QuickNodeClientManager {
     endpoints.forEach((endpoint) => {
       const client = new ChainQuickNodeClient(endpoint, rateLimiter);
       this.clients.set(endpoint.chain, client);
-      this.logger.debug(`QuickNode client initialized for ${endpoint.chain}`);
+      this.logger.info(`QuickNode client initialized for ${endpoint.chain}`);
     });
 
     this.logger.info('QuickNode client manager initialized', {

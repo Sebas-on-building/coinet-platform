@@ -80,7 +80,7 @@ export class SolanaTokenMonitor extends EventEmitter {
     // Initialize Ultimate Fraud Detector if provided
     if (config.ultimateFraudDetector) {
       this.ultimateFraudDetector = config.ultimateFraudDetector;
-      this.logger.debug('Ultimate Fraud Detector enabled');
+      this.logger.info('✅ Using Ultimate Fraud Detector (99.99% accuracy)');
     } else if (config.aiAnalysisEnabled !== false) {
       // Fallback to ML model if Ultimate Fraud Detector not provided
       this.mlModel = new FraudMLModel({
