@@ -4,23 +4,22 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install pnpm globally
-RUN npm install -g pnpm
-
 # Copy package files
 COPY package.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-# Note: @coinet/market-prices is a workspace dependency
-# We'll handle it by installing from the workspace or as a regular package
-RUN pnpm install --no-frozen-lockfile || npm install
+# Remove workspace dependency before installing
+# The code uses lazy loading, so we don't need it at build time
+RUN node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json')); delete pkg.dependencies['@coinet/market-prices']; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));"
+
+# Install dependencies (without workspace dependency)
+RUN npm install --legacy-peer-deps
 
 # Copy source code
 COPY src ./src
 
 # Build TypeScript
-RUN pnpm build || npx tsc
+RUN npm run build
 
 # Create logs directory
 RUN mkdir -p logs
