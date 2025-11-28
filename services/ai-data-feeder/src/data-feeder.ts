@@ -72,7 +72,7 @@ export class AIDataFeeder extends EventEmitter {
         foundPath = '@coinet/market-prices';
         logger.info('✅ Successfully loaded via package name');
       } catch (packageError: any) {
-        logger.warn('Package require failed', { error: packageError?.message || String(packageError) });
+        logger.debug('Package require failed (expected if market-prices not installed)', { error: packageError?.message || String(packageError) });
         
         // Try all possible paths
         for (const tryPath of possiblePaths) {
@@ -93,7 +93,7 @@ export class AIDataFeeder extends EventEmitter {
         }
         
         if (!foundPath) {
-          logger.warn('⚠️  market-prices module not found - service will run with limited functionality', {
+          logger.info('ℹ️  market-prices module not found - service will run with limited functionality (this is expected)', {
             checkedPaths: possiblePaths,
             currentDir,
           });
@@ -102,7 +102,7 @@ export class AIDataFeeder extends EventEmitter {
       }
       
       if (!marketPrices) {
-        logger.warn('⚠️  market-prices module is null/undefined - service will run with limited functionality');
+        logger.info('ℹ️  market-prices module is null/undefined - service will run with limited functionality (this is expected)');
         return false; // Return false instead of throwing
       }
       
@@ -277,8 +277,8 @@ export class AIDataFeeder extends EventEmitter {
     const marketPricesLoaded = await this.loadMarketPricesModules();
     
     if (!marketPricesLoaded) {
-      logger.warn('⚠️  market-prices module not available - service will run with limited functionality');
-      logger.warn('⚠️  Price updates and news features will be disabled');
+      logger.info('ℹ️  market-prices module not available - service will run with limited functionality (this is expected)');
+      logger.info('ℹ️  Price updates and news features will be disabled (market-prices not installed)');
       // Continue without market-prices - service can still run basic functionality
     }
 
