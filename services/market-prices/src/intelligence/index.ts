@@ -3,7 +3,6 @@
  * INTELLIGENCE LAYER - EXPORTS
  * =========================================
  * Pattern Mining & Prediction System
- * Divine perfection in predictive intelligence
  */
 
 export * from './types/pattern.types';

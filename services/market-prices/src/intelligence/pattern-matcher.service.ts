@@ -3,8 +3,7 @@
  * PATTERN MATCHER SERVICE
  * =========================================
  * Predicts next user requests based on learned patterns
- * 85%+ prediction accuracy with multi-strategy approach
- * Divine world-class prediction engine
+ * Multi-strategy approach for request prediction
  */
 
 import { EventEmitter } from 'eventemitter3';

@@ -1,6 +1,5 @@
 /**
  * Core Type Definitions for Market Prices Service
- * Divine perfection in type safety
  */
 
 export enum DataSource {

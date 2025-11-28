@@ -1,16 +1,15 @@
 /**
  * =========================================
- * HYPER-OPTIMIZER - MASTER INTELLIGENCE
+ * HYPER-OPTIMIZER - OPTIMIZATION ORCHESTRATOR
  * =========================================
- * Combines all 5 optimization layers to achieve 100,000% efficiency
+ * Combines 5 optimization layers for improved efficiency:
  * Layer 1: Predictive Rate Limiting (Markov chains)
  * Layer 2: Shannon Entropy Scheduling
- * Layer 3: Multi-Dimensional Caching (7 dimensions)
+ * Layer 3: Multi-Dimensional Caching
  * Layer 4: Query Batching & Deduplication
  * Layer 5: Collaborative Intelligence (cross-user learning)
  * 
- * Result: 1 API call yields 1000x value
- * Divine perfection in hyper-optimization
+ * Target: 10-30x efficiency improvement through smart caching
  */
 
 import { EventEmitter } from 'eventemitter3';

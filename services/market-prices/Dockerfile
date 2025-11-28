@@ -2,7 +2,7 @@
 # COINET MARKET PRICES SERVICE - DOCKERFILE
 # =========================================
 # Production-ready Docker image for Railway deployment
-# Divine perfection in containerization
+# Production-ready containerization
 
 FROM node:18-alpine AS builder
 

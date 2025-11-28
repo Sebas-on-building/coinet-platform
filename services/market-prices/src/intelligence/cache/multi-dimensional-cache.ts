@@ -2,7 +2,7 @@
  * =========================================
  * MULTI-DIMENSIONAL CACHE STRATEGY
  * =========================================
- * 7-dimensional caching that considers:
+ * Multi-factor caching that considers:
  * 1. Popularity (request frequency)
  * 2. Volatility (price change rate)
  * 3. Temporal (time of day/week)
@@ -11,8 +11,7 @@
  * 6. Liquidity (trading volume)
  * 7. Correlation (related tokens)
  * 
- * Achieves 99%+ cache hit ratio through hyper-intelligent prefetching
- * Divine perfection in caching strategy
+ * Targets high cache hit ratios through intelligent prefetching
  */
 
 import { EventEmitter } from 'eventemitter3';

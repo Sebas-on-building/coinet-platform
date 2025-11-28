@@ -2,9 +2,8 @@
  * =========================================
  * PREDICTIVE RATE LIMITER
  * =========================================
- * Quantum-inspired scheduling that predicts and batches requests
- * Reduces API calls by 99% through intelligent prediction
- * Divine perfection in rate optimization
+ * Advanced scheduling that predicts and batches requests
+ * Reduces API calls through intelligent prediction and caching
  */
 
 import Bottleneck from 'bottleneck';

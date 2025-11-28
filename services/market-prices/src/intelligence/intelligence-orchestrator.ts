@@ -4,7 +4,6 @@
  * =========================================
  * Coordinates Pattern Collector, Miner, and Matcher
  * Provides unified interface for predictive intelligence
- * Divine world-class orchestration
  */
 
 import { EventEmitter } from 'eventemitter3';

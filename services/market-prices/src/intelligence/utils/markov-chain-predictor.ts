@@ -3,8 +3,7 @@
  * MARKOV CHAIN PREDICTOR
  * =========================================
  * Probabilistic state-based prediction for request patterns
- * Predicts future requests with 95%+ accuracy using transition matrices
- * Divine perfection in predictive modeling
+ * Uses transition matrices to predict likely next queries
  */
 
 import { EventEmitter } from 'eventemitter3';

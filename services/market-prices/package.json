@@ -1,7 +1,7 @@
 {
   "name": "@coinet/market-prices",
   "version": "1.0.0",
-  "description": "Divine market data integration with CoinGecko (primary) and CoinMarketCap (secondary) with WebSocket support",
+  "description": "Production-ready market data integration with CoinGecko (primary) and CoinMarketCap (secondary) with WebSocket support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -17,6 +17,11 @@
     "test:cryptopanic": "vitest run src/tests/cryptopanic.test.ts",
     "test:integration": "vitest run src/tests/*.test.ts",
     "example:cryptopanic": "ts-node src/examples/cryptopanic-integration.example.ts",
+    "benchmark": "ts-node benchmarks/free-tier-benchmark.ts",
+    "benchmark:quick": "ts-node benchmarks/free-tier-benchmark.ts --quick",
+    "load-test": "ts-node benchmarks/load-test.ts",
+    "load-test:stress": "ts-node benchmarks/load-test.ts --stress",
+    "report": "ts-node benchmarks/generate-report.ts",
     "lint": "eslint src/**/*.ts",
     "watch": "tsc --watch"
   },

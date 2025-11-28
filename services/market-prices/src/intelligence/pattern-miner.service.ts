@@ -4,7 +4,6 @@
  * =========================================
  * Discovers frequent patterns using Apriori algorithm
  * Mines sequential and temporal patterns for predictions
- * Divine world-class pattern discovery engine
  */
 
 import { EventEmitter } from 'eventemitter3';

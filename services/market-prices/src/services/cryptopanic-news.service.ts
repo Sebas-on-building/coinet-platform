@@ -2,7 +2,7 @@
  * =========================================
  * CRYPTOPANIC NEWS SERVICE
  * =========================================
- * Divine world-class news aggregation and normalization service
+ * News aggregation and normalization service
  * Handles news fetching, caching, normalization, and token mapping
  */
 

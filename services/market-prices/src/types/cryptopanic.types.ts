@@ -2,7 +2,7 @@
  * =========================================
  * CRYPTOPANIC API TYPE DEFINITIONS
  * =========================================
- * Divine world-class type safety for CryptoPanic API
+ * Type definitions for CryptoPanic API
  * Supports Development, Growth, and Enterprise plans
  */
 

@@ -44,13 +44,13 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
   private isShuttingDown: boolean;
   private apiKey: string;
   
-  // Advanced reconnection parameters
-  private readonly MAX_RECONNECT_ATTEMPTS = 10;
-  private readonly BASE_RECONNECT_DELAY = 1000; // 1 second
-  private readonly MAX_RECONNECT_DELAY = 60000; // 60 seconds
-  private readonly CONNECTION_TIMEOUT = 10000; // 10 seconds
-  private readonly MESSAGE_TIMEOUT = 60000; // 60 seconds - if no message received, consider stale
-  private readonly HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+  // Advanced reconnection parameters (configurable via environment variables)
+  private readonly MAX_RECONNECT_ATTEMPTS: number;
+  private readonly BASE_RECONNECT_DELAY: number;
+  private readonly MAX_RECONNECT_DELAY: number;
+  private readonly CONNECTION_TIMEOUT: number;
+  private readonly MESSAGE_TIMEOUT: number;
+  private readonly HEALTH_CHECK_INTERVAL: number;
 
   constructor(config: WebSocketConfig, apiKey: string) {
     super();
@@ -63,6 +63,14 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     this.heartbeatTimers = new Map();
     this.connectionIndex = 0;
     this.isShuttingDown = false;
+
+    // Initialize configurable parameters from environment or defaults
+    this.MAX_RECONNECT_ATTEMPTS = parseInt(process.env.WS_MAX_RECONNECT_ATTEMPTS || '10', 10);
+    this.BASE_RECONNECT_DELAY = parseInt(process.env.WS_BASE_RECONNECT_DELAY || '1000', 10);
+    this.MAX_RECONNECT_DELAY = parseInt(process.env.WS_MAX_RECONNECT_DELAY || '60000', 10);
+    this.CONNECTION_TIMEOUT = parseInt(process.env.WS_CONNECTION_TIMEOUT || '10000', 10);
+    this.MESSAGE_TIMEOUT = parseInt(process.env.WS_MESSAGE_TIMEOUT || '60000', 10);
+    this.HEALTH_CHECK_INTERVAL = parseInt(process.env.WS_HEALTH_CHECK_INTERVAL || '30000', 10);
 
     // Start global health check
     this.startHealthCheck();

@@ -239,25 +239,71 @@ export class SecretsManager {
 
   /**
    * Get secret from AWS Secrets Manager
+   * 
+   * Requires @aws-sdk/client-secrets-manager to be installed:
+   *   npm install @aws-sdk/client-secrets-manager
+   * 
+   * Configuration via environment variables (recommended):
+   *   AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+   * Or via SecretConfig properties:
+   *   awsRegion, awsAccessKeyId, awsSecretAccessKey
    */
   private async getFromAWS(secretName: string): Promise<string> {
-    // Note: This requires AWS SDK to be installed
-    // For now, this is a placeholder implementation
     try {
-      // const AWS = require('aws-sdk');
-      // const client = new AWS.SecretsManager({
-      //   region: this.config.awsRegion,
-      //   accessKeyId: this.config.awsAccessKeyId,
-      //   secretAccessKey: this.config.awsSecretAccessKey,
-      // });
+      // Dynamic import to avoid requiring AWS SDK when not using AWS backend
+      const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
       
-      // const response = await client.getSecretValue({ SecretId: secretName }).promise();
-      // return response.SecretString;
+      const clientConfig: any = {
+        region: this.config.awsRegion || process.env.AWS_REGION || 'us-east-1',
+      };
       
-      throw new Error('AWS Secrets Manager integration not yet implemented. Install AWS SDK and uncomment code.');
+      // Only add credentials if explicitly provided (otherwise use default credential chain)
+      if (this.config.awsAccessKeyId && this.config.awsSecretAccessKey) {
+        clientConfig.credentials = {
+          accessKeyId: this.config.awsAccessKeyId,
+          secretAccessKey: this.config.awsSecretAccessKey,
+        };
+      }
+      
+      const client = new SecretsManagerClient(clientConfig);
+      
+      const command = new GetSecretValueCommand({
+        SecretId: secretName,
+      });
+      
+      const response = await client.send(command);
+      
+      if (response.SecretString) {
+        logger.debug(`Successfully fetched secret from AWS: ${secretName}`);
+        return response.SecretString;
+      } else if (response.SecretBinary) {
+        // Handle binary secrets
+        const buff = Buffer.from(response.SecretBinary as Uint8Array);
+        return buff.toString('utf-8');
+      } else {
+        throw new Error(`Secret ${secretName} has no value`);
+      }
     } catch (error: any) {
+      // Check if it's a missing module error
+      if (error.code === 'ERR_MODULE_NOT_FOUND' || error.message?.includes('Cannot find module')) {
+        logger.warn(`AWS SDK not installed. Run: npm install @aws-sdk/client-secrets-manager`);
+        throw new Error('AWS Secrets Manager requires @aws-sdk/client-secrets-manager. Install with: npm install @aws-sdk/client-secrets-manager');
+      }
+      
+      // Handle specific AWS errors
+      if (error.name === 'ResourceNotFoundException') {
+        logger.error(`Secret not found in AWS: ${secretName}`);
+        throw new Error(`Secret not found: ${secretName}`);
+      }
+      
+      if (error.name === 'AccessDeniedException') {
+        logger.error(`Access denied to AWS secret: ${secretName}`);
+        throw new Error(`Access denied to secret: ${secretName}`);
+      }
+      
       logger.error(`Failed to fetch secret from AWS: ${secretName}`, {
         error: error.message,
+        errorName: error.name,
       });
       throw error;
     }

@@ -1,6 +1,6 @@
 /**
  * Market Prices Service
- * Divine market data integration with CoinGecko (primary) and CoinMarketCap (secondary)
+ * Production-ready market data integration with CoinGecko (primary) and CoinMarketCap (secondary)
  * 
  * @module @coinet/market-prices
  */

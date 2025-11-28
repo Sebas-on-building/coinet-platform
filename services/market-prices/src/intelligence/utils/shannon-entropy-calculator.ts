@@ -4,7 +4,6 @@
  * =========================================
  * Information-theoretic predictability analysis
  * Measures randomness/predictability of request patterns
- * Divine mathematical perfection
  */
 
 import { logger } from '../../utils/logger';

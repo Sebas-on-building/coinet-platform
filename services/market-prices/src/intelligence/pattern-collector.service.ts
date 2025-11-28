@@ -3,7 +3,7 @@
  * PATTERN COLLECTOR SERVICE
  * =========================================
  * Collects and stores user access patterns for pattern mining
- * Divine world-class data collection with privacy-aware design
+ * Privacy-aware design with configurable retention
  */
 
 import { EventEmitter } from 'eventemitter3';

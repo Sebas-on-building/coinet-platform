@@ -2,15 +2,12 @@
  * =========================================
  * QUERY BATCH OPTIMIZER
  * =========================================
- * Ultra-intelligent batching that groups requests to minimize API calls
- * Achieves 50x efficiency through:
+ * Intelligent batching that groups requests to minimize API calls:
  * 1. Request deduplication
  * 2. Temporal batching (collect for 100ms)
  * 3. Spatial batching (group by provider)
  * 4. Semantic batching (group similar tokens)
- * 5. Response sharing (1 API call → N users)
- * 
- * Divine perfection in batch optimization
+ * 5. Response sharing (1 API call serves multiple users)
  */
 
 import { EventEmitter } from 'eventemitter3';
