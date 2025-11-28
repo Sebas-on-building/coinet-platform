@@ -127,8 +127,8 @@ export class AlchemyWhalesService {
         await this.db.connect();
         this.logger.info({ msg: '✅ Database connected' });
       } else {
-        this.logger.warn({ 
-          msg: '⚠️  Database connection skipped (development mode). Set REQUIRE_DATABASE=true to enable.' 
+        this.logger.info({ 
+          msg: 'ℹ️  Database connection skipped (optional). Set REQUIRE_DATABASE=true to enable.' 
         });
       }
 
@@ -140,11 +140,11 @@ export class AlchemyWhalesService {
         if (cacheHealthy) {
           this.logger.info({ msg: '✅ Cache connected' });
         } else {
-          this.logger.warn({ msg: '⚠️  Cache not available, continuing without cache' });
+          this.logger.info({ msg: 'ℹ️  Cache not available, continuing without cache' });
         }
       } else {
-        this.logger.warn({ 
-          msg: '⚠️  Cache connection skipped (development mode). Set REQUIRE_CACHE=true to enable.' 
+        this.logger.info({ 
+          msg: 'ℹ️  Cache connection skipped (optional). Set REQUIRE_CACHE=true to enable.' 
         });
       }
 

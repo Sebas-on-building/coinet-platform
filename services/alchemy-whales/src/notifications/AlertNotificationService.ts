@@ -710,8 +710,13 @@ ${alert.fraudAnalysis?.recommendation ? `\n<b>Recommendation:</b> ${alert.fraudA
         '✅ Coinet Alert System initialized successfully!',
         { parse_mode: 'HTML' }
       );
+      this.logger.debug('Telegram test message sent successfully');
     } catch (error: any) {
-      this.logger.warn('Telegram test message failed', { error: error.message });
+      // Only warn if Telegram is actually configured - this indicates a configuration issue
+      this.logger.warn('Telegram test message failed - check bot token and chat ID', { 
+        error: error.message,
+        hint: 'Verify TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are correct'
+      });
     }
   }
 
