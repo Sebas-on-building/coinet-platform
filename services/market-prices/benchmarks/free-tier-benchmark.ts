@@ -501,5 +501,6 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-export { FreeTierBenchmark, BenchmarkResults, BenchmarkConfig };
+// Re-export types (class already exported at declaration)
+export type { BenchmarkResults, BenchmarkConfig };
 
