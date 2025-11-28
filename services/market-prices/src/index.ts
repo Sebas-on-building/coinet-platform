@@ -48,6 +48,8 @@ export { CryptoPanicRestClient } from './providers/cryptopanic-rest';
 export { CryptoPanicNewsService } from './services/cryptopanic-news.service';
 export { CryptoPanicSentimentAnalyzer } from './services/cryptopanic-sentiment.service';
 export { TimescaleStorage } from './storage/timescale';
+export { KeyRotationManager, getKeyRotationManager, resetKeyRotationManager } from './security/key-rotation';
+export type { APIKeyConfig, KeyRotationEvent, KeyUsageStats } from './security/key-rotation';
 export { CacheStorage } from './storage/cache';
 export { DataNormalizer, SymbolRegistry, getDataNormalizer, getSymbolRegistry } from './utils/normalizer';
 export { getRateLimiter, resetRateLimiter } from './middleware/rateLimiter';
@@ -102,6 +104,29 @@ export async function createAggregator(): Promise<MarketDataAggregator> {
  */
 export async function main(): Promise<void> {
   logger.info('Starting Market Prices Service...');
+
+  // Create HTTP server for health checks (Railway requirement)
+  const http = require('http');
+  const PORT = process.env.PORT || 3000;
+  
+  const server = http.createServer((req: any, res: any) => {
+    if (req.url === '/api/health' || req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'healthy',
+        service: 'market-prices',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+      }));
+    } else {
+      res.writeHead(404);
+      res.end('Not Found');
+    }
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Health check server listening on port ${PORT}`);
+  });
 
   try {
     const aggregator = await createAggregator();

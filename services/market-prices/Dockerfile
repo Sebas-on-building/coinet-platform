@@ -37,8 +37,9 @@ RUN npm install --legacy-peer-deps --only=production && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
+# Create logs directory and non-root user
+RUN mkdir -p /app/logs && \
+    addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
 # Change ownership

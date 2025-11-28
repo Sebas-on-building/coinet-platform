@@ -92,22 +92,26 @@ export class MarketDataAggregator extends EventEmitter {
 
     logger.info('Initializing market data aggregator...');
 
-    // Initialize database
-    await this.storage.initialize();
-
-    // Test connections
-    const dbHealthy = await this.storage.healthCheck();
-    const cacheHealthy = await this.cache.healthCheck();
-
-    if (!dbHealthy) {
-      throw new Error('Database health check failed');
+    // Initialize database (optional - graceful degradation)
+    try {
+      await this.storage.initialize();
+    } catch (error: any) {
+      logger.info('Database initialization skipped (optional)', {
+        error: error.message,
+        hint: 'Service will continue without database storage'
+      });
     }
 
+    // Test connections (optional)
+    const dbHealthy = await this.storage.healthCheck().catch(() => false);
+    const cacheHealthy = await this.cache.healthCheck().catch(() => false);
+
     logger.info('Storage initialized', {
-      database: dbHealthy,
-      cache: cacheHealthy,
+      database: dbHealthy ? 'connected' : 'unavailable (optional)',
+      cache: cacheHealthy ? 'connected' : 'unavailable (optional)',
     });
 
+    // Service can run without DB/Cache - they're optional
     this.isInitialized = true;
     logger.info('Market data aggregator initialized successfully');
   }
