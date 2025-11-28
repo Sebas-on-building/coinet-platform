@@ -1,11 +1,10 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "cd services/ai-data-feeder && pnpm install && pnpm build"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd services/ai-data-feeder && node dist/index.js",
+    "startCommand": "node dist/index.js",
     "restartPolicyType": "always"
   }
 }

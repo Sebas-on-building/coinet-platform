@@ -5,6 +5,59 @@
 import swaggerJSDoc from 'swagger-jsdoc';
 import * as swaggerUiExpress from 'swagger-ui-express';
 
+/**
+ * Get server URL based on environment
+ * Priority: SWAGGER_SERVER_URL > RAILWAY_PUBLIC_DOMAIN > API_URL > localhost
+ */
+function getServerUrl(): string {
+  // Check for explicit Swagger server URL
+  if (process.env.SWAGGER_SERVER_URL) {
+    return process.env.SWAGGER_SERVER_URL.startsWith('http') 
+      ? process.env.SWAGGER_SERVER_URL 
+      : `https://${process.env.SWAGGER_SERVER_URL}`;
+  }
+  
+  // Check for Railway public domain
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+    return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  }
+  
+  // Check for API URL
+  if (process.env.API_URL) {
+    return process.env.API_URL.startsWith('http') 
+      ? process.env.API_URL 
+      : `https://${process.env.API_URL}`;
+  }
+  
+  // Default to localhost for development
+  return 'http://localhost:8005';
+}
+
+/**
+ * Build servers array for Swagger
+ */
+function getServers() {
+  const servers = [];
+  const serverUrl = getServerUrl();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Add primary server
+  servers.push({
+    url: serverUrl,
+    description: isProduction ? 'Production Server' : 'Development Server'
+  });
+  
+  // Add localhost server for development
+  if (!isProduction && !serverUrl.includes('localhost')) {
+    servers.push({
+      url: 'http://localhost:8005',
+      description: 'Local Development Server'
+    });
+  }
+  
+  return servers;
+}
+
 const swaggerDefinition = {
   openapi: '3.0.0',
   info: {
@@ -100,16 +153,7 @@ All errors follow a consistent format with request tracking:
       url: 'https://opensource.org/licenses/MIT'
     }
   },
-  servers: [
-    {
-      url: 'http://localhost:8005',
-      description: 'Development Server'
-    },
-    {
-      url: 'https://users.coinet.ai',
-      description: 'Production Server'
-    }
-  ],
+  servers: getServers(),
   components: {
     securitySchemes: {
       BearerAuth: {

@@ -1,13 +1,14 @@
 # Nixpacks configuration for Railway
+# Root Directory is already set to services/ai-data-feeder, so no need to cd
 [phases.setup]
 nixPkgs = ["nodejs-20_x", "pnpm"]
 
 [phases.install]
-cmds = ["cd services/ai-data-feeder && pnpm install"]
+cmds = ["pnpm install"]
 
 [phases.build]
-cmds = ["cd services/ai-data-feeder && pnpm build"]
+cmds = ["pnpm build"]
 
 [start]
-cmd = "cd services/ai-data-feeder && node dist/index.js"
+cmd = "node dist/index.js"
 
