@@ -141,7 +141,8 @@ export class CacheStorage {
         updateType: price.updateType,
       });
     } catch (error) {
-      logger.error('Failed to cache price', { error, price });
+      // Log as debug since cache is optional
+      logger.debug('Failed to cache price (cache is optional)', { error, price });
       // Don't throw - caching is non-critical
     }
   }
@@ -171,7 +172,8 @@ export class CacheStorage {
       logger.debug('Price cache hit', { coinId, source });
       return price;
     } catch (error) {
-      logger.error('Failed to get cached price', { error, coinId, source });
+      // Log as debug since cache is optional
+      logger.debug('Failed to get cached price (cache is optional)', { error, coinId, source });
       return null;
     }
   }
@@ -201,7 +203,8 @@ export class CacheStorage {
 
       logger.debug('Prices cached in batch', { count: prices.length });
     } catch (error) {
-      logger.error('Failed to cache prices batch', { error });
+      // Log as debug since cache is optional
+      logger.debug('Failed to cache prices batch (cache is optional)', { error });
       // Don't throw - caching is non-critical
     }
   }
@@ -228,7 +231,8 @@ export class CacheStorage {
         ttl: this.ttlTiers.historical 
       });
     } catch (error) {
-      logger.error('Failed to cache OHLCV', { error, coinId });
+      // Log as debug since cache is optional
+      logger.debug('Failed to cache OHLCV (cache is optional)', { error, coinId });
       // Don't throw - caching is non-critical
     }
   }
@@ -259,7 +263,8 @@ export class CacheStorage {
       logger.debug('OHLCV cache hit', { coinId, interval, source });
       return ohlcv;
     } catch (error) {
-      logger.error('Failed to get cached OHLCV', { error, coinId });
+      // Log as debug since cache is optional
+      logger.debug('Failed to get cached OHLCV (cache is optional)', { error, coinId });
       return null;
     }
   }
@@ -279,7 +284,8 @@ export class CacheStorage {
         ttl: this.ttlTiers.metadata 
       });
     } catch (error) {
-      logger.error('Failed to cache metadata', { error, metadata });
+      // Log as debug since cache is optional
+      logger.debug('Failed to cache metadata (cache is optional)', { error, metadata });
       // Don't throw - caching is non-critical
     }
   }
@@ -297,7 +303,8 @@ export class CacheStorage {
         ttl: this.ttlTiers.nonCritical 
       });
     } catch (error) {
-      logger.error('Failed to cache non-critical data', { error, key });
+      // Log as debug since cache is optional
+      logger.debug('Failed to cache non-critical data (cache is optional)', { error, key });
     }
   }
   
@@ -311,7 +318,8 @@ export class CacheStorage {
       
       return JSON.parse(value);
     } catch (error) {
-      logger.error('Failed to get non-critical cache', { error, key });
+      // Log as debug since cache is optional
+      logger.debug('Failed to get non-critical cache (cache is optional)', { error, key });
       return null;
     }
   }
@@ -339,7 +347,8 @@ export class CacheStorage {
       logger.debug('Metadata cache hit', { coinId });
       return metadata;
     } catch (error) {
-      logger.error('Failed to get cached metadata', { error, coinId });
+      // Log as debug since cache is optional
+      logger.debug('Failed to get cached metadata (cache is optional)', { error, coinId });
       return null;
     }
   }
@@ -357,7 +366,8 @@ export class CacheStorage {
         logger.info('Cache invalidated', { coinId, keysDeleted: keys.length });
       }
     } catch (error) {
-      logger.error('Failed to invalidate cache', { error, coinId });
+      // Log as debug since cache is optional
+      logger.debug('Failed to invalidate cache (cache is optional)', { error, coinId });
     }
   }
 
@@ -369,7 +379,8 @@ export class CacheStorage {
       await this.redis.flushdb();
       logger.info('All cache cleared');
     } catch (error) {
-      logger.error('Failed to clear cache', { error });
+      // Log as debug since cache is optional
+      logger.debug('Failed to clear cache (cache is optional)', { error });
     }
   }
 
@@ -401,7 +412,8 @@ export class CacheStorage {
 
       return stats;
     } catch (error) {
-      logger.error('Failed to get cache stats', { error });
+      // Log as debug since cache is optional
+      logger.debug('Failed to get cache stats (cache is optional)', { error });
       return null;
     }
   }

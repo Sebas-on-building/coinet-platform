@@ -181,16 +181,26 @@ export async function main(): Promise<void> {
       });
     });
 
-    // Health check interval
+    // Health check interval (reduced frequency to avoid log noise)
     setInterval(async () => {
       const health = await aggregator.getHealthStatus();
-      logger.info('Health check', {
-        healthy: health.healthy,
-        providers: health.providers,
-        database: health.database.connected,
-        cache: health.cache.connected,
-      });
-    }, 60000); // Every minute
+      // Only log if unhealthy or degraded, otherwise use debug level
+      if (!health.healthy) {
+        logger.warn('Health check - service unhealthy', {
+          healthy: health.healthy,
+          providers: health.providers,
+          database: health.database.connected,
+          cache: health.cache.connected,
+        });
+      } else {
+        logger.debug('Health check - service healthy', {
+          healthy: health.healthy,
+          providers: health.providers,
+          database: health.database.connected,
+          cache: health.cache.connected,
+        });
+      }
+    }, 300000); // Every 5 minutes (reduced from 1 minute)
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {

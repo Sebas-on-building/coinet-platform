@@ -109,7 +109,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
       
       // Check if connection is stale (no messages received)
       if (now - metadata.lastMessageTime > this.MESSAGE_TIMEOUT) {
-        logger.warn(`Connection ${connectionId} is stale (no messages in ${this.MESSAGE_TIMEOUT}ms)`, {
+        logger.debug(`Connection ${connectionId} is stale (no messages in ${this.MESSAGE_TIMEOUT}ms, WebSocket is optional)`, {
           lastMessageTime: new Date(metadata.lastMessageTime),
           messageCount: metadata.messageCount,
         });
@@ -123,7 +123,7 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
       
       // Check if connection is in a bad state
       if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-        logger.warn(`Connection ${connectionId} is in bad state`, {
+        logger.debug(`Connection ${connectionId} is in bad state (WebSocket is optional)`, {
           readyState: ws?.readyState,
         });
         
@@ -209,9 +209,10 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
         // Connection timeout
         const connectionTimeout = setTimeout(() => {
           if (ws.readyState !== WebSocket.OPEN) {
-            logger.error(`Connection ${connectionId} timeout after ${this.CONNECTION_TIMEOUT}ms`);
+            logger.debug(`Connection ${connectionId} timeout after ${this.CONNECTION_TIMEOUT}ms (WebSocket is optional)`);
             ws.terminate();
-            reject(new Error('Connection timeout'));
+            // Resolve gracefully instead of rejecting - WebSocket is optional
+            resolve();
           }
         }, this.CONNECTION_TIMEOUT);
 
@@ -279,10 +280,22 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
         });
 
         ws.on('close', (code: number, reason: string) => {
-          logger.warn(`WebSocket connection ${connectionId} closed`, {
-            code,
-            reason: reason.toString(),
-          });
+          // Log normal closes (1000) and network-related closes as debug (WebSocket is optional)
+          const isNormalClose = code === 1000;
+          const isNetworkRelated = reason?.toString().includes('ECONNREFUSED') || 
+                                  reason?.toString().includes('ENOTFOUND');
+          
+          if (isNormalClose || isNetworkRelated) {
+            logger.debug(`WebSocket connection ${connectionId} closed (optional component)`, {
+              code,
+              reason: reason.toString(),
+            });
+          } else {
+            logger.info(`WebSocket connection ${connectionId} closed`, {
+              code,
+              reason: reason.toString(),
+            });
+          }
 
           this.handleClose(connectionId, coins, channels);
         });
@@ -374,10 +387,21 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
             message,
           });
       }
-    } catch (error) {
-      logger.error(`Failed to parse WebSocket message on connection ${connectionId}`, {
-        error,
-      });
+    } catch (error: any) {
+      // Check if it's a network-related error
+      const isNetworkError = error?.message?.includes('ENOTFOUND') || 
+                            error?.message?.includes('ECONNREFUSED') ||
+                            error?.message?.includes('getaddrinfo');
+      
+      if (isNetworkError) {
+        logger.debug(`Failed to parse WebSocket message on connection ${connectionId} (network issue, non-critical)`, {
+          error: error?.message || error,
+        });
+      } else {
+        logger.debug(`Failed to parse WebSocket message on connection ${connectionId}`, {
+          error: error?.message || error,
+        });
+      }
       
       const metadata = this.connectionMetadata.get(connectionId);
       if (metadata) {
@@ -459,7 +483,8 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
     // Attempt reconnection if not shutting down and within max attempts
     if (!this.isShuttingDown) {
       if (reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
-        logger.error(`Max reconnection attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached for connection ${connectionId}`, {
+        // Log as info since WebSocket is optional - service can function without it
+        logger.info(`Max reconnection attempts (${this.MAX_RECONNECT_ATTEMPTS}) reached for connection ${connectionId} (WebSocket is optional)`, {
           coins: coins.length,
         });
         
@@ -490,11 +515,24 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
           logger.info(`Successfully reconnected connection ${connectionId}`, {
             attempt: reconnectAttempts + 1,
           });
-        } catch (error) {
-          logger.error(`Failed to reconnect connection ${connectionId}`, {
-            attempt: reconnectAttempts + 1,
-            error,
-          });
+        } catch (error: any) {
+          // Check if it's a network-related error
+          const isNetworkError = error?.message?.includes('ENOTFOUND') || 
+                                error?.message?.includes('ECONNREFUSED') ||
+                                error?.message?.includes('getaddrinfo') ||
+                                error?.message?.includes('timeout');
+          
+          if (isNetworkError) {
+            logger.debug(`Failed to reconnect connection ${connectionId} (network issue, WebSocket is optional)`, {
+              attempt: reconnectAttempts + 1,
+              error: error?.message || error,
+            });
+          } else {
+            logger.info(`Failed to reconnect connection ${connectionId}`, {
+              attempt: reconnectAttempts + 1,
+              error: error?.message || error,
+            });
+          }
           
           // Schedule another reconnection attempt
           this.handleClose(connectionId, coins, channels);
