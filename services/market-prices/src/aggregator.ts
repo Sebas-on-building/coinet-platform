@@ -60,8 +60,20 @@ export class MarketDataAggregator extends EventEmitter {
       });
 
       this.geckoWs.on('error', (error: Error) => {
-        logger.error('WebSocket error', { error: error.message });
-        this.emit('error', error);
+        // Log network/DNS errors as debug (WebSocket is optional)
+        const isNetworkError = error.message?.includes('ENOTFOUND') || 
+                              error.message?.includes('ECONNREFUSED') ||
+                              error.message?.includes('getaddrinfo');
+        
+        if (isNetworkError) {
+          logger.debug('WebSocket error (optional component, non-critical)', { error: error.message });
+        } else {
+          logger.error('WebSocket error', { error: error.message });
+        }
+        // Don't emit error for network issues - WebSocket is optional
+        if (!isNetworkError) {
+          this.emit('error', error);
+        }
       });
     }
 

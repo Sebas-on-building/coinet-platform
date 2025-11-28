@@ -306,7 +306,13 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
             error: error.message || error,
           });
         }
-        reject(error);
+        // Don't reject for network errors - allow graceful degradation
+        if (!isNetworkError) {
+          reject(error);
+        } else {
+          // Resolve silently for network errors - WebSocket is optional
+          resolve();
+        }
       }
     });
   }
