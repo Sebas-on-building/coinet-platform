@@ -72,6 +72,22 @@ export class MonitoringServer {
       }
     });
 
+    // Railway-compatible health check endpoint
+    this.app.get('/api/health', async (_req, res) => {
+      try {
+        const health = await this.healthCheck.check();
+        const statusCode = health.status === 'healthy' ? 200 : 
+                          health.status === 'degraded' ? 200 : 503;
+        res.status(statusCode).json(health);
+      } catch (error: any) {
+        this.logger.error('Health check failed', { error: error.message });
+        res.status(503).json({
+          status: 'unhealthy',
+          error: error.message,
+        });
+      }
+    });
+
     // Liveness probe (Kubernetes)
     this.app.get('/health/live', async (_req, res) => {
       const isAlive = await this.healthCheck.liveness();

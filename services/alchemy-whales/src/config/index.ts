@@ -193,7 +193,7 @@ export const config: ServiceConfig = {
     secret: getOptionalEnv('WEBHOOK_SECRET', 'dev-secret-change-in-production'), // Allow default for examples
   },
   metrics: {
-    port: getNumberEnv('METRICS_PORT', 9090),
+    port: getNumberEnv('PORT', getNumberEnv('METRICS_PORT', 9090)),
     path: getOptionalEnv('METRICS_PATH', '/metrics'),
   },
   performance: {
