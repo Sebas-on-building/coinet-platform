@@ -118,10 +118,14 @@ export class MonitoringServer {
    */
   async start(): Promise<void> {
     return new Promise((resolve) => {
-      this.app.listen(this.config.port, () => {
+      // Listen on 0.0.0.0 to allow Railway/external access
+      this.app.listen(this.config.port, '0.0.0.0', () => {
         this.logger.info('Monitoring server started', {
           port: this.config.port,
+          host: '0.0.0.0',
           metricsPath: this.config.path,
+          healthPath: '/health',
+          apiHealthPath: '/api/health',
         });
         resolve();
       });

@@ -4,6 +4,7 @@
 
 import { AlchemyWhalesService } from './services/AlchemyWhalesService';
 import { logger } from './utils/logger';
+import { config } from './config';
 
 // Export main service
 export { AlchemyWhalesService };
@@ -63,10 +64,13 @@ async function main() {
     // Initialize service
     await service.initialize();
 
+    const metricsPort = config.metrics.port;
+    const webhookPort = config.webhook.port;
     logger.info({ msg: '🚀 Alchemy Whales Service is running!' });
-    logger.info({ msg: '📊 Metrics available at http://localhost:9090/metrics' });
-    logger.info({ msg: '🏥 Health check at http://localhost:9090/health' });
-    logger.info({ msg: '🔔 Webhooks listening at http://localhost:3001/webhooks/alchemy' });
+    logger.info({ msg: '📊 Metrics available', url: `http://0.0.0.0:${metricsPort}/metrics` });
+    logger.info({ msg: '🏥 Health check', url: `http://0.0.0.0:${metricsPort}/health` });
+    logger.info({ msg: '🏥 API Health check', url: `http://0.0.0.0:${metricsPort}/api/health` });
+    logger.info({ msg: '🔔 Webhooks listening', url: `http://0.0.0.0:${webhookPort}${config.webhook.path}` });
   } catch (error: any) {
     logger.error({ msg: 'Failed to start service', error: error.message });
     process.exit(1);
