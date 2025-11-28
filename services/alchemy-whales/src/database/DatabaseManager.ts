@@ -419,12 +419,21 @@ export class DatabaseManager {
 
   /**
    * Health check
+   * Returns false if database is not available (no error logging for optional DB)
    */
   async healthCheck(): Promise<boolean> {
     try {
-      await this.query('SELECT 1');
-      return true;
-    } catch (error) {
+      // Use pool directly to avoid error logging for optional database
+      const client = await this.pool.connect();
+      try {
+        await client.query('SELECT 1');
+        return true;
+      } finally {
+        client.release();
+      }
+    } catch (error: any) {
+      // Don't log error - database is optional
+      // Only return false to indicate DB is not available
       return false;
     }
   }
