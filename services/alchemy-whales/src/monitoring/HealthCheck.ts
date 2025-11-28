@@ -212,13 +212,24 @@ export class HealthCheck {
 
   /**
    * Determine overall health status
+   * For Railway compatibility: treat missing DB/cache as degraded, not unhealthy
+   * Service can run without these components
    */
   private determineOverallStatus(components: ComponentHealth[]): 'healthy' | 'degraded' | 'unhealthy' {
     const hasDown = components.some(c => c.status === 'down');
     const hasDegraded = components.some(c => c.status === 'degraded');
 
-    if (hasDown) return 'unhealthy';
-    if (hasDegraded) return 'degraded';
+    // If only DB or cache is down, treat as degraded (service can still function)
+    // Only mark unhealthy if critical components (like Alchemy clients) are down
+    const criticalComponents = components.filter((_, index) => {
+      // Index 0 = DB, Index 1 = Cache, Index 2 = Alchemy
+      // Alchemy is critical, DB/Cache are optional
+      return index === 2; // Alchemy clients
+    });
+    const criticalDown = criticalComponents.some(c => c.status === 'down');
+    
+    if (criticalDown) return 'unhealthy';
+    if (hasDown || hasDegraded) return 'degraded';
     return 'healthy';
   }
 
