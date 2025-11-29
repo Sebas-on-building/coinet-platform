@@ -20,12 +20,18 @@ export {
   type HistogramBucket,
 } from './prometheus-metrics';
 
+// Import for default export
+import { PrometheusMetrics } from './prometheus-metrics';
+
 // DeFi Metrics
 export {
   DefiMetrics,
   getDefiMetrics,
   resetDefiMetrics,
 } from './defi-metrics';
+
+// Import for default export
+import { DefiMetrics } from './defi-metrics';
 
 // Alert Manager
 export {
@@ -40,6 +46,9 @@ export {
   type AlertSeverity,
   type AlertStatus,
 } from './alert-manager';
+
+// Import for default export
+import { AlertManager } from './alert-manager';
 
 export default {
   PrometheusMetrics,

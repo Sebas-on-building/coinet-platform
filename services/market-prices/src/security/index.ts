@@ -19,6 +19,9 @@ export {
   type KeyUsageStats,
 } from './key-rotation';
 
+// Import for default export
+import { KeyRotationManager } from './key-rotation';
+
 // Enhanced Key Rotation
 export {
   EnhancedKeyRotationManager,
@@ -29,6 +32,9 @@ export {
   type RateLimitEvent,
   type AutoRotationConfig,
 } from './enhanced-key-rotation';
+
+// Import for default export
+import { EnhancedKeyRotationManager } from './enhanced-key-rotation';
 
 // Schema Validation
 export {
@@ -42,6 +48,9 @@ export {
   type ValidationWarning,
   type SchemaMetrics,
 } from './schema-validator';
+
+// Import for default export
+import { SchemaValidator } from './schema-validator';
 
 export default {
   KeyRotationManager,
