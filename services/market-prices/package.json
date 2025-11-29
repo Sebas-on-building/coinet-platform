@@ -41,7 +41,13 @@
     "railway:health": "ts-node scripts/check-railway-health.ts",
     "railway:monitor": "bash scripts/monitor-railway-deployment.sh",
     "test:realtime": "ts-node scripts/test-realtime-systems.ts",
-    "test:realtime:full": "ts-node scripts/test-realtime-systems.ts --full"
+    "test:realtime:full": "ts-node scripts/test-realtime-systems.ts --full",
+    "test:comprehensive": "vitest run src/tests/token-unlocks-comprehensive.test.ts",
+    "benchmark:accuracy": "ts-node benchmarks/competitor-accuracy-benchmark.ts",
+    "reliability:quick": "ts-node scripts/reliability-test-24h.ts --quick",
+    "reliability:1h": "ts-node scripts/reliability-test-24h.ts --1h",
+    "reliability:4h": "ts-node scripts/reliability-test-24h.ts --4h",
+    "reliability:24h": "ts-node scripts/reliability-test-24h.ts"
   },
   "keywords": [
     "cryptocurrency",

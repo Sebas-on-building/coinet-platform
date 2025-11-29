@@ -66,9 +66,25 @@ export {
   type WebhookConfig,
 } from './notification-channels';
 
+// Unlock Metrics
+export {
+  UnlockMetrics,
+  getUnlockMetrics,
+  resetUnlockMetrics,
+  type PredictionMetric,
+  type VerificationMetric,
+  type SourceMetric,
+  type ConsensusMetric,
+  type UnlockMetricConfig,
+} from './unlock-metrics';
+
+// Import for default export
+import { UnlockMetrics } from './unlock-metrics';
+
 export default {
   PrometheusMetrics,
   DefiMetrics,
   AlertManager,
+  UnlockMetrics,
 };
 
