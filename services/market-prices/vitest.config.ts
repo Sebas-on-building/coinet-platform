@@ -16,5 +16,11 @@ export default defineConfig({
       ],
     },
   },
+  css: false, // Disable CSS processing for tests (avoids PostCSS config issues)
+  resolve: {
+    alias: {
+      // Prevent loading root PostCSS config
+    },
+  },
 });
 
