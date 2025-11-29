@@ -17,13 +17,6 @@ export default defineConfig({
     },
   },
   // Disable CSS processing completely to avoid PostCSS config issues
-  css: {
-    modules: {
-      classNameStrategy: 'non-scoped',
-    },
-    postcss: false, // Explicitly disable PostCSS
-  },
-  // Prevent vitest from searching parent directories for configs
-  root: process.cwd(),
+  css: false,
 });
 
