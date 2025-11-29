@@ -34,7 +34,9 @@
     "lint": "eslint src/**/*.ts",
     "watch": "tsc --watch",
     "test:unlocks": "ts-node scripts/test-token-unlocks.ts",
-    "test:unlocks:e2e": "ts-node scripts/test-token-unlocks.ts"
+    "test:unlocks:e2e": "ts-node scripts/test-token-unlocks.ts",
+    "railway:health": "ts-node scripts/check-railway-health.ts",
+    "railway:monitor": "bash scripts/monitor-railway-deployment.sh"
   },
   "keywords": [
     "cryptocurrency",
