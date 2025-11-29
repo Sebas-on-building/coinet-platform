@@ -16,7 +16,8 @@
     "db:studio": "turbo db:studio",
     "benchmark": "cd services/market-prices && npm run benchmark",
     "benchmark:quick": "cd services/market-prices && npm run benchmark:quick",
-    "benchmark:compare": "cd services/market-prices && npm run benchmark:compare"
+    "benchmark:compare": "cd services/market-prices && npm run benchmark:compare",
+    "train:fallback": "cd services/market-prices && npm run train:fallback"
   },
   "devDependencies": {
     "prettier": "^3.0.0",
