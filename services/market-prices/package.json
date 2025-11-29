@@ -32,7 +32,9 @@
     "cache:clear": "ts-node scripts/clear-cache.ts",
     "alerts:status": "ts-node scripts/alert-status.ts",
     "lint": "eslint src/**/*.ts",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "test:unlocks": "ts-node scripts/test-token-unlocks.ts",
+    "test:unlocks:e2e": "ts-node scripts/test-token-unlocks.ts"
   },
   "keywords": [
     "cryptocurrency",
@@ -45,18 +47,26 @@
   "author": "Coinet",
   "license": "MIT",
   "dependencies": {
+    "@solana/web3.js": "^1.87.6",
     "axios": "^1.6.2",
     "axios-retry": "^4.0.0",
     "bottleneck": "^2.19.5",
+    "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.3.1",
+    "ethers": "^6.9.0",
     "eventemitter3": "^5.0.1",
     "ioredis": "^5.3.2",
     "node-cron": "^3.0.3",
     "pg": "^8.11.3",
+    "puppeteer": "^21.6.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "rxjs": "^7.8.1",
     "winston": "^3.11.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {
+    "@types/cheerio": "^0.22.35",
     "@types/jest": "^29.5.11",
     "@types/node": "^20.10.5",
     "@types/node-cron": "^3.0.11",
