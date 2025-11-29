@@ -154,10 +154,14 @@ export class TensorFlowModel extends EventEmitter {
    */
   private async loadTensorFlow(): Promise<TensorFlowJS | null> {
     try {
+      // Dynamic import - TensorFlow.js is optional
+      // @ts-ignore - Optional dependency, may not be installed
       const tf = await import('@tensorflow/tfjs');
       return tf as unknown as TensorFlowJS;
-    } catch {
-      logger.debug('TensorFlow.js not installed, using fallback model');
+    } catch (error: any) {
+      logger.debug('TensorFlow.js not installed, using fallback model', {
+        error: error.message,
+      });
       return null;
     }
   }

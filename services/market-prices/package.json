@@ -53,6 +53,7 @@
   "license": "MIT",
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
+    "@tensorflow/tfjs": "^4.15.0",
     "axios": "^1.6.2",
     "axios-retry": "^4.0.0",
     "bottleneck": "^2.19.5",
