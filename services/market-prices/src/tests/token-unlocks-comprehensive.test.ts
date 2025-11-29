@@ -229,7 +229,7 @@ describe('UnlockImpactPredictor', () => {
         ? baseConfidence * (1 - unusualPenalty)
         : baseConfidence;
 
-      expect(adjustedConfidence).toBe(0.72);
+      expect(adjustedConfidence).toBeCloseTo(0.72, 2);
     });
   });
 });
