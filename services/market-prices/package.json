@@ -47,7 +47,8 @@
     "reliability:quick": "ts-node scripts/reliability-test-24h.ts --quick",
     "reliability:1h": "ts-node scripts/reliability-test-24h.ts --1h",
     "reliability:4h": "ts-node scripts/reliability-test-24h.ts --4h",
-    "reliability:24h": "ts-node scripts/reliability-test-24h.ts"
+    "reliability:24h": "ts-node scripts/reliability-test-24h.ts",
+    "test:liquidity": "ts-node scripts/test-liquidity-analyzer.ts"
   },
   "keywords": [
     "cryptocurrency",
