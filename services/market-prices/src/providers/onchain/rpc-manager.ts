@@ -516,10 +516,13 @@ export class RpcManager extends EventEmitter {
         this.evmWsProviders.set(cacheKey, provider);
         
         // Handle disconnection
-        provider.websocket.on('close', () => {
-          logger.warn(`WebSocket disconnected: ${chain}`, { url: endpoint.wsUrl });
-          this.evmWsProviders.delete(cacheKey);
-        });
+        const ws = provider.websocket as any;
+        if (ws && typeof ws.on === 'function') {
+          ws.on('close', () => {
+            logger.warn(`WebSocket disconnected: ${chain}`, { url: endpoint.wsUrl });
+            this.evmWsProviders.delete(cacheKey);
+          });
+        }
       } catch (error) {
         logger.error(`Failed to create WebSocket provider: ${chain}`, { error });
         return null;
