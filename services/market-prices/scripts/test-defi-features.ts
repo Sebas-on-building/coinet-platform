@@ -26,8 +26,14 @@ async function testDeFiFeatures() {
     const dexConfig: ProviderConfig = {
       apiUrl: 'https://api.dexscreener.com/latest/dex',
       apiKey: process.env.DEXSCREENER_PRO_KEY || 'free-tier',
-      rateLimit: { maxRequestsPerMinute: 300 },
+      rateLimit: { 
+        maxRequestsPerMinute: 300,
+        reservoir: 300,
+        reservoirRefreshAmount: 300,
+        reservoirRefreshInterval: 60000,
+      },
       retry: { retries: 3, retryDelay: 1000 },
+      priority: 1,
     };
     
     const dexScreener = new DexScreenerEnhancedClient(dexConfig, {
@@ -49,9 +55,15 @@ async function testDeFiFeatures() {
     console.log('\n2️⃣ Testing DeFiLlama Enhanced...');
     const defiConfig: ProviderConfig = {
       apiUrl: 'https://api.llama.fi',
-      apiKey: process.env.DEFILLAMA_PRO_KEY,
-      rateLimit: { maxRequestsPerMinute: 30 },
+      apiKey: process.env.DEFILLAMA_PRO_KEY || '',
+      rateLimit: { 
+        maxRequestsPerMinute: 30,
+        reservoir: 30,
+        reservoirRefreshAmount: 30,
+        reservoirRefreshInterval: 60000,
+      },
       retry: { retries: 3, retryDelay: 1000 },
+      priority: 2,
     };
     
     const defiLlama = new DeFiLlamaEnhancedClient(defiConfig, {

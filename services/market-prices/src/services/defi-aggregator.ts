@@ -407,11 +407,11 @@ export class DefiAggregator extends EventEmitter {
     tvlChange24h: number;
   } | null> {
     try {
-      // Try to find protocol by symbol
+      // Try to find protocol by name (DeFiLlama protocols don't have symbol field)
       const protocols = await this.defiLlama.getProtocols();
       const protocol = protocols.find(p => 
-        p.symbol?.toUpperCase() === symbol.toUpperCase() ||
-        p.name?.toLowerCase().includes(symbol.toLowerCase())
+        p.name?.toLowerCase().includes(symbol.toLowerCase()) ||
+        p.id?.toLowerCase().includes(symbol.toLowerCase())
       ) || null;
       
       // Get yield pools if enabled
