@@ -1,36 +1,27 @@
 /**
- * Whale Tracking Clients Index
- * 
- * Exports all provider clients and the WhaleFusion Engine
+ * Client Exports
  */
 
-// Individual provider clients
-export { ChainAlchemyClient, AlchemyClientManager } from './AlchemyClient';
-export { ChainQuickNodeClient, QuickNodeClientManager } from './QuickNodeClient';
-export { InfuraClient, type InfuraConfig, type InfuraProviderStats } from './InfuraClient';
-export { MoralisClient, type MoralisConfig, type MoralisProviderStats } from './MoralisClient';
-
-// WhaleFusion Engine (multi-provider fusion)
-export {
-  WhaleFusionEngine,
-  getWhaleFusionEngine,
+export { AlchemyClientManager, ChainAlchemyClient } from './AlchemyClient';
+export { QuickNodeClientManager, ChainQuickNodeClient } from './QuickNodeClient';
+export { InfuraClient } from './InfuraClient';
+export { MoralisClient } from './MoralisClient';
+export { 
+  WhaleFusionEngine, 
+  getWhaleFusionEngine, 
   resetWhaleFusionEngine,
-  type ProviderName,
-  type ProviderStats,
   type FusionConfig,
-  type FusionMetrics,
-  type TransferQuery,
   type FusionResult,
+  type TransferQuery,
+  type ProviderName,
 } from './WhaleFusionEngine';
-
-// Default export
-import { WhaleFusionEngine } from './WhaleFusionEngine';
-import { AlchemyClientManager } from './AlchemyClient';
-import { QuickNodeClientManager } from './QuickNodeClient';
-
-export default {
-  WhaleFusionEngine,
-  AlchemyClientManager,
-  QuickNodeClientManager,
-};
-
+export {
+  ConsensusEngine,
+  getConsensusEngine,
+  resetConsensusEngine,
+  type ConsensusConfig,
+  type ConsensusResult,
+  type NormalizedTransfer,
+  type AuditEntry,
+  type ConsensusStats,
+} from './ConsensusEngine';
