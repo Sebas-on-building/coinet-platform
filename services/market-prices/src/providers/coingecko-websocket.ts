@@ -507,19 +507,24 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
 
       const delay = this.calculateReconnectDelay(reconnectAttempts);
       
-      logger.info(`Scheduling reconnection for connection ${connectionId}`, {
+      // Suppress logs after 3 failed attempts (reduce noise)
+      const shouldLogInfo = reconnectAttempts < 3;
+      const logLevel = shouldLogInfo ? logger.info.bind(logger) : logger.debug.bind(logger);
+      
+      logLevel(`Scheduling reconnection for connection ${connectionId}`, {
         attempt: reconnectAttempts + 1,
         maxAttempts: this.MAX_RECONNECT_ATTEMPTS,
         delayMs: delay,
       });
       
       const timer = setTimeout(async () => {
-        logger.info(`Reconnecting connection ${connectionId}`, {
+        logLevel(`Reconnecting connection ${connectionId}`, {
           attempt: reconnectAttempts + 1,
         });
         
         try {
           await this.createConnection(coins, channels, reconnectAttempts + 1);
+          // Only log successful reconnections at info level
           logger.info(`Successfully reconnected connection ${connectionId}`, {
             attempt: reconnectAttempts + 1,
           });
