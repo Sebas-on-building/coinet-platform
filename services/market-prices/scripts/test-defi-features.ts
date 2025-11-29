@@ -40,7 +40,9 @@ async function testDeFiFeatures() {
       proApiKeys: process.env.DEXSCREENER_PRO_KEY ? [process.env.DEXSCREENER_PRO_KEY] : undefined,
     });
     
-    const pairs = await dexScreener.searchPairs('ETH');
+    // Use searchPairsByQuery for symbol search, or use a known token address
+    // For testing, we'll use a query search which works with symbols
+    const pairs = await dexScreener.searchPairsByQuery('ETH');
     console.log(`   ✅ DexScreener: Found ${pairs.pairs?.length || 0} pairs`);
     
     const planInfo = dexScreener.getPlanInfo();

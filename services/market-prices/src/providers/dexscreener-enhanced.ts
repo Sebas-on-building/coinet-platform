@@ -746,6 +746,19 @@ export class DexScreenerEnhancedClient extends EventEmitter {
   }
 
   /**
+   * Search pairs by query string (symbol, name, or address)
+   */
+  async searchPairsByQuery(query: string): Promise<{ pairs: DexScreenerPair[] }> {
+    const response = await this.request<{ pairs: DexScreenerPair[] }>(
+      'GET',
+      '/search',
+      { q: query },
+      { useSearch: true }
+    );
+    return response;
+  }
+
+  /**
    * Get token profile with all pairs
    */
   async getTokenProfile(
