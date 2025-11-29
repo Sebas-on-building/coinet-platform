@@ -453,9 +453,17 @@ export class CoinGeckoUnlocksClient extends EventEmitter {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      await this.axios.get('/ping', { timeout: 5000 });
+      // Try ping endpoint first
+      await this.axios.get('/ping', { timeout: 5000 }).catch(() => {
+        // If ping fails, try a simple endpoint
+        return this.axios.get('/simple/price', {
+          params: { ids: 'bitcoin', vs_currencies: 'usd' },
+          timeout: 5000,
+        });
+      });
       return true;
     } catch {
+      // API might be unavailable, but that's OK for optional service
       return false;
     }
   }

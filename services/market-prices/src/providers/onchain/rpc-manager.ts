@@ -415,11 +415,17 @@ export class RpcManager extends EventEmitter {
       if (chain === 'solana') {
         // Solana health check
         const connection = this.getSolanaConnection(endpoint.url);
-        await connection.getSlot();
+        await Promise.race([
+          connection.getSlot(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000)),
+        ]);
       } else {
-        // EVM health check
+        // EVM health check with timeout
         const provider = this.getEvmProvider(chain, endpoint.url);
-        await provider.getBlockNumber();
+        await Promise.race([
+          provider.getBlockNumber(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000)),
+        ]);
       }
       
       const latency = Date.now() - startTime;
@@ -490,11 +496,21 @@ export class RpcManager extends EventEmitter {
     
     let provider = this.evmProviders.get(cacheKey);
     if (!provider) {
-      provider = new JsonRpcProvider(endpointUrl, undefined, {
-        staticNetwork: true,
-        batchMaxCount: 10,
-      });
-      this.evmProviders.set(cacheKey, provider);
+      // Suppress network detection errors in test environments
+      const originalConsoleError = console.error;
+      if (process.env.NODE_ENV === 'test' || process.env.SUPPRESS_RPC_WARNINGS === 'true') {
+        console.error = () => {}; // Suppress ethers.js network detection warnings
+      }
+      
+      try {
+        provider = new JsonRpcProvider(endpointUrl, undefined, {
+          staticNetwork: true,
+          batchMaxCount: 10,
+        });
+        this.evmProviders.set(cacheKey, provider);
+      } finally {
+        console.error = originalConsoleError;
+      }
     }
     
     return provider;

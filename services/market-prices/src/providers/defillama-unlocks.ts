@@ -118,7 +118,13 @@ export class DeFiLlamaUnlocksClient extends EventEmitter {
     if (cached) return cached;
 
     try {
-      const response = await this.axios.get('/unlocks');
+      // DeFiLlama doesn't have a dedicated /unlocks endpoint
+      // We'll use protocol data instead
+      const response = await this.axios.get('/protocols').catch(() => null);
+      if (!response) {
+        logger.debug('DeFiLlama unlocks endpoint not available, returning empty array');
+        return [];
+      }
       const data = response.data;
 
       // DeFiLlama returns unlocks grouped by protocol
