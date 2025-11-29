@@ -348,7 +348,14 @@ async function main() {
       name: 'Test VC Fund',
       tier: 'tier2',
       wallets: [
-        { chain: 'ethereum', address: '0x1234567890abcdef', type: 'main', verified: false },
+        { 
+          id: 'test-wallet-1',
+          chain: 'ethereum', 
+          address: '0x1234567890abcdef', 
+          type: 'main', 
+          verified: false,
+          discoveredAt: new Date(),
+        },
       ],
     });
     
