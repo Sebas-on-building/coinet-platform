@@ -52,6 +52,9 @@
     "simulate:scaling": "ts-node scripts/50k-user-simulation.ts --scaling",
     "simulate:optimized": "ts-node scripts/50k-user-simulation.ts --optimized",
     "test:fusion": "ts-node scripts/test-fusion-api.ts",
+    "test:phase4-5": "ts-node scripts/test-phase-4-5.ts",
+    "benchmark:human": "ts-node scripts/test-phase-4-5.ts",
+    "dashboard": "ts-node scripts/run-dashboard.ts",
     "test:liquidity": "ts-node scripts/test-liquidity-analyzer.ts"
   },
   "keywords": [
