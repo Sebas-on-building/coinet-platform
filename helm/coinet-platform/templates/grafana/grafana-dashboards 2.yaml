@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+data:
+  api-dashboard.json: |-
+    { "dashboard": "Atomic API Dashboard" }
+  frontend-dashboard.json: |-
+    { "dashboard": "Atomic Frontend Dashboard" }
+  mesh-dashboard.json: |-
+    { "dashboard": "Atomic Mesh Dashboard" }
+  gitops-dashboard.json: |-
+    { "dashboard": "Atomic GitOps Dashboard" } 

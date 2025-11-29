@@ -1,0 +1,51 @@
+.plugin-list-root {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 2rem;
+  background: var(--color-bg, #f8fafc);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 8%);
+  min-height: 80vh;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.plugin-list-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.plugin-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+  width: 100%;
+}
+
+.plugin-card {
+  background: var(--color-card-bg, #fff);
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 4%);
+  transition: box-shadow 0.2s, transform 0.2s;
+  cursor: pointer;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 1.5rem;
+}
+
+.plugin-card:hover {
+  box-shadow: 0 8px 32px rgb(99 102 241 / 12%);
+  transform: translateY(-4px) scale(1.02);
+}
+
+@media (width <= 900px) {
+  .plugin-list-root { padding: 1rem; }
+  .plugin-list-grid { gap: 1rem; }
+} 

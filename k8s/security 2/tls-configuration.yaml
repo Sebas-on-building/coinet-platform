@@ -1,0 +1,397 @@
+# =============================================================================
+# COINET PLATFORM - TLS CONFIGURATION
+# =============================================================================
+# Comprehensive TLS/mTLS configuration for secure service communication
+# =============================================================================
+
+# =============================================================================
+# CERT-MANAGER CONFIGURATION
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    name: cert-manager
+    certmanager.k8s.io/disable-validation: "true"
+
+---
+# Cluster Issuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: coinet-letsencrypt-prod
+  labels:
+    app: coinet-platform
+    component: tls
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ssl@coinet.ai
+    privateKeySecretRef:
+      name: coinet-letsencrypt-prod-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+          podTemplate:
+            spec:
+              nodeSelector:
+                kubernetes.io/os: linux
+    - dns01:
+        cloudflare:
+          email: ssl@coinet.ai
+          apiTokenSecretRef:
+            name: cloudflare-api-token
+            key: api-token
+
+---
+# Cluster Issuer for Staging
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: coinet-letsencrypt-staging
+  labels:
+    app: coinet-platform
+    component: tls
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ssl@coinet.ai
+    privateKeySecretRef:
+      name: coinet-letsencrypt-staging-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+
+---
+# Internal CA Issuer for service-to-service communication
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: coinet-internal-ca
+  labels:
+    app: coinet-platform
+    component: internal-ca
+spec:
+  ca:
+    secretName: coinet-internal-ca-secret
+
+---
+# =============================================================================
+# TLS CERTIFICATES
+# =============================================================================
+
+# Main platform certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coinet-platform-tls
+  namespace: coinet-platform
+  labels:
+    app: coinet-platform
+    component: tls
+spec:
+  secretName: coinet-platform-tls-secret
+  issuerRef:
+    name: coinet-letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - coinet.ai
+  - api.coinet.ai
+  - app.coinet.ai
+  - admin.coinet.ai
+  - docs.coinet.ai
+  - status.coinet.ai
+
+---
+# API Gateway TLS Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coinet-api-gateway-tls
+  namespace: coinet-platform
+  labels:
+    app: coinet-api-gateway
+    component: tls
+spec:
+  secretName: coinet-api-gateway-tls-secret
+  issuerRef:
+    name: coinet-internal-ca
+    kind: ClusterIssuer
+  dnsNames:
+  - coinet-api-gateway
+  - coinet-api-gateway.coinet-platform.svc.cluster.local
+  - api-gateway.coinet-platform.svc.cluster.local
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+
+---
+# User Service TLS Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coinet-user-service-tls
+  namespace: coinet-platform
+  labels:
+    app: coinet-user-service
+    component: tls
+spec:
+  secretName: coinet-user-service-tls-secret
+  issuerRef:
+    name: coinet-internal-ca
+    kind: ClusterIssuer
+  dnsNames:
+  - coinet-user-service
+  - coinet-user-service.coinet-platform.svc.cluster.local
+  - user-service.coinet-platform.svc.cluster.local
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+
+---
+# Database TLS Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coinet-database-tls
+  namespace: coinet-platform
+  labels:
+    app: coinet-databases
+    component: tls
+spec:
+  secretName: coinet-database-tls-secret
+  issuerRef:
+    name: coinet-internal-ca
+    kind: ClusterIssuer
+  dnsNames:
+  - postgres.coinet-platform.svc.cluster.local
+  - redis.coinet-platform.svc.cluster.local
+  - timescaledb.coinet-platform.svc.cluster.local
+  - clickhouse.coinet-platform.svc.cluster.local
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+
+---
+# =============================================================================
+# INGRESS WITH TLS TERMINATION
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coinet-platform-ingress
+  namespace: coinet-platform
+  labels:
+    app: coinet-platform
+    component: ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: coinet-letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+  - hosts:
+    - coinet.ai
+    - api.coinet.ai
+    - app.coinet.ai
+    - admin.coinet.ai
+    - docs.coinet.ai
+    secretName: coinet-platform-tls-secret
+  rules:
+  - host: api.coinet.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: coinet-api-gateway
+            port:
+              number: 8000
+  - host: app.coinet.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: coinet-web-app
+            port:
+              number: 3000
+  - host: admin.coinet.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: coinet-admin-dashboard
+            port:
+              number: 3001
+  - host: docs.coinet.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: coinet-docs
+            port:
+              number: 3002
+
+---
+# =============================================================================
+# SERVICE MESH TLS (ISTIO INTEGRATION)
+# =============================================================================
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: coinet-mtls-policy
+  namespace: coinet-platform
+  labels:
+    app: coinet-platform
+    component: service-mesh
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# Destination Rules for TLS
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: coinet-services-tls
+  namespace: coinet-platform
+  labels:
+    app: coinet-platform
+    component: service-mesh
+spec:
+  host: "*.coinet-platform.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+  exportTo:
+  - "."
+
+---
+# =============================================================================
+# TLS CONFIGURATION FOR SERVICES
+# =============================================================================
+
+# TLS ConfigMap for service configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coinet-tls-config
+  namespace: coinet-platform
+  labels:
+    app: coinet-platform
+    component: tls-config
+data:
+  tls-settings.yaml: |
+    # TLS Configuration for Coinet Services
+    tls:
+      # Minimum TLS version
+      min_version: "1.2"
+      
+      # Preferred TLS version
+      preferred_version: "1.3"
+      
+      # Cipher suites (TLS 1.2)
+      cipher_suites:
+        - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+        - "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+      
+      # TLS 1.3 cipher suites
+      tls13_cipher_suites:
+        - "TLS_AES_128_GCM_SHA256"
+        - "TLS_AES_256_GCM_SHA384"
+        - "TLS_CHACHA20_POLY1305_SHA256"
+      
+      # Certificate settings
+      certificates:
+        # Certificate validity period
+        validity_period: "90d"
+        
+        # Renewal threshold
+        renewal_threshold: "15d"
+        
+        # Key algorithm and size
+        key_algorithm: "RSA"
+        key_size: 2048
+        
+        # Alternative algorithms
+        ecdsa_curve: "P-256"
+      
+      # HSTS settings
+      hsts:
+        enabled: true
+        max_age: 31536000  # 1 year
+        include_subdomains: true
+        preload: true
+      
+      # OCSP stapling
+      ocsp_stapling:
+        enabled: true
+        cache_timeout: "1h"
+      
+      # Certificate transparency
+      certificate_transparency:
+        enabled: true
+        log_submission: true
+
+---
+# =============================================================================
+# SECURITY CONTEXT CONFIGURATION
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coinet-security-context
+  namespace: coinet-platform
+  labels:
+    app: coinet-platform
+    component: security-context
+data:
+  security-context.yaml: |
+    # Default security context for Coinet services
+    securityContext:
+      # Run as non-root user
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      
+      # Security capabilities
+      capabilities:
+        drop:
+        - ALL
+        add: []  # No additional capabilities
+      
+      # Filesystem
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      
+      # SELinux (if enabled)
+      seLinuxOptions:
+        level: "s0:c123,c456"
+      
+      # AppArmor (if enabled)
+      appArmorProfile:
+        type: RuntimeDefault
+      
+      # Seccomp
+      seccompProfile:
+        type: RuntimeDefault

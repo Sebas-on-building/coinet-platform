@@ -1,0 +1,25 @@
+:root {
+  --sidebar-width: 72px;
+  --sidebar-width-expanded: 260px;
+  --toolbar-height: 56px;
+  --canvas-bg: #f8f9fb;
+  --transition: cubic-bezier(.4,2,.6,1) 0.3s;
+  --border-radius: 16px;
+  --shadow: 0 2px 16px rgb(0 0 0 / 6%);
+  --accent: #3b82f6;
+}
+
+.app-root {
+  min-height: 100vh;
+  background: var(--canvas-bg);
+  display: flex;
+  flex-direction: column;
+  font-family: Inter, 'San Francisco', 'Segoe UI', Arial, sans-serif;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+} 

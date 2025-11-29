@@ -1,0 +1,522 @@
+# =============================================================================
+# COINET AI KAFKA HELM VALUES
+# Production-ready Apache Kafka deployment for real-time data streaming
+# =============================================================================
+
+# Global Kafka configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "fast-ssd"
+
+# Kafka cluster configuration
+kafka:
+  # Replica configuration
+  replicaCount: 3
+  
+  # Image configuration
+  image:
+    registry: docker.io
+    repository: bitnami/kafka
+    tag: 3.6.1-debian-11-r1
+    pullPolicy: IfNotPresent
+    
+  # Kafka configuration
+  config: |
+    # Server configuration
+    num.network.threads=8
+    num.io.threads=16
+    socket.send.buffer.bytes=102400
+    socket.receive.buffer.bytes=102400
+    socket.request.max.bytes=104857600
+    
+    # Log configuration
+    num.partitions=12
+    default.replication.factor=3
+    min.insync.replicas=2
+    log.retention.hours=168
+    log.retention.bytes=107374182400
+    log.segment.bytes=536870912
+    log.cleanup.policy=delete
+    log.cleaner.enable=true
+    
+    # Performance tuning
+    compression.type=snappy
+    batch.size=65536
+    linger.ms=10
+    buffer.memory=134217728
+    
+    # Consumer configuration
+    group.initial.rebalance.delay.ms=3000
+    max.poll.records=1000
+    fetch.min.bytes=1024
+    fetch.max.wait.ms=500
+    
+    # Producer configuration
+    acks=all
+    retries=2147483647
+    max.in.flight.requests.per.connection=5
+    enable.idempotence=true
+    
+    # Topic management
+    auto.create.topics.enable=false
+    delete.topic.enable=true
+    
+    # Replication
+    replica.fetch.max.bytes=10485760
+    replica.socket.timeout.ms=30000
+    
+    # Security
+    inter.broker.protocol.version=3.6
+    log.message.format.version=3.6
+    
+  # JVM configuration
+  heapOpts: "-Xmx2G -Xms2G"
+  
+  # Additional JVM options
+  jvmFlags:
+    - "-server"
+    - "-XX:+UseG1GC"
+    - "-XX:MaxGCPauseMillis=20"
+    - "-XX:InitiatingHeapOccupancyPercent=35"
+    - "-XX:+ExplicitGCInvokesConcurrent"
+    - "-XX:MaxInlineLevel=15"
+    - "-Djava.awt.headless=true"
+    - "-Dcom.sun.management.jmxremote=true"
+    - "-Dcom.sun.management.jmxremote.authenticate=false"
+    - "-Dcom.sun.management.jmxremote.ssl=false"
+    - "-Dcom.sun.management.jmxremote.port=9999"
+
+  # Resource configuration
+  resources:
+    requests:
+      memory: 3Gi
+      cpu: 1000m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+
+  # Persistence configuration
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: "fast-ssd"
+    accessModes:
+      - ReadWriteOnce
+    mountPath: /bitnami/kafka
+    
+  # Service configuration
+  service:
+    type: ClusterIP
+    ports:
+      client: 9092
+      internal: 9093
+    annotations:
+      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+
+  # Network configuration
+  listeners:
+    client:
+      protocol: PLAINTEXT
+      name: CLIENT
+      port: 9092
+      containerPort: 9092
+    controller:
+      protocol: PLAINTEXT
+      name: CONTROLLER
+      port: 9093
+      containerPort: 9093
+    interbroker:
+      protocol: PLAINTEXT
+      name: INTERNAL
+      port: 9094
+      containerPort: 9094
+    external:
+      protocol: PLAINTEXT
+      name: EXTERNAL
+      port: 9095
+      containerPort: 9095
+
+  # Security context
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+    runAsUser: 1001
+    
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsNonRoot: true
+    readOnlyRootFilesystem: false
+
+  # Liveness and readiness probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+    
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+
+  # Startup probe
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+
+  # Pod management
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+    
+  # Pod disruption budget
+  pdb:
+    create: true
+    minAvailable: 2
+    maxUnavailable: ""
+
+  # Node selection and affinity
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - kafka
+          topologyKey: kubernetes.io/hostname
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node.kubernetes.io/instance-type
+                operator: In
+                values: ["memory-optimized", "general-purpose"]
+
+  # Tolerations
+  tolerations:
+    - key: "kafka"
+      operator: "Equal"
+      value: "dedicated"
+      effect: "NoSchedule"
+
+  # Pod labels and annotations
+  podLabels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/instance: coinet-kafka
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: coinet-ai
+    
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9999"
+    prometheus.io/path: "/metrics"
+
+# Zookeeper configuration (for Kafka coordination)
+zookeeper:
+  enabled: true
+  replicaCount: 3
+  
+  # Resource configuration
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+      
+  # Persistence configuration
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: "fast-ssd"
+    
+  # Service configuration
+  service:
+    type: ClusterIP
+    ports:
+      client: 2181
+      follower: 2888
+      election: 3888
+
+  # Security context
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+    
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsNonRoot: true
+
+  # Configuration
+  config: |
+    tickTime=2000
+    initLimit=10
+    syncLimit=5
+    preAllocSize=65536
+    snapCount=100000
+    maxClientCnxns=60
+    maxSessionTimeout=40000
+    autopurge.snapRetainCount=3
+    autopurge.purgeInterval=1
+    
+  # Node selection
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    
+  # Pod disruption budget
+  pdb:
+    create: true
+    minAvailable: 2
+
+# Kafka Exporter for Prometheus monitoring
+exporter:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: danielqsj/kafka-exporter
+    tag: v1.6.0
+    pullPolicy: IfNotPresent
+    
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+      
+  service:
+    type: ClusterIP
+    port: 9308
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9308"
+      prometheus.io/path: "/metrics"
+
+# Schema Registry (for message schema management)
+schemaRegistry:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: docker.io
+    repository: confluentinc/cp-schema-registry
+    tag: 7.5.0
+    pullPolicy: IfNotPresent
+    
+  # Configuration
+  config:
+    kafkastore.bootstrap.servers: "PLAINTEXT://coinet-kafka:9092"
+    kafkastore.topic: "_schemas"
+    kafkastore.topic.replication.factor: 3
+    debug: false
+    
+  # Resource configuration
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+      
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8081
+    
+  # Liveness and readiness probes
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /subjects
+      port: 8081
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /subjects
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Kafka Connect (for data integration)
+connect:
+  enabled: true
+  replicaCount: 2
+  
+  image:
+    registry: docker.io
+    repository: confluentinc/cp-kafka-connect
+    tag: 7.5.0
+    pullPolicy: IfNotPresent
+    
+  # Configuration
+  config:
+    bootstrap.servers: "coinet-kafka:9092"
+    group.id: "coinet-connect-cluster"
+    config.storage.topic: "coinet-connect-configs"
+    offset.storage.topic: "coinet-connect-offsets"
+    status.storage.topic: "coinet-connect-status"
+    config.storage.replication.factor: 3
+    offset.storage.replication.factor: 3
+    status.storage.replication.factor: 3
+    key.converter: "org.apache.kafka.connect.json.JsonConverter"
+    value.converter: "org.apache.kafka.connect.json.JsonConverter"
+    key.converter.schemas.enable: false
+    value.converter.schemas.enable: false
+    
+  # Resource configuration
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+      
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8083
+
+# Kafka Manager UI (for cluster management)
+ui:
+  enabled: true
+  
+  image:
+    registry: docker.io
+    repository: hlebalbau/kafka-manager
+    tag: stable
+    pullPolicy: IfNotPresent
+    
+  # Configuration
+  config:
+    ZK_HOSTS: "coinet-kafka-zookeeper:2181"
+    APPLICATION_SECRET: "coinet-kafka-ui-secret-2024"
+    
+  # Resource configuration
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 200m
+      
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9000
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  
+  # ServiceMonitor for Prometheus
+  serviceMonitor:
+    enabled: true
+    namespace: "coinet-monitoring"
+    interval: 30s
+    scrapeTimeout: 10s
+    
+  # PrometheusRule for alerting
+  prometheusRule:
+    enabled: true
+    namespace: "coinet-monitoring"
+    
+  # JMX metrics
+  jmx:
+    enabled: true
+    port: 9999
+
+# Network policies
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: coinet-dev
+        - namespaceSelector:
+            matchLabels:
+              name: coinet-staging
+        - namespaceSelector:
+            matchLabels:
+              name: coinet-production
+      ports:
+        - port: 9092
+          protocol: TCP
+        - port: 8081
+          protocol: TCP
+        - port: 8083
+          protocol: TCP
+
+# Security configuration
+auth:
+  clientProtocol: plaintext
+  interBrokerProtocol: plaintext
+  
+  # SASL configuration (for production)
+  sasl:
+    enabled: false
+    mechanisms: plain
+    users:
+      - coinet_producer
+      - coinet_consumer
+      - coinet_admin
+      
+  # SSL configuration (for production)
+  tls:
+    enabled: false
+    type: pem
+    
+# Topic auto-creation configuration
+topics:
+  autoCreate: false
+  
+# Default topic configuration
+defaultTopicConfig:
+  partitions: 12
+  replicationFactor: 3
+  cleanupPolicy: delete
+  retentionMs: 604800000  # 7 days
+  segmentMs: 86400000     # 1 day
+  compressionType: snappy
+
+# Log configuration
+logLevel: INFO
+logFlushIntervalMessages: 10000
+logFlushIntervalMs: 1000
+
+# Metrics configuration
+metrics:
+  kafka:
+    enabled: true
+  jmx:
+    enabled: true
+    port: 9999 

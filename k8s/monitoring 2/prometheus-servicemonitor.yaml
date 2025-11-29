@@ -1,0 +1,413 @@
+# =============================================================================
+# COINET PLATFORM - PROMETHEUS SERVICEMONITOR CONFIGURATION
+# =============================================================================
+# This configuration sets up comprehensive monitoring for all Coinet services
+# using Prometheus ServiceMonitor CRDs for automatic service discovery.
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coinet-monitoring
+  labels:
+    name: coinet-monitoring
+    app.kubernetes.io/name: coinet-monitoring
+    app.kubernetes.io/part-of: coinet-platform
+
+---
+# =============================================================================
+# API GATEWAY SERVICEMONITOR
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coinet-api-gateway
+  namespace: coinet-monitoring
+  labels:
+    app: coinet-api-gateway
+    component: api-gateway
+    tier: infrastructure
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: coinet-api-gateway
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'coinet_gateway_(.*)'
+      targetLabel: service
+      replacement: 'api-gateway'
+    - sourceLabels: [__name__]
+      regex: 'http_requests_total'
+      targetLabel: metric_type
+      replacement: 'counter'
+  namespaceSelector:
+    matchNames:
+    - coinet-platform
+
+---
+# =============================================================================
+# USER SERVICE SERVICEMONITOR
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coinet-user-service
+  namespace: coinet-monitoring
+  labels:
+    app: coinet-user-service
+    component: user-service
+    tier: core
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: coinet-user-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'coinet_user_(.*)'
+      targetLabel: service
+      replacement: 'user-service'
+    - sourceLabels: [instance]
+      targetLabel: pod
+      replacement: '${1}'
+  namespaceSelector:
+    matchNames:
+    - coinet-platform
+
+---
+# =============================================================================
+# AUTH SERVICE SERVICEMONITOR
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coinet-auth-service
+  namespace: coinet-monitoring
+  labels:
+    app: coinet-auth-service
+    component: auth-service
+    tier: core
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: coinet-auth-service
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    honorLabels: true
+  namespaceSelector:
+    matchNames:
+    - coinet-platform
+
+---
+# =============================================================================
+# DATA SERVICES SERVICEMONITOR
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coinet-data-services
+  namespace: coinet-monitoring
+  labels:
+    app: coinet-data-services
+    component: data-layer
+    tier: data
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      tier: data
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 15s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__meta_kubernetes_service_label_app]
+      targetLabel: service
+      replacement: '${1}'
+  namespaceSelector:
+    matchNames:
+    - coinet-platform
+
+---
+# =============================================================================
+# AI SERVICES SERVICEMONITOR
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coinet-ai-services
+  namespace: coinet-monitoring
+  labels:
+    app: coinet-ai-services
+    component: ai-layer
+    tier: ai
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      tier: ai
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 15s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__meta_kubernetes_service_label_app]
+      targetLabel: service
+      replacement: '${1}'
+    - sourceLabels: [__name__]
+      regex: 'coinet_ai_(.*)'
+      targetLabel: ai_component
+      replacement: '${1}'
+  namespaceSelector:
+    matchNames:
+    - coinet-platform
+
+---
+# =============================================================================
+# DATABASE SERVICEMONITOR (PostgreSQL, Redis, etc.)
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coinet-databases
+  namespace: coinet-monitoring
+  labels:
+    app: coinet-databases
+    component: database-layer
+    tier: data
+    monitoring: prometheus
+spec:
+  selector:
+    matchLabels:
+      component: database
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 15s
+    honorLabels: true
+  namespaceSelector:
+    matchNames:
+    - coinet-platform
+
+---
+# =============================================================================
+# PROMETHEUS CONFIGURATION
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: coinet-monitoring
+  labels:
+    app: prometheus
+    component: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'coinet-platform'
+        environment: 'production'
+
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+
+    scrape_configs:
+      # Coinet API Gateway
+      - job_name: 'coinet-api-gateway'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - coinet-platform
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_label_app]
+          action: keep
+          regex: coinet-api-gateway
+        - source_labels: [__meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: http
+        - source_labels: [__meta_kubernetes_service_name]
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+
+      # Coinet User Service
+      - job_name: 'coinet-user-service'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - coinet-platform
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_label_app]
+          action: keep
+          regex: coinet-user-service
+        - source_labels: [__meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: http
+        - source_labels: [__meta_kubernetes_service_name]
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+
+      # All Coinet Services (catch-all)
+      - job_name: 'coinet-services'
+        kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - coinet-platform
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_label_app]
+          action: keep
+          regex: 'coinet-.*'
+        - source_labels: [__meta_kubernetes_service_name]
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_service_label_tier]
+          target_label: tier
+        - source_labels: [__meta_kubernetes_service_label_component]
+          target_label: component
+
+    alerting:
+      alertmanagers:
+      - kubernetes_sd_configs:
+        - role: endpoints
+          namespaces:
+            names:
+            - coinet-monitoring
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name]
+          action: keep
+          regex: alertmanager
+
+---
+# =============================================================================
+# PROMETHEUS ALERTING RULES
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: coinet-monitoring
+  labels:
+    app: prometheus
+    component: alerting
+data:
+  coinet-alerts.yml: |
+    groups:
+    - name: coinet.platform
+      rules:
+      # Service Health Alerts
+      - alert: CoinetServiceDown
+        expr: up{job=~"coinet-.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Coinet service {{ $labels.service }} is down"
+          description: "Service {{ $labels.service }} in namespace {{ $labels.namespace }} has been down for more than 1 minute."
+
+      # API Gateway Alerts
+      - alert: CoinetGatewayHighErrorRate
+        expr: rate(coinet_gateway_requests_total{status=~"5.."}[5m]) / rate(coinet_gateway_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on API Gateway"
+          description: "API Gateway error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: CoinetGatewayHighLatency
+        expr: histogram_quantile(0.95, rate(coinet_gateway_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High latency on API Gateway"
+          description: "95th percentile latency is {{ $value }}s over the last 5 minutes."
+
+      # User Service Alerts
+      - alert: CoinetUserServiceHighFailedLogins
+        expr: rate(coinet_user_failed_logins_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High failed login rate"
+          description: "Failed login rate is {{ $value }} per second over the last 5 minutes."
+
+      - alert: CoinetUserServiceDatabaseConnectionLost
+        expr: coinet_user_database_connected == 0
+        for: 30s
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "User Service database connection lost"
+          description: "User Service cannot connect to the database."
+
+      # Database Alerts
+      - alert: CoinetDatabaseHighConnections
+        expr: postgresql_connections_active / postgresql_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connection usage is {{ $value | humanizePercentage }}."
+
+      # Memory and CPU Alerts
+      - alert: CoinetServiceHighMemoryUsage
+        expr: container_memory_usage_bytes{pod=~"coinet-.*"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage on {{ $labels.pod }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} on pod {{ $labels.pod }}."
+
+      - alert: CoinetServiceHighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{pod=~"coinet-.*"}[5m]) / container_spec_cpu_quota * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage on {{ $labels.pod }}"
+          description: "CPU usage is {{ $value }}% on pod {{ $labels.pod }}."

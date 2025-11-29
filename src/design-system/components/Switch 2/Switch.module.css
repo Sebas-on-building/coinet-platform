@@ -1,0 +1,95 @@
+.switch-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.input {
+  display: none;
+}
+
+.track {
+  width: 2.6em;
+  height: 1.3em;
+  background: #e5f6ff;
+  border-radius: 1em;
+  position: relative;
+  transition: background 0.18s;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+}
+
+.thumb {
+  position: absolute;
+  top: 0.15em;
+  left: 0.15em;
+  width: 1em;
+  height: 1em;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #7ddfff99;
+  transition: left 0.22s cubic-bezier(.4,1.4,.6,1), background 0.18s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input:checked + .track {
+  background: linear-gradient(90deg, #7ddfff 0%, #3a8dde 100%);
+}
+
+.input:checked + .track .thumb {
+  left: 1.45em;
+  background: #7ddfff;
+}
+
+.label {
+  font-size: 1em;
+  font-weight: 600;
+  color: #222;
+}
+
+.glow .track {
+  box-shadow: 0 0 12px 2px #7ddfff, 0 1px 4px rgb(0 0 0 / 10%);
+}
+
+.gradient .track {
+  background: linear-gradient(90deg, #7ddfff 0%, #3a8dde 100%);
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.sm .track {
+  width: 2em;
+  height: 1em;
+}
+
+.sm .thumb {
+  width: 0.7em;
+  height: 0.7em;
+}
+
+.md .track {
+  width: 2.6em;
+  height: 1.3em;
+}
+
+.md .thumb {
+  width: 1em;
+  height: 1em;
+}
+
+.lg .track {
+  width: 3.2em;
+  height: 1.6em;
+}
+
+.lg .thumb {
+  width: 1.3em;
+  height: 1.3em;
+} 

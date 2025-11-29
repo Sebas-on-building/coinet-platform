@@ -1,0 +1,110 @@
+.input-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 200px;
+  resize: none;
+  border-radius: 12px;
+  border: 1.5px solid #e5e7eb;
+  background: rgb(255 255 255 / 70%);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+  padding: 1rem 1.2rem;
+  font-size: 1.1rem;
+  color: #22223b;
+  transition: border 0.2s, box-shadow 0.2s;
+}
+
+.textarea:focus {
+  border: 1.5px solid #6366f1;
+  box-shadow: 0 0 0 2px #6366f1;
+  outline: none;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.2rem;
+}
+
+.char-count {
+  font-size: 0.95rem;
+  color: #888;
+}
+
+.emoji-btn {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: #6366f1;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  transition: background 0.15s;
+}
+
+.emoji-btn:hover, .emoji-btn:focus {
+  background: #e0e7ef;
+}
+
+.suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 10%);
+  margin-top: 0.3rem;
+  z-index: 10;
+  padding: 0.5rem 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.suggestion {
+  padding: 0.7rem 1.2rem;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #22223b;
+  transition: background 0.15s;
+}
+
+.suggestion:hover, .suggestion:focus {
+  background: #f3f4f6;
+}
+
+.emojis {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 10%);
+  margin-top: 0.3rem;
+  z-index: 10;
+  padding: 0.5rem 0.7rem;
+  list-style: none;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.emoji {
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.emoji:hover, .emoji:focus {
+  background: #e0e7ef;
+} 

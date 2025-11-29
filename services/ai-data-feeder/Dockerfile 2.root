@@ -1,0 +1,40 @@
+# AI Data Feeder Service - Dockerfile for Railway when root directory is repo root
+# Use this if Railway root directory is set to "/" (repo root)
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Copy workspace configuration
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml* ./ 2>/dev/null || true
+
+# Copy market-prices service (workspace dependency)
+COPY services/market-prices ./services/market-prices
+
+# Copy this service
+COPY services/ai-data-feeder ./services/ai-data-feeder
+
+# Install all workspace dependencies
+RUN pnpm install --no-frozen-lockfile
+
+# Build market-prices first (dependency)
+RUN cd services/market-prices && pnpm build
+
+# Build this service
+RUN cd services/ai-data-feeder && pnpm build
+
+# Set working directory to service
+WORKDIR /app/services/ai-data-feeder
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose health check endpoint (optional)
+EXPOSE 8080
+
+# Run the service
+CMD ["node", "dist/index.js"]
+

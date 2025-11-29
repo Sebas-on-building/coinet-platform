@@ -1,0 +1,58 @@
+.reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.review {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  background: var(--color-bg, #f8fafc);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+}
+
+.avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-primary, #6366f1);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.body {
+  flex: 1;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-weight: 600;
+}
+
+.user {
+  color: var(--color-text, #22223b);
+}
+
+.rating {
+  color: #fbbf24;
+}
+
+.comment {
+  margin-top: 0.5rem;
+  color: var(--color-text, #22223b);
+}
+
+.empty {
+  color: #888;
+  text-align: center;
+  padding: 2rem 0;
+} 

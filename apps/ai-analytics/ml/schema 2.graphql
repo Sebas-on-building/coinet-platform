@@ -1,0 +1,11 @@
+type Mutation {
+  trainModel(modelType: String!, parameters: JSON!): ModelTrained!
+}
+
+type ModelTrained {
+  type: String!
+  modelId: String!
+  modelType: String!
+  metrics: JSON!
+  timestamp: String!
+}

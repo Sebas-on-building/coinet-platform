@@ -1,0 +1,14 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--color-filter-bg, #f1f5f9);
+  border-radius: 16px;
+  padding: 0.5rem 1rem;
+  min-width: 200px;
+}
+
+.placeholder {
+  color: var(--color-text-muted, #888);
+  font-size: 1rem;
+} 

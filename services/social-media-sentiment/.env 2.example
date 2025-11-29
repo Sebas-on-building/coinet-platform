@@ -1,0 +1,65 @@
+# =========================================
+# SOCIAL MEDIA SENTIMENT ANALYSIS CONFIG
+# =========================================
+
+# API Keys for Social Media Platforms
+TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
+TWITTER_API_KEY=your_twitter_api_key_here
+TWITTER_API_SECRET=your_twitter_api_secret_here
+TWITTER_ACCESS_TOKEN=your_twitter_access_token_here
+TWITTER_ACCESS_SECRET=your_twitter_access_secret_here
+
+REDDIT_CLIENT_ID=your_reddit_client_id_here
+REDDIT_CLIENT_SECRET=your_reddit_client_secret_here
+REDDIT_USERNAME=your_reddit_username_here
+REDDIT_PASSWORD=your_reddit_password_here
+
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook/telegram
+
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+DISCORD_CLIENT_ID=your_discord_client_id_here
+DISCORD_CLIENT_SECRET=your_discord_client_secret_here
+
+# Database Configuration
+REDIS_URL=redis://localhost:6379
+TIMESCALEDB_URL=postgresql://user:password@localhost/coinet
+
+# Service Configuration
+NODE_ENV=production
+LOG_LEVEL=info
+
+# Processing Configuration
+MAX_PROCESSING_LATENCY_MS=5000
+BATCH_SIZE=100
+MAX_CONCURRENT_REQUESTS=10
+CACHE_TTL_SECONDS=300
+
+# Aggregation Windows (in seconds)
+AGGREGATION_SHORT_WINDOW=60
+AGGREGATION_MEDIUM_WINDOW=300
+AGGREGATION_LONG_WINDOW=3600
+
+# Privacy Settings
+PRIVACY_HASH_USER_IDS=true
+PRIVACY_STORE_RAW_CONTENT=false
+PRIVACY_RETENTION_DAYS=30
+PRIVACY_ANONYMIZE_LOCATION=true
+
+# NLP Configuration
+NLP_MODEL_VERSION=1.0.0
+NLP_CONFIDENCE_THRESHOLD=0.7
+NLP_MAX_CONTENT_LENGTH=5000
+NLP_SENTIMENT_MODEL=afinn
+
+# Rate Limiting
+RATE_LIMIT_REQUESTS_PER_MINUTE=300
+RATE_LIMIT_REQUESTS_PER_HOUR=50000
+
+# Monitoring
+MONITORING_ENABLED=true
+METRICS_ENABLED=true
+HEALTH_CHECK_INTERVAL=30000
+
+# Custom Vocabulary (optional - comma-separated)
+CUSTOM_VOCABULARY=cryptocurrency,blockchain,bitcoin,ethereum,defi,nft,trading,hodl

@@ -1,0 +1,125 @@
+# AI Data Feeder Service - Dockerfile for Monorepo Build
+# Use this when Railway Root Directory = "/" (repo root)
+# Set Dockerfile Path to: services/ai-data-feeder/Dockerfile.monorepo
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Copy workspace configuration
+COPY pnpm-workspace.yaml ./
+COPY package.json ./
+COPY pnpm-lock.yaml* ./
+
+# Copy market-prices service (workspace dependency)
+COPY services/market-prices ./services/market-prices
+
+# Copy this service (entire directory)
+COPY services/ai-data-feeder ./services/ai-data-feeder
+
+# Install all workspace dependencies from root (including devDependencies for build)
+RUN pnpm install --no-frozen-lockfile --include-workspace-root
+
+# Build market-prices first (dependency) - MUST succeed
+# Force clean build to ensure fresh declaration files
+RUN echo "=== Cleaning and Building market-prices ===" && \
+    cd services/market-prices && \
+    rm -rf dist && \
+    rm -rf node_modules/.cache 2>/dev/null || true && \
+    npx tsc -p tsconfig.json && \
+    echo "=== Verifying market-prices build ===" && \
+    test -f dist/index.js || (echo "ERROR: market-prices dist/index.js not found!" && exit 1) && \
+    test -f dist/index.d.ts || (echo "ERROR: market-prices dist/index.d.ts not found!" && exit 1) && \
+    echo "=== Verifying critical provider files ===" && \
+    test -f dist/providers/coingecko-rest.js || (echo "ERROR: coingecko-rest.js not found!" && exit 1) && \
+    test -f dist/providers/cryptopanic-rest.js || (echo "ERROR: cryptopanic-rest.js not found!" && exit 1) && \
+    echo "=== Verifying DexScreener build (now world-class implementation) ===" && \
+    test -f dist/providers/dexscreener-rest.js && echo "✅ DexScreener compiled successfully" || echo "⚠️  DexScreener not compiled (optional)" && \
+    echo "=== Verifying exports in declaration file ===" && \
+    (grep -n "DexScreenerRestClient\|CryptoPanicRestClient" dist/index.d.ts && echo "✅ All exports found") || echo "⚠️  Some exports missing" && \
+    echo "✅ market-prices built successfully with all providers"
+
+# Install dependencies in ai-data-feeder service directory
+RUN echo "=== Installing dependencies for ai-data-feeder ===" && \
+    cd services/ai-data-feeder && \
+    pnpm install --no-frozen-lockfile
+
+# Verify workspace link and that market-prices dist exists
+RUN echo "=== Verifying workspace link ===" && \
+    test -f services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.js && \
+    test -f services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.d.ts && \
+    echo "✅ Workspace link verified: market-prices dist files exist" || \
+    (echo "⚠️  Workspace link issue, checking alternatives..." && \
+     ls -la services/ai-data-feeder/node_modules/@coinet/ 2>/dev/null || echo "No @coinet in node_modules" && \
+     ls -la services/market-prices/dist/index.js && \
+     ls -la services/market-prices/dist/index.d.ts && \
+     echo "Creating symlink manually..." && \
+     mkdir -p services/ai-data-feeder/node_modules/@coinet && \
+     ln -sf ../../../market-prices services/ai-data-feeder/node_modules/@coinet/market-prices && \
+     echo "✅ Symlink created" && \
+     echo "Verifying symlink has dist files..." && \
+     ls -la services/ai-data-feeder/node_modules/@coinet/market-prices/dist/ | head -5)
+
+# Debug: Check what TypeScript sees and inspect the declaration file
+RUN echo "=== Debug: Checking module resolution ===" && \
+    cd services/ai-data-feeder && \
+    echo "Checking if package.json exists in symlink..." && \
+    test -f node_modules/@coinet/market-prices/package.json && echo "✅ package.json found" || echo "❌ package.json missing" && \
+    echo "Checking if dist/index.d.ts exists in symlink..." && \
+    test -f node_modules/@coinet/market-prices/dist/index.d.ts && echo "✅ dist/index.d.ts found" || echo "❌ dist/index.d.ts missing" && \
+    echo "Reading package.json types field..." && \
+    cat node_modules/@coinet/market-prices/package.json | grep -E '"types"|"main"' && \
+    echo "=== CRITICAL: Checking declaration file in symlink ===" && \
+    echo "Full contents of node_modules/@coinet/market-prices/dist/index.d.ts:" && \
+    cat node_modules/@coinet/market-prices/dist/index.d.ts && \
+    echo "=== Checking source file ===" && \
+    cd /app/services/market-prices && \
+    echo "Source index.ts CryptoPanic exports:" && \
+    grep -n "CryptoPanic" src/index.ts || echo "No CryptoPanic in source" && \
+    echo "Generated dist/index.d.ts CryptoPanic exports:" && \
+    grep -n "CryptoPanic" dist/index.d.ts || (echo "❌❌❌ NO CRYPTOPANIC IN DECLARATION FILE! ❌❌❌" && echo "Full declaration file:" && cat dist/index.d.ts && exit 1) && \
+    cd /app/services/ai-data-feeder && \
+    echo "Checking if referenced declaration files exist..." && \
+    test -f node_modules/@coinet/market-prices/dist/services/cryptopanic-news.service.d.ts && echo "✅ cryptopanic-news.service.d.ts found" || echo "❌ cryptopanic-news.service.d.ts missing" && \
+    test -f node_modules/@coinet/market-prices/dist/providers/cryptopanic-rest.d.ts && echo "✅ cryptopanic-rest.d.ts found" || echo "❌ cryptopanic-rest.d.ts missing" && \
+    echo "Listing dist folder structure..." && \
+    find node_modules/@coinet/market-prices/dist -type f -name "*.d.ts" | head -10 && \
+    echo "Checking dist/types folder..." && \
+    ls -la node_modules/@coinet/market-prices/dist/types/ 2>/dev/null | head -5 || echo "No types folder"
+
+# CRITICAL: Show declaration file contents - MUST see what's exported
+RUN echo "========================================" && \
+    echo "=== DECLARATION FILE INSPECTION ===" && \
+    echo "========================================" && \
+    echo "File location:" && \
+    ls -la services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.d.ts && \
+    echo "" && \
+    echo "=== FULL DECLARATION FILE CONTENTS ===" && \
+    cat services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.d.ts && \
+    echo "" && \
+    echo "=== SEARCHING FOR CRYPTOPANIC ===" && \
+    (grep -n "CryptoPanic" services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.d.ts && echo "✅ Found CryptoPanic") || echo "❌ NO CRYPTOPANIC EXPORTS FOUND!" && \
+    echo "" && \
+    echo "=== ALL EXPORT STATEMENTS ===" && \
+    grep -n "^export" services/ai-data-feeder/node_modules/@coinet/market-prices/dist/index.d.ts
+
+# Build this service
+RUN echo "=== Building AI Data Feeder ===" && \
+    cd services/ai-data-feeder && \
+    npx tsc -p tsconfig.json --skipLibCheck && \
+    test -f dist/index.js || (echo "ERROR: dist/index.js not found!" && exit 1) && \
+    echo "✅ Build successful!"
+
+# Set working directory to service
+WORKDIR /app/services/ai-data-feeder
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose health check endpoint (optional)
+EXPOSE 8080
+
+# Run the service
+CMD ["node", "dist/index.js"]

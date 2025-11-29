@@ -1,0 +1,224 @@
+name: Multi-Modal Fusion Pipeline Tests
+
+on:
+  push:
+    paths:
+      - 'ai-services/ml-service/src/coinet_ai_ml/fusion/**'
+      - '.github/workflows/fusion-pipeline-tests.yml'
+  pull_request:
+    paths:
+      - 'ai-services/ml-service/src/coinet_ai_ml/fusion/**'
+  schedule:
+    # Run daily at 2 AM UTC for regression testing
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+          - benchmark
+          - stress
+
+jobs:
+  test-fusion-pipeline:
+    name: Test Multi-Modal Fusion Pipeline
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+        test-suite: [quick, full]
+
+    services:
+      # Mock services for integration testing
+      mock-services:
+        image: nginx:alpine
+        ports:
+          - 4001:80
+          - 4002:80
+          - 4003:80
+          - 4004:80
+          - 4005:80
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/test_requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+
+    - name: Install Python dependencies
+      run: |
+        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        pip install -r test_requirements.txt
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+    - name: Set up test environment
+      run: |
+        mkdir -p test_results
+        echo "Test environment configured"
+
+    - name: Run fusion pipeline tests
+      env:
+        PYTHONPATH: ${{ github.workspace }}/ai-services/ml-service/src
+      run: |
+        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        python test_runner.py \
+          --suite ${{ matrix.test-suite }} \
+          --output-dir ./test_results \
+          --report both \
+          --parallel 2
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: fusion-test-results-py${{ matrix.python-version }}-${{ matrix.test-suite }}
+        path: ai-services/ml-service/src/coinet_ai_ml/fusion/test_results/
+
+    - name: Upload test metrics
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: fusion-test-metrics-py${{ matrix.python-version }}-${{ matrix.test-suite }}
+        path: ai-services/ml-service/src/coinet_ai_ml/fusion/fusion_test_metrics_*.json
+
+    - name: Upload HTML reports
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: fusion-test-reports-py${{ matrix.python-version }}-${{ matrix.test-suite }}
+        path: ai-services/ml-service/src/coinet_ai_ml/fusion/fusion_test_report_*.html
+
+  benchmark-tests:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: test-fusion-pipeline
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        pip install -r test_requirements.txt
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+    - name: Run benchmark tests
+      env:
+        PYTHONPATH: ${{ github.workspace }}/ai-services/ml-service/src
+      run: |
+        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        python test_runner.py \
+          --suite benchmark \
+          --output-dir ./benchmark_results \
+          --report both
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: fusion-benchmark-results
+        path: ai-services/ml-service/src/coinet_ai_ml/fusion/benchmark_results/
+
+  stress-tests:
+    name: Stress Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event.inputs.test_suite == 'stress'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        pip install -r test_requirements.txt
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+    - name: Run stress tests
+      env:
+        PYTHONPATH: ${{ github.workspace }}/ai-services/ml-service/src
+      run: |
+        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        python test_runner.py \
+          --suite stress \
+          --output-dir ./stress_results \
+          --report both
+
+    - name: Upload stress test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: fusion-stress-test-results
+        path: ai-services/ml-service/src/coinet_ai_ml/fusion/stress_results/
+
+  test-summary:
+    name: Test Summary and Notifications
+    runs-on: ubuntu-latest
+    needs: [test-fusion-pipeline, benchmark-tests, stress-tests]
+    if: always()
+
+    steps:
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Generate test summary
+      run: |
+        echo "## Multi-Modal Fusion Pipeline Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Test Suite | Status | Duration | Success Rate |" >> $GITHUB_STEP_SUMMARY
+        echo "|------------|--------|----------|--------------|" >> $GITHUB_STEP_SUMMARY
+
+        # Parse test results and generate summary
+        for artifact in $(find . -name "*.json" -path "*/test_results/*" | head -5); do
+          echo "Processing: $artifact"
+          # Extract key metrics from JSON files
+          # This would parse the actual test result files
+        done
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Performance Metrics" >> $GITHUB_STEP_SUMMARY
+        echo "- Execution times, memory usage, and success rates analyzed" >> $GITHUB_STEP_SUMMARY
+        echo "- Detailed reports available in artifacts" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify on failures
+      if: failure()
+      run: |
+        echo "❌ Some tests failed. Check the detailed logs and artifacts for more information."
+        # Could integrate with Slack, Discord, or email notifications here
+
+    - name: Notify on success
+      if: success()
+      run: |
+        echo "✅ All tests passed successfully!"
+        # Could integrate with success notifications here

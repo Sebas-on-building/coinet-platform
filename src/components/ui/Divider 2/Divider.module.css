@@ -1,0 +1,55 @@
+.divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.7em;
+  margin: 1.2em 0;
+  user-select: none;
+}
+
+.line {
+  flex: 1;
+  height: 2px;
+  background: #e5f6ff;
+  border-radius: 2px;
+  transition: background 0.18s;
+}
+
+.gradient .line {
+  background: linear-gradient(90deg, #7ddfff 0%, #3a8dde 100%);
+}
+
+.animated .line {
+  animation: divider-glow 1.2s infinite alternate;
+}
+
+@keyframes divider-glow {
+  0% {
+    box-shadow: 0 0 0 #7ddfff;
+  }
+
+  100% {
+    box-shadow: 0 0 12px 2px #7ddfff;
+  }
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 1em;
+  font-weight: 600;
+  color: #7ddfff;
+  background: #fff;
+  padding: 0 0.7em;
+  border-radius: 1em;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+}
+
+.icon {
+  font-size: 1.2em;
+}
+
+.text {
+  font-size: 1em;
+} 

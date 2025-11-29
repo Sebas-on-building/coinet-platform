@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("user")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  refreshTokens RefreshToken[]
+  roles         Role[]
+  oauthAccounts OAuthAccount[]
+}
+
+model RefreshToken {
+  token     String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+}
+
+model PasswordResetToken {
+  token     String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+}
+
+model OnboardingAnalytics {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  step       Int
+  completed  Boolean  @default(false)
+  droppedOff Boolean  @default(false)
+  timestamp  DateTime @default(now())
+}
+
+model Referral {
+  id           String   @id @default(uuid())
+  referrer     User     @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referrerId   String
+  referee      User?    @relation("Referee", fields: [refereeId], references: [id])
+  refereeId    String?
+  rewardGiven  Boolean  @default(false)
+  rewardType   String?
+  createdAt    DateTime @default(now())
+  acceptedAt   DateTime?
+}
+
+model NotificationPreference {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  email      Boolean  @default(true)
+  push       Boolean  @default(false)
+  sms        Boolean  @default(false)
+  inApp      Boolean  @default(true)
+  categories String[]
+}
+
+model NotificationEvent {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  type       String
+  channel    String
+  content    String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  meta       Json?
+  abTestId   String?
+}
+
+model ABTest {
+  id         String   @id @default(uuid())
+  name       String
+  variant    String
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  event      NotificationEvent? @relation(fields: [eventId], references: [id])
+  eventId    String?
+  createdAt  DateTime @default(now())
+}
+
+model OAuthAccount {
+  id            String   @id @default(uuid())
+  provider      String
+  providerId    String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  accessToken   String?
+  refreshToken  String?
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  permissions Permission[]
+  users       User[]
+}
+
+model Permission {
+  id    String   @id @default(uuid())
+  name  String  @unique
+  roles Role[]
+}
+
+model BackupCode {
+  id     String   @id @default(uuid())
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  code   String
+  used   Boolean  @default(false)
+}
+
+model TrustedDevice {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  deviceId  String
+  createdAt DateTime @default(now())
+}
+
+model OnboardingStep {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  step      String
+  completed Boolean  @default(false)
+  timestamp DateTime @default(now())
+  meta      Json?
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  event     String
+  meta      Json?
+  timestamp DateTime @default(now())
+}
+
+model Badge {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  name      String
+  icon      String
+  awardedAt DateTime @default(now())
+  meta      Json?
+} 
