@@ -50,6 +50,7 @@
     "reliability:24h": "ts-node scripts/reliability-test-24h.ts",
     "simulate:50k": "ts-node scripts/50k-user-simulation.ts",
     "simulate:scaling": "ts-node scripts/50k-user-simulation.ts --scaling",
+    "simulate:optimized": "ts-node scripts/50k-user-simulation.ts --optimized",
     "test:liquidity": "ts-node scripts/test-liquidity-analyzer.ts"
   },
   "keywords": [
