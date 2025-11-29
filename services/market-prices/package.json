@@ -23,6 +23,7 @@
     "benchmark:full": "ts-node benchmarks/free-tier-benchmark.ts",
     "benchmark:defi": "ts-node benchmarks/defi-benchmark.ts",
     "test:defi": "ts-node scripts/test-defi-features.ts",
+    "test:health": "ts-node scripts/test-health.ts",
     "train:fallback": "ts-node benchmarks/train-fallback-model.ts",
     "load-test": "ts-node benchmarks/load-test.ts",
     "load-test:stress": "ts-node benchmarks/load-test.ts --stress",
