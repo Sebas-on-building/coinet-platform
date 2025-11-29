@@ -10,6 +10,9 @@ export enum DataSource {
   CRYPTOPANIC = 'cryptopanic',
   MESSARI = 'messari',
   THETIE = 'thetie',
+  CRYPTORANK = 'cryptorank',
+  TOKENUNLOCKS = 'tokenunlocks',
+  ONCHAIN = 'onchain',
 }
 
 export enum PriceUpdateType {

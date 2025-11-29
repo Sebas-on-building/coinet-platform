@@ -368,7 +368,7 @@ export async function sendPagerDutyNotification(
       return false;
     }
 
-    const result = await response.json();
+    const result = await response.json() as { dedup_key?: string };
     logger.debug('PagerDuty notification sent', { 
       alert: alert.name, 
       resolved,

@@ -236,7 +236,7 @@ export class UnifiedTokenUnlocksService extends EventEmitter {
     if (this.config.enableOnChain) {
       this.onChainMonitor.getEventStream()
         .pipe(takeUntil(this.destroy$))
-        .subscribe(event => {
+        .subscribe((event: any) => {
           this.handleOnChainEvent(event);
         });
     }

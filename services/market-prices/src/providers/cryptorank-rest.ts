@@ -118,7 +118,7 @@ export class CryptoRankRestClient {
     });
 
     // Register rate limiter (free tier: 10/min)
-    this.rateLimiter.register(DataSource.CRYPTORANK || 'cryptorank' as any, {
+    this.rateLimiter.register(DataSource.CRYPTORANK, {
       maxRequestsPerMinute: config.rateLimit?.maxRequestsPerMinute || 10,
       reservoir: 10,
       reservoirRefreshAmount: 10,
@@ -137,7 +137,7 @@ export class CryptoRankRestClient {
     params?: any
   ): Promise<T> {
     return this.rateLimiter.schedule<T>(
-      DataSource.CRYPTORANK || 'cryptorank' as any,
+      DataSource.CRYPTORANK,
       async () => {
         try {
           const response = await this.axios.request<{ data: T }>({
@@ -160,12 +160,12 @@ export class CryptoRankRestClient {
       logger.error(`CryptoRank API error: ${status}`, { endpoint, status });
       throw new ProviderError(
         `HTTP ${status}`,
-        DataSource.CRYPTORANK || 'cryptorank' as any,
+        DataSource.CRYPTORANK,
         status,
         error
       );
     }
-    throw new ProviderError('Network error', DataSource.CRYPTORANK || 'cryptorank' as any, undefined, error);
+    throw new ProviderError('Network error', DataSource.CRYPTORANK, undefined, error);
   }
 
   /**
