@@ -1,119 +1,73 @@
-# Railway Quick Fix Guide
+# Railway Deployment - Quick Fix Guide
 
-## ✅ Issue Fixed
+## ✅ Current Configuration Status
 
-The build was failing because Railway couldn't detect the Node.js project. This has been fixed by:
-1. ✅ Added `package.json` with all dependencies
-2. ✅ Added `tsconfig.json` for TypeScript compilation
-3. ✅ Updated `railway.json` configuration
+Your Railway service is correctly configured:
+- ✅ Root directory: `services/market-prices`
+- ✅ Branch: `feature/ai-data-feeder`
+- ✅ Healthcheck path: `/api/health`
+- ✅ Start command: `node dist/index.js`
 
-## 🚀 Next Steps in Railway Dashboard
+## 🔧 Missing: Public Domain
 
-### Step 1: Set Root Directory
+**Problem:** No public domain has been generated yet.
 
-**CRITICAL:** You must set the root directory in Railway:
+**Solution:** 
+1. In Railway dashboard → `market-prices` service
+2. Go to **Networking** section
+3. Under **Public Networking**, click **"Generate Domain"**
+4. Railway will create a URL like: `market-prices-production-XXXX.up.railway.app`
 
-1. Go to Railway Dashboard → Your Service → **Settings**
-2. Scroll to **"Source"** section
-3. Click **"Add Root Directory"**
-4. Enter: `services/market-prices`
-5. Click **"Update"**
+## 🧪 Test After Generating Domain
 
-This tells Railway to build from the `services/market-prices` directory instead of the repo root.
+Once you have the domain:
 
-### Step 2: Verify Build Settings
-
-Railway should now auto-detect:
-- **Builder:** Nixpacks (Node.js)
-- **Build Command:** `npm install && npm run build` (auto-detected)
-- **Start Command:** `npm start` (from railway.json)
-
-### Step 3: Set Environment Variables
-
-Add all required environment variables (see `RAILWAY_DEPLOYMENT.md` for full list):
-
-**Minimum Required:**
 ```bash
-NODE_ENV=production
-COINGECKO_API_KEY_PROD=your_key
-TIMESCALE_HOST=your_host
-TIMESCALE_PASSWORD=your_password
-REDIS_HOST=your_redis_host
-REDIS_PASSWORD=your_redis_password
+# Replace YOUR-DOMAIN with the actual domain Railway generated
+curl https://YOUR-DOMAIN.up.railway.app/api/health | jq
 ```
 
-### Step 4: Redeploy
-
-1. Railway will automatically redeploy when you push to `main` (already pushed ✅)
-2. OR manually trigger: **Settings** → **"Redeploy"**
-
-### Step 5: Verify
-
-After deployment, check:
-- Build logs show successful build
-- Deploy logs show service starting
-- Health endpoint: `https://your-service.railway.app/health`
-
-## 🔍 Troubleshooting
-
-### If Build Still Fails:
-
-1. **Check Root Directory:**
-   - Settings → Source → Root Directory = `services/market-prices`
-
-2. **Check Build Logs:**
-   - Look for "package.json found" message
-   - Should see "npm install" running
-   - Should see "npm run build" running
-
-3. **Check Node Version:**
-   - Railway should auto-detect Node 20+
-   - If not, add `NODE_VERSION=20` environment variable
-
-### If Service Won't Start:
-
-1. **Check Start Command:**
-   - Should be: `npm start` or `node dist/index.js`
-
-2. **Check Environment Variables:**
-   - All required vars must be set
-   - Check for typos in variable names
-
-3. **Check Logs:**
-   - Look for error messages
-   - Common: Missing env vars, connection errors
-
-## 📋 Quick Checklist
-
-- [ ] Root directory set to `services/market-prices`
-- [ ] Environment variables configured
-- [ ] Build succeeds (check logs)
-- [ ] Service starts (check logs)
-- [ ] Health endpoint responds: `/health`
-- [ ] Metrics endpoint works: `/metrics/summary`
-
-## 🎯 Expected Build Output
-
-You should see in Railway build logs:
-```
-✓ package.json found
-✓ Installing dependencies...
-✓ Running build: npm run build
-✓ TypeScript compilation successful
-✓ Build complete
+Expected response:
+```json
+{
+  "status": "healthy",
+  "service": "market-prices",
+  "timestamp": "2025-11-29T...",
+  "uptime": 123.45
+}
 ```
 
-## 🎯 Expected Start Output
+## 📋 Check Deployment Status
 
-You should see in Railway deploy logs:
-```
-Starting Market Prices Service...
-Market data aggregator initialized
-Storage initialized
-Market Prices Service started successfully
-```
+Before testing, verify:
+1. **Deployments tab** - Is there a recent successful deployment?
+2. **Logs tab** - Are there any errors during startup?
+3. **Metrics tab** - Is the service running?
 
----
+## 🚨 Common Issues
 
-**After setting the root directory, Railway should build and deploy successfully!** 🚀
+### 404 "Application not found"
+- **Cause:** No public domain generated OR wrong URL
+- **Fix:** Generate domain in Railway dashboard
 
+### 503 Service Unavailable
+- **Cause:** Service starting up or health check failing
+- **Fix:** Check logs for errors, wait a few minutes
+
+### Connection Timeout
+- **Cause:** Service crashed or not deployed
+- **Fix:** Check deployment logs, verify environment variables
+
+## 🔍 Verify Service is Running
+
+Check the **Deployments** tab:
+- Look for a deployment with status "Active" or "Success"
+- Check the timestamp - should be recent (after your last push)
+- Click on the deployment to see logs
+
+## 📝 Next Steps
+
+1. ✅ Generate public domain (click "Generate Domain")
+2. ✅ Wait for deployment to complete (check Deployments tab)
+3. ✅ Test health endpoint with the new URL
+4. ✅ If errors, check logs and share them
