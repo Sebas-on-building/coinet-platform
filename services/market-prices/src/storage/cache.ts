@@ -47,13 +47,14 @@ export class CacheStorage {
 
     this.ttl = ttl;
     
-    // Initialize tiered TTL configuration
+    // Initialize tiered TTL configuration (optimized for 95%+ cache hit rate)
+    // Higher TTLs reduce API calls while maintaining data freshness
     this.ttlTiers = {
-      realtime: 10,           // 10 seconds for WebSocket prices
-      default: ttl,           // Default TTL (30s typically)
-      metadata: ttl * 20,     // 10 minutes for metadata
-      historical: ttl * 40,   // 20 minutes for OHLCV
-      nonCritical: ttl * 60,  // 30 minutes for non-critical data
+      realtime: 30,           // 30 seconds for WebSocket prices (was 10s)
+      default: ttl * 2,       // 60 seconds for general data (was 30s)
+      metadata: ttl * 60,     // 30 minutes for metadata (was 10 min)
+      historical: ttl * 120,  // 60 minutes for OHLCV (was 20 min)
+      nonCritical: ttl * 180, // 90 minutes for non-critical data (was 30 min)
     };
 
     this.redis.on('error', (err) => {

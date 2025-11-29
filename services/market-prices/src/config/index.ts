@@ -349,7 +349,7 @@ export function buildConfig(): ServiceConfig {
       password: getEnv('REDIS_PASSWORD', ''),
       db: getEnvNumber('REDIS_DB', 0),
     },
-    cacheTTL: getEnvNumber('CACHE_TTL_SECONDS', 30),
+    cacheTTL: getEnvNumber('CACHE_TTL_SECONDS', 60), // Increased from 30s for better cache hit rate
     failoverRetryDelay: getEnvNumber('FAILOVER_RETRY_DELAY_MS', 5000),
     maxRetryAttempts: getEnvNumber('MAX_RETRY_ATTEMPTS', 3),
     enableWebSocket: getEnvBoolean('ENABLE_WEBSOCKET', true),

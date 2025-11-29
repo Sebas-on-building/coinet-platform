@@ -50,6 +50,22 @@ export {
 // Import for default export
 import { AlertManager } from './alert-manager';
 
+// Notification Channels
+export {
+  buildNotificationChannels,
+  buildSlackChannel,
+  buildPagerDutyChannel,
+  buildWebhookChannel,
+  sendSlackNotification,
+  sendPagerDutyNotification,
+  sendWebhookNotification,
+  formatSlackAlert,
+  formatPagerDutyAlert,
+  type SlackConfig,
+  type PagerDutyConfig,
+  type WebhookConfig,
+} from './notification-channels';
+
 export default {
   PrometheusMetrics,
   DefiMetrics,
