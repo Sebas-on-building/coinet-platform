@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Chain, AlchemyTransfer } from '../../types';
+import { Chain, AlchemyTransfer, TransferCategory } from '../../types';
 
 // =============================================================================
 // MOCK DATA
@@ -20,8 +20,11 @@ const createMockTransfer = (overrides: Partial<AlchemyTransfer> = {}): AlchemyTr
   from: '0x1234567890abcdef1234567890abcdef12345678',
   to: '0xabcdef1234567890abcdef1234567890abcdef12',
   value: 1.5,
-  category: 'external',
+  category: TransferCategory.EXTERNAL,
   asset: 'ETH',
+  erc721TokenId: null,
+  erc1155Metadata: null,
+  tokenId: null,
   rawContract: { address: null, value: null, decimal: null },
   metadata: { blockTimestamp: new Date().toISOString() },
   ...overrides,

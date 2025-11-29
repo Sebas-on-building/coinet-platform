@@ -16,7 +16,7 @@ import {
   resetConsensusEngine 
 } from '../../clients/ConsensusEngine';
 import { WhaleFusionEngine, ProviderName, FusionResult } from '../../clients/WhaleFusionEngine';
-import { Chain, AlchemyTransfer } from '../../types';
+import { Chain, AlchemyTransfer, TransferCategory } from '../../types';
 
 // =============================================================================
 // MOCKS
@@ -28,8 +28,11 @@ const createMockTransfer = (overrides: Partial<AlchemyTransfer> = {}): AlchemyTr
   from: '0x1234567890abcdef1234567890abcdef12345678',
   to: '0xabcdef1234567890abcdef1234567890abcdef12',
   value: 1.5,
-  category: 'external',
+  category: TransferCategory.EXTERNAL,
   asset: 'ETH',
+  erc721TokenId: null,
+  erc1155Metadata: null,
+  tokenId: null,
   rawContract: { address: null, value: null, decimal: null },
   metadata: { blockTimestamp: new Date().toISOString() },
   ...overrides,
@@ -37,7 +40,7 @@ const createMockTransfer = (overrides: Partial<AlchemyTransfer> = {}): AlchemyTr
 
 const createMockFusionEngine = (config: {
   activeProviders?: ProviderName[];
-  transfersByProvider?: Record<ProviderName, AlchemyTransfer[]>;
+  transfersByProvider?: Partial<Record<ProviderName, AlchemyTransfer[]>>;
   shouldFail?: ProviderName[];
 } = {}): WhaleFusionEngine => {
   const activeProviders = config.activeProviders || ['alchemy', 'quicknode', 'infura', 'moralis'];
@@ -51,7 +54,7 @@ const createMockFusionEngine = (config: {
       for (const provider of activeProviders) {
         if (!shouldFail.includes(provider)) {
           return {
-            data: transfersByProvider[provider] || [],
+            data: (transfersByProvider[provider] as AlchemyTransfer[]) || [],
             provider,
             cached: false,
             latencyMs: 50,
