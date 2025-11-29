@@ -12,7 +12,6 @@
 
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import type { Element } from 'cheerio';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
 
@@ -201,7 +200,7 @@ export class TokenUnlocksScraper extends EventEmitter {
 
     // TokenUnlocks.app uses a table or card layout
     // This selector may need adjustment based on actual HTML structure
-    $('[data-testid="unlock-row"], .unlock-card, tr.unlock-item, .event-row').each((_i: number, el: Element) => {
+    $('[data-testid="unlock-row"], .unlock-card, tr.unlock-item, .event-row').each((i: number, el: cheerio.AnyNode) => {
       try {
         const $el = $(el);
         
@@ -296,7 +295,7 @@ export class TokenUnlocksScraper extends EventEmitter {
     const events: TokenUnlocksEvent[] = [];
 
     // Look for unlock schedule table
-    $('.schedule-table tr, .unlock-schedule-row, [data-testid="schedule-item"]').each((_i: number, el: Element) => {
+    $('.schedule-table tr, .unlock-schedule-row, [data-testid="schedule-item"]').each((i: number, el: cheerio.AnyNode) => {
       try {
         const $el = $(el);
         if ($el.find('th').length > 0) return; // Skip header row
@@ -423,7 +422,7 @@ export class TokenUnlocksScraper extends EventEmitter {
       const $ = cheerio.load(html);
       const tokens: TokenUnlocksToken[] = [];
 
-      $('.token-row, [data-testid="token-item"], tr.token-item').each((_i: number, el: Element) => {
+      $('.token-row, [data-testid="token-item"], tr.token-item').each((i: number, el: cheerio.AnyNode) => {
         try {
           const $el = $(el);
           
