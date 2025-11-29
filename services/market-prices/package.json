@@ -48,6 +48,8 @@
     "reliability:1h": "ts-node scripts/reliability-test-24h.ts --1h",
     "reliability:4h": "ts-node scripts/reliability-test-24h.ts --4h",
     "reliability:24h": "ts-node scripts/reliability-test-24h.ts",
+    "simulate:50k": "ts-node scripts/50k-user-simulation.ts",
+    "simulate:scaling": "ts-node scripts/50k-user-simulation.ts --scaling",
     "test:liquidity": "ts-node scripts/test-liquidity-analyzer.ts"
   },
   "keywords": [
