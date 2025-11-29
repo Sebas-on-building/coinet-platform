@@ -21,6 +21,7 @@
     "benchmark:quick": "ts-node benchmarks/standalone-benchmark.ts --quick",
     "benchmark:compare": "ts-node benchmarks/competitor-comparison.ts",
     "benchmark:full": "ts-node benchmarks/free-tier-benchmark.ts",
+    "train:fallback": "ts-node benchmarks/train-fallback-model.ts",
     "load-test": "ts-node benchmarks/load-test.ts",
     "load-test:stress": "ts-node benchmarks/load-test.ts --stress",
     "report": "ts-node benchmarks/generate-report.ts",

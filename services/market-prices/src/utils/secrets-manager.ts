@@ -251,7 +251,10 @@ export class SecretsManager {
   private async getFromAWS(secretName: string): Promise<string> {
     try {
       // Dynamic import to avoid requiring AWS SDK when not using AWS backend
-      const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+      // Using Function constructor to bypass TypeScript static analysis
+      const importDynamic = new Function('modulePath', 'return import(modulePath)');
+      const awsModule = await importDynamic('@aws-sdk/client-secrets-manager') as any;
+      const { SecretsManagerClient, GetSecretValueCommand } = awsModule;
       
       const clientConfig: any = {
         region: this.config.awsRegion || process.env.AWS_REGION || 'us-east-1',

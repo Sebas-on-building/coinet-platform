@@ -1,6 +1,6 @@
 /**
  * Market Data Aggregator
- * Orchestrates data fetching from multiple providers with failover logic
+ * Orchestrates data fetching from multiple providers with ML-based failover
  */
 
 import EventEmitter from 'eventemitter3';
@@ -23,6 +23,7 @@ import { TimescaleStorage } from './storage/timescale';
 import { CacheStorage } from './storage/cache';
 import { DataNormalizer, getDataNormalizer } from './utils/normalizer';
 import { logger } from './utils/logger';
+import { MLFallbackSelector, getMLFallbackSelector } from './intelligence/ml-fallback-selector';
 
 export class MarketDataAggregator extends EventEmitter {
   private config: ServiceConfig;
@@ -34,6 +35,9 @@ export class MarketDataAggregator extends EventEmitter {
   private normalizer: DataNormalizer;
   private isInitialized: boolean = false;
   private lastHealthCheck: Date | null = null;
+  
+  // ML-based fallback selector
+  private mlFallback: MLFallbackSelector;
   
   // Fallback tracking for monitoring
   private coinGeckoFailureStartTime: Date | null = null;
@@ -87,10 +91,14 @@ export class MarketDataAggregator extends EventEmitter {
 
     // Initialize normalizer
     this.normalizer = getDataNormalizer();
+    
+    // Initialize ML fallback selector
+    this.mlFallback = getMLFallbackSelector();
 
     logger.info('Market data aggregator initialized', {
       enableWebSocket: config.enableWebSocket,
       enableCMCFallback: config.enableCMCFallback,
+      mlFallbackEnabled: true,
     });
   }
 
@@ -201,10 +209,18 @@ export class MarketDataAggregator extends EventEmitter {
       }
     }
 
-    // Try CoinGecko first
+    // Use ML-based fallback selection for intelligent provider choice
+    const startTime = Date.now();
+    const excludedProviders: string[] = [];
+    
+    // Try CoinGecko first (primary provider)
     try {
       logger.info('Fetching prices from CoinGecko', { symbols });
       const geckoData = await this.geckoRest.getCoinMarkets('usd', symbols);
+      const latencyMs = Date.now() - startTime;
+      
+      // Record success in ML fallback selector
+      this.mlFallback.recordRequest('coingecko', true, latencyMs, 1000);
       
       // Reset failure tracking on success
       if (this.coinGeckoFailureStartTime !== null) {
@@ -229,7 +245,13 @@ export class MarketDataAggregator extends EventEmitter {
 
       return prices;
     } catch (error) {
+      const latencyMs = Date.now() - startTime;
+      
+      // Record failure in ML fallback selector
+      this.mlFallback.recordRequest('coingecko', false, latencyMs);
+      
       logger.error('CoinGecko request failed', { error });
+      excludedProviders.push('coingecko');
       
       // Track failure start time (only set once per outage)
       if (this.coinGeckoFailureStartTime === null) {
@@ -241,7 +263,24 @@ export class MarketDataAggregator extends EventEmitter {
       
       this.totalRequests++;
 
-      // Only failover to CoinMarketCap if CoinGecko has been down for >5 minutes
+      // Use ML-based intelligent fallback selection
+      const selection = this.mlFallback.selectProvider(excludedProviders);
+      
+      logger.info('ML fallback selection', {
+        selectedProvider: selection.provider,
+        confidence: selection.confidence.toFixed(3),
+        reasoning: selection.reasoning,
+        alternates: selection.alternates,
+      });
+
+      // Execute fallback based on ML selection
+      if (selection.provider === 'coinmarketcap' && this.config.enableCMCFallback && this.cmcRest) {
+        return this.getMarketPricesFromCMC(symbols);
+      } else if (selection.provider === 'database') {
+        return this.getMarketPricesFromDB(symbols);
+      }
+      
+      // Legacy fallback logic for backward compatibility
       const outageDuration = this.coinGeckoFailureStartTime 
         ? Date.now() - this.coinGeckoFailureStartTime.getTime()
         : 0;
@@ -253,14 +292,9 @@ export class MarketDataAggregator extends EventEmitter {
           symbols,
         });
         return this.getMarketPricesFromCMC(symbols);
-      } else if (this.config.enableCMCFallback && this.cmcRest && outageMinutes < 5) {
-        logger.info('CoinGecko outage < 5 minutes, waiting before fallback', {
-          outageMinutes: outageMinutes.toFixed(2),
-          symbols,
-        });
       }
 
-      // If no fallback or outage too short, try database
+      // If no fallback available, try database
       return this.getMarketPricesFromDB(symbols);
     }
   }
@@ -308,11 +342,17 @@ export class MarketDataAggregator extends EventEmitter {
       }
     }
 
+    const startTime = Date.now();
+    
     try {
       await new Promise((resolve) => setTimeout(resolve, this.config.failoverRetryDelay));
 
       const cmcData = await this.cmcRest.getQuotesBySymbol(symbols);
+      const latencyMs = Date.now() - startTime;
       const prices: MarketPrice[] = [];
+
+      // Record success in ML fallback selector
+      this.mlFallback.recordRequest('coinmarketcap', true, latencyMs, 2000);
 
       for (const symbol of symbols) {
         if (cmcData[symbol]) {
@@ -331,10 +371,16 @@ export class MarketDataAggregator extends EventEmitter {
       logger.info('Prices fetched from CoinMarketCap (fallback)', {
         count: prices.length,
         failoverRate: failoverRate.toFixed(2),
+        latencyMs,
       });
 
       return prices;
     } catch (error) {
+      const latencyMs = Date.now() - startTime;
+      
+      // Record failure in ML fallback selector
+      this.mlFallback.recordRequest('coinmarketcap', false, latencyMs);
+      
       logger.error('CoinMarketCap fallback failed', { error });
       
       // Last resort: database
@@ -604,7 +650,37 @@ export class MarketDataAggregator extends EventEmitter {
       geckoWs: this.geckoWs?.getStats(),
       cmcRest: this.cmcRest?.getStats(),
       lastHealthCheck: this.lastHealthCheck,
+      mlFallback: this.mlFallback.exportMetrics(),
     };
+  }
+  
+  /**
+   * Get ML fallback selector for direct access
+   */
+  getMLFallbackSelector(): MLFallbackSelector {
+    return this.mlFallback;
+  }
+  
+  /**
+   * Train ML fallback model
+   */
+  trainFallbackModel(): { accuracy: number; samplesUsed: number } {
+    const result = this.mlFallback.trainModel();
+    return {
+      accuracy: result.accuracy,
+      samplesUsed: result.samplesUsed,
+    };
+  }
+  
+  /**
+   * Simulate provider outage for testing
+   */
+  simulateOutage(provider: string, requestCount: number = 100): {
+    fallbackAccuracy: number;
+    avgLatency: number;
+    providerUsage: Map<string, number>;
+  } {
+    return this.mlFallback.simulateOutage(provider, requestCount);
   }
 
   /**
