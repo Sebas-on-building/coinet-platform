@@ -1,6 +1,6 @@
 # API Terms of Service Compliance Guide
 
-> **Last Updated:** 2024-12-01
+> **Last Updated:** 2025-12-01
 > **Version:** 1.0.0
 > **Status:** Production Ready
 
@@ -396,6 +396,6 @@ api_rate_limit_remaining{api="coinmarketcap"} 30
 3. 💰 Consider CMC Startup upgrade for full compliance
 4. 📊 Monitor rate limits via Prometheus
 
-**Last Audit:** 2024-12-01
-**Next Audit:** 2025-03-01
+**Last Audit:** 2025-12-01
+**Next Audit:** 2026-03-01
 
