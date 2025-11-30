@@ -133,6 +133,15 @@ export async function main(): Promise<void> {
     });
   });
 
+  // Debug endpoint to check aggregator status
+  app.get('/api/debug', (_req: any, res: any) => {
+    res.json({
+      aggregatorReady: !!aggregator,
+      aggregatorInitialized: aggregator ? (aggregator as any).isInitialized : false,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // Store aggregator reference for routes
   let aggregator: MarketDataAggregator | null = null;
 
