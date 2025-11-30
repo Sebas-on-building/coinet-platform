@@ -21,7 +21,7 @@ import { CoinGeckoWebSocketClient } from './providers/coingecko-websocket';
 import { CoinMarketCapRestClient } from './providers/coinmarketcap-rest';
 import { TimescaleStorage } from './storage/timescale';
 import { CacheStorage } from './storage/cache';
-import { DataNormalizer, getDataNormalizer } from './utils/normalizer';
+import { DataNormalizer, getDataNormalizer, getSymbolRegistry } from './utils/normalizer';
 import { logger } from './utils/logger';
 import { MLFallbackSelector, getMLFallbackSelector } from './intelligence/ml-fallback-selector';
 
@@ -215,8 +215,25 @@ export class MarketDataAggregator extends EventEmitter {
     
     // Try CoinGecko first (primary provider)
     try {
-      logger.info('Fetching prices from CoinGecko', { symbols });
-      const geckoData = await this.geckoRest.getCoinMarkets('usd', symbols);
+      // Convert symbols to CoinGecko IDs using symbol registry
+      const registry = getSymbolRegistry();
+      const geckoIds = symbols.map(symbol => {
+        const geckoId = registry.toGecko(symbol);
+        if (!geckoId) {
+          logger.warn('No CoinGecko ID mapping found for symbol', { symbol });
+          // Fallback: try lowercase symbol (works for some coins)
+          return symbol.toLowerCase();
+        }
+        return geckoId;
+      }).filter(id => id.length > 0);
+      
+      if (geckoIds.length === 0) {
+        logger.error('No valid CoinGecko IDs found for symbols', { symbols });
+        return prices; // Return empty array
+      }
+      
+      logger.info('Fetching prices from CoinGecko', { symbols, geckoIds });
+      const geckoData = await this.geckoRest.getCoinMarkets('usd', geckoIds);
       const latencyMs = Date.now() - startTime;
       
       // Record success in ML fallback selector
