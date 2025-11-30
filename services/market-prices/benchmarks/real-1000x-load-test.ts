@@ -12,7 +12,7 @@
  * Run: npm run test:real:1000x
  */
 
-import { MarketDataAggregator, createAggregator } from '../src/aggregator';
+import { MarketDataAggregator, createAggregator } from '../src/index';
 import { logger } from '../src/utils/logger';
 
 // =============================================================================

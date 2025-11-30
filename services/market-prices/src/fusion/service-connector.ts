@@ -197,9 +197,9 @@ export class ServiceConnector extends EventEmitter {
         return [];
       }
 
-      const data: WhaleServiceResponse = await response.json();
+      const data = await response.json() as WhaleServiceResponse;
       
-      if (!data.success || !data.data.transfers) {
+      if (!data.success || !data.data?.transfers) {
         return [];
       }
 
@@ -246,7 +246,7 @@ export class ServiceConnector extends EventEmitter {
         return [];
       }
 
-      const data = await response.json();
+      const data = await response.json() as { success: boolean; data?: any[] };
       
       if (!data.success || !data.data) {
         return [];
@@ -291,8 +291,8 @@ export class ServiceConnector extends EventEmitter {
         return null;
       }
 
-      const data = await response.json();
-      return data.success ? data.data : null;
+      const data = await response.json() as { success: boolean; data?: any };
+      return data.success ? data.data || null : null;
     } catch {
       return null;
     }
@@ -319,9 +319,9 @@ export class ServiceConnector extends EventEmitter {
         return this.generateMockSentiment(symbol);
       }
 
-      const data: SentimentServiceResponse = await response.json();
+      const data = await response.json() as SentimentServiceResponse;
       
-      if (!data.success || !data.data.results) {
+      if (!data.success || !data.data?.results) {
         return this.generateMockSentiment(symbol);
       }
 
@@ -422,15 +422,16 @@ export class ServiceConnector extends EventEmitter {
         return this.generateMockLiquidity(symbol);
       }
 
-      const tvl = await response.json();
+      const tvl = await response.json() as number | null | undefined;
+      const tvlValue = typeof tvl === 'number' ? tvl : 0;
 
       const liquidityData: LiquidityData = {
         symbol,
-        totalLiquidity: tvl || 0,
-        dexLiquidity: tvl * 0.4,
-        cexLiquidity: tvl * 0.6,
-        bidDepth: tvl * 0.05,
-        askDepth: tvl * 0.05,
+        totalLiquidity: tvlValue,
+        dexLiquidity: tvlValue * 0.4,
+        cexLiquidity: tvlValue * 0.6,
+        bidDepth: tvlValue * 0.05,
+        askDepth: tvlValue * 0.05,
         slippage1Pct: 0.1 + Math.random() * 0.5,
         timestamp: new Date(),
       };
