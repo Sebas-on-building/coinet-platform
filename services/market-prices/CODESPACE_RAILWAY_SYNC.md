@@ -1,91 +1,55 @@
-# 📤 Codespace & Railway Sync Guide
+# Codespace & Railway Sync Guide
 
-## ✅ Status: Changes Pushed to GitHub
-
-**Branch:** `feature/ai-data-feeder`  
-**Commit:** `dd7b58d1` - Phase 1 & 2 completion  
-**Status:** ✅ **Pushed successfully**
+> **Status:** Ready for deployment
+> **Date:** 2024-12-01
 
 ---
 
-## 🔄 Codespace Sync
+## 🚀 Quick Start
 
-### Step 1: Pull Latest Changes
-
-In your Codespace terminal:
+### Step 1: Sync to Codespace
 
 ```bash
-# Navigate to project root
+# In Codespace terminal
 cd /workspaces/coinet-platform
 
 # Pull latest changes
 git pull origin feature/ai-data-feeder
 
-# If you have local changes, stash first:
+# If you get package-lock.json conflicts:
 git stash
 git pull origin feature/ai-data-feeder
-git stash pop
+cd services/market-prices
+npm install
 ```
 
-### Step 2: Verify Files
-
-```bash
-# Check new files exist
-ls -la services/market-prices/FREE_TIER_1000X_REPORT.md
-ls -la services/market-prices/scripts/50k-user-simulation.ts
-ls -la services/market-prices/PHASE_1_2_COMPLETION_STATUS.md
-
-# Verify package.json has new scripts
-npm run | grep simulate
-```
-
-### Step 3: Test New Scripts
+### Step 2: Verify Everything Works
 
 ```bash
 cd services/market-prices
 
-# Run 50K user simulation
-npm run simulate:50k
+# Install dependencies
+npm install
 
-# Run scaling test
-npm run simulate:scaling
+# Build TypeScript
+npm run build
+
+# Quick validation
+npm run validate:all
 ```
 
----
+### Step 3: Deploy to Railway
 
-## 🚀 Railway Deployment
-
-### Automatic Deployment (Recommended)
-
-Railway will **auto-deploy** if:
-1. ✅ Railway is connected to your GitHub repo
-2. ✅ Service is watching `feature/ai-data-feeder` branch
-3. ✅ Watch path includes `services/market-prices/**`
-
-**Check Railway Dashboard:**
-- Go to: https://railway.app/dashboard
-- Select: `market-prices` service
-- Check: **Deployments** tab for latest deployment
-
-### Manual Deployment (If Needed)
-
-#### Option 1: Railway Dashboard
-
-1. Go to: https://railway.app/dashboard
-2. Select: `market-prices` service
-3. Click: **"Redeploy"** button
-4. Railway will pull latest from GitHub
-
-#### Option 2: Railway CLI
+**Option A: Railway CLI (Recommended)**
 
 ```bash
 # Install Railway CLI (if not installed)
 npm i -g @railway/cli
 
-# Login
+# Login to Railway
 railway login
 
-# Link to service (if not linked)
+# Link to existing project or create new
 cd services/market-prices
 railway link
 
@@ -93,66 +57,210 @@ railway link
 railway up
 ```
 
+**Option B: GitHub Integration (Auto-deploy)**
+
+1. Go to [Railway Dashboard](https://railway.app)
+2. Click "New Project"
+3. Select "Deploy from GitHub repo"
+4. Choose `coinet-platform` repository
+5. Select `feature/ai-data-feeder` branch
+6. Set root directory: `services/market-prices`
+7. Railway will auto-deploy on every push!
+
 ---
 
-## 📋 What Was Deployed
+## 📋 Pre-Deployment Checklist
 
-### New Files
-- ✅ `FREE_TIER_1000X_REPORT.md` - Competitor comparison report
-- ✅ `scripts/50k-user-simulation.ts` - User capacity simulation
-- ✅ `PHASE_1_2_COMPLETION_STATUS.md` - Completion documentation
+- [ ] Code compiles (`npm run build`)
+- [ ] Tests pass (`npm test`)
+- [ ] Environment variables set in Railway:
+  - `COINGECKO_API_KEY`
+  - `CMC_API_KEY` (optional)
+  - `PORT` (defaults to 3000)
+  - `NODE_ENV=production`
+- [ ] Health check endpoint works (`/api/health`)
 
-### Updated Files
-- ✅ `README.md` - Data-driven metrics (no hype)
-- ✅ `package.json` - New simulation scripts
+---
 
-### New Scripts Available
-```bash
-npm run simulate:50k      # 50K user simulation
-npm run simulate:scaling   # 1K-100K scaling test
-npm run simulate:optimized # Aggressive optimization test
+## 🔧 Railway Configuration
+
+The service is configured via `railway.json`:
+
+```json
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm ci && npm run build"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 30
+  }
+}
 ```
 
+**Dockerfile** is also available for custom builds.
+
 ---
 
-## ✅ Verification Checklist
+## 🌐 Environment Variables
 
-### Codespace
-- [ ] `git pull` completed successfully
-- [ ] New files visible in file explorer
-- [ ] `npm run simulate:50k` works
+Set these in Railway dashboard → Variables:
 
-### Railway
-- [ ] Deployment triggered (check dashboard)
-- [ ] Build succeeded (check logs)
-- [ ] Service healthy (check `/health` endpoint)
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `COINGECKO_API_KEY` | ✅ Yes | CoinGecko API key |
+| `CMC_API_KEY` | ⚠️ Optional | CoinMarketCap (fallback) |
+| `CRYPTOPANIC_API_KEY` | ⚠️ Optional | CryptoPanic news |
+| `PORT` | ⚠️ Optional | Server port (default: 3000) |
+| `NODE_ENV` | ⚠️ Optional | Set to `production` |
+| `REDIS_URL` | ⚠️ Optional | Redis cache (if available) |
+| `DATABASE_URL` | ⚠️ Optional | PostgreSQL (if available) |
+
+---
+
+## ✅ Post-Deployment Verification
+
+### 1. Health Check
+
+```bash
+curl https://your-service.railway.app/api/health
+```
+
+Expected response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-12-01T...",
+  "service": "market-prices"
+}
+```
+
+### 2. Test Endpoints
+
+```bash
+# Price API
+curl https://your-service.railway.app/api/prices?symbols=BTC,ETH
+
+# Fusion API
+curl https://your-service.railway.app/api/fusion/unified?symbol=BTC
+
+# Metrics
+curl https://your-service.railway.app/api/metrics
+```
+
+### 3. Monitor Logs
+
+```bash
+# Via Railway CLI
+railway logs
+
+# Or in Railway dashboard → Deployments → View Logs
+```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Codespace: Merge Conflicts
+### Issue: Build fails in Railway
 
-```bash
-# If you have conflicts in package-lock.json
-git stash
-git pull origin feature/ai-data-feeder
-cd services/market-prices
-npm install  # Regenerate package-lock.json
-```
+**Solution:**
+- Check Railway logs for errors
+- Verify `package.json` has all dependencies
+- Ensure `npm ci` works locally
 
-### Railway: Not Deploying
+### Issue: Service crashes on start
 
-1. **Check branch:** Railway > Settings > Branch = `feature/ai-data-feeder`
-2. **Check watch path:** Railway > Settings > Watch Paths = `services/market-prices/**`
-3. **Manual trigger:** Railway > Deployments > "Redeploy"
+**Solution:**
+- Check environment variables are set
+- Verify `COINGECKO_API_KEY` is valid
+- Check Railway logs for error messages
 
-### Railway: Build Fails
+### Issue: Health check fails
 
-1. **Check logs:** Railway > Logs tab
-2. **Check environment:** Railway > Variables tab
-3. **Verify build command:** Railway > Settings > Build Command
+**Solution:**
+- Verify `/api/health` endpoint exists
+- Check service starts successfully
+- Increase `healthcheckTimeout` in `railway.json`
+
+### Issue: Rate limit errors
+
+**Solution:**
+- CoinGecko free tier: 30 calls/min
+- Service uses caching to stay within limits
+- Monitor via `/api/metrics` endpoint
 
 ---
 
-*Last updated: November 29, 2025*
+## 📊 Monitoring
+
+### Railway Metrics
+
+Railway provides:
+- CPU usage
+- Memory usage
+- Network I/O
+- Request logs
+
+### Custom Metrics
+
+Access via `/api/metrics`:
+- API call counts
+- Cache hit rate
+- Response times
+- Error rates
+
+---
+
+## 🔄 Continuous Deployment
+
+### Auto-Deploy Setup
+
+1. Connect GitHub repo to Railway
+2. Select branch: `feature/ai-data-feeder` (or `main` when merged)
+3. Set root directory: `services/market-prices`
+4. Railway auto-deploys on every push!
+
+### Manual Deploy
+
+```bash
+railway up
+```
+
+---
+
+## 📝 Next Steps
+
+After successful deployment:
+
+1. ✅ Run 24h production test:
+   ```bash
+   npm run test:production:24h
+   ```
+
+2. ✅ Monitor metrics:
+   ```bash
+   curl https://your-service.railway.app/api/metrics
+   ```
+
+3. ✅ Set up alerts (optional):
+   - Railway webhooks
+   - Prometheus integration
+   - Slack notifications
+
+---
+
+## 🎯 Success Criteria
+
+Deployment is successful when:
+
+- ✅ Health check returns `200 OK`
+- ✅ Price API returns data
+- ✅ Fusion API works
+- ✅ No errors in Railway logs
+- ✅ Service stays up for 24h+
+
+---
+
+*Last updated: 2024-12-01*
