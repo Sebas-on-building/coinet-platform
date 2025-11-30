@@ -143,13 +143,16 @@ export async function main(): Promise<void> {
         return res.status(503).json({
           success: false,
           error: 'Service initializing',
-          message: 'Aggregator not ready yet',
+          message: 'Aggregator not ready yet. Please wait a few seconds and try again.',
         });
       }
+      
       const symbolsParam = req.query.symbols || req.query.symbol || 'BTC';
       const symbols = typeof symbolsParam === 'string' 
         ? symbolsParam.split(',').map((s: string) => s.trim().toUpperCase())
         : [symbolsParam.toUpperCase()];
+      
+      logger.info('Prices API request', { symbols, aggregatorReady: !!aggregator });
       
       const prices = await aggregator.getMarketPrices(symbols);
       
@@ -158,6 +161,7 @@ export async function main(): Promise<void> {
         logger.warn('Prices API returned empty array', {
           symbols,
           aggregatorReady: !!aggregator,
+          aggregatorInitialized: aggregator ? (aggregator as any).isInitialized : false,
         });
       }
       
@@ -171,7 +175,11 @@ export async function main(): Promise<void> {
         },
       });
     } catch (error: any) {
-      logger.error('Prices API error', { error: error.message });
+      logger.error('Prices API error', { 
+        error: error.message,
+        stack: error.stack,
+        aggregatorReady: !!aggregator,
+      });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch prices',

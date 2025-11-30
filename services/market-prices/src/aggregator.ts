@@ -236,6 +236,13 @@ export class MarketDataAggregator extends EventEmitter {
       const geckoData = await this.geckoRest.getCoinMarkets('usd', geckoIds);
       const latencyMs = Date.now() - startTime;
       
+      logger.info('CoinGecko API response', { 
+        symbolsRequested: symbols.length,
+        geckoIdsRequested: geckoIds.length,
+        marketsReturned: geckoData?.length || 0,
+        data: geckoData?.slice(0, 2).map(m => ({ id: m.id, symbol: m.symbol, price: m.current_price })) || []
+      });
+      
       // Record success in ML fallback selector
       this.mlFallback.recordRequest('coingecko', true, latencyMs, 1000);
       
@@ -251,14 +258,35 @@ export class MarketDataAggregator extends EventEmitter {
       
       this.totalRequests++;
       
-      for (const market of geckoData) {
-        const price = this.normalizer.normalizeCoinGeckoMarket(market);
-        prices.push(price);
-
-        // Cache and store
-        await this.cache.cachePrice(price);
-        await this.storage.storeMarketPrice(price);
+      if (!geckoData || geckoData.length === 0) {
+        logger.warn('CoinGecko returned empty array', { symbols, geckoIds });
+        return prices;
       }
+      
+      for (const market of geckoData) {
+        try {
+          const price = this.normalizer.normalizeCoinGeckoMarket(market);
+          prices.push(price);
+
+          // Cache and store (don't await to avoid blocking)
+          this.cache.cachePrice(price).catch(err => 
+            logger.debug('Cache write failed (non-critical)', { error: err.message })
+          );
+          this.storage.storeMarketPrice(price).catch(err => 
+            logger.debug('Storage write failed (non-critical)', { error: err.message })
+          );
+        } catch (error: any) {
+          logger.error('Failed to normalize market data', { 
+            marketId: market.id, 
+            error: error.message 
+          });
+        }
+      }
+      
+      logger.info('Successfully fetched prices', { 
+        symbolsRequested: symbols.length,
+        pricesReturned: prices.length 
+      });
 
       return prices;
     } catch (error) {
