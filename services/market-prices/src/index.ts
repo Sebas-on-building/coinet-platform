@@ -152,10 +152,23 @@ export async function main(): Promise<void> {
         : [symbolsParam.toUpperCase()];
       
       const prices = await aggregator.getMarketPrices(symbols);
+      
+      // Log if prices are empty for debugging
+      if (prices.length === 0) {
+        logger.warn('Prices API returned empty array', {
+          symbols,
+          aggregatorReady: !!aggregator,
+        });
+      }
+      
       res.json({
         success: true,
         data: prices,
         timestamp: new Date().toISOString(),
+        debug: {
+          symbolsRequested: symbols,
+          pricesReturned: prices.length,
+        },
       });
     } catch (error: any) {
       logger.error('Prices API error', { error: error.message });
