@@ -78,6 +78,11 @@ class Real1000xLoadTest {
       targetEfficiency: 1000,
       ...config,
     };
+    
+    // For quick test, reduce users and increase interval to avoid rate limits
+    if (config.concurrentUsers === 100) {
+      this.config.requestIntervalMs = 2000; // 2 seconds between requests
+    }
   }
 
   async initialize(): Promise<void> {
@@ -148,7 +153,7 @@ class Real1000xLoadTest {
 
   private async simulateUser(userId: number, endTime: number): Promise<void> {
     // Stagger user starts to avoid thundering herd
-    await this.sleep(Math.random() * 1000);
+    await this.sleep(Math.random() * 2000);
 
     while (Date.now() < endTime && this.isRunning) {
       const symbol = this.config.symbols[userId % this.config.symbols.length];
@@ -162,18 +167,42 @@ class Real1000xLoadTest {
         
         if (prices.length > 0) {
           this.successCount++;
-          this.cacheHits++; // Assume cache hit if fast
+          
+          // Improved cache hit detection:
+          // - Very fast (<50ms) = definitely cache hit
+          // - Fast (<200ms) = likely cache hit (cached data)
+          // - Medium (200-1000ms) = possible cache hit or fast API
+          // - Slow (>1000ms) = likely API call (with retries/fallbacks)
+          // - Very slow (>5000ms) = definitely API call with fallbacks
+          
+          if (responseTime < 50) {
+            // Definitely cache hit
+            this.cacheHits++;
+          } else if (responseTime < 200) {
+            // Likely cache hit
+            this.cacheHits++;
+          } else if (responseTime < 1000) {
+            // Could be either - count as cache miss to be conservative
+            this.cacheMisses++;
+            this.apiCalls++;
+          } else {
+            // Definitely API call (slow response indicates external call)
+            this.cacheMisses++;
+            this.apiCalls++;
+          }
         } else {
+          // Empty response = API call failed or no data
           this.cacheMisses++;
           this.apiCalls++;
         }
       } catch (error: any) {
         this.failCount++;
         this.cacheMisses++;
+        this.apiCalls++;
       }
 
-      // Wait before next request
-      await this.sleep(this.config.requestIntervalMs + Math.random() * 500);
+      // Wait before next request (longer wait to allow cache to populate)
+      await this.sleep(this.config.requestIntervalMs + Math.random() * 1000);
     }
   }
 

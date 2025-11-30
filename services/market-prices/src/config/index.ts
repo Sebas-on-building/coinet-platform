@@ -55,9 +55,12 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
 function buildCoinGeckoConfig(): ProviderConfig {
   const apiKey = getEnv('COINGECKO_API_KEY', ''); // Optional - can be empty for free tier
   const tier = getEnv('COINGECKO_TIER', 'demo');
-  const apiUrl = tier === 'demo' 
-    ? getEnv('COINGECKO_API_URL', 'https://api.coingecko.com/api/v3')
-    : getEnv('COINGECKO_PRO_API_URL', 'https://pro-api.coingecko.com/api/v3');
+  
+  // Auto-detect Pro API: If API key starts with 'CG-' and has Pro format, use Pro endpoint
+  const isProApi = apiKey && (apiKey.startsWith('CG-') || tier === 'pro' || tier === 'paid');
+  const apiUrl = isProApi
+    ? getEnv('COINGECKO_PRO_API_URL', 'https://pro-api.coingecko.com/api/v3')
+    : getEnv('COINGECKO_API_URL', 'https://api.coingecko.com/api/v3');
   
   const rateLimitPerMinute = getEnvNumber('COINGECKO_RATE_LIMIT_PER_MINUTE', 30);
   
