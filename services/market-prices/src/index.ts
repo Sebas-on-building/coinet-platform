@@ -134,12 +134,39 @@ export async function main(): Promise<void> {
   });
 
   // Debug endpoint to check aggregator status
-  app.get('/api/debug', (_req: any, res: any) => {
-    res.json({
+  app.get('/api/debug', async (_req: any, res: any) => {
+    const debugInfo: any = {
       aggregatorReady: !!aggregator,
       aggregatorInitialized: aggregator ? (aggregator as any).isInitialized : false,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    // Include cache status if aggregator is ready
+    if (aggregator) {
+      try {
+        const healthStatus = await aggregator.getHealthStatus();
+        debugInfo.cache = {
+          connected: healthStatus.cache.connected,
+          hitRate: healthStatus.cache.hitRate || 0,
+        };
+        
+        // Get cache stats if available
+        const cacheStats = await (aggregator as any).cache?.getStats();
+        if (cacheStats) {
+          debugInfo.cache.keys = cacheStats.keys || 0;
+          debugInfo.cache.hitRate = cacheStats.hitRate || 0;
+        }
+      } catch (error: any) {
+        debugInfo.cache = {
+          connected: false,
+          error: error.message,
+        };
+      }
+    } else {
+      debugInfo.cache = null;
+    }
+
+    res.json(debugInfo);
   });
 
   // Store aggregator reference for routes
