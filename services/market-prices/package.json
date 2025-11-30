@@ -55,7 +55,16 @@
     "test:phase4-5": "ts-node scripts/test-phase-4-5.ts",
     "benchmark:human": "ts-node scripts/test-phase-4-5.ts",
     "dashboard": "ts-node scripts/run-dashboard.ts",
-    "test:liquidity": "ts-node scripts/test-liquidity-analyzer.ts"
+    "test:liquidity": "ts-node scripts/test-liquidity-analyzer.ts",
+    "benchmark:1000x": "ts-node benchmarks/real-1000x-proof.ts",
+    "benchmark:1000x:sustained": "ts-node benchmarks/real-1000x-proof.ts --sustained",
+    "test:production:24h": "ts-node scripts/24h-production-test.ts",
+    "test:production:quick": "ts-node scripts/24h-production-test.ts --quick",
+    "test:real-api": "ts-node benchmarks/real-api-load-test.ts",
+    "test:real-api:long": "ts-node benchmarks/real-api-load-test.ts --long",
+    "test:real-api:quick": "ts-node benchmarks/real-api-load-test.ts --quick",
+    "train:ml:real": "ts-node src/intelligence/ml/real-training-pipeline.ts",
+    "validate:all": "npm run benchmark:1000x && npm run test:real-api:quick && npm run test:production:quick"
   },
   "keywords": [
     "cryptocurrency",
@@ -70,6 +79,7 @@
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
     "@tensorflow/tfjs": "^4.15.0",
+    "@tensorflow/tfjs-node": "^4.15.0",
     "axios": "^1.6.2",
     "axios-retry": "^4.0.0",
     "bottleneck": "^2.19.5",

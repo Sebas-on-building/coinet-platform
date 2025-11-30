@@ -1,57 +1,81 @@
-# =========================================
-# COINET MARKET PRICES SERVICE - DOCKERFILE
-# =========================================
-# Production-ready Docker image for Railway deployment
-# Production-ready containerization
+# ==============================================================================
+# COINET MARKET-PRICES SERVICE - PRODUCTION DOCKERFILE
+# ==============================================================================
+# 
+# Optimized for:
+# - Railway deployment
+# - Minimal image size
+# - Fast cold starts
+# - Security best practices
+#
+# Build: docker build -t market-prices .
+# Run:   docker run -p 3000:3000 market-prices
 
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
-
-# Install dependencies (including dev dependencies for build)
-RUN npm install --legacy-peer-deps
-
-# Copy source code
-COPY src/ ./src/
-COPY migrations/ ./migrations/
-
-# Build TypeScript
-RUN npm run build
-
-# Production stage
-FROM node:18-alpine AS production
+# ==============================================================================
+# STAGE 1: Dependencies
+# ==============================================================================
+FROM node:20-alpine AS deps
 
 WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 
 # Copy package files
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm install --legacy-peer-deps --only=production && npm cache clean --force
+RUN npm ci --only=production
 
-# Copy built files from builder
+# ==============================================================================
+# STAGE 2: Builder
+# ==============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files and install all dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+# ==============================================================================
+# STAGE 3: Production
+# ==============================================================================
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Security: Run as non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 coinet
+
+# Copy built files
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/package*.json ./
 
-# Create logs directory and non-root user
-RUN mkdir -p /app/logs && \
-    addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# Create directories for reports and models
+RUN mkdir -p /app/reports /app/models && chown -R coinet:nodejs /app
 
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-USER nodejs
+# Switch to non-root user
+USER coinet
+
+# Environment
+ENV NODE_ENV=production
+ENV PORT=3000
 
 # Expose port
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-# Start application
+# Start command
 CMD ["node", "dist/index.js"]
