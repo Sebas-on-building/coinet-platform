@@ -105,31 +105,114 @@ export async function createAggregator(): Promise<MarketDataAggregator> {
 export async function main(): Promise<void> {
   logger.info('Starting Market Prices Service...');
 
-  // Create HTTP server for health checks (Railway requirement)
-  const http = require('http');
+  // Import Express for API routes
+  const express = require('express');
+  const app = express();
   const PORT = process.env.PORT || 3000;
-  
-  const server = http.createServer((req: any, res: any) => {
-    if (req.url === '/api/health' || req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        status: 'healthy',
-        service: 'market-prices',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-      }));
-    } else {
-      res.writeHead(404);
-      res.end('Not Found');
-    }
+
+  // Middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // Health check endpoint
+  app.get('/api/health', (_req: any, res: any) => {
+    res.json({
+      status: 'healthy',
+      service: 'market-prices',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
   });
 
-  server.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Health check server listening on port ${PORT}`);
+  app.get('/health', (_req: any, res: any) => {
+    res.json({
+      status: 'healthy',
+      service: 'market-prices',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
   });
 
   try {
     const aggregator = await createAggregator();
+
+    // ===========================================================================
+    // API ROUTES
+    // ===========================================================================
+
+    // Prices API
+    app.get('/api/prices', async (req: any, res: any) => {
+      try {
+        const symbolsParam = req.query.symbols || req.query.symbol || 'BTC';
+        const symbols = typeof symbolsParam === 'string' 
+          ? symbolsParam.split(',').map((s: string) => s.trim().toUpperCase())
+          : [symbolsParam.toUpperCase()];
+        
+        const prices = await aggregator.getMarketPrices(symbols);
+        res.json({
+          success: true,
+          data: prices,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error: any) {
+        logger.error('Prices API error', { error: error.message });
+        res.status(500).json({
+          success: false,
+          error: 'Failed to fetch prices',
+          message: error.message,
+        });
+      }
+    });
+
+    // Metrics API
+    app.get('/api/metrics', async (_req: any, res: any) => {
+      try {
+        const health = await aggregator.getHealthStatus();
+        res.json({
+          success: true,
+          data: {
+            service: 'market-prices',
+            healthy: health.healthy,
+            providers: health.providers,
+            database: health.database,
+            cache: health.cache,
+            uptime: process.uptime(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (error: any) {
+        logger.error('Metrics API error', { error: error.message });
+        res.status(500).json({
+          success: false,
+          error: 'Failed to fetch metrics',
+          message: error.message,
+        });
+      }
+    });
+
+    // Fusion API (if available)
+    try {
+      const { createFusionApiRouter } = await import('./fusion/fusion-api');
+      const { UnifiedIntelligence } = await import('./fusion/unified-intelligence');
+      const intelligence = new UnifiedIntelligence();
+      app.use('/api/fusion', createFusionApiRouter(intelligence));
+      logger.info('Fusion API routes mounted');
+    } catch (error: any) {
+      logger.warn('Fusion API not available', { error: error.message });
+    }
+
+    // Start Express server
+    app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`Market Prices Service listening on port ${PORT}`, {
+        endpoints: [
+          'GET /api/health',
+          'GET /health',
+          'GET /api/prices?symbols=BTC,ETH',
+          'GET /api/metrics',
+          'GET /api/fusion/:symbol',
+        ],
+      });
+    });
 
     // Example: Subscribe to WebSocket for top coins (optional - service works without it)
     if (getConfig().enableWebSocket) {
