@@ -30,14 +30,22 @@ export class CoinGeckoRestClient {
   constructor(config: ProviderConfig) {
     this.config = config;
 
+    // Only add Pro API key header if using Pro endpoint
+    // Free tier endpoint doesn't need/accept this header
+    const isProEndpoint = config.apiUrl.includes('pro-api.coingecko.com');
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+    
+    if (isProEndpoint && config.apiKey) {
+      headers['x-cg-pro-api-key'] = config.apiKey;
+    }
+
     // Initialize axios instance
     this.axios = axios.create({
       baseURL: config.apiUrl,
       timeout: 30000,
-      headers: {
-        'Accept': 'application/json',
-        'x-cg-pro-api-key': config.apiKey,
-      },
+      headers,
     });
 
     // Configure axios-retry
