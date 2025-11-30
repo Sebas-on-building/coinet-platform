@@ -64,7 +64,15 @@
     "test:real-api:long": "ts-node benchmarks/real-api-load-test.ts --long",
     "test:real-api:quick": "ts-node benchmarks/real-api-load-test.ts --quick",
     "train:ml:real": "ts-node src/intelligence/ml/real-training-pipeline.ts",
-    "validate:all": "npm run benchmark:1000x && npm run test:real-api:quick && npm run test:production:quick"
+    "validate:all": "npm run benchmark:1000x && npm run test:real-api:quick && npm run test:production:quick",
+    "test:real:1000x": "ts-node benchmarks/real-1000x-load-test.ts",
+    "test:real:1000x:quick": "ts-node benchmarks/real-1000x-load-test.ts quick",
+    "test:real:1000x:full": "ts-node benchmarks/real-1000x-load-test.ts full",
+    "test:real:1000x:sustained": "ts-node benchmarks/real-1000x-load-test.ts sustained",
+    "test:24h": "ts-node benchmarks/24h-production-runner.ts",
+    "test:24h:quick": "ts-node benchmarks/24h-production-runner.ts quick",
+    "test:24h:full": "ts-node benchmarks/24h-production-runner.ts full",
+    "divine:validate": "npm run test:real:1000x:quick && npm run test:24h:quick"
   },
   "keywords": [
     "cryptocurrency",

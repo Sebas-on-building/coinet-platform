@@ -22,4 +22,6 @@ export * from './predictive-linker';
 export * from './cross-api-correlator';
 export * from './unified-intelligence';
 export * from './fusion-api';
+export * from './service-connector';
+export * from './websocket-stream';
 

@@ -246,13 +246,67 @@ export async function main(): Promise<void> {
   try {
     aggregator = await createAggregator();
 
-    // Fusion API (if available)
+    // Fusion API with cross-service integration
     try {
       const { createFusionApiRouter } = await import('./fusion/fusion-api');
       const { UnifiedIntelligence } = await import('./fusion/unified-intelligence');
-      const intelligence = new UnifiedIntelligence();
+      const { FusionEngine } = await import('./fusion/fusion-engine');
+      const { ServiceConnector } = await import('./fusion/service-connector');
+      
+      // Create fusion components
+      const fusionEngine = new FusionEngine();
+      const intelligence = new UnifiedIntelligence(fusionEngine);
+      const serviceConnector = new ServiceConnector(fusionEngine);
+      
+      // Check health of connected services
+      const serviceHealth = await serviceConnector.checkHealth();
+      logger.info('Cross-service health check', { services: serviceHealth });
+      
+      // Start polling for whale data and sentiment (if services available)
+      const pollSymbols = ['BTC', 'ETH', 'SOL', 'DOGE', 'XRP', 'ADA', 'AVAX', 'MATIC'];
+      serviceConnector.startPolling(pollSymbols);
+      
+      // Initial fetch to populate fusion data
+      for (const symbol of pollSymbols.slice(0, 3)) {
+        await serviceConnector.fetchAllForSymbol(symbol);
+      }
+      
+      // Mount fusion router
       app.use('/api/fusion', createFusionApiRouter(intelligence));
-      logger.info('Fusion API routes mounted');
+      
+      // Add whales endpoint that proxies to service connector
+      app.get('/api/whales/recent', async (req: any, res: any) => {
+        try {
+          const limit = parseInt(req.query.limit) || 50;
+          const whales = await serviceConnector.fetchRecentWhales(limit);
+          res.json({
+            success: true,
+            data: whales,
+            count: whales.length,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error: any) {
+          res.status(500).json({
+            success: false,
+            error: error.message,
+          });
+        }
+      });
+      
+      // Service connector status endpoint
+      app.get('/api/services/status', (_req: any, res: any) => {
+        const status = serviceConnector.getStatus();
+        res.json({
+          success: true,
+          data: status,
+          timestamp: new Date().toISOString(),
+        });
+      });
+      
+      logger.info('Fusion API with cross-service integration mounted', {
+        services: Object.keys(serviceHealth),
+        pollSymbols,
+      });
     } catch (error: any) {
       logger.warn('Fusion API not available', { error: error.message });
     }
