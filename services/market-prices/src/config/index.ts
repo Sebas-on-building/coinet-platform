@@ -56,8 +56,9 @@ function buildCoinGeckoConfig(): ProviderConfig {
   const apiKey = getEnv('COINGECKO_API_KEY', ''); // Optional - can be empty for free tier
   const tier = getEnv('COINGECKO_TIER', 'demo');
   
-  // Auto-detect Pro API: If API key starts with 'CG-' and has Pro format, use Pro endpoint
-  const isProApi = apiKey && (apiKey.startsWith('CG-') || tier === 'pro' || tier === 'paid');
+  // Only use Pro endpoint if explicitly set to 'pro' or 'paid'
+  // Note: CG- prefix doesn't guarantee Pro tier - always default to free tier
+  const isProApi = tier === 'pro' || tier === 'paid';
   const apiUrl = isProApi
     ? getEnv('COINGECKO_PRO_API_URL', 'https://pro-api.coingecko.com/api/v3')
     : getEnv('COINGECKO_API_URL', 'https://api.coingecko.com/api/v3');
