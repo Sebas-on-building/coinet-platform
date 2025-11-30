@@ -133,62 +133,88 @@ export async function main(): Promise<void> {
     });
   });
 
-  try {
-    const aggregator = await createAggregator();
+  // Store aggregator reference for routes
+  let aggregator: MarketDataAggregator | null = null;
 
-    // ===========================================================================
-    // API ROUTES
-    // ===========================================================================
+  // Prices API (works even if aggregator not ready)
+  app.get('/api/prices', async (req: any, res: any) => {
+    try {
+      if (!aggregator) {
+        return res.status(503).json({
+          success: false,
+          error: 'Service initializing',
+          message: 'Aggregator not ready yet',
+        });
+      }
+      const symbolsParam = req.query.symbols || req.query.symbol || 'BTC';
+      const symbols = typeof symbolsParam === 'string' 
+        ? symbolsParam.split(',').map((s: string) => s.trim().toUpperCase())
+        : [symbolsParam.toUpperCase()];
+      
+      const prices = await aggregator.getMarketPrices(symbols);
+      res.json({
+        success: true,
+        data: prices,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error('Prices API error', { error: error.message });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch prices',
+        message: error.message,
+      });
+    }
+  });
 
-    // Prices API
-    app.get('/api/prices', async (req: any, res: any) => {
-      try {
-        const symbolsParam = req.query.symbols || req.query.symbol || 'BTC';
-        const symbols = typeof symbolsParam === 'string' 
-          ? symbolsParam.split(',').map((s: string) => s.trim().toUpperCase())
-          : [symbolsParam.toUpperCase()];
-        
-        const prices = await aggregator.getMarketPrices(symbols);
-        res.json({
-          success: true,
-          data: prices,
+  // Metrics API (works even if aggregator not ready)
+  app.get('/api/metrics', async (_req: any, res: any) => {
+    try {
+      if (!aggregator) {
+        return res.status(503).json({
+          success: false,
+          error: 'Service initializing',
+          message: 'Aggregator not ready yet',
+        });
+      }
+      const health = await aggregator.getHealthStatus();
+      res.json({
+        success: true,
+        data: {
+          service: 'market-prices',
+          healthy: health.healthy,
+          providers: health.providers,
+          database: health.database,
+          cache: health.cache,
+          uptime: process.uptime(),
           timestamp: new Date().toISOString(),
-        });
-      } catch (error: any) {
-        logger.error('Prices API error', { error: error.message });
-        res.status(500).json({
-          success: false,
-          error: 'Failed to fetch prices',
-          message: error.message,
-        });
-      }
-    });
+        },
+      });
+    } catch (error: any) {
+      logger.error('Metrics API error', { error: error.message });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch metrics',
+        message: error.message,
+      });
+    }
+  });
 
-    // Metrics API
-    app.get('/api/metrics', async (_req: any, res: any) => {
-      try {
-        const health = await aggregator.getHealthStatus();
-        res.json({
-          success: true,
-          data: {
-            service: 'market-prices',
-            healthy: health.healthy,
-            providers: health.providers,
-            database: health.database,
-            cache: health.cache,
-            uptime: process.uptime(),
-            timestamp: new Date().toISOString(),
-          },
-        });
-      } catch (error: any) {
-        logger.error('Metrics API error', { error: error.message });
-        res.status(500).json({
-          success: false,
-          error: 'Failed to fetch metrics',
-          message: error.message,
-        });
-      }
+  // Start Express server immediately (before aggregator init)
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Market Prices Service listening on port ${PORT}`, {
+      endpoints: [
+        'GET /api/health',
+        'GET /health',
+        'GET /api/prices?symbols=BTC,ETH',
+        'GET /api/metrics',
+        'GET /api/fusion/:symbol',
+      ],
     });
+  });
+
+  try {
+    aggregator = await createAggregator();
 
     // Fusion API (if available)
     try {
@@ -201,21 +227,8 @@ export async function main(): Promise<void> {
       logger.warn('Fusion API not available', { error: error.message });
     }
 
-    // Start Express server
-    app.listen(PORT, '0.0.0.0', () => {
-      logger.info(`Market Prices Service listening on port ${PORT}`, {
-        endpoints: [
-          'GET /api/health',
-          'GET /health',
-          'GET /api/prices?symbols=BTC,ETH',
-          'GET /api/metrics',
-          'GET /api/fusion/:symbol',
-        ],
-      });
-    });
-
     // Example: Subscribe to WebSocket for top coins (optional - service works without it)
-    if (getConfig().enableWebSocket) {
+    if (aggregator && getConfig().enableWebSocket) {
       try {
         const topCoins = [
           'bitcoin',
@@ -242,53 +255,57 @@ export async function main(): Promise<void> {
     }
 
     // Example: Fetch market prices
-    const symbols = ['BTC', 'ETH', 'SOL', 'ADA', 'AVAX'];
-    const prices = await aggregator.getMarketPrices(symbols);
-    logger.info('Fetched market prices', {
-      count: prices.length,
-      prices: prices.map((p: MarketPrice) => ({
-        symbol: p.symbol,
-        price: p.price,
-        source: p.source,
-      })),
-    });
-
-    // Listen for price updates
-    aggregator.on('price_update', (event: PriceUpdateEvent) => {
-      const priceData = event.data as MarketPrice;
-      logger.info('Price update received', {
-        coinId: priceData.coinId,
-        price: priceData.price,
-        source: event.source,
-        updateType: priceData.updateType,
+    if (aggregator) {
+      const symbols = ['BTC', 'ETH', 'SOL', 'ADA', 'AVAX'];
+      const prices = await aggregator.getMarketPrices(symbols);
+      logger.info('Fetched market prices', {
+        count: prices.length,
+        prices: prices.map((p: MarketPrice) => ({
+          symbol: p.symbol,
+          price: p.price,
+          source: p.source,
+        })),
       });
-    });
 
-    // Health check interval (reduced frequency to avoid log noise)
-    setInterval(async () => {
-      const health = await aggregator.getHealthStatus();
-      // Only log if unhealthy or degraded, otherwise use debug level
-      if (!health.healthy) {
-        logger.warn('Health check - service unhealthy', {
-          healthy: health.healthy,
-          providers: health.providers,
-          database: health.database.connected,
-          cache: health.cache.connected,
+      // Listen for price updates
+      aggregator.on('price_update', (event: PriceUpdateEvent) => {
+        const priceData = event.data as MarketPrice;
+        logger.info('Price update received', {
+          coinId: priceData.coinId,
+          price: priceData.price,
+          source: event.source,
+          updateType: priceData.updateType,
         });
-      } else {
-        logger.debug('Health check - service healthy', {
-          healthy: health.healthy,
-          providers: health.providers,
-          database: health.database.connected,
-          cache: health.cache.connected,
-        });
-      }
-    }, 300000); // Every 5 minutes (reduced from 1 minute)
+      });
+
+      // Health check interval (reduced frequency to avoid log noise)
+      setInterval(async () => {
+        const health = await aggregator!.getHealthStatus();
+        // Only log if unhealthy or degraded, otherwise use debug level
+        if (!health.healthy) {
+          logger.warn('Health check - service unhealthy', {
+            healthy: health.healthy,
+            providers: health.providers,
+            database: health.database.connected,
+            cache: health.cache.connected,
+          });
+        } else {
+          logger.debug('Health check - service healthy', {
+            healthy: health.healthy,
+            providers: health.providers,
+            database: health.database.connected,
+            cache: health.cache.connected,
+          });
+        }
+      }, 300000); // Every 5 minutes (reduced from 1 minute)
+    }
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`Received ${signal}, shutting down gracefully...`);
-      await aggregator.shutdown();
+      if (aggregator) {
+        await aggregator.shutdown();
+      }
       process.exit(0);
     };
 
