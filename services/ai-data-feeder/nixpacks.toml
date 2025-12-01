@@ -1,14 +1,18 @@
 # Nixpacks configuration for Railway
-# Root Directory is already set to services/ai-data-feeder, so no need to cd
+# Root Directory is already set to services/ai-data-feeder
+
 [phases.setup]
-nixPkgs = ["nodejs-20_x", "pnpm"]
+nixPkgs = ["nodejs-20_x", "npm"]
 
 [phases.install]
-cmds = ["pnpm install"]
+# Remove workspace dependency before installing (it uses lazy loading, not needed at build time)
+cmds = [
+  "node -e \"const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json')); delete pkg.dependencies['@coinet/market-prices']; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));\"",
+  "npm install"
+]
 
 [phases.build]
-cmds = ["pnpm build"]
+cmds = ["npm run build"]
 
 [start]
 cmd = "node dist/index.js"
-
