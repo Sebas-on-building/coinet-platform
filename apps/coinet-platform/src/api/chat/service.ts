@@ -12,6 +12,7 @@
 import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/market-data';
+import { getWhaleContextForAI } from '../../services/whale-data';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
 import { logger } from '../../utils/logger';
@@ -69,20 +70,40 @@ export class ChatService {
       // 4. Get conversation context (last 10 messages)
       const context = await this.getConversationContext(conversation.id);
 
-      // 4.5. Fetch live market data for AI context (dynamic based on message)
-      let liveMarketDataStr: string | undefined;
+      // 4.5. Fetch live market data AND whale context for AI (parallel for speed)
+      let liveContextStr: string | undefined;
       try {
-        const marketData = await fetchPricesForMessage(request.message);
+        const [marketData, whaleContext] = await Promise.all([
+          fetchPricesForMessage(request.message),
+          getWhaleContextForAI(),
+        ]);
+        
+        let contextParts: string[] = [];
+        
+        // Add market data
         if (marketData && marketData.prices.length > 0) {
-          liveMarketDataStr = formatMarketDataForAI(marketData);
+          contextParts.push(formatMarketDataForAI(marketData));
           logger.debug('📊 Dynamic market data fetched', { 
             requested: marketData.requestedSymbols,
             found: marketData.foundSymbols,
             missing: marketData.missingSymbols
           });
         }
+        
+        // Add whale intelligence context
+        if (whaleContext.isAvailable && whaleContext.contextForAI) {
+          contextParts.push(whaleContext.contextForAI);
+          logger.debug('🐋 Whale context added', { 
+            chains: whaleContext.monitoredChains,
+            capabilities: whaleContext.capabilities.length
+          });
+        }
+        
+        if (contextParts.length > 0) {
+          liveContextStr = contextParts.join('\n');
+        }
       } catch (error: any) {
-        logger.debug('⚠️ Could not fetch market data', { error: error?.message });
+        logger.debug('⚠️ Could not fetch live context', { error: error?.message });
       }
 
       // 5. Call AI service (or use mock if unavailable)
@@ -96,7 +117,7 @@ export class ChatService {
             agentId: request.agentId,
             analysisDepth: request.context?.analysisDepth || 'standard',
             conversationHistory: context,
-            liveMarketData: liveMarketDataStr,
+            liveMarketData: liveContextStr, // Now includes both market + whale data
           },
         });
       } catch (error) {
