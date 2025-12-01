@@ -22,6 +22,7 @@
 import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
 import { symbolDetector, DetectedCoin } from './symbol-detector';
+import { searchToken, DexToken, analyzeTokenRisk } from './dexscreener';
 
 // ============================================================================
 // CONFIGURATION
@@ -384,50 +385,57 @@ async function fetchFromCoinMarketCap(symbols: string[]): Promise<MarketPrice[]>
 
 /**
  * Fetch from DexScreener API (DEX-only tokens)
+ * Uses the comprehensive dexscreener service
  */
 async function fetchFromDexScreener(symbol: string): Promise<MarketPrice | null> {
   try {
-    await rateLimiter.waitForSlot('DEXSCREENER', CONFIG.RATE_LIMITS.DEXSCREENER);
-
-    const response = await axios.get(`${CONFIG.DEXSCREENER_BASE_URL}/search`, {
-      params: { q: symbol },
-      timeout: CONFIG.TIMEOUTS.DEXSCREENER,
-    });
-
-    const pairs = response.data?.pairs || [];
-    if (pairs.length === 0) return null;
-
-    // Find best pair (highest liquidity USD pair)
-    const usdPairs = pairs.filter((p: any) => 
-      p.quoteToken?.symbol?.toUpperCase() === 'USDC' ||
-      p.quoteToken?.symbol?.toUpperCase() === 'USDT' ||
-      p.quoteToken?.symbol?.toUpperCase() === 'USD'
-    );
-
-    const sortedPairs = (usdPairs.length > 0 ? usdPairs : pairs)
-      .sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
-
-    const bestPair = sortedPairs[0];
-    if (!bestPair) return null;
-
+    // Use the dedicated DexScreener service
+    const result = await searchToken(symbol);
+    
+    if (result.tokens.length === 0) {
+      logger.debug('🦎 DexScreener: No tokens found', { symbol });
+      return null;
+    }
+    
+    // Get the best match (already ranked by confidence and liquidity)
+    const token = result.tokens[0];
+    
+    // Analyze risk for confidence adjustment
+    const risk = analyzeTokenRisk(token);
+    let confidence = token.confidence;
+    
+    // Adjust confidence based on risk
+    if (risk.riskLevel === 'extreme') confidence *= 0.6;
+    else if (risk.riskLevel === 'high') confidence *= 0.75;
+    else if (risk.riskLevel === 'medium') confidence *= 0.9;
+    
     const price: MarketPrice = {
-      symbol: bestPair.baseToken?.symbol?.toUpperCase() || symbol.toUpperCase(),
-      name: bestPair.baseToken?.name || symbol,
-      price: parseFloat(bestPair.priceUsd) || 0,
-      change24h: 0, // DexScreener doesn't provide absolute change
-      changePercent24h: bestPair.priceChange?.h24 || 0,
-      volume24h: bestPair.volume?.h24 || 0,
-      marketCap: bestPair.fdv || bestPair.marketCap || 0,
+      symbol: token.symbol,
+      name: token.name,
+      coinGeckoId: undefined,
+      price: token.priceUsd,
+      change24h: token.priceUsd * (token.priceChange24h / 100),
+      changePercent24h: token.priceChange24h,
+      volume24h: token.volume24h,
+      marketCap: token.marketCap || token.fdv,
       source: 'dexscreener',
       lastUpdated: new Date().toISOString(),
-      confidence: 0.75, // Lower confidence for DEX data
+      confidence,
     };
-
+    
     priceCache.set(price.symbol, price);
-    logger.debug('📊 DexScreener fetch', { symbol, price: price.price, liquidity: bestPair.liquidity?.usd });
+    
+    logger.debug('🦎 DexScreener fetch', { 
+      symbol, 
+      price: price.price, 
+      liquidity: token.liquidity,
+      risk: risk.riskLevel,
+      confidence: price.confidence.toFixed(2)
+    });
+    
     return price;
   } catch (error: any) {
-    logger.debug('DexScreener fetch failed', { symbol, error: error.message });
+    logger.debug('🦎 DexScreener fetch failed', { symbol, error: error.message });
     return null;
   }
 }
