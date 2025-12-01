@@ -1,8 +1,0 @@
-packages:
-  - 'apps/*'
-  - 'services/*'
-  - 'packages/*'
-  - '!apps/mobile-client'
-  - '!apps/web-client'
-  - '!apps/user-experience'
-  - '!packages/api-client'

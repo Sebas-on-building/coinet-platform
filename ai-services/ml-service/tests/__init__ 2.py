@@ -1,1 +1,0 @@
-# Test package for Coinet AI ML Service 

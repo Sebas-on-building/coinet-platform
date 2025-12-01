@@ -1,3 +1,0 @@
-type Mutation {
-  action(input: PersonalizationInput): Boolean!
-}
