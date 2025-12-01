@@ -261,9 +261,15 @@ export class TimescaleStorage {
       );
 
       logger.debug('Market price stored', { coinId: price.coinId, price: price.price });
-    } catch (error) {
-      logger.error('Failed to store market price', { error, price });
-      throw error;
+    } catch (error: any) {
+      // Database is optional - silently fail on connection errors
+      const isConnectionError = error?.code === 'ECONNREFUSED' || 
+                               error?.message?.includes('ECONNREFUSED') ||
+                               error?.message?.includes('Connection refused');
+      if (!isConnectionError) {
+        logger.error('Failed to store market price', { error, price });
+      }
+      // Don't throw - database storage is optional
     }
   }
 
@@ -275,7 +281,19 @@ export class TimescaleStorage {
       return;
     }
 
-    const client = await this.pool.connect();
+    let client;
+    try {
+      client = await this.pool.connect();
+    } catch (error: any) {
+      // Database is optional - silently fail on connection errors
+      const isConnectionError = error?.code === 'ECONNREFUSED' || 
+                               error?.message?.includes('ECONNREFUSED') ||
+                               error?.message?.includes('Connection refused');
+      if (!isConnectionError) {
+        logger.error('Failed to connect to database', { error });
+      }
+      return; // Don't throw - database storage is optional
+    }
 
     try {
       await client.query('BEGIN');
@@ -316,10 +334,15 @@ export class TimescaleStorage {
       await client.query('COMMIT');
 
       logger.info('Market prices stored in batch', { count: prices.length });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      logger.error('Failed to store market prices batch', { error });
-      throw error;
+    } catch (error: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      const isConnectionError = error?.code === 'ECONNREFUSED' || 
+                               error?.message?.includes('ECONNREFUSED') ||
+                               error?.message?.includes('Connection refused');
+      if (!isConnectionError) {
+        logger.error('Failed to store market prices batch', { error });
+      }
+      // Don't throw - database storage is optional
     } finally {
       client.release();
     }
@@ -333,7 +356,19 @@ export class TimescaleStorage {
       return;
     }
 
-    const client = await this.pool.connect();
+    let client;
+    try {
+      client = await this.pool.connect();
+    } catch (error: any) {
+      // Database is optional - silently fail on connection errors
+      const isConnectionError = error?.code === 'ECONNREFUSED' || 
+                               error?.message?.includes('ECONNREFUSED') ||
+                               error?.message?.includes('Connection refused');
+      if (!isConnectionError) {
+        logger.error('Failed to connect to database', { error });
+      }
+      return;
+    }
 
     try {
       await client.query('BEGIN');
@@ -361,10 +396,14 @@ export class TimescaleStorage {
       await client.query('COMMIT');
 
       logger.info('OHLCV data stored', { count: ohlcv.length });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      logger.error('Failed to store OHLCV data', { error });
-      throw error;
+    } catch (error: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      const isConnectionError = error?.code === 'ECONNREFUSED' || 
+                               error?.message?.includes('ECONNREFUSED') ||
+                               error?.message?.includes('Connection refused');
+      if (!isConnectionError) {
+        logger.error('Failed to store OHLCV data', { error });
+      }
     } finally {
       client.release();
     }
@@ -416,9 +455,15 @@ export class TimescaleStorage {
       );
 
       logger.debug('Metadata stored', { coinId: metadata.coinId });
-    } catch (error) {
-      logger.error('Failed to store metadata', { error, metadata });
-      throw error;
+    } catch (error: any) {
+      // Database is optional - silently fail on connection errors
+      const isConnectionError = error?.code === 'ECONNREFUSED' || 
+                               error?.message?.includes('ECONNREFUSED') ||
+                               error?.message?.includes('Connection refused');
+      if (!isConnectionError) {
+        logger.error('Failed to store metadata', { error, metadata });
+      }
+      // Don't throw - database storage is optional
     }
   }
 

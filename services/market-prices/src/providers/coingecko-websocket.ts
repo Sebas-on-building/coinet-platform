@@ -288,22 +288,12 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
         });
 
         ws.on('close', (code: number, reason: string) => {
-          // Log normal closes (1000) and network-related closes as debug (WebSocket is optional)
-          const isNormalClose = code === 1000;
-          const isNetworkRelated = reason?.toString().includes('ECONNREFUSED') || 
-                                  reason?.toString().includes('ENOTFOUND');
-          
-          if (isNormalClose || isNetworkRelated) {
-            logger.debug(`WebSocket connection ${connectionId} closed (optional component)`, {
-              code,
-              reason: reason.toString(),
-            });
-          } else {
-            logger.info(`WebSocket connection ${connectionId} closed`, {
-              code,
-              reason: reason.toString(),
-            });
-          }
+          // All WebSocket closes are debug level since WebSocket is optional
+          // CoinGecko free tier doesn't support WebSocket, so this is expected
+          logger.debug(`WebSocket connection ${connectionId} closed (optional component)`, {
+            code,
+            reason: reason?.toString() || '',
+          });
 
           this.handleClose(connectionId, coins, channels);
         });
@@ -524,8 +514,8 @@ export class CoinGeckoWebSocketClient extends EventEmitter {
         
         try {
           await this.createConnection(coins, channels, reconnectAttempts + 1);
-          // Only log successful reconnections at info level
-          logger.info(`Successfully reconnected connection ${connectionId}`, {
+          // Log successful reconnections - debug level to reduce noise
+          logger.debug(`Successfully reconnected connection ${connectionId}`, {
             attempt: reconnectAttempts + 1,
           });
         } catch (error: any) {

@@ -193,7 +193,8 @@ export class ServiceConnector extends EventEmitter {
       const response = await this.fetchWithRetry(url, this.config.alchemyWhales.timeout);
       
       if (!response.ok) {
-        logger.warn('Whale service returned error', { status: response.status, symbol });
+        // Log as debug since whale endpoints may not exist yet
+        logger.debug('Whale service returned error (endpoint may not exist)', { status: response.status, symbol });
         return [];
       }
 

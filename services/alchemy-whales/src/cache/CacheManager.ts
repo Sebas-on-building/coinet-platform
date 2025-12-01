@@ -54,9 +54,10 @@ export class CacheManager {
       });
 
       this.redis.on('error', (err) => {
-        // Suppress repeated errors after initial failure
+        // Redis is optional - log as debug to reduce noise
+        // The service will continue with in-memory fallbacks
         if (!this.errorSuppressed) {
-          this.logger.error('Redis error', { error: err.message });
+          this.logger.debug('Redis error (optional component)', { error: err.message });
           // After first error, suppress subsequent errors for 30 seconds
           setTimeout(() => {
             this.errorSuppressed = false;
@@ -66,9 +67,9 @@ export class CacheManager {
       });
 
       this.redis.on('close', () => {
-        // Only log close if we haven't suppressed errors
+        // Only log close as debug if we haven't suppressed errors
         if (!this.errorSuppressed) {
-          this.logger.warn('Redis connection closed');
+          this.logger.debug('Redis connection closed (optional component)');
         }
       });
 
@@ -94,7 +95,7 @@ export class CacheManager {
       return JSON.parse(value) as T;
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache get error', { key, error: error.message });
+        this.logger.debug('Cache get error (optional component)', { key, error: error.message });
       }
       return null;
     }
@@ -111,7 +112,7 @@ export class CacheManager {
       await this.redis.setex(key, ttlSeconds, serialized);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache set error', { key, error: error.message });
+        this.logger.debug('Cache set error (optional component)', { key, error: error.message });
       }
     }
   }
@@ -125,7 +126,7 @@ export class CacheManager {
       await this.redis.del(key);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache delete error', { key, error: error.message });
+        this.logger.debug('Cache delete error (optional component)', { key, error: error.message });
       }
     }
   }
@@ -140,7 +141,7 @@ export class CacheManager {
       return result === 1;
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache exists error', { key, error: error.message });
+        this.logger.debug('Cache exists error (optional component)', { key, error: error.message });
       }
       return false;
     }
@@ -156,7 +157,7 @@ export class CacheManager {
       await this.redis.setex(key, seconds, serialized);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache setex error', { key, error: error.message });
+        this.logger.debug('Cache setex error (optional component)', { key, error: error.message });
       }
     }
   }
@@ -170,7 +171,7 @@ export class CacheManager {
       return await this.redis.incr(key);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache incr error', { key, error: error.message });
+        this.logger.debug('Cache incr error (optional component)', { key, error: error.message });
       }
       return 0;
     }
@@ -185,7 +186,7 @@ export class CacheManager {
       return await this.redis.decr(key);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache decr error', { key, error: error.message });
+        this.logger.debug('Cache decr error (optional component)', { key, error: error.message });
       }
       return 0;
     }
@@ -200,7 +201,7 @@ export class CacheManager {
       return await this.redis.sadd(key, ...members);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache sadd error', { key, error: error.message });
+        this.logger.debug('Cache sadd error (optional component)', { key, error: error.message });
       }
       return 0;
     }
@@ -215,7 +216,7 @@ export class CacheManager {
       return await this.redis.smembers(key);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache smembers error', { key, error: error.message });
+        this.logger.debug('Cache smembers error (optional component)', { key, error: error.message });
       }
       return [];
     }
@@ -230,7 +231,7 @@ export class CacheManager {
       return await this.redis.zadd(key, score, member);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache zadd error', { key, error: error.message });
+        this.logger.debug('Cache zadd error (optional component)', { key, error: error.message });
       }
       return 0;
     }
@@ -245,7 +246,7 @@ export class CacheManager {
       return await this.redis.zrevrange(key, start, stop);
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache zrevrange error', { key, error: error.message });
+        this.logger.debug('Cache zrevrange error (optional component)', { key, error: error.message });
       }
       return [];
     }
@@ -329,7 +330,7 @@ export class CacheManager {
       return result === 1;
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache isWhale error', { address, chain, error: error.message });
+        this.logger.debug('Cache isWhale error (optional component)', { address, chain, error: error.message });
       }
       return false;
     }
@@ -401,7 +402,7 @@ export class CacheManager {
       };
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Failed to get cache stats', { error: error.message });
+        this.logger.debug('Failed to get cache stats (optional component)', { error: error.message });
       }
       return null;
     }
@@ -436,7 +437,7 @@ export class CacheManager {
       this.logger.warn('Cache flushed');
     } catch (error: any) {
       if (!this.errorSuppressed) {
-        this.logger.error('Cache flush error', { error: error.message });
+        this.logger.debug('Cache flush error (optional component)', { error: error.message });
       }
     }
   }
