@@ -49,7 +49,8 @@ export class CacheManager {
 
       // Event handlers
       this.redis.on('connect', () => {
-        this.logger.info('Redis connected');
+        // Log as debug to reduce noise - initialization already logs at INFO
+        this.logger.debug('Redis connected');
         this.errorSuppressed = false; // Reset suppression on successful connect
       });
 

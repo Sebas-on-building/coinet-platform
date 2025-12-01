@@ -71,7 +71,8 @@ export class CacheStorage {
 
     this.redis.on('connect', () => {
       this.errorSuppressed = false; // Reset suppression on successful connect
-      logger.info('Redis connected', {
+      // Log as debug to reduce noise - initialization already logs at INFO
+      logger.debug('Redis connected', {
         host: config.host,
         port: config.port,
       });

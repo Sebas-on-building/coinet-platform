@@ -374,7 +374,7 @@ export class DexScreenerEnhancedClient extends EventEmitter {
       });
 
       this.redis.on('connect', () => {
-        logger.info('DexScreener Enhanced Redis connected');
+        logger.debug('DexScreener Enhanced Redis connected');
         this.useRedisCache = true;
       });
     } catch (error) {

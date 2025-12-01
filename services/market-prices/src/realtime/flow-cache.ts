@@ -301,7 +301,7 @@ export class FlowCache extends EventEmitter {
 
       this.redis.on('connect', () => {
         this.isConnected = true;
-        logger.info('Redis connected for flow cache');
+        logger.debug('Redis connected for flow cache');
         this.emit('connected');
       });
 

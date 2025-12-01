@@ -443,7 +443,7 @@ export class ServiceConnector extends EventEmitter {
 
       return liquidityData;
     } catch (error: any) {
-      logger.warn('Failed to fetch liquidity', { symbol, error: error.message });
+      logger.debug('Failed to fetch liquidity (non-critical)', { symbol, error: error.message });
       return this.generateMockLiquidity(symbol);
     }
   }
