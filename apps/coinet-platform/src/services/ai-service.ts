@@ -114,7 +114,7 @@ export class AIService {
 
       // Select model based on provider
       const model = this.provider === 'grok' 
-        ? (process.env.GROK_MODEL || 'grok-3-latest')
+        ? (process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning')
         : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
 
       // Call AI
