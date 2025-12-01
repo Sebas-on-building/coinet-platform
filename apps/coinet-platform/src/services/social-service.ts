@@ -188,21 +188,27 @@ async function fetchLunarCrushData(symbols: string[]): Promise<SocialMetrics[]> 
 
     if (!response.data?.data) return [];
 
-    return response.data.data.map((coin: any) => ({
-      symbol: coin.symbol,
-      name: coin.name,
-      socialVolume24h: coin.social_volume || 0,
-      socialVolumeChange: coin.social_volume_change_24h || 0,
-      sentiment: mapSentiment(coin.average_sentiment || 0),
-      sentimentScore: coin.average_sentiment || 0,
-      twitterMentions: coin.tweets || 0,
-      redditMentions: coin.reddit_posts || 0,
-      telegramMentions: 0,
-      isTrending: coin.social_volume_change_24h > 50,
-      influencerMentions: coin.influencer_mentions || 0,
-      topInfluencers: [],
-      lastUpdated: new Date(),
-    }));
+    return response.data.data.map((coin: any) => {
+      // LunarCrush uses 0-5 scale, convert to 0-100
+      const lunarScore = coin.average_sentiment || 2.5;
+      const normalizedScore = Math.round((lunarScore / 5) * 100);
+      
+      return {
+        symbol: coin.symbol,
+        name: coin.name,
+        socialVolume24h: coin.social_volume || 0,
+        socialVolumeChange: coin.social_volume_change_24h || 0,
+        sentiment: mapSentimentFromScore(normalizedScore),
+        sentimentScore: normalizedScore,
+        twitterMentions: coin.tweets || 0,
+        redditMentions: coin.reddit_posts || 0,
+        telegramMentions: 0,
+        isTrending: coin.social_volume_change_24h > 50,
+        influencerMentions: coin.influencer_mentions || 0,
+        topInfluencers: [],
+        lastUpdated: new Date(),
+      };
+    });
   } catch (error: any) {
     logger.debug('📱 LunarCrush fetch failed', { error: error.message });
     return [];
@@ -213,19 +219,25 @@ async function fetchLunarCrushData(symbols: string[]): Promise<SocialMetrics[]> 
 // SENTIMENT ANALYSIS
 // ============================================================================
 
-function mapSentiment(score: number): SocialMetrics['sentiment'] {
-  if (score >= 4) return 'very_bullish';
-  if (score >= 3) return 'bullish';
-  if (score >= 2) return 'neutral';
-  if (score >= 1) return 'bearish';
-  return 'very_bearish';
+/**
+ * Map sentiment score (0-100) to sentiment category
+ * Aligned with Fear & Greed Index scale
+ */
+function mapSentimentFromScore(score: number): SocialMetrics['sentiment'] {
+  // Score is 0-100 scale (like Fear & Greed Index)
+  if (score <= 20) return 'very_bearish';
+  if (score <= 35) return 'bearish';
+  if (score <= 55) return 'neutral';
+  if (score <= 75) return 'bullish';
+  return 'very_bullish';
 }
 
 function calculateOverallSentiment(metrics: SocialMetrics[]): SocialMetrics['sentiment'] {
   if (metrics.length === 0) return 'neutral';
 
+  // Average the 0-100 sentiment scores
   const avgScore = metrics.reduce((sum, m) => sum + m.sentimentScore, 0) / metrics.length;
-  return mapSentiment(avgScore);
+  return mapSentimentFromScore(avgScore);
 }
 
 // ============================================================================
