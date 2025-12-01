@@ -77,8 +77,8 @@ export class ChatService {
           liveMarketDataStr = formatMarketDataForAI(marketData);
           logger.debug('📊 Live market data fetched for AI context', { coins: marketData.prices.length });
         }
-      } catch (error) {
-        logger.debug('⚠️ Could not fetch live market data', error);
+      } catch (error: any) {
+        logger.debug('⚠️ Could not fetch live market data', { error: error?.message });
       }
 
       // 5. Call AI service (or use mock if unavailable)
