@@ -159,8 +159,14 @@ export class AIService {
           version: response.model,
         },
       };
-    } catch (error) {
-      logger.error('❌ AI Analysis Failed', error);
+    } catch (error: any) {
+      logger.error('❌ AI Analysis Failed', {
+        provider: this.provider,
+        errorMessage: error?.message || 'Unknown error',
+        errorCode: error?.code,
+        errorStatus: error?.status,
+        errorType: error?.type,
+      });
       throw error;
     }
   }
