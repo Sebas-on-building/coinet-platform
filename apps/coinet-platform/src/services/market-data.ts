@@ -1,16 +1,25 @@
 /**
- * 📊 Market Data Service - Divine Perfection
+ * 📊 Dynamic Price Fetcher - Divine Perfection v2
  * 
- * Fetches live market data for ANY cryptocurrency.
- * Supports dynamic coin detection and multiple data sources.
+ * The most comprehensive cryptocurrency price fetching system.
+ * Fetches real-time data for ANY coin with intelligent fallback chain.
  * 
- * Data Sources (Priority Order):
- * 1. market-prices service (cached, fast)
- * 2. CoinGecko API (comprehensive)
- * 3. DexScreener (for DEX-only tokens)
+ * FALLBACK PRIORITY:
+ * 1. market-prices service (fastest, cached, internal)
+ * 2. CoinGecko API (comprehensive, rate-limited)
+ * 3. CoinMarketCap API (backup, requires key)
+ * 4. DexScreener API (DEX-only tokens, new listings)
+ * 
+ * FEATURES:
+ * - Dynamic symbol detection integration
+ * - Per-provider rate limiting
+ * - Intelligent caching
+ * - Graceful degradation
+ * - Parallel fetching where possible
+ * - Comprehensive error handling
  */
 
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
 import { symbolDetector, DetectedCoin } from './symbol-detector';
 
@@ -18,13 +27,38 @@ import { symbolDetector, DetectedCoin } from './symbol-detector';
 // CONFIGURATION
 // ============================================================================
 
-const MARKET_PRICES_URL = process.env.MARKET_PRICES_URL || 'https://market-prices-production.up.railway.app';
-const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
-const DEXSCREENER_BASE_URL = 'https://api.dexscreener.com/latest/dex';
+const CONFIG = {
+  // Service URLs
+  MARKET_PRICES_URL: process.env.MARKET_PRICES_URL || 'https://market-prices-production.up.railway.app',
+  COINGECKO_BASE_URL: process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3',
+  COINGECKO_PRO_URL: 'https://pro-api.coingecko.com/api/v3',
+  CMC_BASE_URL: 'https://pro-api.coinmarketcap.com/v1',
+  DEXSCREENER_BASE_URL: 'https://api.dexscreener.com/latest/dex',
 
-// Rate limiting for CoinGecko free tier
-let lastCoinGeckoCall = 0;
-const COINGECKO_MIN_INTERVAL = 2000; // 2 seconds between calls (30/min limit)
+  // API Keys (optional - enables pro features)
+  COINGECKO_API_KEY: process.env.COINGECKO_API_KEY || '',
+  CMC_API_KEY: process.env.CMC_API_KEY || '',
+
+  // Rate Limits (requests per minute)
+  RATE_LIMITS: {
+    MARKET_PRICES: 60,      // Internal service, generous
+    COINGECKO_FREE: 10,     // Conservative for free tier
+    COINGECKO_PRO: 500,     // Pro tier
+    CMC: 30,                // CMC basic tier
+    DEXSCREENER: 300,       // DexScreener is generous
+  },
+
+  // Timeouts (ms)
+  TIMEOUTS: {
+    MARKET_PRICES: 3000,
+    COINGECKO: 8000,
+    CMC: 8000,
+    DEXSCREENER: 5000,
+  },
+
+  // Cache TTL (ms)
+  CACHE_TTL: 30000,  // 30 seconds
+};
 
 // ============================================================================
 // TYPES
@@ -33,13 +67,19 @@ const COINGECKO_MIN_INTERVAL = 2000; // 2 seconds between calls (30/min limit)
 export interface MarketPrice {
   symbol: string;
   name: string;
+  coinGeckoId?: string;
   price: number;
   change24h: number;
   changePercent24h: number;
   volume24h: number;
   marketCap: number;
-  source: 'market-prices' | 'coingecko' | 'dexscreener';
+  high24h?: number;
+  low24h?: number;
+  ath?: number;
+  athDate?: string;
+  source: 'market-prices' | 'coingecko' | 'coinmarketcap' | 'dexscreener' | 'cache';
   lastUpdated: string;
+  confidence: number;  // 0-1, how reliable is this data
 }
 
 export interface MarketSnapshot {
@@ -48,10 +88,413 @@ export interface MarketSnapshot {
   requestedSymbols: string[];
   foundSymbols: string[];
   missingSymbols: string[];
+  sources: string[];
+  fetchTime: number;
+}
+
+interface RateLimiter {
+  lastCall: number;
+  callCount: number;
+  windowStart: number;
+}
+
+interface CacheEntry {
+  data: MarketPrice;
+  timestamp: number;
 }
 
 // ============================================================================
-// CORE FUNCTIONS
+// RATE LIMITER
+// ============================================================================
+
+class RateLimitManager {
+  private limiters: Map<string, RateLimiter> = new Map();
+
+  async waitForSlot(provider: string, maxPerMinute: number): Promise<boolean> {
+    const now = Date.now();
+    let limiter = this.limiters.get(provider);
+
+    if (!limiter) {
+      limiter = { lastCall: 0, callCount: 0, windowStart: now };
+      this.limiters.set(provider, limiter);
+    }
+
+    // Reset window if minute has passed
+    if (now - limiter.windowStart > 60000) {
+      limiter.callCount = 0;
+      limiter.windowStart = now;
+    }
+
+    // Check if we've hit the limit
+    if (limiter.callCount >= maxPerMinute) {
+      const waitTime = 60000 - (now - limiter.windowStart);
+      if (waitTime > 0) {
+        logger.debug(`Rate limit reached for ${provider}, waiting ${waitTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 5000)));
+        return this.waitForSlot(provider, maxPerMinute);
+      }
+    }
+
+    // Minimum delay between calls
+    const minDelay = 60000 / maxPerMinute;
+    const timeSinceLastCall = now - limiter.lastCall;
+    if (timeSinceLastCall < minDelay) {
+      await new Promise(resolve => setTimeout(resolve, minDelay - timeSinceLastCall));
+    }
+
+    limiter.lastCall = Date.now();
+    limiter.callCount++;
+    return true;
+  }
+
+  getStats(provider: string): { callCount: number; remaining: number } {
+    const limiter = this.limiters.get(provider);
+    if (!limiter) return { callCount: 0, remaining: 60 };
+    
+    const limit = (CONFIG.RATE_LIMITS as any)[provider.toUpperCase()] || 60;
+    return {
+      callCount: limiter.callCount,
+      remaining: Math.max(0, limit - limiter.callCount),
+    };
+  }
+}
+
+const rateLimiter = new RateLimitManager();
+
+// ============================================================================
+// PRICE CACHE
+// ============================================================================
+
+class PriceCache {
+  private cache: Map<string, CacheEntry> = new Map();
+
+  set(symbol: string, data: MarketPrice): void {
+    this.cache.set(symbol.toLowerCase(), {
+      data: { ...data, source: 'cache' },
+      timestamp: Date.now(),
+    });
+  }
+
+  get(symbol: string): MarketPrice | null {
+    const entry = this.cache.get(symbol.toLowerCase());
+    if (!entry) return null;
+
+    if (Date.now() - entry.timestamp > CONFIG.CACHE_TTL) {
+      this.cache.delete(symbol.toLowerCase());
+      return null;
+    }
+
+    return entry.data;
+  }
+
+  getMultiple(symbols: string[]): { found: MarketPrice[]; missing: string[] } {
+    const found: MarketPrice[] = [];
+    const missing: string[] = [];
+
+    for (const symbol of symbols) {
+      const cached = this.get(symbol);
+      if (cached) {
+        found.push(cached);
+      } else {
+        missing.push(symbol);
+      }
+    }
+
+    return { found, missing };
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+const priceCache = new PriceCache();
+
+// ============================================================================
+// DATA SOURCE FETCHERS
+// ============================================================================
+
+/**
+ * Fetch from market-prices service (internal, fastest)
+ */
+async function fetchFromMarketPrices(symbols: string[]): Promise<MarketPrice[]> {
+  if (symbols.length === 0) return [];
+
+  try {
+    await rateLimiter.waitForSlot('MARKET_PRICES', CONFIG.RATE_LIMITS.MARKET_PRICES);
+
+    const response = await axios.get(`${CONFIG.MARKET_PRICES_URL}/api/prices`, {
+      params: { symbols: symbols.join(',') },
+      timeout: CONFIG.TIMEOUTS.MARKET_PRICES,
+    });
+
+    if (!response.data?.data) return [];
+
+    const rawData = Array.isArray(response.data.data) 
+      ? response.data.data 
+      : Object.values(response.data.data);
+
+    const prices: MarketPrice[] = [];
+    
+    for (const data of rawData as any[]) {
+      const price: MarketPrice = {
+        symbol: (data.symbol || data.coinId || 'UNKNOWN').toUpperCase(),
+        name: data.name || data.symbol || 'Unknown',
+        coinGeckoId: data.coinId?.toLowerCase(),
+        price: data.price || 0,
+        change24h: data.priceChange24h || 0,
+        changePercent24h: data.priceChangePercentage24h || 0,
+        volume24h: data.volume24h || 0,
+        marketCap: data.marketCap || 0,
+        high24h: data.high24h,
+        low24h: data.low24h,
+        source: 'market-prices',
+        lastUpdated: data.lastUpdated || new Date().toISOString(),
+        confidence: 0.95,
+      };
+      prices.push(price);
+      priceCache.set(price.symbol, price);
+    }
+
+    logger.debug('📊 market-prices fetch', { requested: symbols.length, found: prices.length });
+    return prices;
+  } catch (error: any) {
+    logger.debug('market-prices fetch failed', { error: error.message });
+    return [];
+  }
+}
+
+/**
+ * Fetch from CoinGecko API
+ */
+async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
+  if (coinIds.length === 0) return [];
+
+  try {
+    const isPro = !!CONFIG.COINGECKO_API_KEY;
+    const rateLimit = isPro ? CONFIG.RATE_LIMITS.COINGECKO_PRO : CONFIG.RATE_LIMITS.COINGECKO_FREE;
+    
+    await rateLimiter.waitForSlot('COINGECKO', rateLimit);
+
+    const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
+    const headers: Record<string, string> = { 'Accept': 'application/json' };
+    
+    if (isPro) {
+      headers['x-cg-pro-api-key'] = CONFIG.COINGECKO_API_KEY;
+    }
+
+    // CoinGecko /simple/price endpoint
+    const response = await axios.get(`${baseUrl}/simple/price`, {
+      params: {
+        ids: coinIds.join(','),
+        vs_currencies: 'usd',
+        include_24hr_change: true,
+        include_24hr_vol: true,
+        include_market_cap: true,
+        include_last_updated_at: true,
+      },
+      headers,
+      timeout: CONFIG.TIMEOUTS.COINGECKO,
+    });
+
+    const prices: MarketPrice[] = [];
+
+    for (const [id, data] of Object.entries(response.data) as [string, any][]) {
+      const coin = symbolDetector.getCoinById(id);
+      const price: MarketPrice = {
+        symbol: coin?.symbol.toUpperCase() || id.toUpperCase(),
+        name: coin?.name || id,
+        coinGeckoId: id,
+        price: data.usd || 0,
+        change24h: (data.usd || 0) * (data.usd_24h_change || 0) / 100,
+        changePercent24h: data.usd_24h_change || 0,
+        volume24h: data.usd_24h_vol || 0,
+        marketCap: data.usd_market_cap || 0,
+        source: 'coingecko',
+        lastUpdated: data.last_updated_at 
+          ? new Date(data.last_updated_at * 1000).toISOString()
+          : new Date().toISOString(),
+        confidence: 0.9,
+      };
+      prices.push(price);
+      priceCache.set(price.symbol, price);
+    }
+
+    logger.debug('📊 CoinGecko fetch', { requested: coinIds.length, found: prices.length, isPro });
+    return prices;
+  } catch (error: any) {
+    if ((error as AxiosError).response?.status === 429) {
+      logger.warn('CoinGecko rate limit hit');
+    } else {
+      logger.debug('CoinGecko fetch failed', { error: error.message });
+    }
+    return [];
+  }
+}
+
+/**
+ * Fetch from CoinMarketCap API (requires API key)
+ */
+async function fetchFromCoinMarketCap(symbols: string[]): Promise<MarketPrice[]> {
+  if (!CONFIG.CMC_API_KEY || symbols.length === 0) return [];
+
+  try {
+    await rateLimiter.waitForSlot('CMC', CONFIG.RATE_LIMITS.CMC);
+
+    const response = await axios.get(`${CONFIG.CMC_BASE_URL}/cryptocurrency/quotes/latest`, {
+      params: { symbol: symbols.join(',') },
+      headers: {
+        'X-CMC_PRO_API_KEY': CONFIG.CMC_API_KEY,
+        'Accept': 'application/json',
+      },
+      timeout: CONFIG.TIMEOUTS.CMC,
+    });
+
+    const prices: MarketPrice[] = [];
+
+    if (response.data?.data) {
+      for (const [symbol, data] of Object.entries(response.data.data) as [string, any][]) {
+        const quote = data.quote?.USD;
+        if (!quote) continue;
+
+        const price: MarketPrice = {
+          symbol: symbol.toUpperCase(),
+          name: data.name || symbol,
+          price: quote.price || 0,
+          change24h: (quote.price || 0) * (quote.percent_change_24h || 0) / 100,
+          changePercent24h: quote.percent_change_24h || 0,
+          volume24h: quote.volume_24h || 0,
+          marketCap: quote.market_cap || 0,
+          source: 'coinmarketcap',
+          lastUpdated: quote.last_updated || new Date().toISOString(),
+          confidence: 0.92,
+        };
+        prices.push(price);
+        priceCache.set(price.symbol, price);
+      }
+    }
+
+    logger.debug('📊 CoinMarketCap fetch', { requested: symbols.length, found: prices.length });
+    return prices;
+  } catch (error: any) {
+    logger.debug('CoinMarketCap fetch failed', { error: error.message });
+    return [];
+  }
+}
+
+/**
+ * Fetch from DexScreener API (DEX-only tokens)
+ */
+async function fetchFromDexScreener(symbol: string): Promise<MarketPrice | null> {
+  try {
+    await rateLimiter.waitForSlot('DEXSCREENER', CONFIG.RATE_LIMITS.DEXSCREENER);
+
+    const response = await axios.get(`${CONFIG.DEXSCREENER_BASE_URL}/search`, {
+      params: { q: symbol },
+      timeout: CONFIG.TIMEOUTS.DEXSCREENER,
+    });
+
+    const pairs = response.data?.pairs || [];
+    if (pairs.length === 0) return null;
+
+    // Find best pair (highest liquidity USD pair)
+    const usdPairs = pairs.filter((p: any) => 
+      p.quoteToken?.symbol?.toUpperCase() === 'USDC' ||
+      p.quoteToken?.symbol?.toUpperCase() === 'USDT' ||
+      p.quoteToken?.symbol?.toUpperCase() === 'USD'
+    );
+
+    const sortedPairs = (usdPairs.length > 0 ? usdPairs : pairs)
+      .sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+
+    const bestPair = sortedPairs[0];
+    if (!bestPair) return null;
+
+    const price: MarketPrice = {
+      symbol: bestPair.baseToken?.symbol?.toUpperCase() || symbol.toUpperCase(),
+      name: bestPair.baseToken?.name || symbol,
+      price: parseFloat(bestPair.priceUsd) || 0,
+      change24h: 0, // DexScreener doesn't provide absolute change
+      changePercent24h: bestPair.priceChange?.h24 || 0,
+      volume24h: bestPair.volume?.h24 || 0,
+      marketCap: bestPair.fdv || bestPair.marketCap || 0,
+      source: 'dexscreener',
+      lastUpdated: new Date().toISOString(),
+      confidence: 0.75, // Lower confidence for DEX data
+    };
+
+    priceCache.set(price.symbol, price);
+    logger.debug('📊 DexScreener fetch', { symbol, price: price.price, liquidity: bestPair.liquidity?.usd });
+    return price;
+  } catch (error: any) {
+    logger.debug('DexScreener fetch failed', { symbol, error: error.message });
+    return null;
+  }
+}
+
+// ============================================================================
+// ORCHESTRATOR
+// ============================================================================
+
+/**
+ * 🎯 MAIN: Fetch prices with intelligent fallback chain
+ */
+async function fetchWithFallback(
+  coinIds: string[], 
+  symbols: string[]
+): Promise<MarketPrice[]> {
+  const allPrices: Map<string, MarketPrice> = new Map();
+  const pendingCoinIds = new Set(coinIds);
+  const pendingSymbols = new Set(symbols.map(s => s.toUpperCase()));
+
+  // Helper to mark found
+  const markFound = (prices: MarketPrice[]) => {
+    for (const p of prices) {
+      allPrices.set(p.symbol.toUpperCase(), p);
+      pendingSymbols.delete(p.symbol.toUpperCase());
+      if (p.coinGeckoId) pendingCoinIds.delete(p.coinGeckoId);
+    }
+  };
+
+  // Step 1: Check cache first
+  const { found: cachedPrices, missing: _ } = priceCache.getMultiple(symbols);
+  if (cachedPrices.length > 0) {
+    markFound(cachedPrices);
+    logger.debug('📊 Cache hit', { count: cachedPrices.length });
+  }
+
+  // Step 2: market-prices service (parallel with CoinGecko for speed)
+  if (pendingSymbols.size > 0) {
+    const [mpPrices, cgPrices] = await Promise.all([
+      fetchFromMarketPrices([...pendingSymbols]),
+      pendingCoinIds.size > 0 ? fetchFromCoinGecko([...pendingCoinIds]) : Promise.resolve([]),
+    ]);
+    
+    markFound(mpPrices);
+    markFound(cgPrices);
+  }
+
+  // Step 3: CoinMarketCap for any still missing (if API key configured)
+  if (pendingSymbols.size > 0 && CONFIG.CMC_API_KEY) {
+    const cmcPrices = await fetchFromCoinMarketCap([...pendingSymbols]);
+    markFound(cmcPrices);
+  }
+
+  // Step 4: DexScreener for remaining (likely new/DEX tokens)
+  if (pendingSymbols.size > 0) {
+    const dexPromises = [...pendingSymbols].map(symbol => fetchFromDexScreener(symbol));
+    const dexResults = await Promise.all(dexPromises);
+    
+    for (const price of dexResults) {
+      if (price) markFound([price]);
+    }
+  }
+
+  return Array.from(allPrices.values());
+}
+
+// ============================================================================
+// PUBLIC API
 // ============================================================================
 
 /**
@@ -59,218 +502,61 @@ export interface MarketSnapshot {
  */
 export async function fetchPricesForMessage(message: string): Promise<MarketSnapshot> {
   const startTime = Date.now();
-  
+
   // Step 1: Detect coins in message
   const detectedCoins = await symbolDetector.detectCoins(message);
-  
+
   if (detectedCoins.length === 0) {
     // Default to top coins if none detected
     return fetchDefaultMarketData();
   }
 
-  // Step 2: Extract unique CoinGecko IDs
+  // Step 2: Extract unique identifiers
   const coinIds = [...new Set(detectedCoins.map(c => c.coinGeckoId))];
-  const symbols = [...new Set(detectedCoins.map(c => c.symbol))];
+  const symbols = [...new Set(detectedCoins.map(c => c.symbol.toUpperCase()))];
 
-  logger.debug('📊 Fetching prices for detected coins', { 
-    symbols,
-    coinIds,
-    detectionTime: Date.now() - startTime 
-  });
+  logger.debug('📊 Fetching prices', { symbols, coinIds });
 
-  // Step 3: Fetch prices with fallback chain
-  const prices = await fetchPricesWithFallback(coinIds, symbols);
+  // Step 3: Fetch with fallback chain
+  const prices = await fetchWithFallback(coinIds, symbols);
+
+  // Step 4: Build snapshot
+  const foundSymbols = prices.map(p => p.symbol.toUpperCase());
+  const missingSymbols = symbols.filter(s => !foundSymbols.includes(s.toUpperCase()));
+  const sources = [...new Set(prices.map(p => p.source))];
 
   const snapshot: MarketSnapshot = {
     timestamp: new Date().toISOString(),
     prices,
     requestedSymbols: symbols,
-    foundSymbols: prices.map(p => p.symbol),
-    missingSymbols: symbols.filter(s => !prices.find(p => p.symbol.toUpperCase() === s.toUpperCase())),
+    foundSymbols,
+    missingSymbols,
+    sources,
+    fetchTime: Date.now() - startTime,
   };
 
-  logger.debug('📊 Market data fetched', {
+  logger.info('📊 Market data complete', {
     requested: symbols.length,
     found: prices.length,
-    totalTime: Date.now() - startTime
+    missing: missingSymbols.length,
+    sources,
+    fetchTime: snapshot.fetchTime,
   });
 
   return snapshot;
 }
 
 /**
- * Fetch prices with fallback chain
- */
-async function fetchPricesWithFallback(coinIds: string[], symbols: string[]): Promise<MarketPrice[]> {
-  const prices: MarketPrice[] = [];
-  const missing = new Set(coinIds);
-
-  // Try 1: market-prices service (fastest)
-  try {
-    const mpPrices = await fetchFromMarketPrices(symbols);
-    for (const price of mpPrices) {
-      prices.push(price);
-      // Find matching coinId and remove from missing
-      const coinId = coinIds.find(id => {
-        const coin = symbolDetector.getCoinById(id);
-        return coin?.symbol.toUpperCase() === price.symbol.toUpperCase();
-      });
-      if (coinId) missing.delete(coinId);
-    }
-  } catch (error: any) {
-    logger.debug('market-prices fetch failed', { error: error.message });
-  }
-
-  // Try 2: CoinGecko for remaining
-  if (missing.size > 0) {
-    try {
-      const cgPrices = await fetchFromCoinGecko([...missing]);
-      for (const price of cgPrices) {
-        prices.push(price);
-        missing.delete(price.symbol.toLowerCase()); // Approximate match
-      }
-    } catch (error: any) {
-      logger.debug('CoinGecko fetch failed', { error: error.message });
-    }
-  }
-
-  // Try 3: DexScreener for any still missing
-  if (missing.size > 0) {
-    for (const coinId of missing) {
-      try {
-        const coin = symbolDetector.getCoinById(coinId);
-        if (coin) {
-          const dexPrice = await fetchFromDexScreener(coin.symbol);
-          if (dexPrice) {
-            prices.push(dexPrice);
-          }
-        }
-      } catch (error: any) {
-        logger.debug('DexScreener fetch failed', { coinId, error: error.message });
-      }
-    }
-  }
-
-  return prices;
-}
-
-/**
- * Fetch from market-prices service
- */
-async function fetchFromMarketPrices(symbols: string[]): Promise<MarketPrice[]> {
-  const response = await axios.get(`${MARKET_PRICES_URL}/api/prices`, {
-    params: { symbols: symbols.join(',') },
-    timeout: 5000,
-  });
-
-  if (!response.data?.data) return [];
-
-  const rawData = Array.isArray(response.data.data) 
-    ? response.data.data 
-    : Object.values(response.data.data);
-
-  return rawData.map((data: any) => ({
-    symbol: (data.symbol || data.coinId || 'UNKNOWN').toUpperCase(),
-    name: data.name || data.symbol || 'Unknown',
-    price: data.price || 0,
-    change24h: data.priceChange24h || 0,
-    changePercent24h: data.priceChangePercentage24h || 0,
-    volume24h: data.volume24h || 0,
-    marketCap: data.marketCap || 0,
-    source: 'market-prices' as const,
-    lastUpdated: data.lastUpdated || new Date().toISOString(),
-  }));
-}
-
-/**
- * Fetch from CoinGecko API (with rate limiting)
- */
-async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
-  // Rate limiting
-  const now = Date.now();
-  const timeSinceLastCall = now - lastCoinGeckoCall;
-  if (timeSinceLastCall < COINGECKO_MIN_INTERVAL) {
-    await new Promise(resolve => setTimeout(resolve, COINGECKO_MIN_INTERVAL - timeSinceLastCall));
-  }
-  lastCoinGeckoCall = Date.now();
-
-  const response = await axios.get(`${COINGECKO_BASE_URL}/simple/price`, {
-    params: {
-      ids: coinIds.join(','),
-      vs_currencies: 'usd',
-      include_24hr_change: true,
-      include_24hr_vol: true,
-      include_market_cap: true,
-    },
-    timeout: 10000,
-  });
-
-  const prices: MarketPrice[] = [];
-  
-  for (const [id, data] of Object.entries(response.data) as [string, any][]) {
-    const coin = symbolDetector.getCoinById(id);
-    prices.push({
-      symbol: coin?.symbol.toUpperCase() || id.toUpperCase(),
-      name: coin?.name || id,
-      price: data.usd || 0,
-      change24h: (data.usd || 0) * (data.usd_24h_change || 0) / 100,
-      changePercent24h: data.usd_24h_change || 0,
-      volume24h: data.usd_24h_vol || 0,
-      marketCap: data.usd_market_cap || 0,
-      source: 'coingecko',
-      lastUpdated: new Date().toISOString(),
-    });
-  }
-
-  return prices;
-}
-
-/**
- * Fetch from DexScreener (for DEX-only tokens)
- */
-async function fetchFromDexScreener(symbol: string): Promise<MarketPrice | null> {
-  try {
-    const response = await axios.get(`${DEXSCREENER_BASE_URL}/search`, {
-      params: { q: symbol },
-      timeout: 5000,
-    });
-
-    const pairs = response.data?.pairs || [];
-    if (pairs.length === 0) return null;
-
-    // Find best pair (highest liquidity)
-    const bestPair = pairs.reduce((best: any, current: any) => {
-      const bestLiq = best?.liquidity?.usd || 0;
-      const currentLiq = current?.liquidity?.usd || 0;
-      return currentLiq > bestLiq ? current : best;
-    }, pairs[0]);
-
-    if (!bestPair) return null;
-
-    return {
-      symbol: bestPair.baseToken?.symbol?.toUpperCase() || symbol.toUpperCase(),
-      name: bestPair.baseToken?.name || symbol,
-      price: parseFloat(bestPair.priceUsd) || 0,
-      change24h: 0, // DexScreener doesn't provide absolute change
-      changePercent24h: bestPair.priceChange?.h24 || 0,
-      volume24h: bestPair.volume?.h24 || 0,
-      marketCap: bestPair.fdv || 0,
-      source: 'dexscreener',
-      lastUpdated: new Date().toISOString(),
-    };
-  } catch (error) {
-    return null;
-  }
-}
-
-/**
  * Fetch default market data (top coins)
  */
-async function fetchDefaultMarketData(): Promise<MarketSnapshot> {
-  const defaultSymbols = ['BTC', 'ETH', 'SOL', 'DOGE', 'XRP', 'ADA', 'AVAX', 'LINK'];
-  const defaultIds = defaultSymbols.map(s => symbolDetector.getCoinBySymbol(s)?.id).filter(Boolean) as string[];
-  
-  const prices = await fetchPricesWithFallback(defaultIds, defaultSymbols);
+export async function fetchDefaultMarketData(): Promise<MarketSnapshot> {
+  const startTime = Date.now();
+  const defaultSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK'];
+  const defaultIds = defaultSymbols
+    .map(s => symbolDetector.getCoinBySymbol(s)?.id)
+    .filter(Boolean) as string[];
+
+  const prices = await fetchWithFallback(defaultIds, defaultSymbols);
 
   return {
     timestamp: new Date().toISOString(),
@@ -278,11 +564,13 @@ async function fetchDefaultMarketData(): Promise<MarketSnapshot> {
     requestedSymbols: defaultSymbols,
     foundSymbols: prices.map(p => p.symbol),
     missingSymbols: [],
+    sources: [...new Set(prices.map(p => p.source))],
+    fetchTime: Date.now() - startTime,
   };
 }
 
 /**
- * Fetch live market data (legacy compatibility)
+ * Legacy compatibility
  */
 export async function fetchLiveMarketData(): Promise<MarketSnapshot | null> {
   try {
@@ -294,42 +582,64 @@ export async function fetchLiveMarketData(): Promise<MarketSnapshot | null> {
 }
 
 /**
+ * Fetch single coin price
+ */
+export async function fetchSinglePrice(symbol: string): Promise<MarketPrice | null> {
+  const coin = symbolDetector.getCoinBySymbol(symbol);
+  if (!coin) return null;
+
+  const prices = await fetchWithFallback([coin.id], [symbol]);
+  return prices[0] || null;
+}
+
+// ============================================================================
+// FORMATTING
+// ============================================================================
+
+/**
  * Format market data for AI context
  */
 export function formatMarketDataForAI(snapshot: MarketSnapshot): string {
   const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  const dateStr = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   });
-  const timeStr = now.toLocaleTimeString('en-US', { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    timeZoneName: 'short' 
+  const timeStr = now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
   });
 
-  let context = `\n\n[LIVE MARKET DATA - ${dateStr}, ${timeStr}]\n`;
+  let context = `\n[LIVE MARKET DATA - ${dateStr}, ${timeStr}]\n`;
 
-  for (const coin of snapshot.prices) {
+  // Sort by market cap descending
+  const sortedPrices = [...snapshot.prices].sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+
+  for (const coin of sortedPrices) {
     const direction = coin.changePercent24h >= 0 ? '↑' : '↓';
-    const changeStr = coin.changePercent24h >= 0 
-      ? `+${coin.changePercent24h.toFixed(2)}%` 
+    const changeStr = coin.changePercent24h >= 0
+      ? `+${coin.changePercent24h.toFixed(2)}%`
       : `${coin.changePercent24h.toFixed(2)}%`;
-    
+
     context += `${coin.symbol}: $${formatPrice(coin.price)} (${direction}${changeStr} 24h)`;
+    
     if (coin.source === 'dexscreener') {
       context += ' [DEX]';
+    }
+    if (coin.confidence < 0.8) {
+      context += ' [unverified]';
     }
     context += '\n';
   }
 
   if (snapshot.missingSymbols.length > 0) {
-    context += `\nNote: No data found for: ${snapshot.missingSymbols.join(', ')}\n`;
+    context += `\nNo data found for: ${snapshot.missingSymbols.join(', ')}\n`;
   }
 
-  context += `[Data sources: ${[...new Set(snapshot.prices.map(p => p.source))].join(', ')}]\n`;
+  context += `[Sources: ${snapshot.sources.join(', ')} | Fetched in ${snapshot.fetchTime}ms]\n`;
 
   return context;
 }
@@ -338,15 +648,49 @@ export function formatMarketDataForAI(snapshot: MarketSnapshot): string {
  * Format price with appropriate precision
  */
 function formatPrice(price: number): string {
-  if (price >= 1000) {
+  if (price === 0) return '0';
+  if (price >= 10000) {
     return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  } else if (price >= 1000) {
+    return price.toLocaleString('en-US', { maximumFractionDigits: 1 });
   } else if (price >= 1) {
-    return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   } else if (price >= 0.01) {
     return price.toFixed(4);
   } else if (price >= 0.0001) {
     return price.toFixed(6);
+  } else if (price >= 0.00000001) {
+    return price.toFixed(8);
   } else {
     return price.toExponential(4);
   }
+}
+
+// ============================================================================
+// DIAGNOSTICS
+// ============================================================================
+
+/**
+ * Get system status
+ */
+export function getMarketDataStatus(): {
+  rateLimits: Record<string, { callCount: number; remaining: number }>;
+  cacheEnabled: boolean;
+  providers: { name: string; enabled: boolean; priority: number }[];
+} {
+  return {
+    rateLimits: {
+      MARKET_PRICES: rateLimiter.getStats('MARKET_PRICES'),
+      COINGECKO: rateLimiter.getStats('COINGECKO'),
+      CMC: rateLimiter.getStats('CMC'),
+      DEXSCREENER: rateLimiter.getStats('DEXSCREENER'),
+    },
+    cacheEnabled: true,
+    providers: [
+      { name: 'market-prices', enabled: true, priority: 1 },
+      { name: 'coingecko', enabled: true, priority: 2 },
+      { name: 'coinmarketcap', enabled: !!CONFIG.CMC_API_KEY, priority: 3 },
+      { name: 'dexscreener', enabled: true, priority: 4 },
+    ],
+  };
 }
