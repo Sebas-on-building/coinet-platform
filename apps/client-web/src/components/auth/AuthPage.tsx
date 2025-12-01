@@ -119,6 +119,10 @@ export function AuthPage() {
   const handleDemoMode = () => {
     if (setDemoMode) {
       setDemoMode(true);
+      // Navigate after setting demo mode
+      setTimeout(() => {
+        navigate("/");
+      }, 100);
     }
   };
 
