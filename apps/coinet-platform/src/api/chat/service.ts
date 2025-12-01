@@ -15,6 +15,7 @@ import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/mar
 import { getWhaleContextForAI } from '../../services/whale-data';
 import { getNewsForCoins, formatNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
+import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -73,15 +74,16 @@ export class ChatService {
       // 4. Get conversation context (last 10 messages)
       const context = await this.getConversationContext(conversation.id);
 
-      // 4.5. Fetch ALL live context: Market + Whale + News + Sentiment (parallel for speed)
+      // 4.5. Fetch ALL live context: User Memory + Market + Whale + News + Sentiment (parallel)
       let liveContextStr: string | undefined;
       try {
         // Detect coins mentioned in the message for targeted news
         const detectedCoins = await symbolDetector.detectCoins(request.message);
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
         
-        // Parallel fetch all context sources
-        const [marketData, whaleContext, newsSnapshot, sentiment] = await Promise.all([
+        // Parallel fetch all context sources (including user memory)
+        const [userContext, marketData, whaleContext, newsSnapshot, sentiment] = await Promise.all([
+          buildUserContextForAI(userId),  // 🧠 NEW: User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
           getNewsForCoins(coinSymbols),
@@ -90,7 +92,17 @@ export class ChatService {
         
         let contextParts: string[] = [];
         
-        // 1. Add market data (highest priority)
+        // 0. Add user profile context (highest priority - personalization!)
+        if (userContext.hasProfile && userContext.contextString) {
+          contextParts.push(userContext.contextString);
+          logger.debug('🧠 User context added', { 
+            hasPortfolio: userContext.portfolio.totalHoldings > 0,
+            hasPreferences: !!userContext.preferences.riskTolerance,
+            watchlistSize: userContext.watchlist.length
+          });
+        }
+        
+        // 1. Add market data
         if (marketData && marketData.prices.length > 0) {
           contextParts.push(formatMarketDataForAI(marketData));
           logger.debug('📊 Dynamic market data fetched', { 
@@ -133,6 +145,11 @@ export class ChatService {
       } catch (error: any) {
         logger.debug('⚠️ Could not fetch live context', { error: error?.message });
       }
+      
+      // 4.6. Extract memories from user message (background, don't block)
+      extractMemoriesFromMessage(userId, request.message).catch(err => 
+        logger.debug('🧠 Memory extraction failed', { error: err?.message })
+      );
 
       // 5. Call AI service (or use mock if unavailable)
       let aiResponse;

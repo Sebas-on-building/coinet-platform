@@ -298,3 +298,100 @@ model UserPreferences {
   @@map("user_preferences")
 }
 
+// ============================================================================
+// USER MEMORY SYSTEM - Phase 3 Divine Integration
+// ============================================================================
+
+// Long-term memories the AI remembers about the user
+model UserMemory {
+  id        String   @id @default(cuid())
+  userId    String
+  
+  // Memory content
+  category  MemoryCategory
+  key       String           // e.g., "favorite_coin", "trading_style"
+  value     String   @db.Text // The actual memory content
+  
+  // Memory metadata
+  confidence Float   @default(1.0)  // How confident AI is about this memory
+  source     String?                 // Where this memory came from (conversation, explicit)
+  
+  // Memory lifecycle
+  lastAccessed DateTime @default(now())
+  accessCount  Int      @default(0)
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  expiresAt    DateTime?  // Some memories can expire
+  
+  // Indexes
+  @@unique([userId, category, key])
+  @@index([userId])
+  @@index([userId, category])
+  @@map("user_memories")
+}
+
+enum MemoryCategory {
+  preference      // User preferences (risk tolerance, style)
+  portfolio       // Holdings and positions
+  watchlist       // Coins they're watching
+  goal            // Trading/investment goals
+  context         // General context (experience level, location)
+  interaction     // How they like to interact
+  insight         // Things AI learned about them
+}
+
+// User's portfolio holdings
+model UserPortfolio {
+  id        String   @id @default(cuid())
+  userId    String
+  
+  // Asset info
+  symbol    String          // e.g., "BTC", "ETH"
+  name      String?         // Full name
+  
+  // Position details
+  amount    Float           // Amount held
+  avgCost   Float?          // Average cost basis
+  
+  // Position metadata
+  exchange  String?         // Where held (binance, coinbase, wallet)
+  wallet    String?         // Wallet address if applicable
+  
+  // Tracking
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Indexes
+  @@unique([userId, symbol, exchange])
+  @@index([userId])
+  @@map("user_portfolio")
+}
+
+// User's watchlist
+model UserWatchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  
+  // Asset info
+  symbol    String
+  name      String?
+  
+  // Watch details
+  targetBuy  Float?    // Target buy price
+  targetSell Float?    // Target sell price
+  notes      String?   @db.Text
+  
+  // Alerts
+  alertEnabled Boolean @default(true)
+  
+  // Timestamps
+  addedAt    DateTime @default(now())
+  
+  // Indexes
+  @@unique([userId, symbol])
+  @@index([userId])
+  @@map("user_watchlist")
+}
+
