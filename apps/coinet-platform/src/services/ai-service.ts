@@ -1,7 +1,7 @@
 /**
- * 🤖 Coinet AI Service - OpenAI Integration
+ * 🤖 Coinet AI Service - Grok (xAI) Integration
  * 
- * Real AI-powered market analysis using OpenAI GPT-4
+ * Real AI-powered market analysis using Grok
  */
 
 import OpenAI from 'openai';
@@ -37,7 +37,7 @@ export interface AIAnalysisResponse {
   };
 }
 
-const SYSTEM_PROMPT = `You are Coinet AI, an expert cryptocurrency and financial market analyst. You provide:
+const SYSTEM_PROMPT = `You are Coinet AI, an expert cryptocurrency and financial market analyst powered by Grok. You provide:
 
 1. **Market Analysis**: Deep insights on crypto assets, trends, and market conditions
 2. **Trading Intelligence**: Technical analysis, sentiment analysis, and trading signals
@@ -55,18 +55,30 @@ Guidelines:
 You have access to real-time market data through the Coinet platform.`;
 
 export class AIService {
-  private openai: OpenAI | null = null;
+  private client: OpenAI | null = null;
   private isConfigured: boolean = false;
+  private provider: 'grok' | 'openai' = 'grok';
 
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
+    // Try Grok (xAI) first, then fall back to OpenAI
+    const grokApiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
     
-    if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
+    if (grokApiKey) {
+      this.client = new OpenAI({ 
+        apiKey: grokApiKey,
+        baseURL: 'https://api.x.ai/v1',
+      });
+      this.provider = 'grok';
       this.isConfigured = true;
-      logger.info('✅ OpenAI AI Service initialized');
+      logger.info('✅ Grok (xAI) AI Service initialized');
+    } else if (openaiApiKey) {
+      this.client = new OpenAI({ apiKey: openaiApiKey });
+      this.provider = 'openai';
+      this.isConfigured = true;
+      logger.info('✅ OpenAI AI Service initialized (fallback)');
     } else {
-      logger.warn('⚠️ OPENAI_API_KEY not configured - AI will use fallback responses');
+      logger.warn('⚠️ No AI API key configured (XAI_API_KEY or OPENAI_API_KEY) - AI will use fallback responses');
     }
   }
 
@@ -78,8 +90,8 @@ export class AIService {
     const requestId = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      if (!this.openai || !this.isConfigured) {
-        throw new Error('OpenAI not configured');
+      if (!this.client || !this.isConfigured) {
+        throw new Error('AI not configured');
       }
 
       // Build conversation messages
@@ -100,9 +112,14 @@ export class AIService {
       // Add current message
       messages.push({ role: 'user', content: request.content });
 
-      // Call OpenAI
-      const response = await this.openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      // Select model based on provider
+      const model = this.provider === 'grok' 
+        ? (process.env.GROK_MODEL || 'grok-3-latest')
+        : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
+
+      // Call AI
+      const response = await this.client.chat.completions.create({
+        model,
         messages,
         temperature: 0.7,
         max_tokens: 1500,
@@ -122,6 +139,7 @@ export class AIService {
         requestId,
         type: request.type,
         processingTime,
+        provider: this.provider,
         model: response.model,
         tokens: response.usage?.total_tokens,
       });
@@ -167,18 +185,18 @@ export class AIService {
   /**
    * Health check
    */
-  async healthCheck(): Promise<{ healthy: boolean; latency?: number }> {
+  async healthCheck(): Promise<{ healthy: boolean; latency?: number; provider?: string }> {
     if (!this.isConfigured) {
       return { healthy: false };
     }
 
     try {
       const start = Date.now();
-      await this.openai?.models.list();
+      await this.client?.models.list();
       const latency = Date.now() - start;
-      return { healthy: true, latency };
+      return { healthy: true, latency, provider: this.provider };
     } catch (error) {
-      return { healthy: false };
+      return { healthy: false, provider: this.provider };
     }
   }
 
