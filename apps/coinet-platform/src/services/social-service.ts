@@ -26,8 +26,8 @@ import { getTwitterContextForAI, TwitterContext } from './twitter-service';
 // ============================================================================
 
 const CONFIG = {
-  // LunarCrush API (optional - requires key)
-  LUNARCRUSH_URL: 'https://lunarcrush.com/api3',
+  // LunarCrush API v4 (with Bearer token auth)
+  LUNARCRUSH_URL: 'https://lunarcrush.com/api4/public',
   LUNARCRUSH_API_KEY: process.env.LUNARCRUSH_API_KEY || '',
   
   // Reddit (public API)
@@ -174,44 +174,73 @@ async function getRedditSentiment(): Promise<{
 
 async function fetchLunarCrushData(symbols: string[]): Promise<SocialMetrics[]> {
   if (!CONFIG.LUNARCRUSH_API_KEY) {
+    logger.debug('📱 LunarCrush API key not configured');
     return [];
   }
 
   try {
-    const response = await axios.get(`${CONFIG.LUNARCRUSH_URL}/coins`, {
+    // LunarCrush API v4 - fetch coins data
+    const response = await axios.get(`${CONFIG.LUNARCRUSH_URL}/coins/list/v2`, {
+      headers: {
+        'Authorization': `Bearer ${CONFIG.LUNARCRUSH_API_KEY}`,
+      },
       params: {
-        key: CONFIG.LUNARCRUSH_API_KEY,
-        symbol: symbols.join(','),
-        data: 'social',
+        sort: 'social_volume',
+        limit: 100,
       },
       timeout: CONFIG.TIMEOUT_MS,
     });
 
-    if (!response.data?.data) return [];
+    if (!response.data?.data) {
+      logger.debug('📱 LunarCrush returned no data');
+      return [];
+    }
 
-    return response.data.data.map((coin: any) => {
-      // LunarCrush uses 0-5 scale, convert to 0-100
-      const lunarScore = coin.average_sentiment || 2.5;
-      const normalizedScore = Math.round((lunarScore / 5) * 100);
+    // Filter for requested symbols
+    const symbolsLower = symbols.map(s => s.toLowerCase());
+    const filteredCoins = response.data.data.filter((coin: any) => 
+      symbolsLower.includes(coin.symbol?.toLowerCase()) ||
+      symbolsLower.includes(coin.name?.toLowerCase())
+    );
+
+    logger.info('📱 LunarCrush data fetched', { 
+      requested: symbols.length, 
+      found: filteredCoins.length,
+      total: response.data.data.length 
+    });
+
+    return filteredCoins.map((coin: any) => {
+      // LunarCrush sentiment: 1-5 scale (1=bearish, 5=bullish)
+      const lunarScore = coin.sentiment || coin.average_sentiment || 3;
+      const normalizedScore = Math.round(((lunarScore - 1) / 4) * 100); // Convert 1-5 to 0-100
+      
+      // Social volume change calculation
+      const volumeChange = coin.social_volume_24h_percent || 
+                          coin.percent_change_24h || 0;
       
       return {
-        symbol: coin.symbol,
-        name: coin.name,
-        socialVolume24h: coin.social_volume || 0,
-        socialVolumeChange: coin.social_volume_change_24h || 0,
+        symbol: coin.symbol?.toUpperCase() || '',
+        name: coin.name || coin.symbol || '',
+        socialVolume24h: coin.social_volume || coin.social_volume_24h || 0,
+        socialVolumeChange: volumeChange,
         sentiment: mapSentimentFromScore(normalizedScore),
         sentimentScore: normalizedScore,
-        twitterMentions: coin.tweets || 0,
-        redditMentions: coin.reddit_posts || 0,
-        telegramMentions: 0,
-        isTrending: coin.social_volume_change_24h > 50,
-        influencerMentions: coin.influencer_mentions || 0,
+        twitterMentions: coin.tweets || coin.tweet_volume_24h || 0,
+        redditMentions: coin.reddit_posts || coin.reddit_posts_24h || 0,
+        telegramMentions: coin.telegram_messages || 0,
+        isTrending: volumeChange > 30 || (coin.galaxy_score || 0) > 70,
+        trendingRank: coin.rank || undefined,
+        influencerMentions: coin.influencer_mentions || coin.influencers_24h || 0,
         topInfluencers: [],
         lastUpdated: new Date(),
       };
     });
   } catch (error: any) {
-    logger.debug('📱 LunarCrush fetch failed', { error: error.message });
+    logger.warn('📱 LunarCrush fetch failed', { 
+      error: error.message,
+      status: error.response?.status,
+      data: error.response?.data 
+    });
     return [];
   }
 }
