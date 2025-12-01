@@ -15,6 +15,7 @@ import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/mar
 import { getWhaleContextForAI } from '../../services/whale-data';
 import { getNewsForCoins, formatNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
+import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
@@ -81,13 +82,14 @@ export class ChatService {
         const detectedCoins = await symbolDetector.detectCoins(request.message);
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
         
-        // Parallel fetch all context sources (including user memory)
-        const [userContext, marketData, whaleContext, newsSnapshot, sentiment] = await Promise.all([
-          buildUserContextForAI(userId),  // 🧠 NEW: User memory
+        // Parallel fetch all context sources (including user memory + social)
+        const [userContext, marketData, whaleContext, newsSnapshot, sentiment, socialData] = await Promise.all([
+          buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
           getNewsForCoins(coinSymbols),
           getMarketSentiment(),
+          getSocialSentiment(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 📱 Social sentiment
         ]);
         
         let contextParts: string[] = [];
@@ -136,6 +138,15 @@ export class ChatService {
           logger.debug('🐋 Whale context added', { 
             chains: whaleContext.monitoredChains,
             capabilities: whaleContext.capabilities.length
+          });
+        }
+        
+        // 5. Add social sentiment context
+        if (socialData && socialData.coins.length > 0) {
+          contextParts.push(formatSocialForAI(socialData));
+          logger.debug('📱 Social context added', { 
+            overall: socialData.overallSentiment,
+            trending: socialData.trendingCoins.length
           });
         }
         

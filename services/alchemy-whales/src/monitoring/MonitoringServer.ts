@@ -1,5 +1,5 @@
 /**
- * Monitoring Server - Prometheus metrics and health checks
+ * Monitoring Server - Prometheus metrics, health checks, and Whale Query API
  */
 
 import express, { Express } from 'express';
@@ -7,6 +7,7 @@ import { MetricsCollector } from './MetricsCollector';
 import { HealthCheck } from './HealthCheck';
 import { ServiceConfig } from '../types';
 import { createLogger } from '../utils/logger';
+import { createWhaleQueryRouter } from '../api/WhaleQueryRouter';
 
 export class MonitoringServer {
   private app: Express;
@@ -33,6 +34,10 @@ export class MonitoringServer {
    * Setup routes
    */
   private setupRoutes(): void {
+    // Whale Query API endpoints
+    this.app.use('/api/whales', createWhaleQueryRouter());
+    this.logger.info('Whale Query API mounted at /api/whales');
+
     // Prometheus metrics endpoint
     this.app.get(this.config.path, async (_req, res) => {
       try {

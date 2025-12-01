@@ -251,12 +251,11 @@ export async function isWhaleServiceAvailable(): Promise<boolean> {
 }
 
 // ============================================================================
-// FUTURE: Whale Query API (Phase 2)
+// WHALE QUERY API (Phase 4 - Now Live!)
 // ============================================================================
 
 /**
- * Placeholder for future whale transfer queries
- * Will be implemented when alchemy-whales exposes query API
+ * Whale transfer data from alchemy-whales service
  */
 export interface WhaleTransfer {
   chain: string;
@@ -264,43 +263,130 @@ export interface WhaleTransfer {
   from: string;
   to: string;
   value: number;
+  valueUSD: number;
   token: string;
+  tokenSymbol: string;
   timestamp: Date;
   isWhale: boolean;
-  classification: 'accumulation' | 'distribution' | 'transfer' | 'unknown';
+  category: string;
 }
 
 /**
- * FUTURE: Query recent whale transfers
- * @planned Phase 2
+ * Get recent whale transfers
  */
-export async function getRecentWhaleTransfers(_chain: string, _limit: number = 10): Promise<WhaleTransfer[]> {
-  // TODO: Implement when alchemy-whales exposes query API
-  logger.debug('🐋 Whale transfer query not yet available (planned Phase 2)');
-  return [];
+export async function getRecentWhaleTransfers(
+  chain?: string, 
+  limit: number = 20
+): Promise<WhaleTransfer[]> {
+  try {
+    let url = `${CONFIG.ALCHEMY_WHALES_URL}/api/whales/recent?limit=${limit}`;
+    if (chain) url += `&chain=${chain}`;
+    
+    const response = await axios.get(url, { timeout: CONFIG.REQUEST_TIMEOUT });
+    
+    if (response.data?.success && response.data?.data) {
+      return response.data.data.map((t: any) => ({
+        ...t,
+        timestamp: new Date(t.timestamp),
+      }));
+    }
+    return [];
+  } catch (error: any) {
+    logger.debug('🐋 Recent whale transfers unavailable', { error: error.message });
+    return [];
+  }
 }
 
 /**
- * FUTURE: Check if address is known whale
- * @planned Phase 2
+ * Check if address is known whale
  */
-export async function isKnownWhale(_address: string): Promise<boolean> {
-  // TODO: Implement when alchemy-whales exposes query API
-  return false;
+export async function isKnownWhale(address: string): Promise<{
+  isWhale: boolean;
+  confidence: number;
+  totalVolumeUSD: number;
+}> {
+  try {
+    const response = await axios.get(
+      `${CONFIG.ALCHEMY_WHALES_URL}/api/whales/address/${address}`,
+      { timeout: CONFIG.REQUEST_TIMEOUT }
+    );
+    
+    if (response.data?.success && response.data?.data) {
+      return {
+        isWhale: response.data.data.isWhale,
+        confidence: response.data.data.confidence,
+        totalVolumeUSD: response.data.data.totalVolumeUSD,
+      };
+    }
+    return { isWhale: false, confidence: 0, totalVolumeUSD: 0 };
+  } catch (error: any) {
+    logger.debug('🐋 Whale address check failed', { error: error.message });
+    return { isWhale: false, confidence: 0, totalVolumeUSD: 0 };
+  }
 }
 
 /**
- * FUTURE: Get whale activity for specific token
- * @planned Phase 2
+ * Get whale activity for specific token
  */
-export async function getWhaleActivityForToken(_symbol: string): Promise<{
-  recent24h: number;
+export async function getWhaleActivityForToken(symbol: string): Promise<{
+  transfers24h: number;
+  volumeUSD24h: number;
   netFlow: 'accumulating' | 'distributing' | 'neutral';
-  topWhaleBuys: WhaleTransfer[];
-  topWhaleSells: WhaleTransfer[];
+  topBuyers: string[];
+  topSellers: string[];
 } | null> {
-  // TODO: Implement when alchemy-whales exposes query API
-  return null;
+  try {
+    const response = await axios.get(
+      `${CONFIG.ALCHEMY_WHALES_URL}/api/whales/token/${symbol}`,
+      { timeout: CONFIG.REQUEST_TIMEOUT }
+    );
+    
+    if (response.data?.success && response.data?.data) {
+      return {
+        transfers24h: response.data.data.transfers24h,
+        volumeUSD24h: response.data.data.volumeUSD24h,
+        netFlow: response.data.data.netFlow,
+        topBuyers: response.data.data.topBuyers,
+        topSellers: response.data.data.topSellers,
+      };
+    }
+    return null;
+  } catch (error: any) {
+    logger.debug('🐋 Token whale activity unavailable', { symbol, error: error.message });
+    return null;
+  }
+}
+
+/**
+ * Get overall whale activity summary
+ */
+export async function getWhaleSummary(): Promise<{
+  totalTransfers: number;
+  totalVolumeUSD: number;
+  activeChains: string[];
+  marketSentiment: 'bullish' | 'bearish' | 'neutral';
+  topTokens: { symbol: string; volume: number }[];
+} | null> {
+  try {
+    const response = await axios.get(
+      `${CONFIG.ALCHEMY_WHALES_URL}/api/whales/summary`,
+      { timeout: CONFIG.REQUEST_TIMEOUT }
+    );
+    
+    if (response.data?.success && response.data?.data) {
+      return {
+        totalTransfers: response.data.data.totalTransfers,
+        totalVolumeUSD: response.data.data.totalVolumeUSD,
+        activeChains: response.data.data.activeChains,
+        marketSentiment: response.data.data.marketSentiment,
+        topTokens: response.data.data.topTokens?.slice(0, 5) || [],
+      };
+    }
+    return null;
+  } catch (error: any) {
+    logger.debug('🐋 Whale summary unavailable', { error: error.message });
+    return null;
+  }
 }
 
 // ============================================================================
@@ -308,14 +394,16 @@ export async function getWhaleActivityForToken(_symbol: string): Promise<{
 // ============================================================================
 
 export const whaleService = {
+  // Health operations
   checkHealth: checkWhaleServiceHealth,
   getContext: getWhaleContextForAI,
   formatStatus: formatWhaleStatusForAI,
   isAvailable: isWhaleServiceAvailable,
-  // Future
+  // Whale Query API (Phase 4 - Live!)
   getRecentTransfers: getRecentWhaleTransfers,
   isKnownWhale,
   getActivityForToken: getWhaleActivityForToken,
+  getSummary: getWhaleSummary,
 };
 
 export default whaleService;
