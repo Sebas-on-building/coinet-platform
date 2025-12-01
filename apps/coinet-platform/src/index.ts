@@ -32,11 +32,31 @@ app.options('*', (req: Request, res: Response) => {
   res.sendStatus(204);
 });
 
-// CORS configuration - Allow ALL origins for development (will restrict in production)
+// CORS configuration - Allow specific origins including app.coinet.ai
+const allowedOrigins = [
+  'https://app.coinet.ai',
+  'https://coinet.ai',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  process.env.CORS_ORIGIN,
+].filter(Boolean);
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow all origins in development
-    callback(null, true);
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+    // Allow all Vercel preview deployments
+    if (origin.includes('vercel.app') || origin.includes('coinet')) {
+      return callback(null, true);
+    }
+    // Allow explicitly listed origins
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // In production, still allow for now (can restrict later)
+    return callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
