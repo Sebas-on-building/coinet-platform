@@ -38,10 +38,15 @@ export async function fetchLiveMarketData(): Promise<MarketSnapshot | null> {
     });
 
     if (response.data?.data) {
-      const prices: MarketPrice[] = Object.entries(response.data.data).map(([symbol, data]: [string, any]) => ({
-        symbol,
+      // API returns an array of price objects
+      const rawData = Array.isArray(response.data.data) 
+        ? response.data.data 
+        : Object.values(response.data.data);
+
+      const prices: MarketPrice[] = rawData.map((data: any) => ({
+        symbol: (data.symbol || data.coinId || 'UNKNOWN').toUpperCase(),
         price: data.price || 0,
-        change24h: data.priceChange24h || data.change24h || 0,
+        change24h: data.priceChangePercentage24h || data.priceChange24h || 0,
         volume24h: data.volume24h || 0,
         marketCap: data.marketCap || 0,
       }));
