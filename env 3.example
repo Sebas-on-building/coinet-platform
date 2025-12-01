@@ -1,0 +1,75 @@
+# =============================================================================
+# COINET AI - ENVIRONMENT CONFIGURATION TEMPLATE
+# Copy this file to .env and fill in your actual values
+# =============================================================================
+
+# Environment
+NODE_ENV=development
+ENVIRONMENT=dev
+
+# Database Configuration
+# For CI we default to local Postgres. PRs and main use a Postgres service.
+DATABASE_URL=postgresql://coinet_user:coinet_password@localhost:5432/coinet_ai_dev
+# Some legacy services use POSTGRES_URL, keep both for compatibility
+POSTGRES_URL=${DATABASE_URL}
+REDIS_URL=redis://localhost:6379
+
+# AI/LLM API Keys
+OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+GOOGLE_AI_API_KEY=your_google_ai_api_key_here
+
+# Message Queue
+KAFKA_BROKERS=localhost:9092
+
+# Service Ports
+INGEST_SERVICE_PORT=8001
+CONTEXT_SERVICE_PORT=8002
+INFERENCE_SERVICE_PORT=8003
+FEEDBACK_SERVICE_PORT=8004
+
+# Frontend Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
+
+# Security
+JWT_SECRET=your_jwt_secret_here
+API_KEY=your_api_key_here
+ENCRYPTION_KEY=your_encryption_key_here
+
+# External APIs
+COINMARKETCAP_API_KEY=your_coinmarketcap_api_key_here
+COINGECKO_API_KEY=your_coingecko_api_key_here
+BINANCE_API_KEY=your_binance_api_key_here
+BINANCE_SECRET_KEY=your_binance_secret_key_here
+
+# Monitoring & Analytics
+SENTRY_DSN=your_sentry_dsn_here
+DATADOG_API_KEY=your_datadog_api_key_here
+MIXPANEL_TOKEN=your_mixpanel_token_here
+
+# AWS Configuration (for production)
+AWS_REGION=us-west-2
+AWS_ACCESS_KEY_ID=your_aws_access_key_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key_here
+S3_BUCKET_NAME=coinet-ai-data
+
+# Logging
+LOG_LEVEL=info
+LOG_FORMAT=json
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:3000,http://localhost:3001
+
+# Webhook URLs (for notifications)
+SLACK_WEBHOOK_URL=your_slack_webhook_url_here
+DISCORD_WEBHOOK_URL=your_discord_webhook_url_here
+
+# Development Tools
+ENABLE_SWAGGER=true
+ENABLE_PLAYGROUND=true
+ENABLE_DEBUG=true 
