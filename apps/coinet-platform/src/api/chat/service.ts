@@ -11,6 +11,7 @@
 
 import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
+import { fetchLiveMarketData, formatMarketDataForAI } from '../../services/market-data';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
 import { logger } from '../../utils/logger';
@@ -68,6 +69,18 @@ export class ChatService {
       // 4. Get conversation context (last 10 messages)
       const context = await this.getConversationContext(conversation.id);
 
+      // 4.5. Fetch live market data for AI context
+      let liveMarketDataStr: string | undefined;
+      try {
+        const marketData = await fetchLiveMarketData();
+        if (marketData) {
+          liveMarketDataStr = formatMarketDataForAI(marketData);
+          logger.debug('📊 Live market data fetched for AI context', { coins: marketData.prices.length });
+        }
+      } catch (error) {
+        logger.debug('⚠️ Could not fetch live market data', error);
+      }
+
       // 5. Call AI service (or use mock if unavailable)
       let aiResponse;
       try {
@@ -79,6 +92,7 @@ export class ChatService {
             agentId: request.agentId,
             analysisDepth: request.context?.analysisDepth || 'standard',
             conversationHistory: context,
+            liveMarketData: liveMarketDataStr,
           },
         });
       } catch (error) {

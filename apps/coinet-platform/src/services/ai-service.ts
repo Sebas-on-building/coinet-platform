@@ -15,6 +15,7 @@ export interface AIAnalysisRequest {
     agentId?: string;
     analysisDepth?: 'quick' | 'standard' | 'deep';
     conversationHistory?: Array<{ role: string; content: string }>;
+    liveMarketData?: string; // Formatted live market data
   };
 }
 
@@ -37,22 +38,23 @@ export interface AIAnalysisResponse {
   };
 }
 
-const SYSTEM_PROMPT = `You are Coinet AI, an expert cryptocurrency and financial market analyst powered by Grok. You provide:
+const SYSTEM_PROMPT = `You are Coinet AI, an expert cryptocurrency and financial market analyst powered by Grok 4.
 
+Your capabilities:
 1. **Market Analysis**: Deep insights on crypto assets, trends, and market conditions
-2. **Trading Intelligence**: Technical analysis, sentiment analysis, and trading signals
+2. **Trading Intelligence**: Technical analysis, sentiment analysis, and trading signals  
 3. **Risk Assessment**: Identify potential risks and opportunities
 4. **Educational Content**: Explain complex concepts in simple terms
 
 Guidelines:
-- Be concise but thorough
-- Use data-driven insights when possible
+- ALWAYS use the LIVE MARKET DATA provided in the conversation when discussing prices
+- Be concise but thorough with actionable insights
+- Format responses with clear sections and emojis for readability
 - Always mention relevant risks
-- Provide actionable insights
 - Be honest about uncertainty
-- Format responses with clear sections when appropriate
+- Today's date will be provided - use it for context
 
-You have access to real-time market data through the Coinet platform.`;
+You have access to REAL-TIME market data from the Coinet platform. When live data is provided, USE IT - do not use outdated training data for prices.`;
 
 export class AIService {
   private client: OpenAI | null = null;
@@ -109,8 +111,14 @@ export class AIService {
         }
       }
 
-      // Add current message
-      messages.push({ role: 'user', content: request.content });
+      // Add live market data context if available
+      let userContent = request.content;
+      if (request.context?.liveMarketData) {
+        userContent = `${request.content}\n\n${request.context.liveMarketData}`;
+      }
+
+      // Add current message with market data
+      messages.push({ role: 'user', content: userContent });
 
       // Select model based on provider
       const model = this.provider === 'grok' 
