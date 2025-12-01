@@ -1,24 +1,25 @@
 /**
  * 📱 Social Sentiment Service - Phase 4 Divine Integration
  * 
- * Aggregates social sentiment from multiple platforms.
- * ALIGNED with Fear & Greed Index for consistency.
+ * Aggregates REAL social sentiment from multiple platforms.
  * 
  * SOURCES:
- * - Fear & Greed Index (primary sentiment source)
- * - LunarCrush API (social metrics, requires key)
- * - Reddit activity (via public API)
+ * - Twitter/X API (REAL tweets and sentiment)
+ * - Reddit API (REAL posts)
+ * - LunarCrush API (if configured)
+ * - Fear & Greed Index (for alignment)
  * 
  * FEATURES:
- * - Consistent sentiment aligned with market conditions
- * - Social volume tracking
- * - Trending detection based on price action
- * - Community activity analysis
+ * - Real tweet analysis
+ * - Reddit community sentiment
+ * - Trending detection
+ * - Influencer tracking
  */
 
 import axios from 'axios';
 import { logger } from '../utils/logger';
 import { getMarketSentiment } from './sentiment-service';
+import { getTwitterContextForAI, TwitterContext } from './twitter-service';
 
 // ============================================================================
 // CONFIGURATION
@@ -345,7 +346,7 @@ async function getDynamicSocialData(symbols: string[]): Promise<SocialMetrics[]>
 
 /**
  * 🎯 MAIN: Get social sentiment for coins
- * ALIGNED with Fear & Greed Index for consistency
+ * Uses REAL Twitter data when available, falls back to derived data
  */
 export async function getSocialSentiment(symbols: string[] = ['BTC', 'ETH', 'SOL']): Promise<SocialSnapshot> {
   const startTime = Date.now();
@@ -357,29 +358,74 @@ export async function getSocialSentiment(symbols: string[] = ['BTC', 'ETH', 'SOL
   }
 
   let metrics: SocialMetrics[] = [];
+  let twitterContext: TwitterContext | null = null;
+  let dataSource = 'derived';
 
-  // Try LunarCrush first (real data)
-  if (CONFIG.LUNARCRUSH_API_KEY) {
-    metrics = await fetchLunarCrushData(symbols);
+  // 1. Try Twitter API first (REAL data)
+  try {
+    twitterContext = await getTwitterContextForAI(symbols);
+    if (twitterContext.isAvailable && twitterContext.metrics.length > 0) {
+      dataSource = 'twitter';
+      metrics = twitterContext.metrics.map(tm => ({
+        symbol: tm.symbol,
+        name: tm.symbol,
+        socialVolume24h: tm.tweetCount * 100, // Estimate total volume
+        socialVolumeChange: 0, // Would need historical data
+        sentiment: tm.sentiment === 'bullish' ? 'bullish' : 
+                   tm.sentiment === 'bearish' ? 'bearish' : 'neutral',
+        sentimentScore: tm.sentimentScore,
+        twitterMentions: tm.tweetCount,
+        redditMentions: 0,
+        telegramMentions: 0,
+        isTrending: tm.tweetCount > 50,
+        trendingRank: undefined,
+        influencerMentions: tm.influencerMentions,
+        topInfluencers: [],
+        lastUpdated: tm.lastUpdated,
+      }));
+      logger.info('📱 Using REAL Twitter data', { symbols: metrics.map(m => m.symbol) });
+    }
+  } catch (error: any) {
+    logger.debug('📱 Twitter data unavailable, trying alternatives', { error: error.message });
   }
 
-  // Use dynamic data aligned with market conditions if no real data
+  // 2. Try LunarCrush (REAL data)
+  if (metrics.length === 0 && CONFIG.LUNARCRUSH_API_KEY) {
+    metrics = await fetchLunarCrushData(symbols);
+    if (metrics.length > 0) dataSource = 'lunarcrush';
+  }
+
+  // 3. Fall back to derived data aligned with Fear & Greed
   if (metrics.length === 0) {
     metrics = await getDynamicSocialData(symbols);
+    dataSource = 'derived';
   }
 
-  // Get Reddit sentiment for additional context
+  // Get Reddit sentiment for additional context (always try)
   const redditSentiment = await getRedditSentiment();
 
-  // Calculate overall sentiment (aligned with Fear & Greed)
+  // Merge Reddit data if we have real Twitter data
+  if (dataSource === 'twitter' && redditSentiment.communities.length > 0) {
+    // Adjust sentiment based on Reddit activity
+    const redditAdjustment = redditSentiment.overall === 'bullish' ? 5 : 
+                             redditSentiment.overall === 'bearish' ? -5 : 0;
+    metrics = metrics.map(m => ({
+      ...m,
+      sentimentScore: Math.max(0, Math.min(100, m.sentimentScore + redditAdjustment)),
+    }));
+  }
+
+  // Calculate overall sentiment
   const overallSentiment = calculateOverallSentiment(metrics);
 
-  // Find trending coins (high volume change, not necessarily bullish)
-  const trendingCoins = metrics
-    .filter(m => m.isTrending || m.socialVolumeChange > 15)
-    .sort((a, b) => b.socialVolumeChange - a.socialVolumeChange)
-    .slice(0, 5)
-    .map(m => m.symbol);
+  // Find trending coins
+  const trendingCoins = twitterContext?.isAvailable 
+    ? twitterContext.trendingCoins 
+    : metrics
+        .filter(m => m.isTrending || m.socialVolumeChange > 15)
+        .sort((a, b) => b.socialVolumeChange - a.socialVolumeChange)
+        .slice(0, 5)
+        .map(m => m.symbol);
 
   // Top mentions by volume
   const topMentions = metrics
@@ -400,6 +446,7 @@ export async function getSocialSentiment(symbols: string[] = ['BTC', 'ETH', 'SOL
   socialCache = { data: snapshot, timestamp: Date.now() };
 
   logger.info('📱 Social sentiment updated', {
+    source: dataSource,
     coins: metrics.length,
     overall: overallSentiment,
     trending: trendingCoins.length,
