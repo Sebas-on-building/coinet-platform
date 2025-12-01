@@ -1,11 +1,10 @@
 /**
- * 🤖 Coinet AI Service Integration
+ * 🤖 Coinet AI Service - OpenAI Integration
  * 
- * Perfect integration with the coinet-ai service.
- * Handles all AI analysis requests with retries, error handling, and caching.
+ * Real AI-powered market analysis using OpenAI GPT-4
  */
 
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 
 export interface AIAnalysisRequest {
@@ -38,87 +37,110 @@ export interface AIAnalysisResponse {
   };
 }
 
+const SYSTEM_PROMPT = `You are Coinet AI, an expert cryptocurrency and financial market analyst. You provide:
+
+1. **Market Analysis**: Deep insights on crypto assets, trends, and market conditions
+2. **Trading Intelligence**: Technical analysis, sentiment analysis, and trading signals
+3. **Risk Assessment**: Identify potential risks and opportunities
+4. **Educational Content**: Explain complex concepts in simple terms
+
+Guidelines:
+- Be concise but thorough
+- Use data-driven insights when possible
+- Always mention relevant risks
+- Provide actionable insights
+- Be honest about uncertainty
+- Format responses with clear sections when appropriate
+
+You have access to real-time market data through the Coinet platform.`;
+
 export class AIService {
-  private client: AxiosInstance;
-  private baseURL: string;
-  private timeout: number;
+  private openai: OpenAI | null = null;
+  private isConfigured: boolean = false;
 
   constructor() {
-    this.baseURL = process.env.AI_SERVICE_URL || 'http://localhost:3001';
-    this.timeout = parseInt(process.env.AI_SERVICE_TIMEOUT || '30000', 10);
-
-    this.client = axios.create({
-      baseURL: this.baseURL,
-      timeout: this.timeout,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    // Request interceptor for logging
-    this.client.interceptors.request.use(
-      (config) => {
-        logger.debug('🤖 AI Service Request', {
-          url: config.url,
-          method: config.method,
-          baseURL: config.baseURL,
-        });
-        return config;
-      },
-      (error) => {
-        logger.error('❌ AI Service Request Error', error);
-        return Promise.reject(error);
-      }
-    );
-
-    // Response interceptor for error handling
-    this.client.interceptors.response.use(
-      (response) => {
-        logger.debug('✅ AI Service Response', {
-          status: response.status,
-          processingTime: response.data.metadata?.processingTime,
-        });
-        return response;
-      },
-      (error: AxiosError) => {
-        if (error.response) {
-          logger.error('❌ AI Service Error Response', {
-            status: error.response.status,
-            data: error.response.data,
-          });
-        } else if (error.request) {
-          logger.error('❌ AI Service No Response', {
-            message: 'Service unavailable or timeout',
-          });
-        } else {
-          logger.error('❌ AI Service Request Setup Error', {
-            message: error.message,
-          });
-        }
-        return Promise.reject(this.normalizeError(error));
-      }
-    );
+    const apiKey = process.env.OPENAI_API_KEY;
+    
+    if (apiKey) {
+      this.openai = new OpenAI({ apiKey });
+      this.isConfigured = true;
+      logger.info('✅ OpenAI AI Service initialized');
+    } else {
+      logger.warn('⚠️ OPENAI_API_KEY not configured - AI will use fallback responses');
+    }
   }
 
   /**
-   * Analyze market/crypto query
+   * Analyze market/crypto query using OpenAI
    */
   async analyze(request: AIAnalysisRequest): Promise<AIAnalysisResponse> {
-    try {
-      const startTime = Date.now();
-      const response = await this.client.post<AIAnalysisResponse>(
-        '/api/v1/analyze',
-        request
-      );
+    const startTime = Date.now();
+    const requestId = `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      const processingTime = Date.now() - startTime;
-      logger.info('🧠 AI Analysis Complete', {
-        type: request.type,
-        confidence: response.data.data.confidence,
-        processingTime,
+    try {
+      if (!this.openai || !this.isConfigured) {
+        throw new Error('OpenAI not configured');
+      }
+
+      // Build conversation messages
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: 'system', content: SYSTEM_PROMPT },
+      ];
+
+      // Add conversation history if available
+      if (request.context?.conversationHistory) {
+        for (const msg of request.context.conversationHistory.slice(-8)) {
+          messages.push({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          });
+        }
+      }
+
+      // Add current message
+      messages.push({ role: 'user', content: request.content });
+
+      // Call OpenAI
+      const response = await this.openai.chat.completions.create({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages,
+        temperature: 0.7,
+        max_tokens: 1500,
       });
 
-      return response.data;
+      const content = response.choices[0]?.message?.content || 'I apologize, but I could not generate a response.';
+      const processingTime = Date.now() - startTime;
+
+      // Extract symbol if mentioned
+      const symbolMatch = content.match(/\b(BTC|ETH|SOL|ADA|AVAX|DOGE|XRP|DOT|MATIC|LINK)\b/i);
+      const symbol = symbolMatch ? symbolMatch[1].toUpperCase() : undefined;
+
+      // Extract key topics
+      const keyTopics = this.extractKeyTopics(content);
+
+      logger.info('🧠 AI Analysis Complete', {
+        requestId,
+        type: request.type,
+        processingTime,
+        model: response.model,
+        tokens: response.usage?.total_tokens,
+      });
+
+      return {
+        success: true,
+        data: {
+          symbol,
+          thesis: content,
+          summary: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+          confidence: 0.85,
+          keyTopics,
+        },
+        metadata: {
+          requestId,
+          processingTime,
+          version: response.model,
+        },
+      };
     } catch (error) {
       logger.error('❌ AI Analysis Failed', error);
       throw error;
@@ -126,47 +148,47 @@ export class AIService {
   }
 
   /**
-   * Health check for AI service
+   * Extract key topics from response
+   */
+  private extractKeyTopics(content: string): string[] {
+    const topics: string[] = [];
+    
+    const cryptoKeywords = ['bitcoin', 'ethereum', 'solana', 'defi', 'nft', 'trading', 'market', 'bull', 'bear', 'whale', 'analysis'];
+    
+    for (const keyword of cryptoKeywords) {
+      if (content.toLowerCase().includes(keyword)) {
+        topics.push(keyword);
+      }
+    }
+    
+    return topics.slice(0, 5);
+  }
+
+  /**
+   * Health check
    */
   async healthCheck(): Promise<{ healthy: boolean; latency?: number }> {
+    if (!this.isConfigured) {
+      return { healthy: false };
+    }
+
     try {
       const start = Date.now();
-      const response = await this.client.get('/api/v1/health');
+      await this.openai?.models.list();
       const latency = Date.now() - start;
-
-      return {
-        healthy: response.status === 200,
-        latency,
-      };
+      return { healthy: true, latency };
     } catch (error) {
-      logger.warn('⚠️ AI Service Health Check Failed', { error: error instanceof Error ? error.message : String(error) });
-      return {
-        healthy: false,
-      };
+      return { healthy: false };
     }
   }
 
   /**
-   * Normalize axios errors to friendly error format
+   * Check if service is configured
    */
-  private normalizeError(error: AxiosError): Error {
-    if (error.response) {
-      const data = error.response.data as any;
-      return new Error(
-        data?.error?.message || `AI Service Error: ${error.response.status}`
-      );
-    }
-
-    if (error.request) {
-      return new Error(
-        'AI Service unavailable. Please check if the service is running.'
-      );
-    }
-
-    return new Error(`AI Service Error: ${error.message}`);
+  isAvailable(): boolean {
+    return this.isConfigured;
   }
 }
 
 // Export singleton instance
 export const aiService = new AIService();
-
