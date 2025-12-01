@@ -13,6 +13,9 @@ import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/market-data';
 import { getWhaleContextForAI } from '../../services/whale-data';
+import { getNewsForCoins, formatNewsForAI } from '../../services/news-service';
+import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
+import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
 import { logger } from '../../utils/logger';
@@ -70,17 +73,24 @@ export class ChatService {
       // 4. Get conversation context (last 10 messages)
       const context = await this.getConversationContext(conversation.id);
 
-      // 4.5. Fetch live market data AND whale context for AI (parallel for speed)
+      // 4.5. Fetch ALL live context: Market + Whale + News + Sentiment (parallel for speed)
       let liveContextStr: string | undefined;
       try {
-        const [marketData, whaleContext] = await Promise.all([
+        // Detect coins mentioned in the message for targeted news
+        const detectedCoins = await symbolDetector.detectCoins(request.message);
+        const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
+        
+        // Parallel fetch all context sources
+        const [marketData, whaleContext, newsSnapshot, sentiment] = await Promise.all([
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
+          getNewsForCoins(coinSymbols),
+          getMarketSentiment(),
         ]);
         
         let contextParts: string[] = [];
         
-        // Add market data
+        // 1. Add market data (highest priority)
         if (marketData && marketData.prices.length > 0) {
           contextParts.push(formatMarketDataForAI(marketData));
           logger.debug('📊 Dynamic market data fetched', { 
@@ -90,7 +100,25 @@ export class ChatService {
           });
         }
         
-        // Add whale intelligence context
+        // 2. Add market sentiment (Fear & Greed)
+        if (sentiment) {
+          contextParts.push(formatSentimentForAI(sentiment));
+          logger.debug('📊 Sentiment added', { 
+            value: sentiment.fearGreed.value,
+            classification: sentiment.fearGreed.classification 
+          });
+        }
+        
+        // 3. Add news context
+        if (newsSnapshot && newsSnapshot.articles.length > 0) {
+          contextParts.push(formatNewsForAI(newsSnapshot));
+          logger.debug('📰 News context added', { 
+            count: newsSnapshot.articles.length,
+            sentiment: newsSnapshot.dominantSentiment 
+          });
+        }
+        
+        // 4. Add whale intelligence context
         if (whaleContext.isAvailable && whaleContext.contextForAI) {
           contextParts.push(whaleContext.contextForAI);
           logger.debug('🐋 Whale context added', { 
