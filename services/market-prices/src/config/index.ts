@@ -50,6 +50,36 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
 }
 
 /**
+ * Parse Redis configuration from REDIS_URL or individual env vars
+ * Supports Railway's REDIS_URL format: redis://default:password@host:port
+ */
+function parseRedisConfig(): ServiceConfig['redis'] {
+  const redisUrl = process.env.REDIS_URL;
+  
+  if (redisUrl) {
+    try {
+      const url = new URL(redisUrl);
+      return {
+        host: url.hostname,
+        port: parseInt(url.port, 10) || 6379,
+        password: url.password || '',
+        db: parseInt(url.pathname.slice(1), 10) || 0,
+      };
+    } catch (e) {
+      console.warn('Failed to parse REDIS_URL, falling back to individual env vars');
+    }
+  }
+  
+  // Fallback to individual env vars
+  return {
+    host: getEnv('REDIS_HOST', 'localhost'),
+    port: getEnvNumber('REDIS_PORT', 6379),
+    password: getEnv('REDIS_PASSWORD', ''),
+    db: getEnvNumber('REDIS_DB', 0),
+  };
+}
+
+/**
  * Build CoinGecko provider configuration
  */
 function buildCoinGeckoConfig(): ProviderConfig {
@@ -347,12 +377,7 @@ export function buildConfig(): ServiceConfig {
       user: getEnv('TIMESCALE_USER', 'coinet_user'),
       password: getEnv('TIMESCALE_PASSWORD', ''), // Optional - can be empty if not using database
     },
-    redis: {
-      host: getEnv('REDIS_HOST', 'localhost'),
-      port: getEnvNumber('REDIS_PORT', 6379),
-      password: getEnv('REDIS_PASSWORD', ''),
-      db: getEnvNumber('REDIS_DB', 0),
-    },
+    redis: parseRedisConfig(),
     cacheTTL: getEnvNumber('CACHE_TTL_SECONDS', 60), // Increased from 30s for better cache hit rate
     failoverRetryDelay: getEnvNumber('FAILOVER_RETRY_DELAY_MS', 5000),
     maxRetryAttempts: getEnvNumber('MAX_RETRY_ATTEMPTS', 3),

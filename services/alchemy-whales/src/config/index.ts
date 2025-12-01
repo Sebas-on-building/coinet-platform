@@ -50,6 +50,38 @@ function getBooleanEnv(key: string, defaultValue: boolean): boolean {
 }
 
 /**
+ * Parse Redis configuration from REDIS_URL or individual env vars
+ * Supports Railway's REDIS_URL format: redis://default:password@host:port
+ */
+function parseRedisConfig(): ServiceConfig['redis'] {
+  const redisUrl = process.env.REDIS_URL;
+  
+  if (redisUrl) {
+    try {
+      const url = new URL(redisUrl);
+      return {
+        host: url.hostname,
+        port: parseInt(url.port, 10) || 6379,
+        password: url.password || '',
+        db: parseInt(url.pathname.slice(1), 10) || 0,
+        keyPrefix: getOptionalEnv('REDIS_KEY_PREFIX', 'coinet:whales:'),
+      };
+    } catch (e) {
+      console.warn('Failed to parse REDIS_URL, falling back to individual env vars');
+    }
+  }
+  
+  // Fallback to individual env vars
+  return {
+    host: getOptionalEnv('REDIS_HOST', 'localhost'),
+    port: getNumberEnv('REDIS_PORT', 6379),
+    password: getOptionalEnv('REDIS_PASSWORD', ''),
+    db: getNumberEnv('REDIS_DB', 0),
+    keyPrefix: getOptionalEnv('REDIS_KEY_PREFIX', 'coinet:whales:'),
+  };
+}
+
+/**
  * Rate limiter configuration
  */
 const rateLimiterConfig: RateLimiterConfig = {
@@ -180,13 +212,7 @@ export const config: ServiceConfig = {
     poolMin: getNumberEnv('DATABASE_POOL_MIN', 2),
     poolMax: getNumberEnv('DATABASE_POOL_MAX', 10),
   },
-  redis: {
-    host: getOptionalEnv('REDIS_HOST', 'localhost'),
-    port: getNumberEnv('REDIS_PORT', 6379),
-    password: getOptionalEnv('REDIS_PASSWORD', ''),
-    db: getNumberEnv('REDIS_DB', 0),
-    keyPrefix: getOptionalEnv('REDIS_KEY_PREFIX', 'coinet:whales:'),
-  },
+  redis: parseRedisConfig(),
   webhook: {
     port: getNumberEnv('WEBHOOK_PORT', 3001),
     path: getOptionalEnv('WEBHOOK_PATH', '/webhooks/alchemy'),
