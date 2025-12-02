@@ -19,11 +19,22 @@
  * - Narrative extraction
  * 
  * @module social-intelligence
- * @version 1.0.0 - Divine Perfection Step 1.2.1
+ * @version 1.1.0 - Divine Perfection Step 1.2.1 + 1.2.2
  */
 
 import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
+import { 
+  analyzeSentiment as advancedSentimentAnalysis,
+  analyzeTrend,
+  detectVirality,
+  analyzeCommunity,
+  aggregateSentiment,
+  SentimentAnalysisResult,
+  TrendAnalysisResult,
+  ViralityIndicator,
+  CommunityMetrics,
+} from './sentiment-analysis';
 
 // ============================================================================
 // TYPES
@@ -203,6 +214,33 @@ export interface SocialIntelligence {
   // Performance
   fetchTime: number;
   dataQuality: 'high' | 'medium' | 'low';
+  
+  // Step 1.2.2: Enhanced Analytics
+  trendAnalysis: {
+    trends: TrendAnalysisResult[];
+    viralityAlerts: ViralityIndicator[];
+  };
+  
+  communityMetrics: CommunityMetrics[];
+  
+  sentimentBreakdown: {
+    overall: {
+      label: string;
+      score: number;
+      confidence: number;
+      magnitude: number;
+    };
+    distribution: Record<string, number>;
+    dominantEmotion: string;
+    topBullishSignals: string[];
+    topBearishSignals: string[];
+    contextSummary: {
+      fudPercentage: number;
+      fomoPercentage: number;
+      questionPercentage: number;
+      newsPercentage: number;
+    };
+  };
 }
 
 // ============================================================================
@@ -1164,6 +1202,85 @@ export async function getSocialIntelligence(symbols: string[] = ['BTC', 'ETH', '
   if (activePlatforms.length >= 3 && totalMentions >= 100) dataQuality = 'high';
   else if (activePlatforms.length >= 2 && totalMentions >= 30) dataQuality = 'medium';
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Step 1.2.2: Enhanced Sentiment & Trend Analysis
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Run advanced sentiment analysis on all mentions
+  const sentimentAnalyses: SentimentAnalysisResult[] = allMentions.map(m => 
+    advancedSentimentAnalysis(m.content.text)
+  );
+  
+  // Aggregate sentiment with full breakdown
+  const sentimentBreakdown = aggregateSentiment(sentimentAnalyses);
+  
+  // Analyze trends for top topics
+  const trends: TrendAnalysisResult[] = [];
+  for (const topic of trendingTopics.slice(0, 5)) {
+    const topicMentions = allMentions.filter(m => 
+      m.content.text.toLowerCase().includes(topic.topic) ||
+      m.hashtags.includes(topic.topic)
+    );
+    const trend = analyzeTrend(
+      topic.topic,
+      topic.mentions,
+      topic.sentiment,
+      topicMentions.reduce((sum, m) => sum + m.engagement.likes, 0)
+    );
+    trends.push(trend);
+  }
+  
+  // Detect virality for trending topics
+  const viralityAlerts: ViralityIndicator[] = [];
+  for (const topic of trendingTopics.slice(0, 5)) {
+    const topicMentions = allMentions.filter(m => 
+      m.content.text.toLowerCase().includes(topic.topic)
+    );
+    const hasInfluencer = topicMentions.some(m => m.author.isInfluencer);
+    const platformsWithTopic = new Set(topicMentions.map(m => m.platform)).size;
+    
+    const virality = detectVirality(topic.topic, {
+      mentionsPerMinute: topic.mentions / 60, // Rough estimate
+      engagementRate: topicMentions.length > 0 
+        ? topicMentions.reduce((sum, m) => sum + m.engagement.likes, 0) / topicMentions.length / 100
+        : 0,
+      platformCount: platformsWithTopic,
+      hasInfluencerMention: hasInfluencer,
+      hasNewsCorrelation: false, // Would need news service integration
+    });
+    
+    if (virality.score > 30) {
+      viralityAlerts.push(virality);
+    }
+  }
+  
+  // Analyze Reddit communities specifically
+  const communityMetrics: CommunityMetrics[] = [];
+  if (redditData.mentions.length > 0) {
+    // Group by subreddit
+    const subredditGroups: Map<string, typeof redditData.mentions> = new Map();
+    for (const mention of redditData.mentions) {
+      const subreddit = mention.source.name.replace('r/', '');
+      const existing = subredditGroups.get(subreddit) || [];
+      existing.push(mention);
+      subredditGroups.set(subreddit, existing);
+    }
+    
+    // Analyze each community
+    for (const [subreddit, mentions] of subredditGroups) {
+      const posts = mentions.map(m => ({
+        title: m.content.text,
+        text: '',
+        score: m.engagement.likes,
+        comments: m.engagement.comments,
+        author: m.author.username,
+      }));
+      
+      const communityAnalysis = analyzeCommunity(subreddit, 'reddit', posts);
+      communityMetrics.push(communityAnalysis);
+    }
+  }
+  
   const intelligence: SocialIntelligence = {
     timestamp: new Date().toISOString(),
     platforms,
@@ -1185,6 +1302,13 @@ export async function getSocialIntelligence(symbols: string[] = ['BTC', 'ETH', '
     dominantNarratives,
     fetchTime: Date.now() - startTime,
     dataQuality,
+    // Step 1.2.2: Enhanced analytics
+    trendAnalysis: {
+      trends,
+      viralityAlerts,
+    },
+    communityMetrics,
+    sentimentBreakdown,
   };
   
   // Update cache
@@ -1264,7 +1388,88 @@ export function formatSocialIntelligenceForAI(intelligence: SocialIntelligence):
   if (intelligence.dominantNarratives.length > 0) {
     context += `📖 DOMINANT NARRATIVES: `;
     context += intelligence.dominantNarratives.map(n => `${n.narrative}(${n.mentions})`).join(', ');
+    context += '\n\n';
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Step 1.2.2: Enhanced Sentiment & Trend Analysis
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Sentiment breakdown
+  if (intelligence.sentimentBreakdown) {
+    const sb = intelligence.sentimentBreakdown;
+    context += `🧠 SENTIMENT ANALYSIS:\n`;
+    context += `• Overall: ${sb.overall.label} (score: ${sb.overall.score}, confidence: ${Math.round(sb.overall.confidence * 100)}%)\n`;
+    context += `• Dominant Emotion: ${sb.dominantEmotion}\n`;
+    context += `• Distribution: `;
+    const dist = sb.distribution;
+    context += `🟢🟢${dist.very_bullish || 0}% 🟢${dist.bullish || 0}% ⚪${dist.neutral || 0}% 🔴${dist.bearish || 0}% 🔴🔴${dist.very_bearish || 0}%\n`;
+    
+    if (sb.topBullishSignals.length > 0) {
+      context += `• Bullish Signals: ${sb.topBullishSignals.slice(0, 3).join(', ')}\n`;
+    }
+    if (sb.topBearishSignals.length > 0) {
+      context += `• Bearish Signals: ${sb.topBearishSignals.slice(0, 3).join(', ')}\n`;
+    }
+    
+    // Context indicators
+    const ctx = sb.contextSummary;
+    if (ctx.fudPercentage > 10 || ctx.fomoPercentage > 10) {
+      context += `• Context: `;
+      if (ctx.fudPercentage > 10) context += `FUD ${ctx.fudPercentage}% `;
+      if (ctx.fomoPercentage > 10) context += `FOMO ${ctx.fomoPercentage}% `;
+      context += '\n';
+    }
     context += '\n';
+  }
+  
+  // Virality alerts
+  if (intelligence.trendAnalysis?.viralityAlerts?.length > 0) {
+    context += `🔥 VIRALITY ALERTS:\n`;
+    for (const alert of intelligence.trendAnalysis.viralityAlerts.slice(0, 3)) {
+      context += `• ${alert.alert.message}\n`;
+      context += `  Score: ${alert.score}/100 | Triggers: `;
+      const triggers = [];
+      if (alert.triggers.volumeSpike) triggers.push('volume spike');
+      if (alert.triggers.influencerMention) triggers.push('influencer');
+      if (alert.triggers.crossPlatformSpread) triggers.push('cross-platform');
+      if (alert.triggers.engagementExplosion) triggers.push('engagement');
+      context += triggers.join(', ') + '\n';
+    }
+    context += '\n';
+  }
+  
+  // Trend velocity
+  if (intelligence.trendAnalysis?.trends?.length > 0) {
+    const activeTrends = intelligence.trendAnalysis.trends.filter(t => 
+      t.status.phase === 'growing' || t.status.phase === 'peak' || t.status.isViral
+    );
+    if (activeTrends.length > 0) {
+      context += `📈 TREND VELOCITY:\n`;
+      for (const trend of activeTrends.slice(0, 3)) {
+        context += `• #${trend.topic}: ${trend.status.phase} (velocity: ${trend.metrics.velocity}/hr, strength: ${trend.status.trendStrength}%)\n`;
+      }
+      context += '\n';
+    }
+  }
+  
+  // Community-specific insights (WallStreetBets, etc.)
+  if (intelligence.communityMetrics?.length > 0) {
+    const notableCommunities = intelligence.communityMetrics.filter(c => 
+      c.activity.totalPosts > 10 || 
+      c.community.toLowerCase().includes('wallstreetbets') ||
+      Math.abs(c.sentiment.overall) > 0.3
+    );
+    if (notableCommunities.length > 0) {
+      context += `🏛️ COMMUNITY INSIGHTS:\n`;
+      for (const community of notableCommunities.slice(0, 3)) {
+        context += `• r/${community.community}: ${community.mood.label} (${community.activity.totalPosts} posts, sentiment: ${community.sentiment.overall})\n`;
+        if (community.trending.coins.length > 0) {
+          context += `  Trending: ${community.trending.coins.slice(0, 3).join(', ')}\n`;
+        }
+      }
+      context += '\n';
+    }
   }
   
   return context;

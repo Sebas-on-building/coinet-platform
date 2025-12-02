@@ -601,6 +601,39 @@ app.get('/api/test/social', async (req: Request, res: Response) => {
         isTrending: c.isTrending,
         platformBreakdown: c.platformBreakdown,
       })),
+      // Step 1.2.2: Enhanced Analytics
+      sentimentAnalysis: {
+        overall: socialIntel.sentimentBreakdown?.overall,
+        distribution: socialIntel.sentimentBreakdown?.distribution,
+        dominantEmotion: socialIntel.sentimentBreakdown?.dominantEmotion,
+        topBullishSignals: socialIntel.sentimentBreakdown?.topBullishSignals,
+        topBearishSignals: socialIntel.sentimentBreakdown?.topBearishSignals,
+        context: socialIntel.sentimentBreakdown?.contextSummary,
+      },
+      trendAnalysis: {
+        trends: socialIntel.trendAnalysis?.trends?.slice(0, 5).map(t => ({
+          topic: t.topic,
+          phase: t.status.phase,
+          velocity: t.metrics.velocity,
+          isViral: t.status.isViral,
+          viralityScore: t.status.viralityScore,
+          trendStrength: t.status.trendStrength,
+        })),
+        viralityAlerts: socialIntel.trendAnalysis?.viralityAlerts?.map(v => ({
+          topic: v.topic,
+          score: v.score,
+          isViral: v.isViral,
+          alert: v.alert,
+          triggers: v.triggers,
+        })),
+      },
+      communityMetrics: socialIntel.communityMetrics?.slice(0, 5).map(c => ({
+        community: c.community,
+        mood: c.mood,
+        sentiment: c.sentiment.overall,
+        activity: c.activity,
+        trending: c.trending,
+      })),
     });
   } catch (error: any) {
     res.status(500).json({
