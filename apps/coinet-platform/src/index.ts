@@ -769,12 +769,73 @@ app.get('/api/test/influencers', async (req: Request, res: Response) => {
   }
 });
 
+// =============================================================================
+// 🎯 COMPREHENSIVE SOCIAL INTELLIGENCE TEST ENDPOINT
+// =============================================================================
+app.get('/api/test/social-intelligence', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const coins = ((req.query.coins as string) || 'BTC,ETH,SOL').split(',').map(c => c.trim().toUpperCase());
+  
+  try {
+    const { getComprehensiveSocialIntelligence } = await import('./services/social-intelligence-orchestrator');
+    
+    const report = await getComprehensiveSocialIntelligence(coins);
+    
+    res.json({
+      success: true,
+      section: 'REVOLUTIONARY SOCIAL INTELLIGENCE SYSTEM',
+      status: '✅ COMPREHENSIVE SOCIAL INTELLIGENCE OPERATIONAL',
+      report: {
+        timestamp: report.timestamp,
+        dataQuality: report.dataQuality,
+        signals: report.signals,
+        coinAnalysis: report.coinAnalysis,
+        errors: report.errors,
+      },
+      systems: {
+        socialIntelligence: report.intelligence.social ? '✅ Active' : '❌ Unavailable',
+        influencerTracking: report.intelligence.influencers ? '✅ Active' : '❌ Unavailable',
+        psychometrics: report.intelligence.psychometrics ? '✅ Active' : '❌ Unavailable',
+        networkAnalysis: report.intelligence.network ? '✅ Active' : '❌ Unavailable',
+      },
+      analytics: {
+        contrarianSignal: report.analytics.contrarian?.contrarian.isExtreme ? 
+          `⚠️ ${report.analytics.contrarian.contrarian.contrarySignal.toUpperCase()} SIGNAL` : 'No extreme signal',
+        pumpDumpAlerts: report.analytics.pumpDump.length,
+        consensusAnalyses: report.analytics.consensus.length,
+      },
+      capabilities: {
+        crowdPsychology: '✅ Fear/Greed cycle analysis',
+        cognitiveBiases: '✅ 10+ bias types detected',
+        manipulationDetection: '✅ Pump & dump, FUD, shilling',
+        emotionalContagion: '✅ Spread velocity, amplification',
+        herdBehavior: '✅ Stampede risk, contrarian ratio',
+        narrativeTracking: '✅ Lifecycle stage analysis',
+        botDetection: '✅ Spam, amplifier, coordinated',
+        coordinationNetworks: '✅ Multi-account detection',
+        communityAnalysis: '✅ Echo chamber identification',
+        influencerConsensus: '✅ Tier-weighted signals',
+        smartMoneyVsRetail: '✅ Divergence tracking',
+      },
+      fetchTime: `${report.fetchTime}ms`,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     service: 'coinet-platform',
-    version: '1.0.0',
+    version: '2.0.0',
     status: 'running',
+    tagline: 'Revolutionary Social Intelligence for Crypto Markets',
     endpoints: {
       health: '/api/health',
       status: '/api/status',
@@ -783,10 +844,11 @@ app.get('/', (_req: Request, res: Response) => {
       testPrice: '/api/test/price/:symbol',
       testNews: '/api/test/news?coins=BTC,ETH',
       testSocial: '/api/test/social?coins=BTC,ETH,SOL',
-      testInfluencers: '/api/test/influencers',
+      testInfluencers: '/api/test/influencers?coin=BTC',
+      testSocialIntelligence: '/api/test/social-intelligence?coins=BTC,ETH,SOL',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/diagnostic to test all services, /api/keys to check API configuration, /api/test/news to verify news, /api/test/social for social intel, /api/test/influencers for influencer tracking',
+    documentation: 'Use /api/test/social-intelligence for the comprehensive revolutionary social analysis',
   });
 });
 

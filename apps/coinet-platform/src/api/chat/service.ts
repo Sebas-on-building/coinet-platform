@@ -19,6 +19,7 @@ import { getSocialSentiment, formatSocialForAI } from '../../services/social-ser
 import { getSocialIntelligence, formatSocialIntelligenceForAI } from '../../services/social-intelligence';
 import { getInfluencerSnapshot, formatInfluencerIntelligenceForAI } from '../../services/influencer-tracking';
 import { analyzeContrarianIndicator, analyzeConsensus, formatAdvancedAnalyticsForAI } from '../../services/influencer-analytics';
+import { getComprehensiveSocialIntelligence, formatComprehensiveSocialIntelligenceForAI } from '../../services/social-intelligence-orchestrator';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
