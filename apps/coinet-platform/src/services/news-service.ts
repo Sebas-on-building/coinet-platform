@@ -1,10 +1,11 @@
 /**
- * 📰 DIVINE NEWS SERVICE - Multi-Source Aggregation Engine
+ * 📰 DIVINE NEWS SERVICE - Multi-Source Aggregation Engine v3
  * 
  * Revolutionary news intelligence with 5+ redundant sources and intelligent failover.
  * Zero downtime news coverage through automatic source switching.
  * 
- * SOURCES (Priority Order):
+ * DATA SOURCES (Priority Order):
+ * 0. Redis Cache (from ai-data-feeder) ← NEW! Fastest!
  * 1. CryptoPanic API (Pro/Free) - Primary, community-curated
  * 2. CoinGecko News API - Comprehensive coverage
  * 3. Messari News API - Institutional-grade research
@@ -12,6 +13,7 @@
  * 5. RSS Aggregator - CoinDesk, Decrypt, Bitcoin Magazine (fallback)
  * 
  * FEATURES:
+ * - Redis integration with ai-data-feeder
  * - Multi-source aggregation with intelligent failover
  * - AI-powered sentiment analysis
  * - Impact scoring and price prediction hints
@@ -20,11 +22,18 @@
  * - Rate limiting per source
  * - Tiered caching strategy
  * 
- * @version 2.0.0 - Divine Perfection Masterplan
+ * @version 3.0.0 - Divine Perfection with Redis
  */
 
 import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
+import { 
+  isRedisAvailable, 
+  getCachedNews, 
+  getCachedNewsMultiple,
+  setCachedNews,
+  CachedNewsData 
+} from './redis-client';
 
 // ============================================================================
 // TYPES
@@ -216,6 +225,98 @@ newsSources.set('rss', {
   healthStatus: 'healthy',
   consecutiveFailures: 0,
 });
+
+// ============================================================================
+// REDIS NEWS CONVERSION
+// ============================================================================
+
+/**
+ * Convert Redis cached news data to NewsArticle format
+ */
+function convertRedisNewsToArticles(redisNews: Map<string, CachedNewsData>): NewsArticle[] {
+  const articles: NewsArticle[] = [];
+  
+  for (const [coinId, newsData] of redisNews) {
+    // Convert top headlines to articles
+    for (const headline of newsData.topHeadlines || []) {
+      const { sentiment, sentimentScore } = mapRedisSentiment(newsData.sentiment, newsData.sentimentScore);
+      
+      articles.push({
+        id: `redis-${coinId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        title: headline.title,
+        url: '', // Not available from ai-data-feeder
+        source: 'ai-data-feeder',
+        sourcePriority: 0, // Highest priority - from our own cache
+        publishedAt: new Date(headline.publishedAt),
+        coins: [coinId.toUpperCase()],
+        sentiment,
+        sentimentScore,
+        votes: { positive: 0, negative: 0, important: 0, liked: 0, disliked: 0, lol: 0, toxic: 0, saved: 0, comments: 0 },
+        impact: newsData.panicScore > 50 ? 'high' : 'medium',
+        impactScore: Math.min(100, newsData.panicScore + 30),
+        credibility: 0.85, // From ai-data-feeder which aggregates from CryptoPanic
+        categories: [],
+        urgency: newsData.panicScore > 70 ? 'high' : newsData.panicScore > 50 ? 'medium' : 'low',
+      });
+    }
+  }
+  
+  return articles;
+}
+
+/**
+ * Map Redis sentiment format to our format
+ */
+function mapRedisSentiment(
+  sentiment: 'positive' | 'negative' | 'neutral',
+  score: number
+): { sentiment: NewsArticle['sentiment']; sentimentScore: number } {
+  // Convert score from ai-data-feeder (-100 to +100) to our format (-1 to 1)
+  const normalizedScore = score / 100;
+  
+  let mappedSentiment: NewsArticle['sentiment'];
+  if (normalizedScore >= 0.6) mappedSentiment = 'very_bullish';
+  else if (normalizedScore >= 0.2) mappedSentiment = 'bullish';
+  else if (normalizedScore <= -0.6) mappedSentiment = 'very_bearish';
+  else if (normalizedScore <= -0.2) mappedSentiment = 'bearish';
+  else mappedSentiment = 'neutral';
+  
+  return { sentiment: mappedSentiment, sentimentScore: normalizedScore };
+}
+
+/**
+ * Build NewsSnapshot from Redis articles
+ */
+function buildSnapshotFromRedis(
+  articles: NewsArticle[],
+  coins: string[],
+  startTime: number
+): NewsSnapshot {
+  // Calculate aggregate sentiment
+  const sentimentSum = articles.reduce((sum, a) => sum + a.sentimentScore, 0);
+  const avgSentiment = articles.length > 0 ? sentimentSum / articles.length : 0;
+  
+  let dominantSentiment: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+  if (avgSentiment > 0.15) dominantSentiment = 'bullish';
+  else if (avgSentiment < -0.15) dominantSentiment = 'bearish';
+  
+  // Extract critical alerts
+  const criticalAlerts = articles.filter(a => a.urgency === 'critical' || a.urgency === 'high');
+  
+  return {
+    timestamp: new Date().toISOString(),
+    articles,
+    requestedCoins: coins,
+    dominantSentiment,
+    overallSentimentScore: avgSentiment,
+    majorNarratives: articles.slice(0, 3).map(a => a.title),
+    criticalAlerts,
+    sourcesUsed: ['Redis (ai-data-feeder)'],
+    sourcesFailed: [],
+    fetchTime: Date.now() - startTime,
+    totalArticlesProcessed: articles.length,
+  };
+}
 
 // ============================================================================
 // CACHE
@@ -1206,7 +1307,42 @@ export async function fetchNews(coins?: string[]): Promise<NewsSnapshot> {
   const startTime = Date.now();
   const cacheKey = getCacheKey(coins);
   
-  // Check cache first
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Step 0: Check REDIS CACHE first (populated by ai-data-feeder)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (isRedisAvailable() && coins && coins.length > 0) {
+    try {
+      // Map coin symbols to CoinGecko IDs for Redis lookup
+      const coinIds = coins.map(c => c.toLowerCase());
+      const redisNews = await getCachedNewsMultiple(coinIds);
+      
+      if (redisNews.size > 0) {
+        // Convert Redis cached news to our format
+        const redisArticles = convertRedisNewsToArticles(redisNews);
+        
+        if (redisArticles.length > 0) {
+          logger.debug('🔴 Redis news cache hit', { 
+            coins: coins.join(','), 
+            articles: redisArticles.length 
+          });
+          
+          // Build snapshot from Redis data
+          const redisSnapshot = buildSnapshotFromRedis(redisArticles, coins, startTime);
+          
+          // Cache locally too
+          setCache(cacheKey, redisSnapshot);
+          
+          return redisSnapshot;
+        }
+      }
+    } catch (error: any) {
+      logger.debug('🔴 Redis news lookup failed', { error: error.message });
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Step 1: Check LOCAL cache
+  // ═══════════════════════════════════════════════════════════════════════════
   const cached = getFromCache(cacheKey);
   if (cached) {
     // If stale, trigger background refresh

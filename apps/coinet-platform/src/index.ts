@@ -17,6 +17,7 @@ import { getWhaleContextForAI } from './services/whale-data';
 import { getMarketSentiment } from './services/sentiment-service';
 import { fetchNews, getNewsServiceStatus } from './services/news-service';
 import { aiService } from './services/ai-service';
+import { initializeRedis, getRedisStatus, getCacheStats, closeRedis } from './services/redis-client';
 
 // Load environment variables
 dotenv.config();
@@ -185,6 +186,7 @@ app.get('/api/diagnostic', async (req: Request, res: Response) => {
   results.environment = {
     NODE_ENV: process.env.NODE_ENV || 'not set',
     DATABASE_URL: process.env.DATABASE_URL ? '✅ configured' : '❌ missing',
+    REDIS_URL: process.env.REDIS_URL ? '✅ configured' : '⚠️ missing (no shared cache)',
     // AI Keys
     XAI_API_KEY: process.env.XAI_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI)',
     GROK_API_KEY: process.env.GROK_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI alt)',
@@ -225,6 +227,34 @@ app.get('/api/diagnostic', async (req: Request, res: Response) => {
   } catch (err: any) {
     results.services.database = { status: '❌ failed', error: err.message };
     results.recommendations.push('Database connection failed. Check DATABASE_URL');
+  }
+
+  // 2.5. Redis Cache Check (ai-data-feeder integration)
+  try {
+    const redisStatus = getRedisStatus();
+    const cacheStats = await getCacheStats();
+    results.services.redisCache = {
+      status: redisStatus.connected ? '✅ connected' : redisStatus.enabled ? '⚠️ disconnected' : '⚠️ not configured',
+      enabled: redisStatus.enabled,
+      connected: redisStatus.connected,
+      lastPing: redisStatus.lastPing ? `${redisStatus.lastPing}ms` : 'N/A',
+      cacheStats: {
+        priceKeys: cacheStats.priceKeys,
+        newsKeys: cacheStats.newsKeys,
+        analysisKeys: cacheStats.analysisKeys,
+        totalKeys: cacheStats.totalKeys,
+      },
+      error: redisStatus.error,
+      note: 'Redis cache is populated by ai-data-feeder service',
+    };
+    if (!redisStatus.connected && redisStatus.enabled) {
+      results.recommendations.push('⚠️ Redis configured but not connected. Check REDIS_URL and ai-data-feeder service.');
+    }
+    if (!redisStatus.enabled) {
+      results.recommendations.push('💡 Add REDIS_URL to enable shared cache with ai-data-feeder (reduces API calls)');
+    }
+  } catch (err: any) {
+    results.services.redisCache = { status: '❌ failed', error: err.message };
   }
 
   // 3. Symbol Detector Check
@@ -438,6 +468,18 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 // ============================================================================
 
 async function startServer() {
+  // Initialize Redis cache (for ai-data-feeder integration)
+  try {
+    const redisConnected = await initializeRedis();
+    if (redisConnected) {
+      logger.info('🔴 Redis cache connected - using shared cache with ai-data-feeder');
+    } else {
+      logger.info('🔴 Redis not configured - using direct API calls');
+    }
+  } catch (redisError) {
+    logger.warn('🔴 Redis initialization failed', { error: redisError instanceof Error ? redisError.message : 'Unknown' });
+  }
+
   try {
     // Check if DATABASE_URL is configured
     if (!process.env.DATABASE_URL) {
