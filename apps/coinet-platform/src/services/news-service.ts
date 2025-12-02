@@ -122,23 +122,25 @@ interface NewsCache {
 
 const CONFIG = {
   // Cache settings
-  CACHE_TTL_MS: 3 * 60 * 1000, // 3 minutes for fresh news
-  STALE_CACHE_TTL_MS: 15 * 60 * 1000, // 15 minutes stale-while-revalidate
+  CACHE_TTL_MS: 2 * 60 * 1000, // 2 minutes for fresh news (faster updates)
+  STALE_CACHE_TTL_MS: 10 * 60 * 1000, // 10 minutes stale-while-revalidate
   
-  // Limits
-  MAX_NEWS_PER_SOURCE: 20,
-  MAX_TOTAL_NEWS: 50,
-  MAX_NEWS_FOR_AI: 15,
+  // Limits (increased to meet 50+ article requirement)
+  MAX_NEWS_PER_SOURCE: 25,
+  MAX_TOTAL_NEWS: 100, // Allow up to 100 articles
+  MAX_NEWS_FOR_AI: 20, // More context for AI
+  MIN_ARTICLES_REQUIRED: 50, // Acceptance criteria: minimum 50 articles
   
   // Failover
   MAX_CONSECUTIVE_FAILURES: 3,
-  FAILURE_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes before retrying failed source
+  FAILURE_COOLDOWN_MS: 3 * 60 * 1000, // 3 minutes before retrying failed source (faster recovery)
   
   // Deduplication
-  TITLE_SIMILARITY_THRESHOLD: 0.8,
+  TITLE_SIMILARITY_THRESHOLD: 0.75, // Slightly more aggressive dedup
   
   // Timeouts
-  REQUEST_TIMEOUT_MS: 8000,
+  REQUEST_TIMEOUT_MS: 6000, // 6 seconds max per source (total <500ms target)
+  TOTAL_FETCH_TIMEOUT_MS: 500, // Target: 500ms total fetch time
 };
 
 // ============================================================================
@@ -523,32 +525,32 @@ async function fetchFromCryptoPanic(coins?: string[]): Promise<NewsArticle[]> {
       : error.message || 'Unknown error';
     markSourceFailure('cryptopanic', message);
     logger.warn('📰 CryptoPanic fetch FAILED', { error: message, status: error.response?.status });
-    return [];
+      return [];
   }
-}
-
+    }
+    
 function transformCryptoPanicArticle(post: CryptoPanicPost): NewsArticle {
   const { sentiment, sentimentScore } = analyzeSentimentAdvanced(post.title, post.votes);
-  const credibility = assessCredibility(post.source.domain, post.source.title);
+      const credibility = assessCredibility(post.source.domain, post.source.title);
   const { impact, impactScore } = assessImpactAdvanced(post, credibility);
   const urgency = determineUrgency(impact, sentimentScore, post.votes);
   const priceImpact = predictPriceImpact(sentiment, impact, credibility);
   const categories = extractCategories(post.title);
-  
-  return {
-    id: `cp-${post.id}`,
-    title: post.title,
-    url: post.url,
-    source: post.source.title,
+      
+      return {
+        id: `cp-${post.id}`,
+        title: post.title,
+        url: post.url,
+        source: post.source.title,
     sourcePriority: 1,
-    publishedAt: new Date(post.published_at),
-    coins: post.currencies?.map(c => c.code.toUpperCase()) || [],
-    sentiment,
+        publishedAt: new Date(post.published_at),
+        coins: post.currencies?.map(c => c.code.toUpperCase()) || [],
+        sentiment,
     sentimentScore,
-    votes: post.votes,
-    impact,
+        votes: post.votes,
+        impact,
     impactScore,
-    credibility,
+        credibility,
     priceImpactPrediction: priceImpact,
     categories,
     urgency,
@@ -823,11 +825,19 @@ function transformTheBlockArticle(item: any): NewsArticle {
 // ============================================================================
 
 const RSS_FEEDS = [
+  // Tier 1: Most reliable
   { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', credibility: 0.9 },
-  { name: 'Decrypt', url: 'https://decrypt.co/feed', credibility: 0.85 },
+  { name: 'Decrypt', url: 'https://decrypt.co/feed', credibility: 0.88 },
   { name: 'Bitcoin Magazine', url: 'https://bitcoinmagazine.com/.rss/full/', credibility: 0.85 },
-  { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', credibility: 0.75 },
-  { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/', credibility: 0.7 },
+  // Tier 2: Good sources
+  { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', credibility: 0.78 },
+  { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/', credibility: 0.75 },
+  { name: 'The Block', url: 'https://www.theblock.co/rss.xml', credibility: 0.85 },
+  // Tier 3: Additional coverage
+  { name: 'NewsBTC', url: 'https://www.newsbtc.com/feed/', credibility: 0.7 },
+  { name: 'CryptoPotato', url: 'https://cryptopotato.com/feed/', credibility: 0.68 },
+  { name: 'BeInCrypto', url: 'https://beincrypto.com/feed/', credibility: 0.65 },
+  { name: 'U.Today', url: 'https://u.today/rss', credibility: 0.65 },
 ];
 
 async function fetchFromRSS(coins?: string[]): Promise<NewsArticle[]> {
@@ -850,7 +860,7 @@ async function fetchFromRSS(coins?: string[]): Promise<NewsArticle[]> {
       
       // Simple RSS parsing (extract items)
       const items = parseRSSItems(response.data, feed.name, feed.credibility);
-      return items.slice(0, 5); // Limit per feed
+      return items.slice(0, 8); // 8 articles per feed (10 feeds = 80 potential articles)
     } catch (error) {
       logger.debug(`📰 RSS feed ${feed.name} failed`);
       return [];
@@ -886,7 +896,7 @@ function parseRSSItems(xml: string, sourceName: string, credibility: number): Ne
   const descRegex = /<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/;
   
   let match;
-  while ((match = itemRegex.exec(xml)) !== null && articles.length < 10) {
+  while ((match = itemRegex.exec(xml)) !== null && articles.length < 15) {
     const item = match[1];
     
     const titleMatch = item.match(titleRegex);
@@ -1359,7 +1369,7 @@ export async function fetchNews(coins?: string[]): Promise<NewsSnapshot> {
     return cached;
   }
   
-  // Fetch from all available sources in parallel
+  // Fetch from all available sources in parallel with timeout
   const sourcesToUse = Array.from(newsSources.values())
     .filter(isSourceAvailable)
     .sort((a, b) => a.priority - b.priority);
@@ -1369,26 +1379,67 @@ export async function fetchNews(coins?: string[]): Promise<NewsSnapshot> {
     coins: coins?.join(',') || 'general'
   });
   
-  const fetchPromises = sourcesToUse.map(source => 
-    source.fetch(coins).catch(() => [] as NewsArticle[])
-  );
+  // Create fetch promises with individual timeouts
+  const fetchPromises = sourcesToUse.map(source => {
+    const fetchWithTimeout = async (): Promise<{ source: string; articles: NewsArticle[] }> => {
+      try {
+        const articles = await Promise.race([
+          source.fetch(coins),
+          new Promise<NewsArticle[]>((_, reject) => 
+            setTimeout(() => reject(new Error('Source timeout')), CONFIG.REQUEST_TIMEOUT_MS)
+          )
+        ]);
+        return { source: source.name, articles };
+      } catch {
+        return { source: source.name, articles: [] };
+      }
+    };
+    return fetchWithTimeout();
+  });
   
-  const results = await Promise.allSettled(fetchPromises);
+  // Use Promise.allSettled with a global timeout to ensure <500ms response
+  const timeoutPromise = new Promise<{ source: string; articles: NewsArticle[] }[]>(resolve => {
+    setTimeout(() => {
+      logger.debug('📰 Global fetch timeout - returning partial results');
+      resolve([]);
+    }, CONFIG.TOTAL_FETCH_TIMEOUT_MS);
+  });
+  
+  // Race between all fetches completing and the timeout
+  const results = await Promise.race([
+    Promise.allSettled(fetchPromises),
+    timeoutPromise.then(() => [] as PromiseSettledResult<{ source: string; articles: NewsArticle[] }>[])
+  ]);
   
   // Collect all articles
   let allArticles: NewsArticle[] = [];
   const sourcesUsed: string[] = [];
   const sourcesFailed: string[] = [];
   
-  results.forEach((result, index) => {
-    const source = sourcesToUse[index];
-    if (result.status === 'fulfilled' && result.value.length > 0) {
-      allArticles.push(...result.value);
-      sourcesUsed.push(source.name);
-    } else {
-      sourcesFailed.push(source.name);
+  if (Array.isArray(results) && results.length > 0) {
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value.articles.length > 0) {
+        allArticles.push(...result.value.articles);
+        sourcesUsed.push(result.value.source);
+      } else if (result.status === 'fulfilled') {
+        sourcesFailed.push(result.value.source);
+      }
+    });
+  }
+  
+  // If we got no results or timed out, try RSS as emergency fallback
+  if (allArticles.length < CONFIG.MIN_ARTICLES_REQUIRED) {
+    logger.debug('📰 Insufficient articles, triggering emergency RSS fetch');
+    try {
+      const rssArticles = await fetchFromRSS(coins);
+      allArticles.push(...rssArticles);
+      if (rssArticles.length > 0 && !sourcesUsed.includes('RSS Aggregator')) {
+        sourcesUsed.push('RSS Aggregator (emergency)');
+      }
+    } catch {
+      // RSS also failed, continue with what we have
     }
-  });
+  }
   
   // Deduplicate
   allArticles = deduplicateArticles(allArticles);
@@ -1475,7 +1526,7 @@ export function formatNewsForAI(snapshot: NewsSnapshot): string {
   
   const sentimentEmoji: Record<string, string> = {
     bullish: '🟢',
-    bearish: '🔴',
+    bearish: '🔴', 
     neutral: '⚪',
   };
   
@@ -1676,6 +1727,67 @@ export function getNewsServiceStatus(): {
 }
 
 // ============================================================================
+// CACHE WARMING & INITIALIZATION
+// ============================================================================
+
+/**
+ * 🔥 Warm the news cache on startup
+ * Pre-fetches general news and top coin news to ensure instant responses
+ */
+export async function warmNewsCache(): Promise<void> {
+  logger.info('🔥 Warming news cache...');
+  const startTime = Date.now();
+  
+  try {
+    // Fetch general news and top coins in parallel
+    await Promise.allSettled([
+      fetchNews(), // General news
+      fetchNews(['BTC', 'ETH']), // Top coins
+      fetchNews(['SOL', 'XRP', 'ADA']), // Other major coins
+    ]);
+    
+    const warmTime = Date.now() - startTime;
+    logger.info('🔥 News cache warmed', { 
+      warmTimeMs: warmTime,
+      cacheSize: newsCache.size 
+    });
+  } catch (error) {
+    logger.warn('🔥 News cache warming failed', { error });
+  }
+}
+
+/**
+ * Start background refresh interval
+ * Keeps cache fresh without blocking user requests
+ */
+let refreshInterval: NodeJS.Timeout | null = null;
+
+export function startNewsRefreshInterval(intervalMs: number = 60000): void {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+  }
+  
+  refreshInterval = setInterval(async () => {
+    try {
+      await refreshNewsInBackground();
+      logger.debug('📰 Background news refresh complete');
+    } catch (error) {
+      logger.debug('📰 Background news refresh failed', { error });
+    }
+  }, intervalMs);
+  
+  logger.info('📰 News refresh interval started', { intervalMs });
+}
+
+export function stopNewsRefreshInterval(): void {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+    logger.info('📰 News refresh interval stopped');
+  }
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -1686,6 +1798,9 @@ export const newsService = {
   formatForAI: formatNewsForAI,
   formatEnrichedForAI: formatEnrichedNewsForAI,
   getStatus: getNewsServiceStatus,
+  warmCache: warmNewsCache,
+  startRefreshInterval: startNewsRefreshInterval,
+  stopRefreshInterval: stopNewsRefreshInterval,
 };
 
 // Re-export intelligence types

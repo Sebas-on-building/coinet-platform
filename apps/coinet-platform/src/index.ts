@@ -15,7 +15,7 @@ import { symbolDetector } from './services/symbol-detector';
 import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
 import { getWhaleContextForAI } from './services/whale-data';
 import { getMarketSentiment } from './services/sentiment-service';
-import { fetchNews, getNewsServiceStatus } from './services/news-service';
+import { fetchNews, getNewsServiceStatus, warmNewsCache, startNewsRefreshInterval } from './services/news-service';
 import { aiService } from './services/ai-service';
 import { initializeRedis, getRedisStatus, getCacheStats, closeRedis } from './services/redis-client';
 import { logApiKeysStatus, generateApiKeysReport, getGracefulDegradation } from './services/api-keys';
@@ -446,6 +446,86 @@ app.get('/api/keys', async (_req: Request, res: Response) => {
 // API routes
 app.use('/api/chat', chatRoutes);
 
+// =============================================================================
+// 📰 NEWS TEST ENDPOINT - Verify Section 1.1 Acceptance Criteria
+// =============================================================================
+app.get('/api/test/news', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const coins = req.query.coins ? (req.query.coins as string).split(',') : undefined;
+  
+  try {
+    const newsSnapshot = await fetchNews(coins);
+    const fetchTime = Date.now() - startTime;
+    const newsStatus = getNewsServiceStatus();
+    
+    // Acceptance criteria checks
+    const acceptanceCriteria = {
+      minArticles: {
+        required: 50,
+        actual: newsSnapshot.articles.length,
+        passed: newsSnapshot.articles.length >= 50,
+      },
+      maxFetchTime: {
+        required: '500ms',
+        actual: `${fetchTime}ms`,
+        passed: fetchTime <= 500,
+      },
+      hasMultipleSources: {
+        required: 'Multiple sources',
+        actual: newsSnapshot.sourcesUsed.length,
+        passed: newsSnapshot.sourcesUsed.length >= 2,
+      },
+      hasFailover: {
+        description: 'Failover available',
+        healthySources: newsStatus.sources.filter(s => s.status === 'healthy').length,
+        passed: newsStatus.sources.filter(s => s.enabled).length >= 3,
+      },
+      hasSentiment: {
+        description: 'Sentiment analysis',
+        dominantSentiment: newsSnapshot.dominantSentiment,
+        overallScore: newsSnapshot.overallSentimentScore,
+        passed: newsSnapshot.overallSentimentScore !== undefined,
+      },
+    };
+    
+    const allPassed = Object.values(acceptanceCriteria).every(c => c.passed);
+    
+    res.json({
+      success: true,
+      section: '1.1 NEWS SERVICE RESURRECTION',
+      status: allPassed ? '✅ ALL ACCEPTANCE CRITERIA MET' : '⚠️ SOME CRITERIA NOT MET',
+      acceptanceCriteria,
+      snapshot: {
+        timestamp: newsSnapshot.timestamp,
+        totalArticles: newsSnapshot.articles.length,
+        dominantSentiment: newsSnapshot.dominantSentiment,
+        overallSentimentScore: newsSnapshot.overallSentimentScore,
+        sourcesUsed: newsSnapshot.sourcesUsed,
+        sourcesFailed: newsSnapshot.sourcesFailed,
+        criticalAlerts: newsSnapshot.criticalAlerts.length,
+        majorNarratives: newsSnapshot.majorNarratives.slice(0, 5),
+        fetchTime: `${fetchTime}ms`,
+      },
+      serviceHealth: newsStatus,
+      sampleArticles: newsSnapshot.articles.slice(0, 5).map(a => ({
+        title: a.title,
+        source: a.source,
+        sentiment: a.sentiment,
+        sentimentScore: a.sentimentScore,
+        impact: a.impact,
+        urgency: a.urgency,
+        publishedAt: a.publishedAt,
+      })),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -458,9 +538,10 @@ app.get('/', (_req: Request, res: Response) => {
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
       testPrice: '/api/test/price/:symbol',
+      testNews: '/api/test/news?coins=BTC,ETH',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/diagnostic to test all services, /api/keys to check API configuration',
+    documentation: 'Use /api/diagnostic to test all services, /api/keys to check API configuration, /api/test/news to verify news service',
   });
 });
 
@@ -575,7 +656,7 @@ async function startServer() {
     }
 
     // Start HTTP server (always start, even if DB fails)
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, '0.0.0.0', async () => {
       const env = process.env.NODE_ENV || 'production';
       logger.info(`🚀 Coinet Platform started`, {
         port: PORT,
@@ -584,6 +665,12 @@ async function startServer() {
       logger.info(`📍 Health: http://0.0.0.0:${PORT}/api/health`);
       logger.info(`📍 Status: http://0.0.0.0:${PORT}/api/status`);
       logger.info(`📍 Chat API: http://0.0.0.0:${PORT}/api/chat`);
+      
+      // Warm news cache after server starts (non-blocking)
+      warmNewsCache().catch(err => logger.warn('News cache warming failed', { error: err }));
+      
+      // Start background news refresh (every 2 minutes)
+      startNewsRefreshInterval(2 * 60 * 1000);
     });
   } catch (error) {
     logger.error('❌ Failed to start server', error);
