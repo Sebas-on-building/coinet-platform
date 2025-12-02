@@ -830,7 +830,7 @@ app.get('/api/test/social-intelligence', async (req: Request, res: Response) => 
 });
 
 // =============================================================================
-// 📊 COINET SENTIMENT INDEX (CSI) TEST ENDPOINT - Enterprise Grade
+// 📊 CRYPTO FEAR & GREED INDEX - Real-Time Market Sentiment
 // =============================================================================
 app.get('/api/test/csi', async (req: Request, res: Response) => {
   const startTime = Date.now();
@@ -843,79 +843,95 @@ app.get('/api/test/csi', async (req: Request, res: Response) => {
     
     res.json({
       success: true,
-      section: 'COINET SENTIMENT INDEX (CSI) - Enterprise Grade',
-      status: '✅ CSI OPERATIONAL',
+      section: 'CRYPTO FEAR & GREED INDEX - Real-Time Market Sentiment',
+      status: '✅ FEAR & GREED INDEX OPERATIONAL',
       
-      // Main index
+      // Main index - THE REAL VALUE
       index: {
         value: result.index.rounded,
         regime: result.index.regime,
         regimeLabel: result.index.regimeLabel,
-        raw: result.index.raw,
         smoothed: result.index.smoothed,
+        source: 'Alternative.me / CMC Fear & Greed Index',
+        updateFrequency: 'Every 12 hours',
       },
       
-      // Factor breakdown
-      factors: {
+      // Historical context
+      historical: {
+        yesterday: result.historical.previousIndex,
+        change24h: result.historical.change24h,
+        change7d: result.historical.change7d,
+        daysInCurrentRegime: result.historical.daysInCurrentRegime,
+      },
+      
+      // Regime scale
+      regimeScale: {
+        extremeFear: '0-24',
+        fear: '25-44',
+        neutral: '45-55',
+        greed: '56-75',
+        extremeGreed: '76-100',
+        current: `${result.index.rounded} = ${result.index.regimeLabel}`,
+      },
+      
+      // Factor analysis (what's driving sentiment)
+      factorAnalysis: {
         momentum: {
+          description: 'Price trend of top-10 coins',
           weight: '30%',
           greedScore: result.factors.momentum.greedScore,
-          contribution: result.factors.momentum.weightedContribution,
-          rawValue: result.factors.momentum.rawValue,
-          percentile: result.factors.momentum.percentile,
           signal: result.factors.momentum.signal,
         },
         volatility: {
+          description: 'Market volatility level',
           weight: '20%',
           greedScore: result.factors.volatility.greedScore,
-          contribution: result.factors.volatility.weightedContribution,
-          rawValue: result.factors.volatility.rawValue,
-          percentile: result.factors.volatility.percentile,
           signal: result.factors.volatility.signal,
         },
         derivatives: {
+          description: 'Options put/call ratio',
           weight: '20%',
           greedScore: result.factors.derivatives.greedScore,
-          contribution: result.factors.derivatives.weightedContribution,
-          rawValue: result.factors.derivatives.rawValue,
-          percentile: result.factors.derivatives.percentile,
           signal: result.factors.derivatives.signal,
         },
         ssr: {
+          description: 'BTC vs stablecoin ratio',
           weight: '15%',
           greedScore: result.factors.ssr.greedScore,
-          contribution: result.factors.ssr.weightedContribution,
-          rawValue: result.factors.ssr.rawValue,
-          percentile: result.factors.ssr.percentile,
           signal: result.factors.ssr.signal,
         },
         social: {
+          description: 'Social media sentiment',
           weight: '15%',
           greedScore: result.factors.social.greedScore,
-          contribution: result.factors.social.weightedContribution,
-          rawValue: result.factors.social.rawValue,
-          percentile: result.factors.social.percentile,
           signal: result.factors.social.signal,
         },
       },
       
-      // Mathematical formula
-      formula: {
-        equation: 'CSI = 0.30×MOM + 0.20×VOL + 0.20×PCR + 0.15×SSR + 0.15×SOC',
-        calculation: `${result.factors.momentum.weightedContribution.toFixed(2)} + ${result.factors.volatility.weightedContribution.toFixed(2)} + ${result.factors.derivatives.weightedContribution.toFixed(2)} + ${result.factors.ssr.weightedContribution.toFixed(2)} + ${result.factors.social.weightedContribution.toFixed(2)} = ${result.index.raw.toFixed(2)}`,
+      // Trading interpretation
+      tradingInterpretation: {
+        regime: result.index.regimeLabel,
+        recommendation: result.index.regime === 'extreme_fear' 
+          ? 'Historical buying opportunity - "Be greedy when others are fearful"'
+          : result.index.regime === 'fear'
+          ? 'Consider accumulating quality assets with caution'
+          : result.index.regime === 'neutral'
+          ? 'Wait for confirmation of trend direction'
+          : result.index.regime === 'greed'
+          ? 'Exercise caution, consider taking partial profits'
+          : 'High correction risk - "Be fearful when others are greedy"',
       },
       
-      // Historical context
-      historical: result.historical,
-      
-      // Configuration
-      config: result.config,
-      
       // Data quality
-      metadata: result.metadata,
+      metadata: {
+        ...result.metadata,
+        source: 'Alternative.me Fear & Greed Index',
+        updateFrequency: 'Every 12 hours (industry standard)',
+        methodology: 'Aggregated from price momentum, volatility, derivatives, market composition, and social sentiment',
+      },
       
       // AI context preview
-      aiContextPreview: aiContext.substring(0, 500) + '...',
+      aiContextPreview: aiContext.substring(0, 800) + '...',
       
       fetchTime: `${Date.now() - startTime}ms`,
     });
