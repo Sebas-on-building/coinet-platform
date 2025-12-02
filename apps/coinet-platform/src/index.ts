@@ -1202,6 +1202,90 @@ app.get('/api/test/csi-v5', async (req: Request, res: Response) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 🌐 SOCIAL INTELLIGENCE v2.0 TEST ENDPOINT - 10/10 Divine Perfection
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/social-v2', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateSocialIntelligenceV2, formatSocialIntelligenceV2ForAI } = 
+      await import('./services/social-intelligence-v2');
+    
+    const result = await calculateSocialIntelligenceV2();
+    const aiContext = formatSocialIntelligenceV2ForAI(result);
+    
+    res.json({
+      success: true,
+      section: '🌐 SOCIAL INTELLIGENCE v2.0 - 10/10 Divine Perfection',
+      status: '✅ SOCIAL INTELLIGENCE v2.0 OPERATIONAL',
+      version: result.version,
+      
+      // Headline
+      headline: result.headline,
+      
+      // Confidence
+      confidence: result.confidence,
+      
+      // Regime
+      regime: result.regime,
+      
+      // Platform breakdown
+      platformScores: result.platformScores,
+      platformWeights: result.platformWeights,
+      
+      // Segment scores
+      segments: result.segments,
+      
+      // FUD analysis
+      fud: {
+        score: result.fud.score,
+        level: result.fud.level,
+        components: result.fud.components,
+        percentileVsHistory: result.fud.percentileVsHistory,
+      },
+      
+      // FOMO analysis
+      fomo: {
+        score: result.fomo.score,
+        level: result.fomo.level,
+        components: result.fomo.components,
+        percentileVsHistory: result.fomo.percentileVsHistory,
+      },
+      
+      // Influencer intelligence
+      influencers: result.influencers,
+      
+      // Historical context
+      historical: result.historical,
+      
+      // Interpretation
+      interpretation: result.interpretation,
+      
+      // Data quality
+      dataQuality: result.dataQuality,
+      
+      // Calibration
+      calibration: result.calibration,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${result.computeTime}ms`,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Social Intelligence v2.0 test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 📊 COMPOSITE SOCIAL SCORE (CSS) TEST ENDPOINT - 10/10 Divine Perfection
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/css', async (req: Request, res: Response) => {
@@ -1300,6 +1384,7 @@ app.get('/', (_req: Request, res: Response) => {
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
+      testSocialV2: '/api/test/social-v2',
       testCSS: '/api/test/css',
       testCSIv4: '/api/test/csi-v4',
       testCSIv5: '/api/test/csi-v5',
@@ -1311,7 +1396,7 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/css for Composite Social Score, /api/test/social-intelligence for comprehensive social analysis',
+    documentation: 'Use /api/test/social-v2 for Social Intelligence v2.0, /api/test/css for Composite Social Score',
   });
 });
 

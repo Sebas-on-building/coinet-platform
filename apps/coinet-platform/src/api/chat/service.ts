@@ -22,6 +22,7 @@ import { analyzeContrarianIndicator, analyzeConsensus, formatAdvancedAnalyticsFo
 import { getComprehensiveSocialIntelligence, formatComprehensiveSocialIntelligenceForAI } from '../../services/social-intelligence-orchestrator';
 import { calculateCSI, formatCSIForAI } from '../../services/coinet-sentiment-index';
 import { calculateCompositeSocialScore, formatCSSForAI } from '../../services/composite-social-score';
+import { calculateSocialIntelligenceV2, formatSocialIntelligenceV2ForAI } from '../../services/social-intelligence-v2';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
@@ -99,13 +100,14 @@ export class ChatService {
                               lowerMessage.includes('long') ||
                               lowerMessage.includes('futures');
         
-        // Parallel fetch all context sources (including user memory + social + perps + influencers + CSI + CSS)
+        // Parallel fetch all context sources (including user memory + social + perps + influencers + CSI + CSS + Social v2)
         // Note: Using enriched news with AI-driven intelligence (Step 1.1.3)
         // Note: Using multi-platform social intelligence (Step 1.2.1 + 1.2.2)
         // Note: Using influencer tracking system (Step 1.2.3)
         // Note: Using Coinet Sentiment Index (CSI) - Enterprise Grade
         // Note: Using Composite Social Score (CSS) - 10/10 Divine Perfection (Step 1.2.5)
-        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, perpsData] = await Promise.all([
+        // Note: Using Social Intelligence v2.0 - 10/10 Divine Perfection (Section 1.2 Complete)
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, perpsData] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
@@ -115,6 +117,7 @@ export class ChatService {
           getInfluencerSnapshot(),  // 👤 Influencer tracking intelligence
           calculateCSI(),  // 📊 Enterprise-grade sentiment index
           calculateCompositeSocialScore(),  // 📊 Composite Social Score (FUD/FOMO/Sentiment)
+          calculateSocialIntelligenceV2(),  // 🌐 Social Intelligence v2.0 - Divine Perfection
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
         ]);
         
@@ -241,6 +244,21 @@ export class ChatService {
             regime: cssResult.regime.current,
             confidence: cssResult.confidence.confidence,
             riskLevel: cssResult.interpretation.riskLevel,
+          });
+        }
+        
+        // 10. Add Social Intelligence v2.0 - 10/10 Divine Perfection (Section 1.2 Complete)
+        // Comprehensive social analysis with empirical calibration, regime awareness, confidence bands
+        if (socialV2Result) {
+          contextParts.push(formatSocialIntelligenceV2ForAI(socialV2Result));
+          logger.debug('🌐 Social Intelligence v2.0 context added', {
+            socialScore: socialV2Result.headline.socialScore,
+            fud: socialV2Result.headline.fudIndex,
+            fomo: socialV2Result.headline.fomoIndex,
+            regime: socialV2Result.regime.current,
+            confidence: socialV2Result.confidence.overall,
+            riskLevel: socialV2Result.interpretation.riskLevel,
+            dataQuality: socialV2Result.dataQuality.overall,
           });
         }
         
