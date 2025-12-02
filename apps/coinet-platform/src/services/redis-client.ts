@@ -107,16 +107,65 @@ export async function initializeRedis(): Promise<boolean> {
 
   // Clean up URL if needed (Railway sometimes includes variable name)
   let redisUrl = CONFIG.REDIS_URL;
+  
+  // Log the raw URL format for debugging (masked for security)
+  const urlLength = redisUrl.length;
+  const startsWithRedis = redisUrl.toLowerCase().startsWith('redis');
+  logger.info('🔴 Redis URL check', { 
+    length: urlLength, 
+    startsWithRedis,
+    hasProtocol: redisUrl.includes('://'),
+  });
+  
+  // Handle various malformed formats
   if (redisUrl.startsWith('REDIS_URL=')) {
     redisUrl = redisUrl.substring('REDIS_URL='.length);
+    logger.debug('🔴 Removed REDIS_URL= prefix');
   }
-  redisUrl = redisUrl.trim();
-
-  // Validate URL format
-  if (!redisUrl.startsWith('redis://') && !redisUrl.startsWith('rediss://')) {
-    logger.warn('🔴 Invalid Redis URL format - using direct API calls');
-    lastError = 'Invalid URL format';
+  
+  // Handle quoted URLs
+  if ((redisUrl.startsWith('"') && redisUrl.endsWith('"')) || 
+      (redisUrl.startsWith("'") && redisUrl.endsWith("'"))) {
+    redisUrl = redisUrl.slice(1, -1);
+    logger.debug('🔴 Removed quotes from URL');
+  }
+  
+  // Handle ${{ }} Railway variable references that weren't resolved
+  if (redisUrl.includes('${{') || redisUrl.includes('}}')) {
+    logger.warn('🔴 Redis URL contains unresolved variable reference - check Railway shared variables', {
+      hint: 'Make sure REDIS_URL is added to this service from shared variables',
+    });
+    lastError = 'Unresolved variable reference';
     return false;
+  }
+  
+  redisUrl = redisUrl.trim();
+  
+  // Check if URL is empty or placeholder
+  if (!redisUrl || redisUrl === 'undefined' || redisUrl === 'null' || redisUrl.length < 10) {
+    logger.warn('🔴 Redis URL is empty or invalid - using direct API calls');
+    lastError = 'Empty or invalid URL';
+    return false;
+  }
+
+  // Validate URL format - support various Redis URL schemes
+  const validPrefixes = ['redis://', 'rediss://', 'redis+tls://'];
+  const hasValidPrefix = validPrefixes.some(prefix => redisUrl.toLowerCase().startsWith(prefix));
+  
+  if (!hasValidPrefix) {
+    // Try to detect if it's a host:port format and convert it
+    if (redisUrl.includes(':') && !redisUrl.includes('://')) {
+      // Might be host:port format - try to use it directly with ioredis
+      logger.info('🔴 Redis URL appears to be host:port format, attempting connection');
+    } else {
+      logger.warn('🔴 Invalid Redis URL format - expected redis:// or rediss://', {
+        hint: 'Check that REDIS_URL is correctly set in Railway variables',
+        startsWithRedis,
+        hasProtocol: redisUrl.includes('://'),
+      });
+      lastError = 'Invalid URL format - expected redis:// or rediss://';
+      return false;
+    }
   }
 
   try {
