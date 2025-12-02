@@ -1201,6 +1201,93 @@ app.get('/api/test/csi-v5', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 📊 COMPOSITE SOCIAL SCORE (CSS) TEST ENDPOINT - 10/10 Divine Perfection
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/css', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateCompositeSocialScore, formatCSSForAI, CSS_CONFIG } = 
+      await import('./services/composite-social-score');
+    
+    const result = await calculateCompositeSocialScore();
+    const aiContext = formatCSSForAI(result);
+    
+    res.json({
+      success: true,
+      section: '📊 COMPOSITE SOCIAL SCORE (CSS) - 10/10 Divine Perfection',
+      status: '✅ CSS OPERATIONAL',
+      
+      // Primary scores
+      scores: {
+        composite: `${result.scores.composite}/100`,
+        compositeLabel: result.scores.compositeLabel,
+        fud: `${result.scores.fud.score}/100 (${result.scores.fud.level})`,
+        fomo: `${result.scores.fomo.score}/100 (${result.scores.fomo.level})`,
+      },
+      
+      // Confidence
+      confidence: {
+        band: `${result.confidence.lower}-${result.confidence.upper}`,
+        confidence: `${(result.confidence.confidence * 100).toFixed(0)}%`,
+        uncertainty: result.confidence.uncertainty,
+      },
+      
+      // Regime
+      regime: result.regime,
+      
+      // Platform breakdown
+      platformScores: result.platformScores,
+      
+      // Segment scores
+      segments: result.segments,
+      
+      // FUD breakdown
+      fudBreakdown: result.scores.fud.components,
+      
+      // FOMO breakdown
+      fomoBreakdown: result.scores.fomo.components,
+      
+      // Historical context
+      historical: result.historical,
+      
+      // Interpretation
+      interpretation: result.interpretation,
+      
+      // Data quality
+      dataQuality: result.dataQuality,
+      
+      // Calibration
+      calibration: result.calibration,
+      
+      // Effective weights
+      effectiveWeights: result.effectiveWeights,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      fetchTime: `${Date.now() - startTime}ms`,
+      
+      // Config reference
+      thresholds: {
+        sentiment: CSS_CONFIG.SENTIMENT_THRESHOLDS,
+        fud: CSS_CONFIG.FUD_THRESHOLDS,
+        fomo: CSS_CONFIG.FOMO_THRESHOLDS,
+      },
+    });
+  } catch (error: any) {
+    logger.error('❌ CSS test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -1213,6 +1300,7 @@ app.get('/', (_req: Request, res: Response) => {
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
+      testCSS: '/api/test/css',
       testCSIv4: '/api/test/csi-v4',
       testCSIv5: '/api/test/csi-v5',
       testPrice: '/api/test/price/:symbol',
@@ -1223,7 +1311,7 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/social-intelligence for the comprehensive revolutionary social analysis',
+    documentation: 'Use /api/test/css for Composite Social Score, /api/test/social-intelligence for comprehensive social analysis',
   });
 });
 
