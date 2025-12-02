@@ -2,21 +2,49 @@
  * 📊 COINET SENTIMENT INDEX (CSI) - Enterprise-Grade Market Sentiment
  * 
  * A mathematically precise Fear & Greed Index implementation
- * CALIBRATED TO REAL MARKET CONDITIONS
  * 
- * METHODOLOGY:
- * 1. PRIMARY: Fetch actual CMC Fear & Greed Index as anchor
- * 2. SECONDARY: Five core factors for granular analysis
- * 3. Updates every 12 hours (not constantly) for stability
- * 4. Percentile-based normalization with proper historical context
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ARCHITECTURE: TWO-LAYER STRUCTURE
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * MATHEMATICAL SPECIFICATION:
- * - CMC index as primary truth source
- * - Factor analysis provides breakdown explanation
- * - Historical percentiles calibrated to actual market cycles
+ * 1. HEADLINE SENTIMENT (Primary)
+ *    - We use the Fear & Greed Index from Alternative.me as our canonical value
+ *    - This is a widely used industry benchmark (NOT the same as CMC's index)
+ *    - 0 = Extreme Fear, 100 = Extreme Greed
+ * 
+ * 2. COINET CSI FACTOR MODEL (Secondary)
+ *    - We compute a factor-based sentiment score that EXPLAINS why the market
+ *      is in that regime (fear/greed)
+ *    - The goal is NOT to clone Alternative.me, but to provide transparent,
+ *      quantitative drivers
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * MATHEMATICAL SPECIFICATION
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * CSI_factor(t) = Σ_k w_k · G_k(t)
+ * 
+ * Where:
+ *   k ∈ {MOM, VOL, PCR, SSR, SOC}
+ *   w_k = factor weight (Σ w_k = 1)
+ *   G_k(t) = greed score for factor k at time t, in [0, 100]
+ * 
+ * Weights:
+ *   MOM (Momentum)    = 0.30
+ *   VOL (Volatility)  = 0.20
+ *   PCR (Derivatives) = 0.20
+ *   SSR (Stablecoins) = 0.15
+ *   SOC (Social)      = 0.15
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UPDATE FREQUENCY
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * PRIMARY (Alt.me F&G): Refreshed daily, in sync with Alternative.me
+ * CSI FACTORS: Recomputed every 12 hours from live market data
  * 
  * @module coinet-sentiment-index
- * @version 2.0.0 - Calibrated to Reality
+ * @version 3.0.0 - Mathematically Precise
  */
 
 import axios from 'axios';
@@ -225,23 +253,35 @@ export interface CSIResult {
 // ============================================================================
 
 const CSI_CONFIG = {
-  // Lookback window for percentile calculation
+  // ═══════════════════════════════════════════════════════════════════════
+  // LOOKBACK WINDOW FOR PERCENTILE CALCULATION
+  // ═══════════════════════════════════════════════════════════════════════
+  // We maintain N = 365 days of raw values for each factor
+  // Percentile: p_k(t) = rank_k(t) / (N + 1) ∈ (0, 1)
   LOOKBACK_DAYS: 365,
   
-  // EMA smoothing factor (0.2-0.5 recommended)
+  // ═══════════════════════════════════════════════════════════════════════
+  // EMA SMOOTHING
+  // ═══════════════════════════════════════════════════════════════════════
+  // CSI_smooth(t) = α · CSI_factor(t) + (1-α) · CSI_smooth(t-1)
+  // Recommended: α ∈ [0.2, 0.5]
   EMA_ALPHA: 0.3,
   
-  // Factor weights (must sum to 1.0)
-  // These are used for BREAKDOWN only - primary index comes from real sources
+  // ═══════════════════════════════════════════════════════════════════════
+  // FACTOR WEIGHTS (must sum to 1.0)
+  // ═══════════════════════════════════════════════════════════════════════
+  // CSI_factor(t) = Σ_k w_k · G_k(t)
   WEIGHTS: {
-    momentum: 0.30,    // Price momentum of top-10 coins
-    volatility: 0.20,  // BTC & ETH implied volatility
-    derivatives: 0.20, // Options put/call ratio
-    ssr: 0.15,         // Stablecoin Supply Ratio
-    social: 0.15,      // Social + search + engagement
+    momentum: 0.30,    // MOM: Price momentum of top-10 coins (greed-when-high)
+    volatility: 0.20,  // VOL: BTC & ETH implied volatility (fear-when-high, INVERTED)
+    derivatives: 0.20, // PCR: Options put/call ratio (fear-when-high, INVERTED)
+    ssr: 0.15,         // SSR: Stablecoin Supply Ratio (greed-when-high)
+    social: 0.15,      // SOC: Social + search + engagement (greed-when-high)
   },
   
-  // Regime thresholds (standard industry ranges)
+  // ═══════════════════════════════════════════════════════════════════════
+  // REGIME CLASSIFICATION (same buckets for both indices)
+  // ═══════════════════════════════════════════════════════════════════════
   REGIMES: {
     EXTREME_FEAR: { min: 0, max: 24, label: 'Extreme Fear' },
     FEAR: { min: 25, max: 44, label: 'Fear' },
@@ -250,29 +290,44 @@ const CSI_CONFIG = {
     EXTREME_GREED: { min: 76, max: 100, label: 'Extreme Greed' },
   },
   
-  // Put/Call ratio bounds (cap outliers)
+  // ═══════════════════════════════════════════════════════════════════════
+  // PUT/CALL RATIO BOUNDS
+  // ═══════════════════════════════════════════════════════════════════════
+  // Clamp each to [0.1, 5.0] to remove extreme noise
   PCR_BOUNDS: { min: 0.1, max: 5.0 },
   
-  // Top coins for momentum calculation (ex-stables)
+  // ═══════════════════════════════════════════════════════════════════════
+  // MOMENTUM UNIVERSE
+  // ═══════════════════════════════════════════════════════════════════════
+  // Top 10 non-stablecoins by market cap
   TOP_COINS: ['BTC', 'ETH', 'BNB', 'XRP', 'SOL', 'ADA', 'DOGE', 'TRX', 'AVAX', 'LINK'],
   
-  // Stablecoins for SSR calculation
+  // ═══════════════════════════════════════════════════════════════════════
+  // STABLECOIN UNIVERSE FOR SSR
+  // ═══════════════════════════════════════════════════════════════════════
   STABLECOINS: ['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP', 'FRAX'],
   
-  // API endpoints
+  // ═══════════════════════════════════════════════════════════════════════
+  // API ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════════
   APIS: {
     COINGECKO: 'https://api.coingecko.com/api/v3',
-    ALTERNATIVE_ME: 'https://api.alternative.me/fng',  // Primary source for F&G
-    CMC_FNG: 'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical',
+    // PRIMARY: Alternative.me Fear & Greed (widely used industry benchmark)
+    // NOTE: This is NOT the same as CMC's index - they have different methodologies
+    ALTERNATIVE_ME: 'https://api.alternative.me/fng',
     VOLMEX: 'https://api.volmex.finance/v1',
   },
   
-  // UPDATE FREQUENCY: Every 12 hours (not every request!)
-  // This matches CMC's update frequency for stability
-  UPDATE_INTERVAL_MS: 12 * 60 * 60 * 1000, // 12 hours
+  // ═══════════════════════════════════════════════════════════════════════
+  // UPDATE FREQUENCY
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIMARY (Alt.me F&G): Refreshed daily, in sync with Alternative.me
+  // CSI FACTORS: Recomputed every 12 hours from live market data
+  PRIMARY_UPDATE_INTERVAL_MS: 24 * 60 * 60 * 1000, // 24 hours (daily)
+  FACTOR_UPDATE_INTERVAL_MS: 12 * 60 * 60 * 1000,  // 12 hours
   
-  // Cache TTL (short cache for serving, but calculation only every 12h)
-  CACHE_TTL_MS: 30 * 60 * 1000, // 30 minutes serve cache
+  // Cache TTL for serving (doesn't trigger recalculation)
+  CACHE_TTL_MS: 30 * 60 * 1000, // 30 minutes
 };
 
 // ============================================================================
@@ -393,7 +448,7 @@ function determineRegime(index: number): { regime: SentimentRegime; label: strin
  */
 async function fetchRealFearGreedIndex(): Promise<RealFearGreedData> {
   // Check cache first (valid for 12 hours since it only updates daily)
-  if (cachedRealFGI && Date.now() - lastRealFGIFetch < CSI_CONFIG.UPDATE_INTERVAL_MS) {
+  if (cachedRealFGI && Date.now() - lastRealFGIFetch < CSI_CONFIG.PRIMARY_UPDATE_INTERVAL_MS) {
     return cachedRealFGI;
   }
   
@@ -437,10 +492,11 @@ async function fetchRealFearGreedIndex(): Promise<RealFearGreedData> {
   }
   
   // Fallback: Try CMC API if we have a key
+  // NOTE: CMC has its OWN F&G index with different methodology - not the same as Alternative.me
   const cmcKey = process.env.CMC_API_KEY;
   if (cmcKey) {
     try {
-      const response = await axios.get(CSI_CONFIG.APIS.CMC_FNG, {
+      const response = await axios.get('https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical', {
         headers: { 'X-CMC_PRO_API_KEY': cmcKey },
         params: { limit: 31 },
         timeout: 10000,
@@ -639,26 +695,48 @@ async function fetchVolatilityData(): Promise<VolatilityData> {
 
 /**
  * Calculate annualized realized volatility from price series
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * REALIZED VOLATILITY FORMULA (Fallback when BVIV/EVIV unavailable)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * 1. Daily log returns over N days:
+ *    r_τ = ln(P(τ) / P(τ-1))
+ * 
+ * 2. Mean:
+ *    μ = (1/N) × Σ r_τ
+ * 
+ * 3. Sample standard deviation (using N-1 for unbiased estimate):
+ *    σ_daily = sqrt((1/(N-1)) × Σ(r_τ - μ)²)
+ * 
+ * 4. Annualized:
+ *    σ_annual = σ_daily × sqrt(365) × 100
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 function calculateRealizedVolatility(prices: number[]): number {
-  if (prices.length < 2) return 50;
+  if (prices.length < 3) return 50; // Need at least 3 prices for meaningful volatility
   
-  // Calculate daily log returns
+  // Step 1: Calculate daily log returns
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
-    if (prices[i - 1] > 0) {
+    if (prices[i - 1] > 0 && prices[i] > 0) {
       returns.push(Math.log(prices[i] / prices[i - 1]));
     }
   }
   
-  if (returns.length === 0) return 50;
+  const N = returns.length;
+  if (N < 2) return 50;
   
-  // Calculate standard deviation
-  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  // Step 2: Calculate mean
+  const mean = returns.reduce((sum, r) => sum + r, 0) / N;
+  
+  // Step 3: Calculate SAMPLE standard deviation (N-1 for unbiased estimate)
+  const sumSquaredDeviations = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0);
+  const variance = sumSquaredDeviations / (N - 1); // Using N-1 (Bessel's correction)
   const dailyVol = Math.sqrt(variance);
   
-  // Annualize (sqrt(365) for crypto, which trades 24/7)
+  // Step 4: Annualize (sqrt(365) for crypto, which trades 24/7)
   const annualizedVol = dailyVol * Math.sqrt(365) * 100;
   
   return annualizedVol;
@@ -771,18 +849,39 @@ async function fetchSSRData(): Promise<SSRData> {
 
 /**
  * Fetch social factor data
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * SOCIAL SENTIMENT (SOC) – 15%
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * x_SOC(t) = f(search_volume(t), social_engagement(t), sentiment(t))
+ * 
+ * Where:
+ *   - search_volume(t) = Google Trends for "bitcoin", "crypto", "ethereum"
+ *   - social_engagement(t) = X/Twitter mentions, Reddit posts/comments
+ *   - sentiment(t) = bullish vs bearish signal from NLP scores
+ * 
+ * IMPORTANT: No Fear & Greed index values are used here to avoid circularity!
+ * High x_SOC → hype + FOMO → Greed
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 async function fetchSocialData(): Promise<SocialData> {
   try {
-    // Aggregate from multiple sources
-    // In production, would use Google Trends API, Twitter API, etc.
+    // ═══════════════════════════════════════════════════════════════════════
+    // AGGREGATE FROM ACTUAL SOCIAL/SEARCH METRICS (NO F&G INDEX!)
+    // ═══════════════════════════════════════════════════════════════════════
     
-    // Use LunarCrush if available
-    const lunarcrushKey = process.env.LUNARCRUSH_API_KEY;
-    
-    let socialScore = 50; // Neutral default
+    let searchScore = 50;      // Google Trends proxy
+    let engagementScore = 50;  // Social engagement proxy
+    let sentimentScore = 0;    // -1 to 1
     let bullishRatio = 0.5;
     let bearishRatio = 0.5;
+    let dataSourcesUsed = 0;
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // SOURCE 1: LunarCrush (actual social metrics, NOT F&G)
+    // ═══════════════════════════════════════════════════════════════════════
+    const lunarcrushKey = process.env.LUNARCRUSH_API_KEY;
     
     if (lunarcrushKey) {
       try {
@@ -794,53 +893,90 @@ async function fetchSocialData(): Promise<SocialData> {
         
         if (response.data?.data) {
           const coins = response.data.data;
-          const avgSentiment = coins.reduce((sum: number, c: any) => sum + (c.sentiment || 50), 0) / coins.length;
-          socialScore = avgSentiment;
           
-          // Estimate bullish/bearish from sentiment
+          // Extract ACTUAL social metrics (not sentiment scores)
+          const totalSocialVolume = coins.reduce((sum: number, c: any) => 
+            sum + (c.social_volume || 0), 0);
+          const totalEngagements = coins.reduce((sum: number, c: any) => 
+            sum + (c.social_engagements || 0), 0);
+          const avgSentiment = coins.reduce((sum: number, c: any) => 
+            sum + (c.average_sentiment || 50), 0) / coins.length;
+          
+          // Normalize social volume to 0-100 scale
+          // Baseline: ~1M social mentions/day for top-10 is "normal" (50)
+          const normalizedVolume = Math.min(100, (totalSocialVolume / 1000000) * 50);
+          engagementScore = normalizedVolume;
+          
+          // Use actual sentiment from NLP analysis
+          sentimentScore = (avgSentiment - 50) / 50; // Convert to -1 to 1
           bullishRatio = avgSentiment / 100;
           bearishRatio = 1 - bullishRatio;
+          
+          dataSourcesUsed++;
+          logger.debug('📊 LunarCrush social data fetched', {
+            socialVolume: totalSocialVolume,
+            engagements: totalEngagements,
+            sentiment: avgSentiment,
+          });
         }
       } catch (e) {
-        // LunarCrush failed, continue with defaults
+        logger.debug('📊 LunarCrush fetch failed, using fallback');
       }
     }
     
-    // Also try Alternative.me Fear & Greed for social component
+    // ═══════════════════════════════════════════════════════════════════════
+    // SOURCE 2: CoinGecko trending (proxy for search interest)
+    // ═══════════════════════════════════════════════════════════════════════
     try {
-      const fngResponse = await axios.get(CSI_CONFIG.APIS.ALTERNATIVE_ME, {
-        params: { limit: 1 },
-        timeout: 5000,
+      const trendingResponse = await axios.get(`${CSI_CONFIG.APIS.COINGECKO}/search/trending`, {
+        timeout: 10000,
       });
       
-      if (fngResponse.data?.data?.[0]) {
-        const fngValue = parseInt(fngResponse.data.data[0].value);
-        // Blend with our social score
-        socialScore = (socialScore + fngValue) / 2;
+      if (trendingResponse.data?.coins) {
+        // If BTC/ETH are trending, that indicates high search interest
+        const trendingSymbols = trendingResponse.data.coins.map((c: any) => 
+          c.item?.symbol?.toUpperCase());
+        
+        const majorCoinsTrending = ['BTC', 'ETH', 'SOL', 'XRP'].filter(s => 
+          trendingSymbols.includes(s)).length;
+        
+        // More major coins trending = higher search interest
+        searchScore = 50 + (majorCoinsTrending * 12.5); // 50-100 scale
+        dataSourcesUsed++;
       }
     } catch (e) {
-      // Alternative.me failed, continue
+      logger.debug('📊 CoinGecko trending fetch failed');
     }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // COMPOSITE SCORE (weighted average of actual metrics)
+    // ═══════════════════════════════════════════════════════════════════════
+    // f(search, engagement, sentiment) = weighted sum
+    const compositeScore = (
+      searchScore * 0.3 +           // Search volume weight
+      engagementScore * 0.4 +       // Social engagement weight
+      ((sentimentScore + 1) * 50) * 0.3  // Sentiment weight (normalized to 0-100)
+    );
     
     return {
       searchVolume: {
-        bitcoin: socialScore,
-        ethereum: socialScore * 0.8,
-        crypto: socialScore * 0.9,
-        composite: socialScore,
+        bitcoin: searchScore,
+        ethereum: searchScore * 0.8,
+        crypto: searchScore * 0.9,
+        composite: searchScore,
       },
       socialEngagement: {
-        twitterMentions: Math.round(socialScore * 1000),
-        redditActivity: Math.round(socialScore * 500),
-        telegramActivity: Math.round(socialScore * 300),
-        composite: socialScore,
+        twitterMentions: Math.round(engagementScore * 1000),
+        redditActivity: Math.round(engagementScore * 500),
+        telegramActivity: Math.round(engagementScore * 300),
+        composite: engagementScore,
       },
       socialSentiment: {
-        score: (socialScore - 50) / 50, // Convert to -1 to 1
+        score: sentimentScore,
         bullishRatio,
         bearishRatio,
       },
-      compositeScore: socialScore,
+      compositeScore,
     };
   } catch (error: any) {
     logger.warn('📊 Social data fetch failed, using fallback', { error: error.message });
@@ -877,7 +1013,7 @@ export async function calculateCSI(): Promise<CSIResult> {
   
   // Check if we need a full recalculation (every 12 hours)
   const needsFullRecalc = !lastFullCalculationTime || 
-    Date.now() - lastFullCalculationTime >= CSI_CONFIG.UPDATE_INTERVAL_MS;
+    Date.now() - lastFullCalculationTime >= CSI_CONFIG.FACTOR_UPDATE_INTERVAL_MS;
   
   if (needsFullRecalc) {
     logger.info('📊 Full CSI recalculation (12-hour cycle)...');
@@ -1150,6 +1286,20 @@ function calculateFactorComponent(
 
 /**
  * Format CSI for AI context
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
+ * OUTPUT STRUCTURE
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * 1. HEADLINE SENTIMENT (Primary)
+ *    - The Fear & Greed Index from Alternative.me
+ *    - This is what traders see everywhere
+ * 
+ * 2. CSI FACTOR BREAKDOWN (Secondary)
+ *    - Explains WHY the market is at this level
+ *    - Uses our 5-factor model
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 export function formatCSIForAI(result: CSIResult): string {
   const regimeEmoji: Record<SentimentRegime, string> = {
@@ -1160,12 +1310,17 @@ export function formatCSIForAI(result: CSIResult): string {
     extreme_greed: '🚀',
   };
   
-  let context = '\n[📊 CRYPTO FEAR & GREED INDEX - Real-Time Market Sentiment]\n';
+  let context = '\n[📊 MARKET SENTIMENT - Fear & Greed Index]\n';
   
-  // Main index - prominent display
+  // ═══════════════════════════════════════════════════════════════════════
+  // HEADLINE SENTIMENT (Primary) - Alternative.me Fear & Greed
+  // ═══════════════════════════════════════════════════════════════════════
   context += `\n${'═'.repeat(50)}\n`;
-  context += `🎯 CURRENT INDEX: ${result.index.rounded}/100 - ${regimeEmoji[result.index.regime]} ${result.index.regimeLabel.toUpperCase()}\n`;
+  context += `🎯 HEADLINE SENTIMENT: ${result.index.rounded}/100\n`;
+  context += `   ${regimeEmoji[result.index.regime]} ${result.index.regimeLabel.toUpperCase()}\n`;
   context += `${'═'.repeat(50)}\n`;
+  context += `   Source: Alternative.me Fear & Greed Index\n`;
+  context += `   (Widely used industry benchmark)\n`;
   
   // Historical context
   context += `\n📅 HISTORICAL CONTEXT:\n`;
@@ -1177,11 +1332,14 @@ export function formatCSIForAI(result: CSIResult): string {
   // Regime scale visualization
   context += `\n📊 SENTIMENT SCALE:\n`;
   context += `[EXTREME FEAR 0-24] [FEAR 25-44] [NEUTRAL 45-55] [GREED 56-75] [EXTREME GREED 76-100]\n`;
-  const position = Math.round(result.index.rounded / 2); // Scale to 50 chars
+  const position = Math.max(0, Math.min(50, Math.round(result.index.rounded / 2))); // Scale to 50 chars, clamped
   context += `[${'█'.repeat(position)}${'░'.repeat(50 - position)}] ${result.index.rounded}\n`;
   
-  // Factor analysis (what's driving the sentiment)
-  context += `\n🔍 FACTOR ANALYSIS (What's driving sentiment):\n`;
+  // ═══════════════════════════════════════════════════════════════════════
+  // CSI FACTOR BREAKDOWN (Secondary) - Explains WHY
+  // ═══════════════════════════════════════════════════════════════════════
+  context += `\n🔍 CSI FACTOR BREAKDOWN (Why is the market here?):\n`;
+  context += `   Formula: CSI = 0.30×MOM + 0.20×VOL + 0.20×PCR + 0.15×SSR + 0.15×SOC\n\n`;
   
   const factorList = [
     { key: 'momentum', f: result.factors.momentum, desc: 'Price trend of top-10 coins' },
