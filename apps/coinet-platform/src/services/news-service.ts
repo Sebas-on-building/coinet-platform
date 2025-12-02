@@ -372,15 +372,23 @@ async function fetchFromCryptoPanic(coins?: string[]): Promise<NewsArticle[]> {
   }
   
   try {
-    let url = 'https://cryptopanic.com/api/v1/posts/?public=true&kind=news';
+    // Use the correct Developer API v2 endpoint
+    const apiKey = source.apiKey || process.env.CRYPTOPANIC_API_KEY;
     
-    if (source.apiKey) {
-      url += `&auth_token=${source.apiKey}`;
+    if (!apiKey) {
+      logger.debug('📰 CryptoPanic: No API key configured');
+      return [];
     }
+    
+    // Build URL with Developer API v2 endpoint
+    let url = `https://cryptopanic.com/api/developer/v2/posts/?auth_token=${apiKey}&public=true&kind=news`;
     
     if (coins && coins.length > 0) {
       url += `&currencies=${coins.join(',')}`;
     }
+    
+    // Add filter for important/rising news
+    url += '&filter=rising';
     
     const response = await axios.get<CryptoPanicResponse>(url, {
       timeout: CONFIG.REQUEST_TIMEOUT_MS,
@@ -396,15 +404,19 @@ async function fetchFromCryptoPanic(coins?: string[]): Promise<NewsArticle[]> {
     );
     
     markSourceSuccess('cryptopanic');
-    logger.debug('📰 CryptoPanic fetch SUCCESS', { count: articles.length });
+    logger.info('📰 CryptoPanic fetch SUCCESS', { count: articles.length, filter: 'rising' });
     
     return articles;
   } catch (error: any) {
     const message = error.response?.status === 429 
       ? 'Rate limited' 
+      : error.response?.status === 401
+      ? 'Invalid API key'
+      : error.response?.status === 403
+      ? 'Access forbidden'
       : error.message || 'Unknown error';
     markSourceFailure('cryptopanic', message);
-    logger.warn('📰 CryptoPanic fetch FAILED', { error: message });
+    logger.warn('📰 CryptoPanic fetch FAILED', { error: message, status: error.response?.status });
     return [];
   }
 }
