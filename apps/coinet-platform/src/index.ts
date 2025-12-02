@@ -644,6 +644,65 @@ app.get('/api/test/social', async (req: Request, res: Response) => {
   }
 });
 
+// =============================================================================
+// 👤 INFLUENCER TRACKING TEST ENDPOINT - Verify Section 1.2.3
+// =============================================================================
+app.get('/api/test/influencers', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { getInfluencerSnapshot, getTrackedInfluencers, getInfluencersByTier } = await import('./services/influencer-tracking');
+    
+    const snapshot = await getInfluencerSnapshot();
+    const allInfluencers = getTrackedInfluencers();
+    const fetchTime = Date.now() - startTime;
+    
+    // Tier breakdown
+    const tierBreakdown = {
+      legendary: getInfluencersByTier('legendary').length,
+      elite: getInfluencersByTier('elite').length,
+      major: getInfluencersByTier('major').length,
+      notable: getInfluencersByTier('notable').length,
+      rising: getInfluencersByTier('rising').length,
+    };
+    
+    res.json({
+      success: true,
+      section: '1.2.3 INFLUENCER TRACKING SYSTEM',
+      status: '✅ INFLUENCER TRACKING OPERATIONAL',
+      database: {
+        totalInfluencers: allInfluencers.length,
+        tierBreakdown,
+        topInfluencers: allInfluencers.slice(0, 10).map(i => ({
+          name: i.name,
+          tier: i.tier,
+          followers: i.followers,
+          credibilityScore: i.credibilityScore,
+          marketImpactScore: i.marketImpactScore,
+          specialization: i.specialization,
+        })),
+      },
+      snapshot: {
+        timestamp: snapshot.timestamp,
+        activeInfluencers: snapshot.activeInfluencers,
+        recentPosts: snapshot.recentPosts.length,
+        activeAlerts: snapshot.activeAlerts.length,
+        criticalAlerts: snapshot.criticalAlerts.length,
+        influencerSentiment: snapshot.influencerSentiment,
+        topMentionedCoins: snapshot.topMentionedCoins.slice(0, 5),
+        recentCalls: snapshot.recentCalls.slice(0, 5),
+      },
+      fetchTime: `${fetchTime}ms`,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -658,9 +717,10 @@ app.get('/', (_req: Request, res: Response) => {
       testPrice: '/api/test/price/:symbol',
       testNews: '/api/test/news?coins=BTC,ETH',
       testSocial: '/api/test/social?coins=BTC,ETH,SOL',
+      testInfluencers: '/api/test/influencers',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/diagnostic to test all services, /api/keys to check API configuration, /api/test/news to verify news service, /api/test/social to verify social intelligence',
+    documentation: 'Use /api/diagnostic to test all services, /api/keys to check API configuration, /api/test/news to verify news, /api/test/social for social intel, /api/test/influencers for influencer tracking',
   });
 });
 

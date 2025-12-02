@@ -17,6 +17,7 @@ import { getEnrichedNewsForCoins, formatEnrichedNewsForAI } from '../../services
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
 import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
 import { getSocialIntelligence, formatSocialIntelligenceForAI } from '../../services/social-intelligence';
+import { getInfluencerSnapshot, formatInfluencerIntelligenceForAI } from '../../services/influencer-tracking';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
@@ -94,16 +95,18 @@ export class ChatService {
                               lowerMessage.includes('long') ||
                               lowerMessage.includes('futures');
         
-        // Parallel fetch all context sources (including user memory + social + perps)
+        // Parallel fetch all context sources (including user memory + social + perps + influencers)
         // Note: Using enriched news with AI-driven intelligence (Step 1.1.3)
-        // Note: Using multi-platform social intelligence (Step 1.2.1)
-        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, perpsData] = await Promise.all([
+        // Note: Using multi-platform social intelligence (Step 1.2.1 + 1.2.2)
+        // Note: Using influencer tracking system (Step 1.2.3)
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, perpsData] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
           getEnrichedNewsForCoins(coinSymbols),  // 🧠 AI-enriched news intelligence
           getMarketSentiment(),
           getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 🌐 Multi-platform social intelligence
+          getInfluencerSnapshot(),  // 👤 Influencer tracking intelligence
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
         ]);
         
@@ -178,6 +181,18 @@ export class ChatService {
             liquidations: perpsData.liquidations.length,
             fundingRates: perpsData.fundingRates.length,
             totalLiq: perpsData.marketSummary.totalLiquidations24h,
+          });
+        }
+        
+        // 7. Add influencer intelligence context (Step 1.2.3)
+        if (influencerIntel && (influencerIntel.recentPosts.length > 0 || influencerIntel.activeAlerts.length > 0)) {
+          contextParts.push(formatInfluencerIntelligenceForAI(influencerIntel));
+          logger.debug('👤 Influencer intelligence added', {
+            activeInfluencers: influencerIntel.activeInfluencers,
+            recentPosts: influencerIntel.recentPosts.length,
+            activeAlerts: influencerIntel.activeAlerts.length,
+            criticalAlerts: influencerIntel.criticalAlerts.length,
+            sentiment: influencerIntel.influencerSentiment.overall,
           });
         }
         
