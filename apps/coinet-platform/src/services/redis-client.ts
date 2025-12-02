@@ -183,7 +183,7 @@ export async function initializeRedis(): Promise<boolean> {
       connectTimeout: CONFIG.CONNECT_TIMEOUT,
       commandTimeout: CONFIG.COMMAND_TIMEOUT,
       enableReadyCheck: true,
-      enableOfflineQueue: false, // Don't queue commands when disconnected
+      enableOfflineQueue: true, // Allow queuing commands while connecting
       lazyConnect: false,
     });
 
@@ -200,7 +200,12 @@ export async function initializeRedis(): Promise<boolean> {
 
     redisClient.on('error', (error: Error) => {
       lastError = error.message;
-      logger.warn('🔴 Redis error', { error: error.message });
+      // Only log as warning, not error - Redis errors are recoverable
+      if (!isConnected) {
+        logger.debug('🔴 Redis connection error (will retry)', { error: error.message });
+      } else {
+        logger.warn('🔴 Redis error', { error: error.message });
+      }
     });
 
     redisClient.on('close', () => {
@@ -212,10 +217,32 @@ export async function initializeRedis(): Promise<boolean> {
       logger.info('🔴 Redis reconnecting...');
     });
 
+    // Wait for connection to be ready (with timeout)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Redis connection timeout'));
+      }, CONFIG.CONNECT_TIMEOUT);
+
+      if (redisClient!.status === 'ready') {
+        clearTimeout(timeout);
+        resolve();
+      } else {
+        redisClient!.once('ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        redisClient!.once('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      }
+    });
+
     // Test connection with ping
     const pingStart = Date.now();
     await redisClient.ping();
     lastPingTime = Date.now() - pingStart;
+    isConnected = true;
     
     logger.info('🔴 Redis initialized successfully', { pingMs: lastPingTime });
     return true;
