@@ -206,6 +206,8 @@ build/
 # Backup files
 *.backup
 *.bak
+backups/
+**/backups/
 
 # Environment files (except example)
 .env

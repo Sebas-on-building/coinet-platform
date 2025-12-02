@@ -70,7 +70,20 @@ ALCHEMY_WHALES_URL="https://alchemy-whales-production.up.railway.app"
 npm run build
 ```
 
-### 5. Start
+### 5. Verify Database Connection
+
+```bash
+npm run db:verify
+```
+
+This will:
+- Test database connection
+- Show connection latency
+- Display statistics (conversations, messages, users)
+- List recent conversations
+- Verify schema tables
+
+### 6. Start
 
 ```bash
 npm start
@@ -158,6 +171,28 @@ The `/api/diagnostic` endpoint tests all services and provides:
 ```bash
 curl https://your-backend/api/diagnostic?symbol=SUPRA
 ```
+
+## 💾 Database Management
+
+### Verify Database Connection
+
+```bash
+npm run db:verify
+```
+
+Shows database status, statistics, and recent activity.
+
+### Backup Chat History
+
+```bash
+npm run db:backup
+```
+
+Creates SQL backup of all conversations and messages. Backups are saved to `backups/` directory.
+
+**Important**: Chat history is stored in PostgreSQL, NOT in git. Regular backups are essential!
+
+See `BACKUP_STRATEGY.md` for detailed backup and recovery procedures.
 
 ## 🎯 Key Differentiators vs ChatGPT/Perplexity
 

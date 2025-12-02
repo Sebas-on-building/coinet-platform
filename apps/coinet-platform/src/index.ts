@@ -15,7 +15,7 @@ import { symbolDetector } from './services/symbol-detector';
 import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
 import { getWhaleContextForAI } from './services/whale-data';
 import { getMarketSentiment } from './services/sentiment-service';
-import { fetchNews } from './services/news-service';
+import { fetchNews, getNewsServiceStatus } from './services/news-service';
 import { aiService } from './services/ai-service';
 
 // Load environment variables
@@ -185,11 +185,22 @@ app.get('/api/diagnostic', async (req: Request, res: Response) => {
   results.environment = {
     NODE_ENV: process.env.NODE_ENV || 'not set',
     DATABASE_URL: process.env.DATABASE_URL ? '✅ configured' : '❌ missing',
+    // AI Keys
     XAI_API_KEY: process.env.XAI_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI)',
     GROK_API_KEY: process.env.GROK_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI alt)',
     OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '✅ configured' : '⚠️ missing (fallback AI)',
+    // Market Data Keys
     COINGECKO_API_KEY: process.env.COINGECKO_API_KEY ? '✅ pro tier' : '⚠️ free tier (rate limited)',
     CMC_API_KEY: process.env.CMC_API_KEY ? '✅ configured' : '⚠️ missing (backup)',
+    // News Service Keys
+    CRYPTOPANIC_API_KEY: process.env.CRYPTOPANIC_API_KEY ? '✅ pro tier' : '⚠️ free tier (limited)',
+    MESSARI_API_KEY: process.env.MESSARI_API_KEY ? '✅ configured' : '⚠️ missing (premium news)',
+    THEBLOCK_API_KEY: process.env.THEBLOCK_API_KEY ? '✅ configured' : '⚠️ missing (premium news)',
+    // Social Intelligence Keys
+    LUNARCRUSH_API_KEY: process.env.LUNARCRUSH_API_KEY ? '✅ configured' : '⚠️ missing (social data)',
+    // Derivatives Keys
+    COINGLASS_API_KEY: process.env.COINGLASS_API_KEY ? '✅ configured' : '⚠️ missing (liquidations)',
+    // Service URLs
     MARKET_PRICES_URL: process.env.MARKET_PRICES_URL || 'default',
     ALCHEMY_WHALES_URL: process.env.ALCHEMY_WHALES_URL || 'default',
   };
@@ -283,14 +294,31 @@ app.get('/api/diagnostic', async (req: Request, res: Response) => {
     results.services.sentimentService = { status: '❌ failed', error: err.message };
   }
 
-  // 7. News Service Check
+  // 7. News Service Check (Multi-Source)
   try {
+    const newsStatus = getNewsServiceStatus();
     const news = await fetchNews([testSymbol]);
     results.services.newsService = {
       status: news.articles.length > 0 ? '✅ working' : '⚠️ no articles',
       articlesFound: news.articles.length,
       sentiment: news.dominantSentiment,
+      sentimentScore: news.overallSentimentScore?.toFixed(2),
+      sourcesUsed: news.sourcesUsed,
+      sourcesFailed: news.sourcesFailed,
+      criticalAlerts: news.criticalAlerts?.length || 0,
+      serviceHealth: {
+        healthy: newsStatus.healthy,
+        sources: newsStatus.sources.map(s => ({
+          name: s.name,
+          status: s.status,
+          enabled: s.enabled,
+        })),
+      },
     };
+    
+    if (news.sourcesFailed.length > 0) {
+      results.recommendations.push(`⚠️ News sources failed: ${news.sourcesFailed.join(', ')}`);
+    }
   } catch (err: any) {
     results.services.newsService = { status: '❌ failed', error: err.message };
   }
@@ -439,7 +467,9 @@ async function startServer() {
             const { execSync } = require('child_process');
             const path = require('path');
             const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
-            execSync(`npx prisma db push --schema=${schemaPath} --accept-data-loss`, {
+            // Quote schema path to handle spaces in directory names
+            const quotedSchemaPath = `"${schemaPath}"`;
+            execSync(`npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss`, {
               stdio: 'inherit',
               env: process.env,
               cwd: path.join(__dirname, '..'),
