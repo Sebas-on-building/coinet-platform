@@ -18,6 +18,7 @@ import { getMarketSentiment } from './services/sentiment-service';
 import { fetchNews, getNewsServiceStatus } from './services/news-service';
 import { aiService } from './services/ai-service';
 import { initializeRedis, getRedisStatus, getCacheStats, closeRedis } from './services/redis-client';
+import { logApiKeysStatus, generateApiKeysReport, getGracefulDegradation } from './services/api-keys';
 
 // Load environment variables
 dotenv.config();
@@ -407,6 +408,41 @@ app.get('/api/test/price/:symbol', async (req: Request, res: Response) => {
   }
 });
 
+// =============================================================================
+// 🔑 API KEYS STATUS ENDPOINT
+// =============================================================================
+app.get('/api/keys', async (_req: Request, res: Response) => {
+  try {
+    const report = generateApiKeysReport();
+    
+    // Add graceful degradation info for each service
+    const services = {
+      ai: getGracefulDegradation('ai'),
+      news: getGracefulDegradation('news'),
+      market: getGracefulDegradation('market'),
+      social: getGracefulDegradation('social'),
+      derivatives: getGracefulDegradation('derivatives'),
+    };
+    
+    res.json({
+      success: true,
+      report: {
+        ...report,
+        // Remove sensitive info
+        missingOptional: report.missingOptional.length,
+      },
+      services,
+      summary: {
+        configured: `${report.configuredKeys}/${report.totalKeys}`,
+        criticalIssues: report.missingRequired.length,
+        recommendations: report.recommendations.length,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // API routes
 app.use('/api/chat', chatRoutes);
 
@@ -420,10 +456,11 @@ app.get('/', (_req: Request, res: Response) => {
       health: '/api/health',
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
+      keys: '/api/keys',
       testPrice: '/api/test/price/:symbol',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/diagnostic to test all services at once',
+    documentation: 'Use /api/diagnostic to test all services, /api/keys to check API configuration',
   });
 });
 
@@ -468,6 +505,13 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 // ============================================================================
 
 async function startServer() {
+  // Log API keys status at startup
+  logger.info('═══════════════════════════════════════════════════════════');
+  logger.info('🔑 API KEYS & CONFIGURATION CHECK');
+  logger.info('═══════════════════════════════════════════════════════════');
+  logApiKeysStatus();
+  logger.info('═══════════════════════════════════════════════════════════');
+
   // Initialize Redis cache (for ai-data-feeder integration)
   try {
     const redisConnected = await initializeRedis();
