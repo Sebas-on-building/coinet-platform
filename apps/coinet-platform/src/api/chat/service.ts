@@ -16,6 +16,7 @@ import { getWhaleContextForAI } from '../../services/whale-data';
 import { getEnrichedNewsForCoins, formatEnrichedNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
 import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
+import { getSocialIntelligence, formatSocialIntelligenceForAI } from '../../services/social-intelligence';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
@@ -95,13 +96,14 @@ export class ChatService {
         
         // Parallel fetch all context sources (including user memory + social + perps)
         // Note: Using enriched news with AI-driven intelligence (Step 1.1.3)
-        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialData, perpsData] = await Promise.all([
+        // Note: Using multi-platform social intelligence (Step 1.2.1)
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, perpsData] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
           getEnrichedNewsForCoins(coinSymbols),  // 🧠 AI-enriched news intelligence
           getMarketSentiment(),
-          getSocialSentiment(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 📱 Social sentiment
+          getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 🌐 Multi-platform social intelligence
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
         ]);
         
@@ -157,12 +159,15 @@ export class ChatService {
           });
         }
         
-        // 5. Add social sentiment context
-        if (socialData && socialData.coins.length > 0) {
-          contextParts.push(formatSocialForAI(socialData));
-          logger.debug('📱 Social context added', { 
-            overall: socialData.overallSentiment,
-            trending: socialData.trendingCoins.length
+        // 5. Add multi-platform social intelligence context (Step 1.2.1)
+        if (socialIntel && socialIntel.coins.length > 0) {
+          contextParts.push(formatSocialIntelligenceForAI(socialIntel));
+          logger.debug('🌐 Social intelligence added', { 
+            platforms: socialIntel.activePlatforms.join(','),
+            mentions: socialIntel.aggregate.totalMentions,
+            sentiment: socialIntel.aggregate.overallSentiment.label,
+            trending: socialIntel.trendingCoins.length,
+            dataQuality: socialIntel.dataQuality,
           });
         }
         
