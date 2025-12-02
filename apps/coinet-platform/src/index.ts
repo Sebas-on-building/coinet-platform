@@ -945,6 +945,136 @@ app.get('/api/test/csi', async (req: Request, res: Response) => {
   }
 });
 
+// =============================================================================
+// 📊 CSI v4.0 - SCARY SHARP PRECISION TEST ENDPOINT
+// =============================================================================
+app.get('/api/test/csi-v4', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateCSIV4Factors, calculateCSIV4Score, formatCSIV4ForAI, CSI_V4_CONFIG } = 
+      await import('./services/csi-v4-factors');
+    const { calculateCSI } = await import('./services/coinet-sentiment-index');
+    
+    // Get headline from Alternative.me
+    const csiResult = await calculateCSI();
+    const headline = csiResult.index.rounded;
+    
+    // Calculate v4.0 factors
+    const factors = await calculateCSIV4Factors();
+    const factorScore = calculateCSIV4Score(factors);
+    const aiContext = formatCSIV4ForAI(factors, headline);
+    
+    res.json({
+      success: true,
+      section: 'CSI v4.0 - SCARY SHARP PRECISION',
+      status: '✅ CSI v4.0 OPERATIONAL',
+      
+      // Comparison
+      comparison: {
+        headline: `${headline}/100 (Alternative.me)`,
+        factorScore: `${factorScore}/100 (6-factor model)`,
+        delta: factorScore - headline,
+      },
+      
+      // 6 Factor breakdown
+      factors: {
+        '1_MOMENTUM (25%)': {
+          composite: factors.momentum.composite,
+          subFactors: {
+            '7d_return': factors.momentum.r7d,
+            '30d_return': factors.momentum.r30d,
+            '90d_return': factors.momentum.r90d,
+            'breadth_%_above_200dMA': factors.momentum.breadth,
+          },
+          weights: CSI_V4_CONFIG.MOMENTUM_WEIGHTS,
+        },
+        '2_VOLATILITY (15%) [INVERTED]': {
+          composite: factors.volatility.composite,
+          subFactors: {
+            'implied_vol': factors.volatility.iv,
+            'realized_vol': factors.volatility.rv,
+            'IV/RV_ratio': factors.volatility.ivRvRatio,
+          },
+          weights: CSI_V4_CONFIG.VOLATILITY_WEIGHTS,
+        },
+        '3_DERIVATIVES (20%) [INVERTED]': {
+          composite: factors.derivatives.composite,
+          subFactors: {
+            'put_call_ratio': factors.derivatives.pcr,
+            'OI_to_MC': factors.derivatives.oi,
+            'funding_zscore': factors.derivatives.funding,
+            'basis_zscore': factors.derivatives.basis,
+          },
+          weights: CSI_V4_CONFIG.DERIVATIVES_WEIGHTS,
+        },
+        '4_SSR (10%)': {
+          composite: factors.ssr.composite,
+          subFactors: {
+            'level': factors.ssr.level,
+            'flow_7d': factors.ssr.flow,
+          },
+          weights: CSI_V4_CONFIG.SSR_WEIGHTS,
+        },
+        '5_SOCIAL (10%)': {
+          composite: factors.social.composite,
+          subFactors: {
+            'buzz': factors.social.buzz,
+            'net_sentiment': factors.social.netSentiment,
+            'hype_skew': factors.social.hypeSkew,
+          },
+          weights: CSI_V4_CONFIG.SOCIAL_WEIGHTS,
+        },
+        '6_ONCHAIN (20%) [NEW!]': {
+          composite: factors.onchain.composite,
+          subFactors: {
+            'MVRV_Z': factors.onchain.mvrvZ,
+            'SOPR': factors.onchain.sopr,
+          },
+          weights: CSI_V4_CONFIG.ONCHAIN_WEIGHTS,
+        },
+      },
+      
+      // Formula
+      formula: {
+        equation: 'CSI = 0.25×MOM + 0.15×VOL + 0.20×DERIV + 0.10×SSR + 0.10×SOC + 0.20×ONCHAIN',
+        calculation: {
+          momentum: (CSI_V4_CONFIG.WEIGHTS.momentum * factors.momentum.composite).toFixed(2),
+          volatility: (CSI_V4_CONFIG.WEIGHTS.volatility * factors.volatility.composite).toFixed(2),
+          derivatives: (CSI_V4_CONFIG.WEIGHTS.derivatives * factors.derivatives.composite).toFixed(2),
+          ssr: (CSI_V4_CONFIG.WEIGHTS.ssr * factors.ssr.composite).toFixed(2),
+          social: (CSI_V4_CONFIG.WEIGHTS.social * factors.social.composite).toFixed(2),
+          onchain: (CSI_V4_CONFIG.WEIGHTS.onchain * factors.onchain.composite).toFixed(2),
+          total: factorScore,
+        },
+      },
+      
+      // Upgrades from v3.0
+      upgrades: {
+        momentum: 'Multi-horizon (7d, 30d, 90d) + Breadth (% above 200d MA)',
+        volatility: 'IV + RV + IV/RV ratio (separates real chaos vs options panic)',
+        derivatives: 'PCR + OI/MC + Funding z-score + Basis z-score',
+        ssr: 'Level + 7d Flow (capital movement)',
+        social: 'Buzz + Net Sentiment + Hype Skew (meme vs majors)',
+        onchain: 'NEW! MVRV-Z + SOPR (holder PnL, valuation)',
+        math: 'Exponentially weighted percentiles (λ=90d) + Convex mapping (γ=1.5)',
+      },
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -957,6 +1087,7 @@ app.get('/', (_req: Request, res: Response) => {
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
+      testCSIv4: '/api/test/csi-v4',
       testPrice: '/api/test/price/:symbol',
       testNews: '/api/test/news?coins=BTC,ETH',
       testSocial: '/api/test/social?coins=BTC,ETH,SOL',
