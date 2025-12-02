@@ -13,7 +13,7 @@ import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/market-data';
 import { getWhaleContextForAI } from '../../services/whale-data';
-import { getNewsForCoins, formatNewsForAI } from '../../services/news-service';
+import { getEnrichedNewsForCoins, formatEnrichedNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
 import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
@@ -94,11 +94,12 @@ export class ChatService {
                               lowerMessage.includes('futures');
         
         // Parallel fetch all context sources (including user memory + social + perps)
-        const [userContext, marketData, whaleContext, newsSnapshot, sentiment, socialData, perpsData] = await Promise.all([
+        // Note: Using enriched news with AI-driven intelligence (Step 1.1.3)
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialData, perpsData] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
-          getNewsForCoins(coinSymbols),
+          getEnrichedNewsForCoins(coinSymbols),  // 🧠 AI-enriched news intelligence
           getMarketSentiment(),
           getSocialSentiment(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 📱 Social sentiment
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
@@ -135,12 +136,15 @@ export class ChatService {
           });
         }
         
-        // 3. Add news context
-        if (newsSnapshot && newsSnapshot.articles.length > 0) {
-          contextParts.push(formatNewsForAI(newsSnapshot));
-          logger.debug('📰 News context added', { 
-            count: newsSnapshot.articles.length,
-            sentiment: newsSnapshot.dominantSentiment 
+        // 3. Add AI-enriched news intelligence context
+        if (enrichedNews && enrichedNews.articles.length > 0) {
+          contextParts.push(formatEnrichedNewsForAI(enrichedNews));
+          logger.debug('🧠📰 Enriched news intelligence added', { 
+            count: enrichedNews.articles.length,
+            sentiment: enrichedNews.dominantSentiment,
+            marketMood: enrichedNews.aggregateIntelligence.marketMood.overall,
+            criticalAlerts: enrichedNews.aggregateIntelligence.criticalAlerts.length,
+            riskLevel: enrichedNews.aggregateIntelligence.riskAssessment.level,
           });
         }
         

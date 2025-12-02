@@ -34,6 +34,11 @@ import {
   setCachedNews,
   CachedNewsData 
 } from './redis-client';
+import { 
+  enrichNewsSnapshot, 
+  EnrichedNewsSnapshot, 
+  EnrichedNewsArticle 
+} from './news-intelligence';
 
 // ============================================================================
 // TYPES
@@ -1544,6 +1549,102 @@ export async function getNewsForCoins(symbols: string[]): Promise<NewsSnapshot> 
 }
 
 /**
+ * 🧠 Get ENRICHED news with AI-driven intelligence
+ * This is the premium news function that adds:
+ * - Advanced sentiment analysis
+ * - Market impact scoring
+ * - Price impact predictions
+ * - Urgency assessment
+ * - Portfolio relevance
+ */
+export async function getEnrichedNewsForCoins(
+  symbols: string[],
+  userPortfolio?: string[]
+): Promise<EnrichedNewsSnapshot> {
+  const rawNews = await getNewsForCoins(symbols);
+  return enrichNewsSnapshot(rawNews, userPortfolio);
+}
+
+/**
+ * Format enriched news for AI context - includes intelligence insights
+ */
+export function formatEnrichedNewsForAI(snapshot: EnrichedNewsSnapshot): string {
+  if (snapshot.articles.length === 0) {
+    return '';
+  }
+  
+  const { aggregateIntelligence } = snapshot;
+  const moodEmoji: Record<string, string> = {
+    very_bullish: '🟢🟢',
+    bullish: '🟢',
+    neutral: '⚪',
+    bearish: '🔴',
+    very_bearish: '🔴🔴',
+  };
+  
+  let context = `\n[📰 CRYPTO NEWS INTELLIGENCE - AI ENRICHED]\n`;
+  context += `Market Mood: ${moodEmoji[aggregateIntelligence.marketMood.overall]} ${aggregateIntelligence.marketMood.overall.toUpperCase()} `;
+  context += `(score: ${aggregateIntelligence.marketMood.score}, trend: ${aggregateIntelligence.marketMood.trend})\n`;
+  context += `Risk Level: ${aggregateIntelligence.riskAssessment.level.toUpperCase()}\n\n`;
+  
+  // Critical alerts with predictions
+  if (aggregateIntelligence.criticalAlerts.length > 0) {
+    context += '🚨 CRITICAL ALERTS:\n';
+    for (const alert of aggregateIntelligence.criticalAlerts.slice(0, 3)) {
+      const timeAgo = getTimeAgo(alert.publishedAt);
+      const intel = alert.intelligence;
+      context += `• ${alert.title}\n`;
+      context += `  └ Sentiment: ${intel.sentimentAnalysis.label} (${intel.sentimentAnalysis.score})\n`;
+      context += `  └ Impact: ${intel.marketImpact.level} | Urgency: ${intel.urgency.level}\n`;
+      if (intel.priceImpact.direction !== 'neutral') {
+        context += `  └ Price Prediction: ${intel.priceImpact.direction} ${intel.priceImpact.magnitude.expected}% `;
+        context += `(${Math.round(intel.priceImpact.confidence * 100)}% confidence, ${intel.priceImpact.timeframe})\n`;
+      }
+      if (intel.urgency.suggestedAction) {
+        context += `  └ Action: ${intel.urgency.suggestedAction}\n`;
+      }
+      context += `  └ Source: ${alert.source}, ${timeAgo}\n`;
+    }
+    context += '\n';
+  }
+  
+  // Top narratives
+  if (aggregateIntelligence.topNarratives.length > 0) {
+    context += '📊 DOMINANT NARRATIVES:\n';
+    for (const narrative of aggregateIntelligence.topNarratives.slice(0, 3)) {
+      const sentimentIcon = narrative.sentiment > 0.2 ? '↗️' : narrative.sentiment < -0.2 ? '↘️' : '→';
+      context += `${sentimentIcon} ${narrative.theme} (${narrative.articleCount} articles, impact: ${narrative.impact})\n`;
+    }
+    context += '\n';
+  }
+  
+  // Actionable insights
+  if (aggregateIntelligence.actionableInsights.length > 0) {
+    context += '💡 ACTIONABLE INSIGHTS:\n';
+    for (const insight of aggregateIntelligence.actionableInsights) {
+      context += `• ${insight}\n`;
+    }
+    context += '\n';
+  }
+  
+  // Market prediction
+  context += '🔮 MARKET PREDICTION:\n';
+  context += `• Short-term (1-4h): ${aggregateIntelligence.marketPrediction.shortTerm.direction} `;
+  context += `(${Math.round(aggregateIntelligence.marketPrediction.shortTerm.confidence * 100)}% confidence)\n`;
+  context += `• Medium-term (24h): ${aggregateIntelligence.marketPrediction.mediumTerm.direction} `;
+  context += `(${Math.round(aggregateIntelligence.marketPrediction.mediumTerm.confidence * 100)}% confidence)\n`;
+  
+  // Risk factors
+  if (aggregateIntelligence.riskAssessment.factors.length > 0) {
+    context += `\n⚠️ Risk Factors: ${aggregateIntelligence.riskAssessment.factors.join(', ')}\n`;
+  }
+  
+  context += `\n[Sources: ${snapshot.sourcesUsed.join(', ')} | ${snapshot.articles.length} articles analyzed]\n`;
+  
+  return context;
+}
+
+/**
  * Get service health status
  */
 export function getNewsServiceStatus(): {
@@ -1581,8 +1682,13 @@ export function getNewsServiceStatus(): {
 export const newsService = {
   fetch: fetchNews,
   getForCoins: getNewsForCoins,
+  getEnrichedForCoins: getEnrichedNewsForCoins,
   formatForAI: formatNewsForAI,
+  formatEnrichedForAI: formatEnrichedNewsForAI,
   getStatus: getNewsServiceStatus,
 };
+
+// Re-export intelligence types
+export type { EnrichedNewsSnapshot, EnrichedNewsArticle };
 
 export default newsService;
