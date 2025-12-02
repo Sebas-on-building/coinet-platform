@@ -829,6 +829,106 @@ app.get('/api/test/social-intelligence', async (req: Request, res: Response) => 
   }
 });
 
+// =============================================================================
+// 📊 COINET SENTIMENT INDEX (CSI) TEST ENDPOINT - Enterprise Grade
+// =============================================================================
+app.get('/api/test/csi', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateCSI, formatCSIForAI } = await import('./services/coinet-sentiment-index');
+    
+    const result = await calculateCSI();
+    const aiContext = formatCSIForAI(result);
+    
+    res.json({
+      success: true,
+      section: 'COINET SENTIMENT INDEX (CSI) - Enterprise Grade',
+      status: '✅ CSI OPERATIONAL',
+      
+      // Main index
+      index: {
+        value: result.index.rounded,
+        regime: result.index.regime,
+        regimeLabel: result.index.regimeLabel,
+        raw: result.index.raw,
+        smoothed: result.index.smoothed,
+      },
+      
+      // Factor breakdown
+      factors: {
+        momentum: {
+          weight: '30%',
+          greedScore: result.factors.momentum.greedScore,
+          contribution: result.factors.momentum.weightedContribution,
+          rawValue: result.factors.momentum.rawValue,
+          percentile: result.factors.momentum.percentile,
+          signal: result.factors.momentum.signal,
+        },
+        volatility: {
+          weight: '20%',
+          greedScore: result.factors.volatility.greedScore,
+          contribution: result.factors.volatility.weightedContribution,
+          rawValue: result.factors.volatility.rawValue,
+          percentile: result.factors.volatility.percentile,
+          signal: result.factors.volatility.signal,
+        },
+        derivatives: {
+          weight: '20%',
+          greedScore: result.factors.derivatives.greedScore,
+          contribution: result.factors.derivatives.weightedContribution,
+          rawValue: result.factors.derivatives.rawValue,
+          percentile: result.factors.derivatives.percentile,
+          signal: result.factors.derivatives.signal,
+        },
+        ssr: {
+          weight: '15%',
+          greedScore: result.factors.ssr.greedScore,
+          contribution: result.factors.ssr.weightedContribution,
+          rawValue: result.factors.ssr.rawValue,
+          percentile: result.factors.ssr.percentile,
+          signal: result.factors.ssr.signal,
+        },
+        social: {
+          weight: '15%',
+          greedScore: result.factors.social.greedScore,
+          contribution: result.factors.social.weightedContribution,
+          rawValue: result.factors.social.rawValue,
+          percentile: result.factors.social.percentile,
+          signal: result.factors.social.signal,
+        },
+      },
+      
+      // Mathematical formula
+      formula: {
+        equation: 'CSI = 0.30×MOM + 0.20×VOL + 0.20×PCR + 0.15×SSR + 0.15×SOC',
+        calculation: `${result.factors.momentum.weightedContribution.toFixed(2)} + ${result.factors.volatility.weightedContribution.toFixed(2)} + ${result.factors.derivatives.weightedContribution.toFixed(2)} + ${result.factors.ssr.weightedContribution.toFixed(2)} + ${result.factors.social.weightedContribution.toFixed(2)} = ${result.index.raw.toFixed(2)}`,
+      },
+      
+      // Historical context
+      historical: result.historical,
+      
+      // Configuration
+      config: result.config,
+      
+      // Data quality
+      metadata: result.metadata,
+      
+      // AI context preview
+      aiContextPreview: aiContext.substring(0, 500) + '...',
+      
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -846,6 +946,7 @@ app.get('/', (_req: Request, res: Response) => {
       testSocial: '/api/test/social?coins=BTC,ETH,SOL',
       testInfluencers: '/api/test/influencers?coin=BTC',
       testSocialIntelligence: '/api/test/social-intelligence?coins=BTC,ETH,SOL',
+      testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
     documentation: 'Use /api/test/social-intelligence for the comprehensive revolutionary social analysis',

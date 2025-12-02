@@ -20,6 +20,7 @@ import { getSocialIntelligence, formatSocialIntelligenceForAI } from '../../serv
 import { getInfluencerSnapshot, formatInfluencerIntelligenceForAI } from '../../services/influencer-tracking';
 import { analyzeContrarianIndicator, analyzeConsensus, formatAdvancedAnalyticsForAI } from '../../services/influencer-analytics';
 import { getComprehensiveSocialIntelligence, formatComprehensiveSocialIntelligenceForAI } from '../../services/social-intelligence-orchestrator';
+import { calculateCSI, formatCSIForAI } from '../../services/coinet-sentiment-index';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
@@ -97,11 +98,12 @@ export class ChatService {
                               lowerMessage.includes('long') ||
                               lowerMessage.includes('futures');
         
-        // Parallel fetch all context sources (including user memory + social + perps + influencers)
+        // Parallel fetch all context sources (including user memory + social + perps + influencers + CSI)
         // Note: Using enriched news with AI-driven intelligence (Step 1.1.3)
         // Note: Using multi-platform social intelligence (Step 1.2.1 + 1.2.2)
         // Note: Using influencer tracking system (Step 1.2.3)
-        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, perpsData] = await Promise.all([
+        // Note: Using Coinet Sentiment Index (CSI) - Enterprise Grade
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, perpsData] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
@@ -109,6 +111,7 @@ export class ChatService {
           getMarketSentiment(),
           getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 🌐 Multi-platform social intelligence
           getInfluencerSnapshot(),  // 👤 Influencer tracking intelligence
+          calculateCSI(),  // 📊 Enterprise-grade sentiment index
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
         ]);
         
@@ -212,6 +215,16 @@ export class ChatService {
               });
             }
           }
+        }
+        
+        // 8. Add Coinet Sentiment Index (CSI) - Enterprise Grade
+        if (csiResult) {
+          contextParts.push(formatCSIForAI(csiResult));
+          logger.debug('📊 CSI context added', {
+            index: csiResult.index.rounded,
+            regime: csiResult.index.regime,
+            dataQuality: csiResult.metadata.dataQuality,
+          });
         }
         
         if (contextParts.length > 0) {
