@@ -1075,6 +1075,132 @@ app.get('/api/test/csi-v4', async (req: Request, res: Response) => {
   }
 });
 
+// =============================================================================
+// 📊 CSI v5.0 - THE 10/10 EMPIRICALLY TUNED SIGNAL
+// =============================================================================
+app.get('/api/test/csi-v5', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateCSIV5, formatCSIV5ForAI, CSI_V5_CONFIG } = 
+      await import('./services/csi-v5-calibrated');
+    const { calculateCSI } = await import('./services/coinet-sentiment-index');
+    
+    // Get headline from Alternative.me
+    const csiResult = await calculateCSI();
+    const headline = csiResult.index.rounded;
+    
+    // Calculate v5.0
+    const result = await calculateCSIV5(headline);
+    const aiContext = formatCSIV5ForAI(result);
+    
+    res.json({
+      success: true,
+      section: 'CSI v5.0 - THE 10/10 EMPIRICALLY TUNED SIGNAL',
+      status: '✅ CSI v5.0 OPERATIONAL',
+      
+      // Primary indices
+      indices: {
+        headlineFNG: `${result.indices.headlineFNG}/100 (Alternative.me)`,
+        csiExplainer: `${result.indices.csiExplainer}/100 (matches headline, R²=${(result.calibration.explainerR2 * 100).toFixed(0)}%)`,
+        csiAlpha: `${result.indices.csiAlpha}/100 (predictive, power=${(result.calibration.alphaPredictivePower * 100).toFixed(0)}%)`,
+        csiFinal: `${result.indices.csiFinal}/100 (blended λ=${CSI_V5_CONFIG.LAMBDA_BLEND})`,
+      },
+      
+      // Confidence band
+      confidence: {
+        value: result.indices.csiFinal,
+        lower: result.confidence.lower,
+        upper: result.confidence.upper,
+        confidence: `${(result.confidence.confidence * 100).toFixed(0)}%`,
+        uncertainty: result.confidence.uncertainty,
+      },
+      
+      // Market regime
+      regime: {
+        current: result.regime.current,
+        trendStrength: `${(result.regime.trendStrength * 100).toFixed(0)}%`,
+        volRegime: result.regime.volRegime,
+        confidence: `${(result.regime.confidence * 100).toFixed(0)}%`,
+      },
+      
+      // Multi-CSI family
+      csiFamily: {
+        CSI_BTC: `${result.indices.csiFamily.btc}/100 (${(CSI_V5_CONFIG.SEGMENT_WEIGHTS.btc * 100).toFixed(0)}% weight)`,
+        CSI_ALTS: `${result.indices.csiFamily.largeCapAlts}/100 (${(CSI_V5_CONFIG.SEGMENT_WEIGHTS.largeCapAlts * 100).toFixed(0)}% weight)`,
+        CSI_DEGEN: `${result.indices.csiFamily.degenMeme}/100 (${(CSI_V5_CONFIG.SEGMENT_WEIGHTS.degenMeme * 100).toFixed(0)}% weight)`,
+        CSI_STABLES: `${result.indices.csiFamily.stablecoinStress}/100 (${(CSI_V5_CONFIG.SEGMENT_WEIGHTS.stablecoinStress * 100).toFixed(0)}% weight)`,
+      },
+      
+      // Statistically-anchored interpretation
+      interpretation: {
+        regime: result.interpretation.regime,
+        historicalContext: result.interpretation.historicalContext,
+        expectedReturn30d: `${(result.interpretation.expectedReturn.mean * 100).toFixed(1)}% ± ${(result.interpretation.expectedReturn.std * 100).toFixed(0)}%`,
+        drawdownRisk: `${(result.interpretation.tailRisk.drawdownProb * 100).toFixed(0)}% chance of >${(result.interpretation.tailRisk.magnitude * 100).toFixed(0)}% drawdown`,
+        recommendation: result.interpretation.recommendation,
+      },
+      
+      // Data quality
+      dataQuality: {
+        overall: result.metadata.dataQuality,
+        factorsAvailable: `${result.metadata.factorsAvailable}/6`,
+        issues: result.factorQuality.filter(q => q.issues.length > 0).map(q => ({
+          factor: q.factor,
+          quality: `${(q.qualityScore * 100).toFixed(0)}%`,
+          issues: q.issues,
+        })),
+      },
+      
+      // Effective weights (quality & correlation adjusted)
+      effectiveWeights: Object.entries(result.effectiveWeights).map(([k, v]) => ({
+        factor: k,
+        weight: `${(v * 100).toFixed(1)}%`,
+      })),
+      
+      // 5 pillars of 10/10
+      pillars: {
+        '1_EMPIRICAL_CALIBRATION': {
+          description: 'Data-driven weights from regression',
+          explainerR2: `${(result.calibration.explainerR2 * 100).toFixed(0)}%`,
+          alphaPredictivePower: `${(result.calibration.alphaPredictivePower * 100).toFixed(0)}%`,
+          blend: `CSI_final = ${CSI_V5_CONFIG.LAMBDA_BLEND}×CSI_explainer + ${1 - CSI_V5_CONFIG.LAMBDA_BLEND}×CSI_alpha`,
+        },
+        '2_DECORRELATION_REGIME': {
+          description: 'Correlation-aware weights + regime-specific',
+          currentRegime: result.regime.current,
+          correlationPenalty: CSI_V5_CONFIG.CORRELATION_PENALTY_ALPHA,
+        },
+        '3_DATA_QUALITY_ROBUSTNESS': {
+          description: 'Per-factor quality scores + confidence bands',
+          overallQuality: result.metadata.dataQuality,
+          confidenceBand: `${result.confidence.lower}-${result.confidence.upper}`,
+        },
+        '4_MULTI_CSI_FAMILY': {
+          description: 'Segment-specific indices',
+          segments: ['CSI_BTC', 'CSI_ALTS', 'CSI_DEGEN', 'CSI_STABLES'],
+        },
+        '5_STATISTICAL_THRESHOLDS': {
+          description: 'Regime labels based on historical risk/reward',
+          thresholds: CSI_V5_CONFIG.THRESHOLDS,
+        },
+      },
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -1088,6 +1214,7 @@ app.get('/', (_req: Request, res: Response) => {
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
       testCSIv4: '/api/test/csi-v4',
+      testCSIv5: '/api/test/csi-v5',
       testPrice: '/api/test/price/:symbol',
       testNews: '/api/test/news?coins=BTC,ETH',
       testSocial: '/api/test/social?coins=BTC,ETH,SOL',
