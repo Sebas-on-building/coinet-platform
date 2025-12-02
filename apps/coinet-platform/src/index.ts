@@ -649,9 +649,11 @@ app.get('/api/test/social', async (req: Request, res: Response) => {
 // =============================================================================
 app.get('/api/test/influencers', async (req: Request, res: Response) => {
   const startTime = Date.now();
+  const coin = (req.query.coin as string) || 'BTC';
   
   try {
-    const { getInfluencerSnapshot, getTrackedInfluencers, getInfluencersByTier } = await import('./services/influencer-tracking');
+    const { getInfluencerSnapshot, getTrackedInfluencers, getInfluencersByTier, getInfluencersBySpecialization } = await import('./services/influencer-tracking');
+    const { analyzeContrarianIndicator, analyzeConsensus, getInfluencerAccuracyStats } = await import('./services/influencer-analytics');
     
     const snapshot = await getInfluencerSnapshot();
     const allInfluencers = getTrackedInfluencers();
@@ -666,20 +668,70 @@ app.get('/api/test/influencers', async (req: Request, res: Response) => {
       rising: getInfluencersByTier('rising').length,
     };
     
+    // Specialization breakdown
+    const specializationBreakdown = {
+      bitcoin: getInfluencersBySpecialization('bitcoin').length,
+      ethereum: getInfluencersBySpecialization('ethereum').length,
+      defi: getInfluencersBySpecialization('defi').length,
+      trading: getInfluencersBySpecialization('trading').length,
+      macro: getInfluencersBySpecialization('macro').length,
+      onChain: getInfluencersBySpecialization('on-chain').length,
+    };
+    
+    // Advanced analytics (if we have posts)
+    let advancedAnalytics = null;
+    if (snapshot.recentPosts.length >= 3) {
+      const contrarian = analyzeContrarianIndicator(snapshot.recentPosts);
+      const consensus = analyzeConsensus(coin, snapshot.recentPosts, allInfluencers);
+      
+      advancedAnalytics = {
+        contrarianIndicator: {
+          consensus: contrarian.consensus,
+          signal: contrarian.contrarian,
+          isActionable: contrarian.contrarian.isExtreme,
+        },
+        consensusAnalysis: {
+          coin,
+          weightedSignal: consensus.weighted,
+          tierBreakdown: {
+            legendary: consensus.weighted.legendaryConsensus,
+            elite: consensus.weighted.eliteConsensus,
+            major: consensus.weighted.majorConsensus,
+            notable: consensus.weighted.notableConsensus,
+            rising: consensus.weighted.risingConsensus,
+          },
+          divergence: consensus.divergence,
+          smartVsRetail: consensus.smartVsRetail,
+        },
+      };
+    }
+    
+    // Top influencer accuracy stats
+    const topInfluencerStats = allInfluencers.slice(0, 5).map(i => ({
+      name: i.name,
+      tier: i.tier,
+      stats: getInfluencerAccuracyStats(i.id),
+    }));
+    
     res.json({
       success: true,
-      section: '1.2.3 INFLUENCER TRACKING SYSTEM',
-      status: '✅ INFLUENCER TRACKING OPERATIONAL',
+      section: '1.2.3 INFLUENCER TRACKING SYSTEM (ENHANCED)',
+      status: '✅ ADVANCED INFLUENCER ANALYTICS OPERATIONAL',
       database: {
         totalInfluencers: allInfluencers.length,
         tierBreakdown,
+        specializationBreakdown,
         topInfluencers: allInfluencers.slice(0, 10).map(i => ({
           name: i.name,
           tier: i.tier,
+          platform: i.platform,
           followers: i.followers,
           credibilityScore: i.credibilityScore,
           marketImpactScore: i.marketImpactScore,
+          historicalAccuracy: i.historicalAccuracy,
           specialization: i.specialization,
+          isInstitutional: i.isInstitutional,
+          tags: i.tags,
         })),
       },
       snapshot: {
@@ -692,12 +744,26 @@ app.get('/api/test/influencers', async (req: Request, res: Response) => {
         topMentionedCoins: snapshot.topMentionedCoins.slice(0, 5),
         recentCalls: snapshot.recentCalls.slice(0, 5),
       },
+      advancedAnalytics,
+      accuracyTracking: {
+        description: 'Historical accuracy tracking for top influencers',
+        topInfluencers: topInfluencerStats,
+      },
+      features: {
+        contrarianIndicator: '✅ Detects extreme consensus for contrarian signals',
+        pumpDumpDetection: '✅ Identifies coordinated pump & dump schemes',
+        consensusAnalysis: '✅ Cross-influencer weighted consensus',
+        smartVsRetail: '✅ Institutional vs retail divergence tracking',
+        accuracyTracking: '✅ Historical call accuracy with decay',
+        influenceDecay: '✅ Dynamic credibility adjustment',
+      },
       fetchTime: `${fetchTime}ms`,
     });
   } catch (error: any) {
     res.status(500).json({
       success: false,
       error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       fetchTime: `${Date.now() - startTime}ms`,
     });
   }

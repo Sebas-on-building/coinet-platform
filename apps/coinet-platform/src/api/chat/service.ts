@@ -18,6 +18,7 @@ import { getMarketSentiment, formatSentimentForAI } from '../../services/sentime
 import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
 import { getSocialIntelligence, formatSocialIntelligenceForAI } from '../../services/social-intelligence';
 import { getInfluencerSnapshot, formatInfluencerIntelligenceForAI } from '../../services/influencer-tracking';
+import { analyzeContrarianIndicator, analyzeConsensus, formatAdvancedAnalyticsForAI } from '../../services/influencer-analytics';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
@@ -194,6 +195,22 @@ export class ChatService {
             criticalAlerts: influencerIntel.criticalAlerts.length,
             sentiment: influencerIntel.influencerSentiment.overall,
           });
+          
+          // 7.1 Add advanced analytics (contrarian, consensus)
+          if (influencerIntel.recentPosts.length >= 5) {
+            const contrarian = analyzeContrarianIndicator(influencerIntel.recentPosts);
+            const primaryCoin = coinSymbols[0] || 'BTC';
+            const consensus = analyzeConsensus(primaryCoin, influencerIntel.recentPosts, []);
+            
+            if (contrarian.contrarian.isExtreme || consensus.divergence.hasDivergence) {
+              contextParts.push(formatAdvancedAnalyticsForAI(contrarian, null, consensus));
+              logger.debug('🔬 Advanced influencer analytics added', {
+                contrarianSignal: contrarian.contrarian.contrarySignal,
+                consensusLabel: consensus.weighted.label,
+                hasDivergence: consensus.divergence.hasDivergence,
+              });
+            }
+          }
         }
         
         if (contextParts.length > 0) {
