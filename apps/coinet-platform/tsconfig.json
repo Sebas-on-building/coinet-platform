@@ -20,6 +20,7 @@
     "incremental": true,
     "isolatedModules": true,
     "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
     "paths": {}
   },
   "include": ["src/**/*"],

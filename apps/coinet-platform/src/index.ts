@@ -11,6 +11,12 @@ import dotenv from 'dotenv';
 import { prisma } from './db/client';
 import { logger } from './utils/logger';
 import chatRoutes from './api/chat/routes';
+import { symbolDetector } from './services/symbol-detector';
+import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
+import { getWhaleContextForAI } from './services/whale-data';
+import { getMarketSentiment } from './services/sentiment-service';
+import { fetchNews } from './services/news-service';
+import { aiService } from './services/ai-service';
 
 // Load environment variables
 dotenv.config();
@@ -162,6 +168,187 @@ app.get('/api/status', async (_req: Request, res: Response) => {
   }
 });
 
+// =============================================================================
+// 🔬 DIAGNOSTIC ENDPOINT - Tests ALL services
+// =============================================================================
+app.get('/api/diagnostic', async (req: Request, res: Response) => {
+  const testSymbol = (req.query.symbol as string) || 'SUPRA';
+  const results: Record<string, any> = {
+    timestamp: new Date().toISOString(),
+    testSymbol,
+    services: {},
+    environment: {},
+    recommendations: [],
+  };
+
+  // 1. Environment Check
+  results.environment = {
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    DATABASE_URL: process.env.DATABASE_URL ? '✅ configured' : '❌ missing',
+    XAI_API_KEY: process.env.XAI_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI)',
+    GROK_API_KEY: process.env.GROK_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI alt)',
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '✅ configured' : '⚠️ missing (fallback AI)',
+    COINGECKO_API_KEY: process.env.COINGECKO_API_KEY ? '✅ pro tier' : '⚠️ free tier (rate limited)',
+    CMC_API_KEY: process.env.CMC_API_KEY ? '✅ configured' : '⚠️ missing (backup)',
+    MARKET_PRICES_URL: process.env.MARKET_PRICES_URL || 'default',
+    ALCHEMY_WHALES_URL: process.env.ALCHEMY_WHALES_URL || 'default',
+  };
+
+  // Check if AI is available
+  if (!process.env.XAI_API_KEY && !process.env.GROK_API_KEY && !process.env.OPENAI_API_KEY) {
+    results.recommendations.push('⚠️ CRITICAL: No AI API key configured. Set XAI_API_KEY or OPENAI_API_KEY');
+  }
+
+  // 2. Database Check
+  try {
+    const dbHealth = await Promise.race([
+      prisma.healthCheck(),
+      new Promise<{ healthy: boolean }>((_, reject) => 
+        setTimeout(() => reject(new Error('timeout')), 3000)
+      ),
+    ]);
+    results.services.database = {
+      status: dbHealth.healthy ? '✅ connected' : '❌ unhealthy',
+      latency: 'latency' in dbHealth ? `${dbHealth.latency}ms` : 'unknown',
+    };
+  } catch (err: any) {
+    results.services.database = { status: '❌ failed', error: err.message };
+    results.recommendations.push('Database connection failed. Check DATABASE_URL');
+  }
+
+  // 3. Symbol Detector Check
+  try {
+    const detected = await symbolDetector.detectCoins(`What about $${testSymbol}?`);
+    const stats = symbolDetector.getStats();
+    results.services.symbolDetector = {
+      status: detected.length > 0 ? '✅ working' : '⚠️ no match',
+      detected: detected.map(d => ({ symbol: d.symbol, id: d.coinGeckoId, confidence: d.confidence })),
+      cacheSize: stats.cacheSize,
+      isInitialized: stats.isInitialized,
+    };
+    if (detected.length === 0) {
+      results.recommendations.push(`Symbol "${testSymbol}" not found in detector. May need CoinGecko cache refresh.`);
+    }
+  } catch (err: any) {
+    results.services.symbolDetector = { status: '❌ failed', error: err.message };
+  }
+
+  // 4. Market Data Check
+  try {
+    const marketData = await fetchPricesForMessage(`Tell me about ${testSymbol}`);
+    const marketStatus = getMarketDataStatus();
+    results.services.marketData = {
+      status: marketData.prices.length > 0 ? '✅ working' : '⚠️ no prices found',
+      requested: marketData.requestedSymbols,
+      found: marketData.foundSymbols,
+      missing: marketData.missingSymbols,
+      sources: marketData.sources,
+      fetchTime: `${marketData.fetchTime}ms`,
+      rateLimits: marketStatus.rateLimits,
+    };
+    if (marketData.missingSymbols.length > 0) {
+      results.recommendations.push(`Price data missing for: ${marketData.missingSymbols.join(', ')}. Will try DexScreener.`);
+    }
+  } catch (err: any) {
+    results.services.marketData = { status: '❌ failed', error: err.message };
+  }
+
+  // 5. Whale Service Check
+  try {
+    const whaleContext = await getWhaleContextForAI();
+    results.services.whaleService = {
+      status: whaleContext.isAvailable ? '✅ connected' : '⚠️ unavailable',
+      monitoredChains: whaleContext.monitoredChains,
+      capabilities: whaleContext.capabilities,
+    };
+    if (!whaleContext.isAvailable) {
+      results.recommendations.push('Whale service unavailable. Check alchemy-whales deployment on Railway.');
+    }
+  } catch (err: any) {
+    results.services.whaleService = { status: '❌ failed', error: err.message };
+  }
+
+  // 6. Sentiment Service Check
+  try {
+    const sentiment = await getMarketSentiment();
+    results.services.sentimentService = {
+      status: sentiment ? '✅ working' : '⚠️ no data',
+      fearGreed: sentiment?.fearGreed ? {
+        value: sentiment.fearGreed.value,
+        classification: sentiment.fearGreed.classification,
+        trend: sentiment.fearGreed.trend,
+      } : null,
+    };
+  } catch (err: any) {
+    results.services.sentimentService = { status: '❌ failed', error: err.message };
+  }
+
+  // 7. News Service Check
+  try {
+    const news = await fetchNews([testSymbol]);
+    results.services.newsService = {
+      status: news.articles.length > 0 ? '✅ working' : '⚠️ no articles',
+      articlesFound: news.articles.length,
+      sentiment: news.dominantSentiment,
+    };
+  } catch (err: any) {
+    results.services.newsService = { status: '❌ failed', error: err.message };
+  }
+
+  // 8. AI Service Check
+  try {
+    const aiAvailable = aiService.isAvailable();
+    const aiHealth = await aiService.healthCheck();
+    results.services.aiService = {
+      status: aiAvailable ? '✅ configured' : '❌ not configured',
+      provider: aiHealth.provider || 'none',
+      healthy: aiHealth.healthy,
+      latency: aiHealth.latency ? `${aiHealth.latency}ms` : 'unknown',
+    };
+    if (!aiAvailable) {
+      results.recommendations.push('AI service not configured. Set XAI_API_KEY (Grok) or OPENAI_API_KEY');
+    }
+  } catch (err: any) {
+    results.services.aiService = { status: '❌ failed', error: err.message };
+  }
+
+  // Summary
+  const allServices = Object.values(results.services);
+  const workingCount = allServices.filter((s: any) => s.status?.includes('✅')).length;
+  const totalCount = allServices.length;
+  
+  results.summary = {
+    overall: workingCount === totalCount ? '✅ ALL SYSTEMS GO' : 
+             workingCount >= totalCount * 0.6 ? '⚠️ PARTIAL (some issues)' : 
+             '❌ DEGRADED (needs attention)',
+    working: `${workingCount}/${totalCount} services`,
+  };
+
+  res.json(results);
+});
+
+// Test endpoint for quick price check
+app.get('/api/test/price/:symbol', async (req: Request, res: Response) => {
+  const symbol = req.params.symbol.toUpperCase();
+  
+  try {
+    const startTime = Date.now();
+    const detected = await symbolDetector.detectCoins(`$${symbol}`);
+    const marketData = await fetchPricesForMessage(`$${symbol}`);
+    
+    res.json({
+      symbol,
+      detected: detected.map(d => ({ symbol: d.symbol, id: d.coinGeckoId, confidence: d.confidence })),
+      price: marketData.prices[0] || null,
+      sources: marketData.sources,
+      missing: marketData.missingSymbols,
+      fetchTime: Date.now() - startTime,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API routes
 app.use('/api/chat', chatRoutes);
 
@@ -174,8 +361,11 @@ app.get('/', (_req: Request, res: Response) => {
     endpoints: {
       health: '/api/health',
       status: '/api/status',
+      diagnostic: '/api/diagnostic?symbol=SUPRA',
+      testPrice: '/api/test/price/:symbol',
       chat: '/api/chat',
     },
+    documentation: 'Use /api/diagnostic to test all services at once',
   });
 });
 

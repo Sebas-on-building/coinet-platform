@@ -4,9 +4,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
 
-> **The future of AI-powered cryptocurrency analysis is here.** Coinet AI combines cutting-edge artificial intelligence with real-time market data to deliver unparalleled insights for cryptocurrency trading and investment decisions.
+> **The future of AI-powered cryptocurrency analysis is here.** Coinet AI combines cutting-edge artificial intelligence (Grok/xAI) with real-time market data to deliver unparalleled insights for cryptocurrency trading and investment decisions.
+
+## 🎯 Quick Start
+
+**New to Coinet?** Start here:
+- **[Main Platform README](apps/coinet-platform/README.md)** - Backend API documentation
+- **[API Documentation](apps/coinet-platform/API_DOCUMENTATION.md)** - Complete API reference
+- **[Start Here Guide](README_START_HERE.md)** - Quick setup guide
 
 ## 🌟 Overview
 

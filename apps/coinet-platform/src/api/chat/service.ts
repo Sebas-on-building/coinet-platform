@@ -17,6 +17,7 @@ import { getNewsForCoins, formatNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
 import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
+import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -82,14 +83,25 @@ export class ChatService {
         const detectedCoins = await symbolDetector.detectCoins(request.message);
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
         
-        // Parallel fetch all context sources (including user memory + social)
-        const [userContext, marketData, whaleContext, newsSnapshot, sentiment, socialData] = await Promise.all([
+        // Check if this is a trading/leverage question that needs perps data
+        const lowerMessage = request.message.toLowerCase();
+        const needsPerpsData = lowerMessage.includes('liquidat') || 
+                              lowerMessage.includes('funding') || 
+                              lowerMessage.includes('leverage') ||
+                              lowerMessage.includes('perp') ||
+                              lowerMessage.includes('short') ||
+                              lowerMessage.includes('long') ||
+                              lowerMessage.includes('futures');
+        
+        // Parallel fetch all context sources (including user memory + social + perps)
+        const [userContext, marketData, whaleContext, newsSnapshot, sentiment, socialData, perpsData] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
           getNewsForCoins(coinSymbols),
           getMarketSentiment(),
           getSocialSentiment(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 📱 Social sentiment
+          needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
         ]);
         
         let contextParts: string[] = [];
@@ -147,6 +159,16 @@ export class ChatService {
           logger.debug('📱 Social context added', { 
             overall: socialData.overallSentiment,
             trending: socialData.trendingCoins.length
+          });
+        }
+        
+        // 6. Add perpetuals data (liquidations, funding rates) - KEY DIFFERENTIATOR!
+        if (perpsData && (perpsData.liquidations.length > 0 || perpsData.fundingRates.length > 0)) {
+          contextParts.push(formatPerpsForAI(perpsData));
+          logger.debug('💀 Perps context added', {
+            liquidations: perpsData.liquidations.length,
+            fundingRates: perpsData.fundingRates.length,
+            totalLiq: perpsData.marketSummary.totalLiquidations24h,
           });
         }
         
