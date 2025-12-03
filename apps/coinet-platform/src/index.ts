@@ -1476,16 +1476,53 @@ app.get('/api/test/derivatives-v2', async (req: Request, res: Response) => {
     
     res.json({
       success: true,
-      section: '💀 DERIVATIVES INTELLIGENCE v2.0 - 10/10 Divine Perfection',
+      section: '💀 DERIVATIVES INTELLIGENCE v2.0 - With Sentiment Inertia',
       status: '✅ DERIVATIVES INTELLIGENCE v2.0 OPERATIONAL',
       
       // Primary outputs
       headline: result.headline,
       
+      // ═══════════════════════════════════════════════════════════════════════
+      // NEW: SENTIMENT INERTIA - Prevents rapid sentiment flips
+      // This is the KEY improvement based on user feedback
+      // ═══════════════════════════════════════════════════════════════════════
+      sentimentInertia: {
+        rawScore: result.sentimentSmoothing.rawScore,
+        smoothedScore: result.sentimentSmoothing.smoothedScore,
+        adjustedScore: result.sentimentSmoothing.adjustedScore,
+        adjustments: result.sentimentSmoothing.adjustments,
+        explanation: result.sentimentSmoothing.rawScore > result.sentimentSmoothing.adjustedScore + 5
+          ? `Raw score ${result.sentimentSmoothing.rawScore} adjusted DOWN to ${result.sentimentSmoothing.adjustedScore} because market is still ${(result.marketContext.drawdownFromHigh * 100).toFixed(1)}% below highs with only ${result.marketContext.daysOfRecovery} days of recovery. 2 green days don't erase weeks of pain!`
+          : 'Score reflects current market conditions with appropriate smoothing.',
+      },
+      
+      // NEW: Market Context
+      marketContext: {
+        currentPrice: `$${result.marketContext.currentPrice.toLocaleString()}`,
+        recentHigh: `$${result.marketContext.recentHigh.toLocaleString()}`,
+        drawdownFromHigh: `${(result.marketContext.drawdownFromHigh * 100).toFixed(1)}%`,
+        daysInDrawdown: result.marketContext.daysInDrawdown,
+        daysOfRecovery: result.marketContext.daysOfRecovery,
+        priceChanges: {
+          '24h': `${result.marketContext.priceChange24h >= 0 ? '+' : ''}${(result.marketContext.priceChange24h * 100).toFixed(1)}%`,
+          '7d': `${result.marketContext.priceChange7d >= 0 ? '+' : ''}${(result.marketContext.priceChange7d * 100).toFixed(1)}%`,
+          '30d': `${result.marketContext.priceChange30d >= 0 ? '+' : ''}${(result.marketContext.priceChange30d * 100).toFixed(1)}%`,
+        },
+      },
+      
+      // NEW: Investor Pain Index
+      painIndex: {
+        score: `${result.painIndex.painScore}/100`,
+        level: result.painIndex.painLevel,
+        estimatedUnderwaterPercent: `${result.painIndex.estimatedUnderwaterPercent}%`,
+        avgDrawdown: `${(result.painIndex.avgDrawdown * 100).toFixed(1)}%`,
+        interpretation: result.painIndex.interpretation,
+      },
+      
       // Confidence
       confidence: {
         overall: `${(result.confidence.overall * 100).toFixed(0)}%`,
-        band: `${result.confidence.band.lower}-${result.confidence.band.upper}`,
+        band: `${result.confidence.band.lower.toFixed(0)}-${result.confidence.band.upper.toFixed(0)}`,
         uncertainty: result.confidence.uncertainty,
         factors: result.confidence.factors,
       },
@@ -1521,11 +1558,10 @@ app.get('/api/test/derivatives-v2', async (req: Request, res: Response) => {
         divergenceSignal: result.openInterest.divergence.signal,
       },
       
-      // Exchange breakdown
-      exchanges: result.exchanges,
-      
-      // Segment analysis
-      segments: result.segments,
+      // Segment analysis (abbreviated)
+      segments: Object.fromEntries(
+        Object.entries(result.segments).map(([k, v]) => [k, { signal: v.signal }])
+      ),
       
       // Historical context
       historical: result.historical,

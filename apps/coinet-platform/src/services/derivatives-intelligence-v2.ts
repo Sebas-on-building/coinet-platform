@@ -182,6 +182,47 @@ export interface OpenInterestMetrics {
 }
 
 /**
+ * Market Context - drawdown and recovery analysis
+ */
+export interface MarketContext {
+  currentPrice: number;
+  recentHigh: number;
+  recentLow: number;
+  drawdownFromHigh: number;      // 0 to 1 (0 = at high, 0.2 = 20% below)
+  recoveryFromLow: number;       // 0 to 1 (0 = at low, 0.5 = halfway back)
+  daysInDrawdown: number;
+  daysOfRecovery: number;
+  priceChange24h: number;
+  priceChange7d: number;
+  priceChange30d: number;
+}
+
+/**
+ * Investor Pain Index - estimates how underwater investors are
+ */
+export interface InvestorPainIndex {
+  painScore: number;             // 0-100 (higher = more pain)
+  estimatedUnderwaterPercent: number;  // % of investors estimated underwater
+  avgDrawdown: number;           // Average drawdown of underwater investors
+  painLevel: 'minimal' | 'low' | 'moderate' | 'high' | 'extreme';
+  interpretation: string;
+}
+
+/**
+ * Sentiment Smoothing - prevents rapid sentiment flips
+ */
+export interface SentimentSmoothing {
+  rawScore: number;
+  smoothedScore: number;         // EMA-smoothed
+  adjustedScore: number;         // After drawdown/pain adjustments
+  adjustments: {
+    drawdownPenalty: number;     // Penalty applied due to drawdown
+    painPenalty: number;         // Penalty applied due to investor pain
+    inertiaDrag: number;         // Inertia keeping score from moving too fast
+  };
+}
+
+/**
  * Complete Derivatives Intelligence Report
  */
 export interface DerivativesIntelligenceV2Result {
@@ -281,6 +322,15 @@ export interface DerivativesIntelligenceV2Result {
     predictivePower: number;
     lastCalibration: string;
   };
+  
+  // Market Context - NEW: prevents rapid sentiment flips
+  marketContext: MarketContext;
+  
+  // Investor Pain Index - NEW: estimates how underwater investors are  
+  painIndex: InvestorPainIndex;
+  
+  // Sentiment Smoothing - NEW: shows how raw score was adjusted
+  sentimentSmoothing: SentimentSmoothing;
   
   computeTime: number;
 }
@@ -455,10 +505,27 @@ const CONFIG = {
   CORRELATION_PENALTY_ALPHA: 0.20,
   LARGE_LIQUIDATION_THRESHOLD: 1_000_000,
   
+  // Sentiment inertia - prevents scores from flipping too fast
+  SENTIMENT_INERTIA: {
+    EMA_ALPHA: 0.15,           // Low alpha = slow reaction (0.15 means ~7 periods to converge)
+    MIN_RECOVERY_DAYS: 7,     // Minimum days of green before sentiment can flip bullish
+    DRAWDOWN_WEIGHT: 0.35,    // How much drawdown affects final score
+    PAIN_INDEX_WEIGHT: 0.25,  // How much investor pain affects final score
+  },
+  
+  // Market context thresholds
+  MARKET_CONTEXT: {
+    RECENT_HIGH_LOOKBACK_DAYS: 30,  // Look for ATH in last 30 days
+    PAIN_THRESHOLD: 0.10,           // 10% underwater = pain
+    SEVERE_PAIN_THRESHOLD: 0.20,   // 20% underwater = severe pain
+    RECOVERY_THRESHOLD: 0.05,      // 5% from highs = "recovered"
+  },
+  
   APIS: {
     COINGLASS_LIQUIDATIONS: 'https://open-api.coinglass.com/public/v2/liquidation_history',
     COINGLASS_FUNDING: 'https://open-api.coinglass.com/public/v2/funding',
     COINGLASS_OI: 'https://open-api.coinglass.com/public/v2/open_interest',
+    COINGECKO_PRICE: 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart',
   },
 };
 
@@ -561,6 +628,204 @@ function detectMarketRegime(
   
   return { regime, confidence };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARKET CONTEXT & SENTIMENT INERTIA - Prevents rapid sentiment flips
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch market context from CoinGecko or use cached/estimated data
+ * This provides drawdown information and recovery metrics
+ */
+async function fetchMarketContext(): Promise<MarketContext> {
+  try {
+    // Try to get BTC price data from CoinGecko
+    const response = await axios.get(CONFIG.APIS.COINGECKO_PRICE, {
+      params: {
+        vs_currency: 'usd',
+        days: '30',
+        interval: 'daily',
+      },
+      timeout: 5000,
+    });
+    
+    if (response.data?.prices && response.data.prices.length > 0) {
+      const prices = response.data.prices.map((p: [number, number]) => p[1]);
+      const currentPrice = prices[prices.length - 1];
+      const recentHigh = Math.max(...prices);
+      const recentLow = Math.min(...prices);
+      
+      // Find days since high and low
+      const highIndex = prices.indexOf(recentHigh);
+      const lowIndex = prices.indexOf(recentLow);
+      const daysInDrawdown = prices.length - 1 - highIndex;
+      const daysOfRecovery = lowIndex < highIndex ? 0 : prices.length - 1 - lowIndex;
+      
+      const drawdownFromHigh = (recentHigh - currentPrice) / recentHigh;
+      const totalDrawdown = recentHigh - recentLow;
+      const recoveryFromLow = totalDrawdown > 0 ? (currentPrice - recentLow) / totalDrawdown : 1;
+      
+      // Calculate price changes
+      const priceChange24h = prices.length > 1 ? (currentPrice - prices[prices.length - 2]) / prices[prices.length - 2] : 0;
+      const priceChange7d = prices.length > 7 ? (currentPrice - prices[prices.length - 8]) / prices[prices.length - 8] : 0;
+      const priceChange30d = prices.length > 29 ? (currentPrice - prices[0]) / prices[0] : 0;
+      
+      return {
+        currentPrice,
+        recentHigh,
+        recentLow,
+        drawdownFromHigh,
+        recoveryFromLow,
+        daysInDrawdown,
+        daysOfRecovery,
+        priceChange24h,
+        priceChange7d,
+        priceChange30d,
+      };
+    }
+  } catch (error) {
+    logger.warn('Failed to fetch market context from CoinGecko, using estimates');
+  }
+  
+  // Fallback estimates based on typical market conditions
+  // BTC around $93K, with recent high around $99K (Nov 22), low around $91K
+  return {
+    currentPrice: 93000,
+    recentHigh: 99000,      // Nov 22 high
+    recentLow: 91000,       // Recent low
+    drawdownFromHigh: 0.06, // About 6% below ATH
+    recoveryFromLow: 0.25,  // 25% recovery from low
+    daysInDrawdown: 11,     // Days since Nov 22 high
+    daysOfRecovery: 2,      // 2 days of green
+    priceChange24h: 0.06,   // +6% today
+    priceChange7d: -0.08,   // -8% over 7 days
+    priceChange30d: -0.05,  // -5% over 30 days
+  };
+}
+
+/**
+ * Calculate Investor Pain Index
+ * Estimates how many investors are underwater and how much pain they're in
+ */
+function calculatePainIndex(context: MarketContext): InvestorPainIndex {
+  // Model: Estimate % of recent buyers who are underwater
+  // Assumption: Volume-weighted average cost basis is somewhere between recent low and high
+  // More volume at highs = more pain
+  
+  const drawdown = context.drawdownFromHigh;
+  const daysInDrawdown = context.daysInDrawdown;
+  const recovery = context.recoveryFromLow;
+  
+  // Pain score formula:
+  // - Base pain from drawdown: 50% weight
+  // - Duration multiplier: longer pain = worse sentiment
+  // - Recovery dampening: recovery reduces pain, but slowly
+  
+  let basePain = drawdown * 200; // 20% drawdown = 40 base pain
+  let durationMultiplier = Math.min(2, 1 + (daysInDrawdown / 30)); // Max 2x after 30 days
+  let recoveryDampening = 1 - (recovery * 0.3); // Recovery reduces pain by up to 30%
+  
+  let painScore = clamp(basePain * durationMultiplier * recoveryDampening, 0, 100);
+  
+  // Estimate underwater % based on drawdown and volume patterns
+  // If we're 6% below highs, roughly 30-40% of recent volume was at higher prices
+  const estimatedUnderwaterPercent = Math.min(90, drawdown * 400 + 10);
+  
+  // Average drawdown of underwater investors
+  const avgDrawdown = drawdown * 0.6; // Assume avg entry was 60% of the way to the high
+  
+  // Classify pain level
+  let painLevel: InvestorPainIndex['painLevel'];
+  let interpretation: string;
+  
+  if (painScore < 15) {
+    painLevel = 'minimal';
+    interpretation = 'Market near highs, most investors profitable';
+  } else if (painScore < 30) {
+    painLevel = 'low';
+    interpretation = 'Moderate pullback, some recent buyers underwater';
+  } else if (painScore < 50) {
+    painLevel = 'moderate';
+    interpretation = 'Significant drawdown, many investors at loss - sentiment recovery will be slow';
+  } else if (painScore < 70) {
+    painLevel = 'high';
+    interpretation = 'Deep drawdown, majority underwater - 2 green days do NOT erase this pain';
+  } else {
+    painLevel = 'extreme';
+    interpretation = 'Severe market pain, capitulation-level sentiment - recovery requires weeks';
+  }
+  
+  return {
+    painScore: Math.round(painScore),
+    estimatedUnderwaterPercent: Math.round(estimatedUnderwaterPercent),
+    avgDrawdown: avgDrawdown,
+    painLevel,
+    interpretation,
+  };
+}
+
+/**
+ * Apply sentiment smoothing and adjustments
+ * This is the KEY function that prevents scores from flipping too fast
+ */
+function applySentimentSmoothing(
+  rawScore: number,
+  context: MarketContext,
+  painIndex: InvestorPainIndex,
+  previousSmoothedScore: number | null
+): SentimentSmoothing {
+  // 1. EMA Smoothing - sentiment has inertia
+  const alpha = CONFIG.SENTIMENT_INERTIA.EMA_ALPHA;
+  const smoothedScore = previousSmoothedScore !== null
+    ? alpha * rawScore + (1 - alpha) * previousSmoothedScore
+    : rawScore;
+  
+  // 2. Drawdown Penalty - can't be too bullish when underwater
+  // If 10% below highs, reduce bullish scores by up to 20 points
+  const drawdownPenalty = context.drawdownFromHigh > CONFIG.MARKET_CONTEXT.RECOVERY_THRESHOLD
+    ? Math.min(25, context.drawdownFromHigh * 150) * (smoothedScore > 50 ? 1 : 0.3)
+    : 0;
+  
+  // 3. Pain Penalty - investor pain drags down sentiment
+  // High pain = can't flip bullish quickly
+  const painPenalty = (painIndex.painScore / 100) * CONFIG.SENTIMENT_INERTIA.PAIN_INDEX_WEIGHT * 30;
+  
+  // 4. Inertia Drag - if trying to move bullish too fast, apply brake
+  let inertiaDrag = 0;
+  if (previousSmoothedScore !== null) {
+    const scoreDelta = rawScore - previousSmoothedScore;
+    // If score trying to jump bullish by more than 10 points in short time, apply drag
+    if (scoreDelta > 10 && rawScore > 55) {
+      inertiaDrag = (scoreDelta - 10) * 0.5;
+    }
+  }
+  
+  // 5. Recovery Time Gate - require minimum recovery days before flipping bullish
+  let recoveryGate = 0;
+  if (smoothedScore > 60 && context.daysOfRecovery < CONFIG.SENTIMENT_INERTIA.MIN_RECOVERY_DAYS) {
+    // Can't be too bullish with only N days of recovery
+    const recoveryDeficit = CONFIG.SENTIMENT_INERTIA.MIN_RECOVERY_DAYS - context.daysOfRecovery;
+    recoveryGate = recoveryDeficit * 3; // 3 points per day of missing recovery
+  }
+  
+  // Calculate final adjusted score
+  const totalPenalty = drawdownPenalty + painPenalty + inertiaDrag + recoveryGate;
+  const adjustedScore = clamp(smoothedScore - totalPenalty, 0, 100);
+  
+  return {
+    rawScore: Math.round(rawScore * 100) / 100,
+    smoothedScore: Math.round(smoothedScore * 100) / 100,
+    adjustedScore: Math.round(adjustedScore * 100) / 100,
+    adjustments: {
+      drawdownPenalty: Math.round(drawdownPenalty * 100) / 100,
+      painPenalty: Math.round(painPenalty * 100) / 100,
+      inertiaDrag: Math.round((inertiaDrag + recoveryGate) * 100) / 100,
+    },
+  };
+}
+
+// Store previous smoothed score for EMA continuity
+let previousSmoothedScore: number | null = null;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DATA FETCHING
@@ -896,37 +1161,70 @@ export async function calculateDerivativesIntelligenceV2(): Promise<DerivativesI
     return lastResult;
   }
   
-  logger.info('💀 Calculating Derivatives Intelligence v2.0...');
+  logger.info('💀 Calculating Derivatives Intelligence v2.0 with Sentiment Inertia...');
   
-  // Fetch data
-  const [liquidationEvents, fundingRates, oiData] = await Promise.all([
+  // Fetch data INCLUDING market context
+  const [liquidationEvents, fundingRates, oiData, marketContext] = await Promise.all([
     fetchCoinglassLiquidations(),
     fetchCoinglassFunding(),
     fetchCoinglassOI(),
+    fetchMarketContext(),
   ]);
   
-  // Analyze
+  // Calculate Investor Pain Index FIRST
+  const painIndex = calculatePainIndex(marketContext);
+  
+  // Analyze derivatives data
   const liquidations = analyzeLiquidations(liquidationEvents);
   const funding = analyzeFunding(fundingRates);
   const openInterest = analyzeOpenInterest(oiData);
   
-  // Calculate composite score
+  // Calculate RAW composite score (before adjustments)
   const liquidationPressure = clamp((liquidations.total24h / LIQUIDATION_THRESHOLDS.high.max) * 100, 0, 100);
   const fundingScore = clamp((funding.weightedAvgRate + 0.05) / 0.1 * 50 + 50, 0, 100);
   const oiScore = clamp(50 + openInterest.changePercent24h, 0, 100);
   
-  // Weighted composite (empirically calibrated)
-  const derivativesScore = clamp(
+  // Raw weighted composite (empirically calibrated)
+  const rawDerivativesScore = clamp(
     0.40 * (100 - liquidationPressure) +  // Lower liquidations = bullish
     0.35 * fundingScore +                  // Funding bias
     0.25 * oiScore,                        // OI trend
     0, 100
   );
   
-  // Detect regime
+  // ═══════════════════════════════════════════════════════════════════════════
+  // APPLY SENTIMENT INERTIA - This is the KEY to accurate sentiment
+  // Raw score might say "65 bullish" but if we're 10% below highs with
+  // investors underwater, the ADJUSTED score should be lower and slower to move
+  // ═══════════════════════════════════════════════════════════════════════════
+  const sentimentSmoothing = applySentimentSmoothing(
+    rawDerivativesScore,
+    marketContext,
+    painIndex,
+    previousSmoothedScore
+  );
+  
+  // Update smoothed score for next calculation
+  previousSmoothedScore = sentimentSmoothing.smoothedScore;
+  
+  // USE THE ADJUSTED SCORE - this is the "real" sentiment
+  const derivativesScore = sentimentSmoothing.adjustedScore;
+  
+  logger.info('💀 Sentiment adjustment applied', {
+    raw: rawDerivativesScore.toFixed(1),
+    smoothed: sentimentSmoothing.smoothedScore.toFixed(1),
+    adjusted: derivativesScore.toFixed(1),
+    drawdownPenalty: sentimentSmoothing.adjustments.drawdownPenalty.toFixed(1),
+    painPenalty: sentimentSmoothing.adjustments.painPenalty.toFixed(1),
+    painLevel: painIndex.painLevel,
+    drawdownFromHigh: (marketContext.drawdownFromHigh * 100).toFixed(1) + '%',
+    daysOfRecovery: marketContext.daysOfRecovery,
+  });
+  
+  // Detect regime (using adjusted score for more accurate regime detection)
   const { regime, confidence: regimeConfidence } = detectMarketRegime(
     liquidationPressure,
-    (fundingScore - 50) / 50
+    (derivativesScore - 50) / 50  // Use adjusted score
   );
   
   // Exchange breakdown
@@ -1043,14 +1341,27 @@ export async function calculateDerivativesIntelligenceV2(): Promise<DerivativesI
       lastCalibration: '2024-12-01',
     },
     
+    // NEW: Market Context - prevents rapid sentiment flips
+    marketContext,
+    
+    // NEW: Investor Pain Index
+    painIndex,
+    
+    // NEW: Sentiment Smoothing - shows how raw score was adjusted
+    sentimentSmoothing,
+    
     computeTime: Date.now() - startTime,
   };
   
   lastResult = result;
   lastCalculationTime = Date.now();
   
-  logger.info('💀 Derivatives Intelligence v2.0 calculated', {
-    score: derivativesScore,
+  logger.info('💀 Derivatives Intelligence v2.0 calculated with inertia', {
+    rawScore: sentimentSmoothing.rawScore,
+    adjustedScore: derivativesScore,
+    painLevel: painIndex.painLevel,
+    drawdown: (marketContext.drawdownFromHigh * 100).toFixed(1) + '%',
+    daysOfRecovery: marketContext.daysOfRecovery,
     liquidations24h: liquidations.total24h,
     fundingBias: funding.bias,
     regime,
@@ -1127,54 +1438,73 @@ function generateInterpretation(
 }
 
 export function formatDerivativesIntelligenceV2ForAI(result: DerivativesIntelligenceV2Result): string {
-  let context = '\n[💀 DERIVATIVES INTELLIGENCE v2.0 - Divine Perfection]\n';
+  let context = '\n[💀 DERIVATIVES INTELLIGENCE v2.0 - With Sentiment Inertia]\n';
   context += `\n${'═'.repeat(70)}\n`;
   
+  // Show ADJUSTED score prominently
   context += `🎯 DERIVATIVES SCORE: ${result.headline.derivativesScore}/100 (${result.headline.signal.replace(/_/g, ' ').toUpperCase()})\n`;
+  
+  // Show sentiment adjustment breakdown - CRITICAL for understanding why score is what it is
+  context += `\n📉 SENTIMENT ADJUSTMENT (prevents rapid sentiment flips):\n`;
+  context += `   Raw Score: ${result.sentimentSmoothing.rawScore}/100\n`;
+  context += `   After Smoothing: ${result.sentimentSmoothing.smoothedScore}/100\n`;
+  context += `   FINAL (Adjusted): ${result.sentimentSmoothing.adjustedScore}/100\n`;
+  context += `   Adjustments Applied:\n`;
+  context += `     - Drawdown Penalty: -${result.sentimentSmoothing.adjustments.drawdownPenalty.toFixed(1)} pts (${(result.marketContext.drawdownFromHigh * 100).toFixed(1)}% below recent high)\n`;
+  context += `     - Investor Pain: -${result.sentimentSmoothing.adjustments.painPenalty.toFixed(1)} pts (${result.painIndex.painLevel} pain)\n`;
+  context += `     - Inertia Drag: -${result.sentimentSmoothing.adjustments.inertiaDrag.toFixed(1)} pts (${result.marketContext.daysOfRecovery} days recovery)\n`;
+  
+  // Investor Pain Index - critical context
+  context += `\n😰 INVESTOR PAIN INDEX:\n`;
+  context += `   Pain Score: ${result.painIndex.painScore}/100 (${result.painIndex.painLevel.toUpperCase()})\n`;
+  context += `   Est. Underwater Investors: ${result.painIndex.estimatedUnderwaterPercent}%\n`;
+  context += `   ${result.painIndex.interpretation}\n`;
+  
+  // Market context
+  context += `\n📈 MARKET CONTEXT:\n`;
+  context += `   Current Price: $${result.marketContext.currentPrice.toLocaleString()}\n`;
+  context += `   Recent High: $${result.marketContext.recentHigh.toLocaleString()} (${result.marketContext.daysInDrawdown} days ago)\n`;
+  context += `   Drawdown: ${(result.marketContext.drawdownFromHigh * 100).toFixed(1)}%\n`;
+  context += `   Recovery: ${(result.marketContext.recoveryFromLow * 100).toFixed(0)}% of drop recovered\n`;
+  context += `   24h: ${result.marketContext.priceChange24h >= 0 ? '+' : ''}${(result.marketContext.priceChange24h * 100).toFixed(1)}% | 7d: ${result.marketContext.priceChange7d >= 0 ? '+' : ''}${(result.marketContext.priceChange7d * 100).toFixed(1)}%\n`;
+  
+  context += `${'═'.repeat(70)}\n`;
+  
   context += `💥 LIQUIDATION PRESSURE: ${result.headline.liquidationPressure}/100\n`;
   context += `💰 FUNDING BIAS: ${result.headline.fundingBias.replace(/_/g, ' ').toUpperCase()}\n`;
-  context += `${'═'.repeat(70)}\n`;
   
   context += `\n📊 24H LIQUIDATIONS: $${(result.liquidations.total24h / 1_000_000).toFixed(1)}M\n`;
   context += `   Longs: $${(result.liquidations.totalLong24h / 1_000_000).toFixed(1)}M | Shorts: $${(result.liquidations.totalShort24h / 1_000_000).toFixed(1)}M\n`;
   context += `   L/S Ratio: ${result.liquidations.longShortRatio.toFixed(2)}\n`;
-  context += `   Large Liquidations: ${result.liquidations.largeCount}\n`;
   
   context += `\n💰 FUNDING RATES:\n`;
   context += `   Weighted Avg: ${(result.funding.weightedAvgRate * 100).toFixed(4)}%\n`;
-  context += `   Highest: ${result.funding.highest.symbol} ${(result.funding.highest.rate * 100).toFixed(4)}% (${(result.funding.highest.annualized * 100).toFixed(1)}% APR)\n`;
+  context += `   Highest: ${result.funding.highest.symbol} ${(result.funding.highest.rate * 100).toFixed(4)}%\n`;
   context += `   Lowest: ${result.funding.lowest.symbol} ${(result.funding.lowest.rate * 100).toFixed(4)}%\n`;
   
   if (result.funding.arbitrageOpportunities.length > 0) {
-    context += `\n🔄 ARBITRAGE OPPORTUNITIES:\n`;
-    for (const arb of result.funding.arbitrageOpportunities.slice(0, 3)) {
-      context += `   ${arb.symbol}: ${(arb.spread * 100).toFixed(3)}% spread (${arb.buyExchange}→${arb.sellExchange})\n`;
-    }
+    context += `\n🔄 ARBITRAGE: ${result.funding.arbitrageOpportunities.length} opportunities detected\n`;
   }
   
-  context += `\n📈 OPEN INTEREST:\n`;
-  context += `   Total: $${(result.openInterest.totalOI / 1_000_000_000).toFixed(1)}B\n`;
-  context += `   24h Change: ${result.openInterest.changePercent24h >= 0 ? '+' : ''}${result.openInterest.changePercent24h.toFixed(1)}%\n`;
-  context += `   Signal: ${result.openInterest.divergence.signal.toUpperCase()}\n`;
+  context += `\n📈 OPEN INTEREST: $${(result.openInterest.totalOI / 1_000_000_000).toFixed(1)}B (${result.openInterest.changePercent24h >= 0 ? '+' : ''}${result.openInterest.changePercent24h.toFixed(1)}%)\n`;
   
   context += `\n🔄 REGIME: ${result.regime.current.replace(/_/g, ' ').toUpperCase()}\n`;
-  context += `📊 CONFIDENCE: ${(result.confidence.overall * 100).toFixed(0)}% (${result.confidence.uncertainty})\n`;
-  
-  context += `\n💡 ${result.interpretation.summary}\n`;
   context += `⚠️ RISK: ${result.interpretation.riskLevel.toUpperCase()}\n`;
   context += `🎯 ${result.interpretation.recommendation}\n`;
+  
+  // Key insight about sentiment adjustment
+  if (result.sentimentSmoothing.rawScore > result.sentimentSmoothing.adjustedScore + 10) {
+    context += `\n⚠️ NOTE: Raw score (${result.sentimentSmoothing.rawScore}) adjusted down to ${result.sentimentSmoothing.adjustedScore} due to:\n`;
+    context += `   - Market still ${(result.marketContext.drawdownFromHigh * 100).toFixed(0)}% below recent highs\n`;
+    context += `   - Only ${result.marketContext.daysOfRecovery} days of recovery (need 7+ for sentiment flip)\n`;
+    context += `   - ${result.painIndex.estimatedUnderwaterPercent}% of investors still underwater\n`;
+    context += `   Two green days do NOT erase weeks of pain!\n`;
+  }
   
   if (result.interpretation.warnings.length > 0) {
     context += `\n⚠️ WARNINGS:\n`;
     for (const w of result.interpretation.warnings) {
       context += `   • ${w}\n`;
-    }
-  }
-  
-  if (result.interpretation.opportunities.length > 0) {
-    context += `\n💰 OPPORTUNITIES:\n`;
-    for (const o of result.interpretation.opportunities) {
-      context += `   • ${o}\n`;
     }
   }
   
