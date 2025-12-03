@@ -1810,19 +1810,133 @@ app.get('/api/test/behavioral-finance', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧠 NEUROECONOMIC INTELLIGENCE - Neural Decision Analysis
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/neuroeconomic', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    // Import services
+    const { calculateNeuroeconomicIntelligence, formatNeuroeconomicForAI } = 
+      await import('./services/neuroeconomic-intelligence');
+    const { calculateDerivativesIntelligenceV2 } = 
+      await import('./services/derivatives-intelligence-v2');
+    const { calculateCSI } = 
+      await import('./services/coinet-sentiment-index');
+    
+    // Get market context
+    const [derivativesResult, csiResult] = await Promise.all([
+      calculateDerivativesIntelligenceV2(),
+      calculateCSI(),
+    ]);
+    
+    // Build neuroeconomic input
+    const input = {
+      currentPrice: derivativesResult.marketContext.currentPrice,
+      entryPrice: derivativesResult.marketContext.recentHigh * 0.95, // Assume entry 5% below recent high
+      expectedReturn: 0.05, // Expected 5% return
+      actualReturn: derivativesResult.marketContext.priceChange7d,
+      fearGreedIndex: csiResult.index.rounded,
+      volatility: Math.abs(derivativesResult.marketContext.drawdownFromHigh) * 2,
+      herdStrength: 60, // Default from CSS
+      marketFairness: 0.1, // Slightly fair
+      influencerSentiment: 0.2, // Slightly bullish
+      delayedRewardAmount: derivativesResult.marketContext.currentPrice * 1.20, // 20% potential gain
+      delayPeriods: 12, // 12 weeks
+      recentLoss: derivativesResult.marketContext.priceChange7d < 0,
+      ambiguityLevel: 0.4, // Moderate uncertainty
+      informationLoad: 8, // 8 factors to consider
+      hoursTrading: 4, // 4 hours
+      decisionsToday: 5, // 5 decisions made
+    };
+    
+    const result = await calculateNeuroeconomicIntelligence(input);
+    const aiContext = formatNeuroeconomicForAI(result);
+    
+    res.json({
+      success: true,
+      section: '🧠 NEUROECONOMIC INTELLIGENCE - Neural Decision Analysis',
+      status: '✅ NEUROECONOMIC ENGINE OPERATIONAL',
+      
+      // Market regime
+      marketRegime: result.marketRegime,
+      regimeDescription: result.regimeNeuralProfile.description,
+      
+      // Neural state
+      neural: {
+        dominantRegion: result.neural.dominantRegion,
+        neuralBalance: result.neural.neuralBalance,
+        rationalityScore: result.neural.rationalityScore,
+        emotionalityScore: result.neural.emotionalityScore,
+        rewardSensitivity: result.neural.rewardSensitivity,
+        conflictLevel: result.neural.conflictLevel,
+        activations: result.neural.activations.map(a => ({
+          region: a.region,
+          activation: `${(a.activation * 100).toFixed(0)}%`,
+          interpretation: a.interpretation,
+        })),
+      },
+      
+      // Core neuroeconomic metrics
+      prospectTheory: {
+        subjectiveValue: result.subjectiveValue.subjective,
+        objectiveValue: result.subjectiveValue.objective,
+        lossAversionPremium: result.subjectiveValue.lossAversionPremium,
+        lossAversionMultiplier: 2.25,
+      },
+      rewardPredictionError: {
+        rpe: `${(result.rewardPredictionError.rpe * 100).toFixed(2)}%`,
+        direction: result.rewardPredictionError.direction,
+        magnitude: result.rewardPredictionError.magnitude,
+        learningSignal: result.rewardPredictionError.learningSignal,
+        behavioralImpact: result.rewardPredictionError.behavioralImpact,
+      },
+      riskPerception: result.riskPerception,
+      temporalPreference: result.temporalPreference,
+      socialInfluence: result.socialInfluence,
+      
+      // Cognitive state
+      cognitiveState: result.cognitiveState,
+      
+      // Trading implications
+      tradingImplications: result.tradingImplications,
+      
+      // Decision quality
+      decisionQuality: result.decisionQuality,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${result.computeTime}ms`,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Neuroeconomic Intelligence test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     service: 'coinet-platform',
-    version: '2.1.0',
+    version: '2.2.0',
     status: 'running',
-    tagline: 'Divine Perfection: Revolutionary AI Intelligence for Crypto Markets',
+    tagline: 'Divine Perfection: Neuroeconomic AI Intelligence for Crypto Markets',
     endpoints: {
       health: '/api/health',
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
-      testBehavioralFinance: '/api/test/behavioral-finance', // NEW: Full Neuroeconomic Analysis
+      testNeuroeconomic: '/api/test/neuroeconomic', // NEW: Neural Decision Analysis
+      testBehavioralFinance: '/api/test/behavioral-finance',
       testPsychology: '/api/test/psychology',
       testDerivativesV2: '/api/test/derivatives-v2',
       testNewsV2: '/api/test/news-v2',
@@ -1838,13 +1952,25 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/behavioral-finance for complete Neuroeconomic Analysis (Prospect Theory, Cognitive Biases, Emotional Cycles)',
+    documentation: 'Use /api/test/neuroeconomic for Neural Decision Analysis, /api/test/behavioral-finance for Behavioral Finance',
     academicFoundations: {
-      prospectTheory: 'Kahneman & Tversky (1979)',
+      neuroeconomics: 'Glimcher & Fehr (2013) - Decision Neuroscience',
+      prospectTheory: 'Kahneman & Tversky (1979, 1992)',
+      temporalDiscounting: 'Laibson (1997), McClure et al. (2004)',
+      rewardPredictionError: 'Schultz (1997), Montague et al. (1996)',
+      riskProcessing: 'Tom et al. (2007), De Martino et al. (2010)',
+      socialDecisions: 'Fehr & Schmidt (1999)',
+      cognitiveControl: 'Shenhav et al. (2017)',
       dualProcessTheory: 'Kahneman (2011)',
       dispositionEffect: 'Shefrin & Statman (1985)',
-      herdBehavior: 'Banerjee (1992)',
-      irrationalExuberance: 'Shiller (2000)',
+    },
+    neuralRegionsModeled: {
+      vmPFC: 'Subjective value computation',
+      ventralStriatum: 'Reward prediction & dopamine',
+      amygdala: 'Fear processing & threat detection',
+      insula: 'Risk aversion & interoception',
+      ACC: 'Conflict monitoring & error detection',
+      dlPFC: 'Working memory & cognitive control',
     },
   });
 });

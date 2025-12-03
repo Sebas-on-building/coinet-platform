@@ -28,6 +28,7 @@ import { buildUserContextForAI, extractMemoriesFromMessage } from '../../service
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } from '../../services/derivatives-intelligence-v2';
 import { calculateBehavioralFinanceIntelligence, BehavioralFinanceInput } from '../../services/behavioral-finance-intelligence';
+import { calculateNeuroeconomicIntelligence, formatNeuroeconomicForAI, NeuroeconomicInput } from '../../services/neuroeconomic-intelligence';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -131,6 +132,8 @@ export class ChatService {
         
         // Calculate behavioral finance intelligence using derivatives data
         let behavioralFinance = null;
+        let neuroeconomicIntel = null;
+        
         if (derivativesV2 && csiResult) {
           try {
             const behavioralInput: BehavioralFinanceInput = {
@@ -150,6 +153,31 @@ export class ChatService {
             behavioralFinance = await calculateBehavioralFinanceIntelligence(behavioralInput);
           } catch (error) {
             logger.warn('⚠️ Behavioral finance calculation failed, continuing without', { error });
+          }
+          
+          // Calculate neuroeconomic intelligence (neural decision analysis)
+          try {
+            const neuroInput: NeuroeconomicInput = {
+              currentPrice: derivativesV2.marketContext.currentPrice,
+              entryPrice: derivativesV2.marketContext.recentHigh * 0.95,
+              expectedReturn: 0.05,
+              actualReturn: derivativesV2.marketContext.priceChange7d,
+              fearGreedIndex: csiResult.index.rounded,
+              volatility: Math.abs(derivativesV2.marketContext.drawdownFromHigh) * 2,
+              herdStrength: cssResult ? cssResult.scores.composite : 60,
+              marketFairness: 0.1,
+              influencerSentiment: socialV2Result ? (socialV2Result.headline.socialScore - 50) / 50 : 0.1,
+              delayedRewardAmount: derivativesV2.marketContext.currentPrice * 1.20,
+              delayPeriods: 12,
+              recentLoss: derivativesV2.marketContext.priceChange7d < 0,
+              ambiguityLevel: 0.4,
+              informationLoad: 8,
+              hoursTrading: 4,
+              decisionsToday: 5,
+            };
+            neuroeconomicIntel = await calculateNeuroeconomicIntelligence(neuroInput);
+          } catch (error) {
+            logger.warn('⚠️ Neuroeconomic intelligence calculation failed, continuing without', { error });
           }
         }
         
@@ -339,6 +367,23 @@ export class ChatService {
             decisionQuality: behavioralFinance.profile.cognitiveState.decisionQuality,
             alerts: behavioralFinance.profile.alerts.length,
             coachingReadiness: behavioralFinance.profile.coaching.trilogyAssessment.overallReadiness,
+          });
+        }
+        
+        // 13. Add Neuroeconomic Intelligence - Neural Decision Analysis
+        // Based on: Glimcher & Fehr (2013), Schultz (1997), Tom et al. (2007)
+        // Provides: Neural region activations, reward prediction error, risk perception, cognitive state
+        if (neuroeconomicIntel) {
+          contextParts.push(formatNeuroeconomicForAI(neuroeconomicIntel));
+          logger.debug('🧠 Neuroeconomic Intelligence context added', {
+            marketRegime: neuroeconomicIntel.marketRegime,
+            dominantRegion: neuroeconomicIntel.neural.dominantRegion,
+            neuralBalance: neuroeconomicIntel.neural.neuralBalance,
+            rationalityScore: neuroeconomicIntel.neural.rationalityScore,
+            rpe: neuroeconomicIntel.rewardPredictionError.direction,
+            riskTolerance: neuroeconomicIntel.riskPerception.riskTolerance,
+            optimalAction: neuroeconomicIntel.tradingImplications.optimalAction,
+            decisionGrade: neuroeconomicIntel.decisionQuality.grade,
           });
         }
         
