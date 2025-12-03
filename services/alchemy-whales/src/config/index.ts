@@ -189,11 +189,14 @@ const quickNodeEndpoints: QuickNodeEndpoint[] = [
 export const config: ServiceConfig = {
   alchemy: {
     apiKeys: {
-      [Chain.ETHEREUM]: getRequiredEnv('ALCHEMY_API_KEY_ETH', 'demo-key'),
-      [Chain.POLYGON]: getRequiredEnv('ALCHEMY_API_KEY_POLYGON', 'demo-key'),
-      [Chain.ARBITRUM]: getRequiredEnv('ALCHEMY_API_KEY_ARBITRUM', 'demo-key'),
-      [Chain.OPTIMISM]: getRequiredEnv('ALCHEMY_API_KEY_OPTIMISM', 'demo-key'),
-      [Chain.BASE]: getRequiredEnv('ALCHEMY_API_KEY_BASE', 'demo-key'),
+      // API keys are now optional - service starts in degraded mode if missing
+      // This allows Railway deployment without immediately crashing
+      // Set ALCHEMY_API_KEY_* env vars for full functionality
+      [Chain.ETHEREUM]: getOptionalEnv('ALCHEMY_API_KEY_ETH', ''),
+      [Chain.POLYGON]: getOptionalEnv('ALCHEMY_API_KEY_POLYGON', ''),
+      [Chain.ARBITRUM]: getOptionalEnv('ALCHEMY_API_KEY_ARBITRUM', ''),
+      [Chain.OPTIMISM]: getOptionalEnv('ALCHEMY_API_KEY_OPTIMISM', ''),
+      [Chain.BASE]: getOptionalEnv('ALCHEMY_API_KEY_BASE', ''),
     },
   },
   rateLimit: rateLimiterConfig,
