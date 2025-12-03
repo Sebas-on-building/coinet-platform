@@ -1286,6 +1286,130 @@ app.get('/api/test/social-v2', async (req: Request, res: Response) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 💀 DERIVATIVES DATA SOURCES - Multi-Exchange Real-Time Data
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/derivatives-sources', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { 
+      fetchAggregatedLiquidations, 
+      fetchAggregatedFunding, 
+      fetchAggregatedOI,
+      getDataSourcesStatus 
+    } = await import('./services/derivatives-data-sources');
+    
+    // Fetch from all sources in parallel
+    const [liquidations, funding, oi, sourceStatus] = await Promise.all([
+      fetchAggregatedLiquidations(),
+      fetchAggregatedFunding(),
+      fetchAggregatedOI(),
+      Promise.resolve(getDataSourcesStatus()),
+    ]);
+    
+    res.json({
+      success: true,
+      section: '💀 DERIVATIVES DATA SOURCES - Multi-Exchange Intelligence',
+      status: sourceStatus.overallHealth > 0.5 ? '✅ DATA SOURCES HEALTHY' : '⚠️ LIMITED DATA',
+      
+      // Data source status
+      dataSources: {
+        overallHealth: `${(sourceStatus.overallHealth * 100).toFixed(0)}%`,
+        recommendation: sourceStatus.recommendation,
+        sources: sourceStatus.sources.map(s => ({
+          name: s.source,
+          status: s.available ? '✅ Online' : '❌ Offline',
+          latency: s.latencyMs ? `${s.latencyMs}ms` : 'N/A',
+          quality: `${(s.dataQuality * 100).toFixed(0)}%`,
+          lastError: s.lastError,
+        })),
+        tip: !process.env.COINGLASS_API_KEY ? 'Add COINGLASS_API_KEY for premium data' : 'Coinglass configured',
+      },
+      
+      // Aggregated Liquidations
+      liquidations: {
+        total24h: `$${(liquidations.total24h / 1_000_000).toFixed(1)}M`,
+        longs: `$${(liquidations.totalLong24h / 1_000_000).toFixed(1)}M`,
+        shorts: `$${(liquidations.totalShort24h / 1_000_000).toFixed(1)}M`,
+        longShortRatio: liquidations.longShortRatio.toFixed(2),
+        velocity: `${(liquidations.velocity * 100).toFixed(1)}% acceleration`,
+        cascade: {
+          detected: liquidations.cascade.detected,
+          severity: liquidations.cascade.severity,
+          risk: `${liquidations.cascade.cascadeRisk}%`,
+          affectedSegments: liquidations.cascade.affectedSegments,
+        },
+        bySegment: Object.fromEntries(
+          Object.entries(liquidations.bySegment).map(([k, v]) => [
+            k, 
+            { total: `$${(v.total / 1_000_000).toFixed(1)}M`, longPercent: `${v.longPercent.toFixed(0)}%` }
+          ])
+        ),
+        historicalContext: {
+          percentile: `${liquidations.percentile}th`,
+          zScore: liquidations.zScore.toFixed(2),
+          comparison: liquidations.historicalComparison,
+        },
+        sources: liquidations.sources,
+        dataQuality: `${(liquidations.dataQuality * 100).toFixed(0)}%`,
+      },
+      
+      // Aggregated Funding Rates
+      funding: {
+        btcRate: `${(funding.btcRate * 100).toFixed(4)}%`,
+        ethRate: `${(funding.ethRate * 100).toFixed(4)}%`,
+        avgRate: `${(funding.avgRate * 100).toFixed(4)}%`,
+        btcAnnualized: `${(funding.btcAnnualized * 100).toFixed(1)}% APR`,
+        ethAnnualized: `${(funding.ethAnnualized * 100).toFixed(1)}% APR`,
+        sentiment: funding.sentiment,
+        sentimentScore: funding.sentimentScore,
+        byExchange: funding.byExchange,
+        arbitrageOpportunities: funding.arbitrage.map(a => ({
+          symbol: a.symbol,
+          long: a.longExchange,
+          short: a.shortExchange,
+          spread: `${(a.spreadRate * 100).toFixed(4)}%`,
+          estimatedApy: `${a.estimatedApy.toFixed(1)}%`,
+        })),
+        historicalContext: {
+          percentile: `${funding.percentile}th`,
+          zScore: funding.zScore.toFixed(2),
+          comparison: funding.historicalComparison,
+        },
+        sources: funding.sources,
+        dataQuality: `${(funding.dataQuality * 100).toFixed(0)}%`,
+      },
+      
+      // Aggregated Open Interest
+      openInterest: {
+        btc: `$${(oi.btcOI / 1_000_000_000).toFixed(2)}B`,
+        eth: `$${(oi.ethOI / 1_000_000_000).toFixed(2)}B`,
+        total: `$${(oi.totalOI / 1_000_000_000).toFixed(2)}B`,
+        changes: {
+          btc24h: `${(oi.btcChange24h * 100).toFixed(1)}%`,
+          eth24h: `${(oi.ethChange24h * 100).toFixed(1)}%`,
+          total24h: `${(oi.totalChange24h * 100).toFixed(1)}%`,
+        },
+        divergence: oi.divergence,
+        sources: oi.sources,
+        dataQuality: `${(oi.dataQuality * 100).toFixed(0)}%`,
+      },
+      
+      // Performance
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Derivatives Data Sources test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 📰 NEWS INTELLIGENCE v2.0 TEST ENDPOINT - 10/10 Divine Perfection
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/news-v2', async (req: Request, res: Response) => {
@@ -1976,6 +2100,7 @@ app.get('/', (_req: Request, res: Response) => {
       testBehavioralFinance: '/api/test/behavioral-finance',
       testPsychology: '/api/test/psychology',
       testDerivativesV2: '/api/test/derivatives-v2',
+      testDerivativesSources: '/api/test/derivatives-sources', // NEW: Multi-exchange data
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
       testCSS: '/api/test/css',
