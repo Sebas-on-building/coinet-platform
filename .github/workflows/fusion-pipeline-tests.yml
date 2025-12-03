@@ -55,7 +55,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/test_requirements.txt') }}
@@ -91,21 +91,21 @@ jobs:
 
     - name: Upload test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fusion-test-results-py${{ matrix.python-version }}-${{ matrix.test-suite }}
         path: ai-services/ml-service/src/coinet_ai_ml/fusion/test_results/
 
     - name: Upload test metrics
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fusion-test-metrics-py${{ matrix.python-version }}-${{ matrix.test-suite }}
         path: ai-services/ml-service/src/coinet_ai_ml/fusion/fusion_test_metrics_*.json
 
     - name: Upload HTML reports
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fusion-test-reports-py${{ matrix.python-version }}-${{ matrix.test-suite }}
         path: ai-services/ml-service/src/coinet_ai_ml/fusion/fusion_test_report_*.html
@@ -141,7 +141,7 @@ jobs:
           --report both
 
     - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fusion-benchmark-results
         path: ai-services/ml-service/src/coinet_ai_ml/fusion/benchmark_results/
@@ -177,7 +177,7 @@ jobs:
           --report both
 
     - name: Upload stress test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fusion-stress-test-results
         path: ai-services/ml-service/src/coinet_ai_ml/fusion/stress_results/
@@ -190,7 +190,7 @@ jobs:
 
     steps:
     - name: Download all test artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
 
     - name: Generate test summary
       run: |
