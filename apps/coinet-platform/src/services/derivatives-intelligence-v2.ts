@@ -707,16 +707,22 @@ function generateMockFundingRates(): FundingRateData[] {
 
 function generateMockOI(): OpenInterestData[] {
   const symbols = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
-  return symbols.map(symbol => ({
-    symbol,
-    total: symbol === 'BTC' ? 15_000_000_000 + Math.random() * 5_000_000_000 
+  const defaultByExchange: Record<Exchange, number> = {
+    binance: 0, okx: 0, bybit: 0, deribit: 0, bitget: 0, bitmex: 0, huobi: 0, gate: 0,
+  };
+  return symbols.map(symbol => {
+    const total = symbol === 'BTC' ? 15_000_000_000 + Math.random() * 5_000_000_000 
           : symbol === 'ETH' ? 8_000_000_000 + Math.random() * 2_000_000_000
-          : 500_000_000 + Math.random() * 500_000_000,
-    change24h: (Math.random() - 0.5) * 1_000_000_000,
-    changePercent24h: (Math.random() - 0.5) * 10,
-    byExchange: {},
-    timestamp: new Date(),
-  }));
+          : 500_000_000 + Math.random() * 500_000_000;
+    return {
+      symbol,
+      total,
+      change24h: (Math.random() - 0.5) * 1_000_000_000,
+      changePercent24h: (Math.random() - 0.5) * 10,
+      byExchange: { ...defaultByExchange, binance: total * 0.4, okx: total * 0.25, bybit: total * 0.2 },
+      timestamp: new Date(),
+    };
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -808,8 +814,8 @@ function analyzeFunding(rates: FundingRateData[]): FundingMetrics {
     symbolGroups.get(rate.symbol)!.push(rate);
   }
   
-  for (const [symbol, symbolRates] of symbolGroups) {
-    if (symbolRates.length < 2) continue;
+  symbolGroups.forEach((symbolRates, symbol) => {
+    if (symbolRates.length < 2) return;
     const sorted = [...symbolRates].sort((a, b) => a.rate - b.rate);
     const spread = sorted[sorted.length - 1].rate - sorted[0].rate;
     if (Math.abs(spread) > 0.005) {
@@ -820,7 +826,7 @@ function analyzeFunding(rates: FundingRateData[]): FundingMetrics {
         sellExchange: sorted[sorted.length - 1].exchange,
       });
     }
-  }
+  });
   
   const historicalFunding = historicalData.map(h => h.fundingBias);
   
