@@ -83,10 +83,10 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}/ai-services/ml-service/src
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
-        python test_runner.py \
+        cd ai-services/ml-service/src
+        python -m coinet_ai_ml.fusion.test_runner \
           --suite ${{ matrix.test-suite }} \
-          --output-dir ./test_results \
+          --output-dir ./coinet_ai_ml/fusion/test_results \
           --report both \
           --parallel 2
 
@@ -135,10 +135,10 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}/ai-services/ml-service/src
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
-        python test_runner.py \
+        cd ai-services/ml-service/src
+        python -m coinet_ai_ml.fusion.test_runner \
           --suite benchmark \
-          --output-dir ./benchmark_results \
+          --output-dir ./coinet_ai_ml/fusion/benchmark_results \
           --report both
 
     - name: Upload benchmark results
@@ -171,10 +171,10 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}/ai-services/ml-service/src
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
-        python test_runner.py \
+        cd ai-services/ml-service/src
+        python -m coinet_ai_ml.fusion.test_runner \
           --suite stress \
-          --output-dir ./stress_results \
+          --output-dir ./coinet_ai_ml/fusion/stress_results \
           --report both
 
     - name: Upload stress test results
