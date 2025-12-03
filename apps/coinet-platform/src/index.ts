@@ -2168,6 +2168,215 @@ app.get('/api/test/derivatives-resilience', async (req: Request, res: Response) 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 💀 COMPLETE DERIVATIVES INTELLIGENCE - Section 1.3 FINAL (All ACs)
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/derivatives-complete', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateDerivativesIntelligenceComplete, formatDerivativesCompleteForAI } = 
+      await import('./services/derivatives-intelligence-complete');
+    
+    const result = await calculateDerivativesIntelligenceComplete();
+    const aiContext = formatDerivativesCompleteForAI(result);
+    
+    res.json({
+      success: true,
+      section: '💀 COMPLETE DERIVATIVES INTELLIGENCE v1.0',
+      subtitle: 'Section 1.3 FINAL - All Acceptance Criteria',
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // SECTION STATUS - ALL ACCEPTANCE CRITERIA
+      // ═══════════════════════════════════════════════════════════════════════
+      sectionStatus: {
+        overallComplete: result.sectionStatus.overallComplete,
+        acceptanceCriteria: {
+          ac1_realTimeAlerts: {
+            requirement: '<10 second latency for liquidation detection',
+            status: result.sectionStatus.ac1RealTimeAlerts.met ? '✅ MET' : '❌ NOT MET',
+            details: result.sectionStatus.ac1RealTimeAlerts.details,
+          },
+          ac2_heatmapVisualization: {
+            requirement: 'Liquidation heatmap showing stop-loss clusters',
+            status: result.sectionStatus.ac2Heatmap.met ? '✅ MET' : '❌ NOT MET',
+            details: result.sectionStatus.ac2Heatmap.details,
+          },
+          ac3_cascadeAccuracy: {
+            requirement: '>70% accuracy in cascade prediction',
+            status: result.sectionStatus.ac3CascadeAccuracy.met ? '✅ MET' : '❌ NOT MET',
+            details: result.sectionStatus.ac3CascadeAccuracy.details,
+          },
+          ac4_arbitrageDetection: {
+            requirement: '100% reliability in funding rate arbitrage detection',
+            status: result.sectionStatus.ac4Arbitrage.met ? '✅ MET' : '❌ NOT MET',
+            details: result.sectionStatus.ac4Arbitrage.details,
+          },
+        },
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // AC1: REAL-TIME ALERTS
+      // ═══════════════════════════════════════════════════════════════════════
+      realTimeAlerts: {
+        latencyMetrics: {
+          avgDetectionMs: result.realTimeAlerts.latencyMetrics.avgDetectionMs,
+          maxDetectionMs: result.realTimeAlerts.latencyMetrics.maxDetectionMs,
+          meetsRequirement: result.realTimeAlerts.latencyMetrics.meetsRequirement,
+          requirement: '<10,000ms',
+        },
+        alertStats: result.realTimeAlerts.alertStats,
+        activeAlerts: result.realTimeAlerts.active.slice(0, 5).map(a => ({
+          severity: a.severity,
+          type: a.type,
+          title: a.title,
+          description: a.description,
+          actionable: a.actionable,
+          suggestedAction: a.suggestedAction,
+        })),
+        recentLiquidations: result.realTimeAlerts.recentLiquidations.slice(0, 10).map(l => ({
+          exchange: l.exchange,
+          symbol: l.symbol,
+          side: l.side,
+          amount: `$${(l.amount / 1_000_000).toFixed(2)}M`,
+          price: `$${l.price.toLocaleString()}`,
+          severity: l.severity,
+          detectionLatency: `${l.detectionLatency}ms`,
+        })),
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // AC2: LIQUIDATION HEATMAP
+      // ═══════════════════════════════════════════════════════════════════════
+      heatmap: {
+        aggregate: result.heatmap.aggregate,
+        btc: {
+          currentPrice: `$${result.heatmap.btc.currentPrice.toLocaleString()}`,
+          riskScore: `${result.heatmap.btc.summary.riskScore}/100`,
+          criticalZones: {
+            above: result.heatmap.btc.summary.criticalZonesAbove,
+            below: result.heatmap.btc.summary.criticalZonesBelow,
+          },
+          nearestCritical: result.heatmap.btc.summary.nearestCriticalLevel 
+            ? `$${result.heatmap.btc.summary.nearestCriticalLevel.toLocaleString()}`
+            : 'None',
+          levels: result.heatmap.btc.levels.filter(l => l.riskLevel !== 'low').map(l => ({
+            price: `$${l.priceLevel.toLocaleString()}`,
+            riskLevel: l.riskLevel,
+            estimatedLiquidations: `$${(l.estimatedLiquidations / 1_000_000).toFixed(1)}M`,
+            dominantSide: l.dominantSide,
+            stopLossConcentration: `${l.stopLossConcentration}%`,
+            description: l.description,
+          })),
+          visualization: result.heatmap.btc.visualization,
+        },
+        eth: {
+          currentPrice: `$${result.heatmap.eth.currentPrice.toLocaleString()}`,
+          riskScore: `${result.heatmap.eth.summary.riskScore}/100`,
+          criticalZones: {
+            above: result.heatmap.eth.summary.criticalZonesAbove,
+            below: result.heatmap.eth.summary.criticalZonesBelow,
+          },
+        },
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // AC3: CASCADE PREDICTIONS
+      // ═══════════════════════════════════════════════════════════════════════
+      cascadePredictions: {
+        modelHealth: {
+          accuracy: `${(result.cascadePredictions.modelHealth.accuracy * 100).toFixed(0)}%`,
+          meetsThreshold: result.cascadePredictions.modelHealth.meetsThreshold,
+          requirement: '>70%',
+          lastCalibration: result.cascadePredictions.modelHealth.lastCalibration.toISOString().split('T')[0],
+        },
+        backtestResults: {
+          periodStart: result.cascadePredictions.backtestResults.periodStart.toISOString().split('T')[0],
+          periodEnd: result.cascadePredictions.backtestResults.periodEnd.toISOString().split('T')[0],
+          totalPredictions: result.cascadePredictions.backtestResults.totalPredictions,
+          correctPredictions: result.cascadePredictions.backtestResults.correctPredictions,
+          accuracy: `${(result.cascadePredictions.backtestResults.accuracy * 100).toFixed(0)}%`,
+          precision: `${(result.cascadePredictions.backtestResults.precision * 100).toFixed(0)}%`,
+          recall: `${(result.cascadePredictions.backtestResults.recall * 100).toFixed(0)}%`,
+          f1Score: `${(result.cascadePredictions.backtestResults.f1Score * 100).toFixed(0)}%`,
+          byRegime: Object.fromEntries(
+            Object.entries(result.cascadePredictions.backtestResults.byRegime).map(([regime, data]) => [
+              regime,
+              { predictions: data.predictions, accuracy: `${(data.accuracy * 100).toFixed(0)}%` },
+            ])
+          ),
+        },
+        currentPrediction: {
+          scenario: `${result.cascadePredictions.current.priceScenario.percentDrop.toFixed(1)}% drop to $${result.cascadePredictions.current.priceScenario.targetPrice.toLocaleString()}`,
+          cascadeWillOccur: result.cascadePredictions.current.prediction.cascadeWillOccur,
+          probability: `${result.cascadePredictions.current.prediction.probability}%`,
+          confidence: `${result.cascadePredictions.current.prediction.confidence}%`,
+          estimatedLiquidations: `$${(result.cascadePredictions.current.prediction.estimatedLiquidations / 1_000_000).toFixed(0)}M`,
+          estimatedPriceImpact: `${result.cascadePredictions.current.prediction.estimatedPriceImpact}%`,
+          factors: result.cascadePredictions.current.factors,
+          historicalContext: result.cascadePredictions.current.historicalContext,
+        },
+        scenarios: result.cascadePredictions.scenarios.map(s => ({
+          drop: `${s.priceScenario.percentDrop.toFixed(1)}%`,
+          targetPrice: `$${s.priceScenario.targetPrice.toLocaleString()}`,
+          cascadeProb: `${s.prediction.probability}%`,
+          cascadeWillOccur: s.prediction.cascadeWillOccur,
+          estimatedImpact: `$${(s.prediction.estimatedLiquidations / 1_000_000).toFixed(0)}M`,
+        })),
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // AC4: ARBITRAGE DETECTION
+      // ═══════════════════════════════════════════════════════════════════════
+      arbitrage: {
+        reliability: {
+          detectionRate: `${(result.arbitrage.reliability.detectionRate * 100).toFixed(0)}%`,
+          falsePositiveRate: `${(result.arbitrage.reliability.falsePositiveRate * 100).toFixed(1)}%`,
+          meets100Percent: result.arbitrage.reliability.meets100Percent,
+        },
+        stats: {
+          activeOpportunities: result.arbitrage.stats.activeOpportunities,
+          avgAnnualizedReturn: `${result.arbitrage.stats.avgAnnualizedReturn.toFixed(0)}%`,
+        },
+        opportunities: result.arbitrage.opportunities.map(o => ({
+          symbol: o.symbol,
+          strategy: `Long ${o.longExchange} / Short ${o.shortExchange}`,
+          spread: `${o.spreadPercent.toFixed(3)}%`,
+          annualizedReturn: `${o.annualizedReturn.toFixed(0)}%`,
+          quality: o.quality,
+          riskLevel: o.riskLevel,
+          estimatedDailyProfit: `$${o.estimatedDailyProfit.toFixed(2)}`,
+          description: o.description,
+        })),
+        bestOpportunity: result.arbitrage.bestOpportunity ? {
+          symbol: result.arbitrage.bestOpportunity.symbol,
+          description: result.arbitrage.bestOpportunity.description,
+          annualizedReturn: `${result.arbitrage.bestOpportunity.annualizedReturn.toFixed(0)}%`,
+          quality: result.arbitrage.bestOpportunity.quality,
+        } : null,
+      },
+      
+      // Data Quality
+      dataQuality: result.dataQuality,
+      
+      // AI Context Preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${result.computeTime}ms`,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Complete Derivatives Intelligence test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 🧠 INVESTOR PSYCHOLOGY ENGINE TEST ENDPOINT - Neuroeconomic Analysis
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/psychology', async (req: Request, res: Response) => {
@@ -2549,6 +2758,7 @@ app.get('/', (_req: Request, res: Response) => {
       testDerivativesV2: '/api/test/derivatives-v2',
       testDerivativesComprehensive: '/api/test/derivatives-comprehensive', // Step 1.3.2 Full Analysis
       testDerivativesResilience: '/api/test/derivatives-resilience', // Step 1.3.3 Multi-Source Failover
+      testDerivativesComplete: '/api/test/derivatives-complete', // Section 1.3 FINAL - All ACs
       testDerivativesSources: '/api/test/derivatives-sources', // Multi-exchange data
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
