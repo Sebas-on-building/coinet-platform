@@ -1496,11 +1496,14 @@ app.get('/api/test/derivatives-v2', async (req: Request, res: Response) => {
           : 'Score reflects current market conditions with appropriate smoothing.',
       },
       
-      // NEW: Market Context
+      // NEW: Market Context (REAL DATA from CoinGecko)
       marketContext: {
+        dataSource: result.marketContext.dataSource || 'unknown',
         currentPrice: `$${result.marketContext.currentPrice.toLocaleString()}`,
         recentHigh: `$${result.marketContext.recentHigh.toLocaleString()}`,
+        recentLow: `$${result.marketContext.recentLow.toLocaleString()}`,
         drawdownFromHigh: `${(result.marketContext.drawdownFromHigh * 100).toFixed(1)}%`,
+        recoveryFromLow: `${(result.marketContext.recoveryFromLow * 100).toFixed(0)}%`,
         daysInDrawdown: result.marketContext.daysInDrawdown,
         daysOfRecovery: result.marketContext.daysOfRecovery,
         priceChanges: {

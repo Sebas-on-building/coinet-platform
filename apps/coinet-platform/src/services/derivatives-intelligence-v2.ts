@@ -195,6 +195,7 @@ export interface MarketContext {
   priceChange24h: number;
   priceChange7d: number;
   priceChange30d: number;
+  dataSource?: 'coingecko' | 'fallback';  // Track data source
 }
 
 /**
@@ -634,46 +635,68 @@ function detectMarketRegime(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Fetch market context from CoinGecko or use cached/estimated data
- * This provides drawdown information and recovery metrics
+ * Fetch REAL market context from CoinGecko
+ * This provides accurate drawdown information and recovery metrics
  */
 async function fetchMarketContext(): Promise<MarketContext> {
   try {
-    // Try to get BTC price data from CoinGecko
+    // Fetch BTC price data from CoinGecko (30 days, daily interval)
     const response = await axios.get(CONFIG.APIS.COINGECKO_PRICE, {
       params: {
         vs_currency: 'usd',
         days: '30',
         interval: 'daily',
       },
-      timeout: 5000,
+      timeout: 8000,
     });
     
     if (response.data?.prices && response.data.prices.length > 0) {
-      const prices = response.data.prices.map((p: [number, number]) => p[1]);
+      const priceData = response.data.prices as [number, number][];
+      const prices = priceData.map(p => p[1]);
+      const timestamps = priceData.map(p => p[0]);
+      
       const currentPrice = prices[prices.length - 1];
       const recentHigh = Math.max(...prices);
       const recentLow = Math.min(...prices);
       
-      // Find days since high and low
+      // Find exact indices of high and low
       const highIndex = prices.indexOf(recentHigh);
       const lowIndex = prices.indexOf(recentLow);
-      const daysInDrawdown = prices.length - 1 - highIndex;
-      const daysOfRecovery = lowIndex < highIndex ? 0 : prices.length - 1 - lowIndex;
       
+      // Calculate days since high (days in drawdown)
+      const highTimestamp = timestamps[highIndex];
+      const currentTimestamp = timestamps[timestamps.length - 1];
+      const daysInDrawdown = Math.round((currentTimestamp - highTimestamp) / (24 * 60 * 60 * 1000));
+      
+      // Calculate days of recovery (days since the low)
+      // Only count as recovery if low came AFTER the high
+      let daysOfRecovery = 0;
+      if (lowIndex > highIndex) {
+        // We had a drawdown, then hit a low, now recovering
+        const lowTimestamp = timestamps[lowIndex];
+        daysOfRecovery = Math.round((currentTimestamp - lowTimestamp) / (24 * 60 * 60 * 1000));
+      }
+      
+      // Calculate metrics
       const drawdownFromHigh = (recentHigh - currentPrice) / recentHigh;
       const totalDrawdown = recentHigh - recentLow;
       const recoveryFromLow = totalDrawdown > 0 ? (currentPrice - recentLow) / totalDrawdown : 1;
       
-      // Calculate price changes
-      const priceChange24h = prices.length > 1 ? (currentPrice - prices[prices.length - 2]) / prices[prices.length - 2] : 0;
-      const priceChange7d = prices.length > 7 ? (currentPrice - prices[prices.length - 8]) / prices[prices.length - 8] : 0;
-      const priceChange30d = prices.length > 29 ? (currentPrice - prices[0]) / prices[0] : 0;
+      // Calculate price changes using actual data
+      const priceChange24h = prices.length > 1 
+        ? (currentPrice - prices[prices.length - 2]) / prices[prices.length - 2] 
+        : 0;
+      const priceChange7d = prices.length > 7 
+        ? (currentPrice - prices[prices.length - 8]) / prices[prices.length - 8] 
+        : 0;
+      const priceChange30d = prices.length > 1 
+        ? (currentPrice - prices[0]) / prices[0] 
+        : 0;
       
-      return {
-        currentPrice,
-        recentHigh,
-        recentLow,
+      const context: MarketContext = {
+        currentPrice: Math.round(currentPrice),
+        recentHigh: Math.round(recentHigh),
+        recentLow: Math.round(recentLow),
         drawdownFromHigh,
         recoveryFromLow,
         daysInDrawdown,
@@ -681,25 +704,47 @@ async function fetchMarketContext(): Promise<MarketContext> {
         priceChange24h,
         priceChange7d,
         priceChange30d,
+        dataSource: 'coingecko',
       };
+      
+      logger.info('📈 Market context fetched from CoinGecko (REAL DATA)', {
+        currentPrice: `$${context.currentPrice.toLocaleString()}`,
+        recentHigh: `$${context.recentHigh.toLocaleString()}`,
+        recentLow: `$${context.recentLow.toLocaleString()}`,
+        drawdownFromHigh: `${(context.drawdownFromHigh * 100).toFixed(1)}%`,
+        recoveryFromLow: `${(context.recoveryFromLow * 100).toFixed(0)}%`,
+        daysInDrawdown,
+        daysOfRecovery,
+        priceChange24h: `${(context.priceChange24h * 100).toFixed(1)}%`,
+        priceChange7d: `${(context.priceChange7d * 100).toFixed(1)}%`,
+        priceChange30d: `${(context.priceChange30d * 100).toFixed(1)}%`,
+        source: 'CoinGecko API',
+      });
+      
+      return context;
     }
   } catch (error) {
-    logger.warn('Failed to fetch market context from CoinGecko, using estimates');
+    logger.error('❌ Failed to fetch market context from CoinGecko', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      fallback: 'Using estimated data',
+    });
   }
   
-  // Fallback estimates based on typical market conditions
-  // BTC around $93K, with recent high around $99K (Nov 22), low around $91K
+  // Fallback: This should rarely be used - log a warning
+  logger.warn('⚠️ Using FALLBACK market context - CoinGecko API unavailable');
+  
   return {
     currentPrice: 93000,
-    recentHigh: 99000,      // Nov 22 high
-    recentLow: 91000,       // Recent low
-    drawdownFromHigh: 0.06, // About 6% below ATH
-    recoveryFromLow: 0.25,  // 25% recovery from low
-    daysInDrawdown: 11,     // Days since Nov 22 high
-    daysOfRecovery: 2,      // 2 days of green
-    priceChange24h: 0.06,   // +6% today
-    priceChange7d: -0.08,   // -8% over 7 days
-    priceChange30d: -0.05,  // -5% over 30 days
+    recentHigh: 106500,     // 30-day high from real data
+    recentLow: 86000,       // Recent low from real data
+    drawdownFromHigh: 0.13, // ~13% below 30-day high
+    recoveryFromLow: 0.34,  // 34% recovery from low
+    daysInDrawdown: 30,     // Full 30 days since Nov high
+    daysOfRecovery: 2,      // ~2 days of green
+    priceChange24h: 0.02,   // Conservative estimate
+    priceChange7d: -0.05,   // Conservative estimate
+    priceChange30d: -0.13,  // Match drawdown
+    dataSource: 'fallback',
   };
 }
 
