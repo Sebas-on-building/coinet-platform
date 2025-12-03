@@ -1286,6 +1286,95 @@ app.get('/api/test/social-v2', async (req: Request, res: Response) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 📰 NEWS INTELLIGENCE v2.0 TEST ENDPOINT - 10/10 Divine Perfection
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/news-v2', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateNewsIntelligenceV2, formatNewsIntelligenceV2ForAI } = 
+      await import('./services/news-intelligence-v2');
+    
+    const result = await calculateNewsIntelligenceV2();
+    const aiContext = formatNewsIntelligenceV2ForAI(result);
+    
+    res.json({
+      success: true,
+      section: '📰 NEWS INTELLIGENCE v2.0 - 10/10 Divine Perfection',
+      status: '✅ NEWS INTELLIGENCE v2.0 OPERATIONAL',
+      version: result.version,
+      
+      // Headline
+      headline: result.headline,
+      
+      // Confidence
+      confidence: result.confidence,
+      
+      // Regime
+      regime: result.regime,
+      
+      // Source breakdown
+      sourceScores: result.sourceScores,
+      sourceWeights: result.sourceWeights,
+      
+      // Segment analysis
+      segments: Object.fromEntries(
+        Object.entries(result.segments).map(([k, v]) => [k, {
+          articleCount: v.articleCount,
+          avgSentiment: v.avgSentiment,
+          avgImpact: v.avgImpact,
+          trend: v.trend,
+        }])
+      ),
+      
+      // Articles summary
+      articles: {
+        total: result.articles.total,
+        last24h: result.articles.last24h,
+        lastHour: result.articles.lastHour,
+        criticalCount: result.articles.critical.length,
+        topByImpact: result.articles.topByImpact.slice(0, 3).map(a => ({
+          title: a.title.slice(0, 80),
+          source: a.source,
+          sentiment: a.intelligence.sentiment.label,
+          impact: a.intelligence.impact.level,
+        })),
+      },
+      
+      // Narratives
+      narratives: result.narratives.active.slice(0, 5),
+      
+      // Historical
+      historical: result.historical,
+      
+      // Interpretation
+      interpretation: result.interpretation,
+      
+      // Data quality
+      dataQuality: result.dataQuality,
+      
+      // Calibration
+      calibration: result.calibration,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${result.computeTime}ms`,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ News Intelligence v2.0 test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 📊 COMPOSITE SOCIAL SCORE (CSS) TEST ENDPOINT - 10/10 Divine Perfection
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/css', async (req: Request, res: Response) => {
@@ -1384,6 +1473,7 @@ app.get('/', (_req: Request, res: Response) => {
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
+      testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
       testCSS: '/api/test/css',
       testCSIv4: '/api/test/csi-v4',
@@ -1396,7 +1486,7 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/social-v2 for Social Intelligence v2.0, /api/test/css for Composite Social Score',
+    documentation: 'Use /api/test/news-v2 for News Intelligence v2.0, /api/test/social-v2 for Social Intelligence v2.0',
   });
 });
 
