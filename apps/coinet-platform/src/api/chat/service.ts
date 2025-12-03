@@ -26,6 +26,7 @@ import { calculateSocialIntelligenceV2, formatSocialIntelligenceV2ForAI } from '
 import { calculateNewsIntelligenceV2, formatNewsIntelligenceV2ForAI } from '../../services/news-intelligence-v2';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
+import { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } from '../../services/derivatives-intelligence-v2';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -109,7 +110,8 @@ export class ChatService {
         // Note: Using Composite Social Score (CSS) - 10/10 Divine Perfection (Step 1.2.5)
         // Note: Using Social Intelligence v2.0 - 10/10 Divine Perfection (Section 1.2 Complete)
         // Note: Using News Intelligence v2.0 - 10/10 Divine Perfection (Section 1.1 Complete)
-        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData] = await Promise.all([
+        // Note: Using Derivatives Intelligence v2.0 - 10/10 Divine Perfection (Section 1.3 Complete)
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
@@ -121,7 +123,8 @@ export class ChatService {
           calculateCompositeSocialScore(),  // 📊 Composite Social Score (FUD/FOMO/Sentiment)
           calculateSocialIntelligenceV2(),  // 🌐 Social Intelligence v2.0 - Divine Perfection
           calculateNewsIntelligenceV2(),  // 📰 News Intelligence v2.0 - Divine Perfection
-          needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data
+          needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data (legacy)
+          calculateDerivativesIntelligenceV2(),  // 💀 Derivatives Intelligence v2.0 - Divine Perfection
         ]);
         
         let contextParts: string[] = [];
@@ -188,14 +191,30 @@ export class ChatService {
           });
         }
         
-        // 6. Add perpetuals data (liquidations, funding rates) - KEY DIFFERENTIATOR!
-        if (perpsData && (perpsData.liquidations.length > 0 || perpsData.fundingRates.length > 0)) {
-          contextParts.push(formatPerpsForAI(perpsData));
-          logger.debug('💀 Perps context added', {
-            liquidations: perpsData.liquidations.length,
-            fundingRates: perpsData.fundingRates.length,
-            totalLiq: perpsData.marketSummary.totalLiquidations24h,
+        // 6. Add Derivatives Intelligence v2.0 (Section 1.3 - Divine Perfection)
+        if (derivativesV2) {
+          contextParts.push(formatDerivativesIntelligenceV2ForAI(derivativesV2));
+          logger.debug('💀 Derivatives Intelligence v2.0 context added', {
+            score: derivativesV2.headline.derivativesScore,
+            signal: derivativesV2.headline.signal,
+            liquidations24h: derivativesV2.liquidations.total24h,
+            fundingBias: derivativesV2.funding.bias,
+            regime: derivativesV2.regime.current,
+            confidence: derivativesV2.confidence.overall,
           });
+        }
+        
+        // 6.1 Legacy perps data (kept for backward compatibility)
+        if (perpsData && (perpsData.liquidations.length > 0 || perpsData.fundingRates.length > 0)) {
+          // Skip if we already have v2 context
+          if (!derivativesV2) {
+            contextParts.push(formatPerpsForAI(perpsData));
+            logger.debug('💀 Legacy Perps context added', {
+              liquidations: perpsData.liquidations.length,
+              fundingRates: perpsData.fundingRates.length,
+              totalLiq: perpsData.marketSummary.totalLiquidations24h,
+            });
+          }
         }
         
         // 7. Add influencer intelligence context (Step 1.2.3)

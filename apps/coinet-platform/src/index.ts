@@ -1461,18 +1461,115 @@ app.get('/api/test/css', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 💀 DERIVATIVES INTELLIGENCE v2.0 TEST ENDPOINT - 10/10 Divine Perfection
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/derivatives-v2', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } = 
+      await import('./services/derivatives-intelligence-v2');
+    
+    const result = await calculateDerivativesIntelligenceV2();
+    const aiContext = formatDerivativesIntelligenceV2ForAI(result);
+    
+    res.json({
+      success: true,
+      section: '💀 DERIVATIVES INTELLIGENCE v2.0 - 10/10 Divine Perfection',
+      status: '✅ DERIVATIVES INTELLIGENCE v2.0 OPERATIONAL',
+      
+      // Primary outputs
+      headline: result.headline,
+      
+      // Confidence
+      confidence: {
+        overall: `${(result.confidence.overall * 100).toFixed(0)}%`,
+        band: `${result.confidence.band.lower}-${result.confidence.band.upper}`,
+        uncertainty: result.confidence.uncertainty,
+        factors: result.confidence.factors,
+      },
+      
+      // Regime
+      regime: result.regime,
+      
+      // Liquidations summary
+      liquidations: {
+        total24h: `$${(result.liquidations.total24h / 1_000_000).toFixed(1)}M`,
+        longs: `$${(result.liquidations.totalLong24h / 1_000_000).toFixed(1)}M`,
+        shorts: `$${(result.liquidations.totalShort24h / 1_000_000).toFixed(1)}M`,
+        longShortRatio: result.liquidations.longShortRatio.toFixed(2),
+        largeCount: result.liquidations.largeCount,
+        isExtreme: result.liquidations.isExtreme,
+        percentileVsHistory: `${result.liquidations.percentileVsHistory.toFixed(0)}%`,
+      },
+      
+      // Funding summary
+      funding: {
+        weightedAvgRate: `${(result.funding.weightedAvgRate * 100).toFixed(4)}%`,
+        bias: result.funding.bias,
+        highest: result.funding.highest,
+        lowest: result.funding.lowest,
+        arbitrageOpportunities: result.funding.arbitrageOpportunities.length,
+        isExtreme: result.funding.isExtreme,
+      },
+      
+      // Open Interest summary
+      openInterest: {
+        total: `$${(result.openInterest.totalOI / 1_000_000_000).toFixed(1)}B`,
+        change24h: `${result.openInterest.changePercent24h.toFixed(1)}%`,
+        divergenceSignal: result.openInterest.divergence.signal,
+      },
+      
+      // Exchange breakdown
+      exchanges: result.exchanges,
+      
+      // Segment analysis
+      segments: result.segments,
+      
+      // Historical context
+      historical: result.historical,
+      
+      // Interpretation
+      interpretation: result.interpretation,
+      
+      // Data quality
+      dataQuality: result.dataQuality,
+      
+      // Calibration
+      calibration: result.calibration,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${result.computeTime}ms`,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Derivatives Intelligence v2.0 test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     service: 'coinet-platform',
     version: '2.0.0',
     status: 'running',
-    tagline: 'Revolutionary Social Intelligence for Crypto Markets',
+    tagline: 'Revolutionary Derivatives & Social Intelligence for Crypto Markets',
     endpoints: {
       health: '/api/health',
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
+      testDerivativesV2: '/api/test/derivatives-v2', // NEW
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
       testCSS: '/api/test/css',
@@ -1486,7 +1583,7 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/news-v2 for News Intelligence v2.0, /api/test/social-v2 for Social Intelligence v2.0',
+    documentation: 'Use /api/test/derivatives-v2 for Derivatives Intelligence, /api/test/news-v2 for News, /api/test/social-v2 for Social',
   });
 });
 
