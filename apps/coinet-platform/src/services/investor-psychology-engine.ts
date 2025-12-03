@@ -250,8 +250,9 @@ const CONFIG = {
     belief: { min: 65, max: 75, description: 'Bull market confidence' },
     optimism: { min: 55, max: 65, description: 'Healthy optimism' },
     hope: { min: 45, max: 55, description: 'Cautious recovery' },
-    disbelief: { min: 35, max: 45, description: 'Skeptical of rally' },
-    anxiety: { min: 25, max: 35, description: 'Concern building' },
+    disbelief: { min: 38, max: 45, description: 'Skeptical of rally' },
+    complacency: { min: 32, max: 38, description: 'Ignoring warning signs' },
+    anxiety: { min: 25, max: 32, description: 'Concern building' },
     denial: { min: 20, max: 25, description: 'Refusing to accept losses' },
     panic: { min: 15, max: 20, description: 'Selling pressure' },
     capitulation: { min: 10, max: 15, description: 'Maximum opportunity' },
@@ -564,7 +565,8 @@ function determineEmotionalPhase(psychologyScore: number): EmotionalPhase {
   if (psychologyScore >= 65) return 'belief';
   if (psychologyScore >= 55) return 'optimism';
   if (psychologyScore >= 45) return 'hope';
-  if (psychologyScore >= 35) return 'disbelief';
+  if (psychologyScore >= 38) return 'disbelief';
+  if (psychologyScore >= 32) return 'complacency';  // "This is just a correction"
   if (psychologyScore >= 25) return 'anxiety';
   if (psychologyScore >= 20) return 'denial';
   if (psychologyScore >= 15) return 'panic';
@@ -740,6 +742,7 @@ export async function calculateInvestorPsychology(input: PsychologyInput): Promi
     optimism: 'Healthy sentiment - measured risk-taking',
     hope: 'Tentative recovery - cautious optimism emerging',
     disbelief: 'Skeptical of rally - "it will dump again"',
+    complacency: 'Ignoring warning signs - "this is just a correction"',
     anxiety: 'Growing concern - watching for exits',
     denial: 'Refusing to accept losses - "it will come back"',
     panic: 'Active selling - "get me out at any price"',
@@ -826,7 +829,7 @@ export function formatPsychologyForAI(report: InvestorPsychologyReport): string 
   // Emotional phase with description
   const phaseEmoji: Record<EmotionalPhase, string> = {
     euphoria: '🤑', thrill: '🎢', belief: '😎', optimism: '😊', hope: '🙂',
-    disbelief: '🤨', anxiety: '😰', denial: '🙈', panic: '😱',
+    disbelief: '🤨', complacency: '😌', anxiety: '😰', denial: '🙈', panic: '😱',
     capitulation: '💀', anger: '😤', depression: '😢',
   };
   
