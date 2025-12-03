@@ -27,6 +27,7 @@ import { calculateNewsIntelligenceV2, formatNewsIntelligenceV2ForAI } from '../.
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } from '../../services/derivatives-intelligence-v2';
+import { calculateComprehensiveDerivativesIntelligence, formatComprehensiveDerivativesForAI } from '../../services/comprehensive-derivatives-intelligence';
 import { calculateBehavioralFinanceIntelligence, BehavioralFinanceInput } from '../../services/behavioral-finance-intelligence';
 import { calculateNeuroeconomicIntelligence, formatNeuroeconomicForAI, NeuroeconomicInput } from '../../services/neuroeconomic-intelligence';
 import { symbolDetector } from '../../services/symbol-detector';
@@ -114,7 +115,7 @@ export class ChatService {
         // Note: Using News Intelligence v2.0 - 10/10 Divine Perfection (Section 1.1 Complete)
         // Note: Using Derivatives Intelligence v2.0 - 10/10 Divine Perfection (Section 1.3 Complete)
         // Note: Using Behavioral Finance Intelligence - Neuroeconomic Analysis (Prospect Theory, Cognitive Biases)
-        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2] = await Promise.all([
+        const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
           getWhaleContextForAI(),
@@ -128,6 +129,7 @@ export class ChatService {
           calculateNewsIntelligenceV2(),  // 📰 News Intelligence v2.0 - Divine Perfection
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data (legacy)
           calculateDerivativesIntelligenceV2(),  // 💀 Derivatives Intelligence v2.0 - Divine Perfection
+          calculateComprehensiveDerivativesIntelligence().catch(() => null),  // 💀 Comprehensive Derivatives - Step 1.3.2
         ]);
         
         // Calculate behavioral finance intelligence using derivatives data
@@ -258,7 +260,22 @@ export class ChatService {
           });
         }
         
-        // 6.1 Legacy perps data (kept for backward compatibility)
+        // 6.2 Add Comprehensive Derivatives Intelligence (Step 1.3.2 - Full Analysis)
+        if (comprehensiveDerivatives) {
+          contextParts.push(formatComprehensiveDerivativesForAI(comprehensiveDerivatives));
+          logger.debug('💀 Comprehensive Derivatives Intelligence added', {
+            derivativesScore: comprehensiveDerivatives.headline.derivativesScore,
+            riskLevel: comprehensiveDerivatives.headline.riskLevel,
+            primarySignal: comprehensiveDerivatives.headline.primarySignal,
+            marketRegime: comprehensiveDerivatives.marketRegime,
+            cascadeRisk: comprehensiveDerivatives.liquidations.cascadePrediction.overallCascadeRisk,
+            longSqueezeProb: comprehensiveDerivatives.squeezeAnalysis.longSqueeze.probability,
+            shortSqueezeProb: comprehensiveDerivatives.squeezeAnalysis.shortSqueeze.probability,
+            alertCount: comprehensiveDerivatives.alerts.length,
+          });
+        }
+        
+        // 6.3 Legacy perps data (kept for backward compatibility)
         if (perpsData && (perpsData.liquidations.length > 0 || perpsData.fundingRates.length > 0)) {
           // Skip if we already have v2 context
           if (!derivativesV2) {
