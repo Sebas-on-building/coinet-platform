@@ -274,22 +274,24 @@ export const multiProviderConfig = {
  * Validate configuration
  */
 export function validateConfig(): void {
-  // Validate API keys (only in production or if explicitly required)
-  const requireApiKeys = process.env.REQUIRE_API_KEYS === 'true' || process.env.NODE_ENV === 'production';
+  // Check API keys - warn but don't fail (allows degraded mode operation)
+  const configuredChains: string[] = [];
+  const missingChains: string[] = [];
   
-  if (requireApiKeys) {
-    Object.entries(config.alchemy.apiKeys).forEach(([chain, key]) => {
-      if (!key || key === 'your_' + chain + '_api_key_here' || key.includes('your_')) {
-        throw new Error(`Invalid API key for chain: ${chain}. Please set ALCHEMY_API_KEY_${chain.toUpperCase()} in your .env file`);
-      }
-    });
-  } else {
-    // In development, just warn about missing keys
-    Object.entries(config.alchemy.apiKeys).forEach(([chain, key]) => {
-      if (!key || key === 'your_' + chain + '_api_key_here' || key.includes('your_')) {
-        console.warn(`⚠️  Warning: API key not configured for chain: ${chain}. Set ALCHEMY_API_KEY_${chain.toUpperCase()} in .env`);
-      }
-    });
+  Object.entries(config.alchemy.apiKeys).forEach(([chain, key]) => {
+    if (!key || key === 'your_' + chain + '_api_key_here' || key.includes('your_')) {
+      missingChains.push(chain);
+      console.warn(`⚠️  API key not configured for chain: ${chain}. Set ALCHEMY_API_KEY_${chain.toUpperCase()} in env`);
+    } else {
+      configuredChains.push(chain);
+    }
+  });
+  
+  if (configuredChains.length > 0) {
+    console.log(`✅ API keys configured for: ${configuredChains.join(', ')}`);
+  }
+  if (missingChains.length > 0) {
+    console.log(`⚠️  Running in degraded mode - missing API keys for: ${missingChains.join(', ')}`);
   }
 
   // Validate thresholds
