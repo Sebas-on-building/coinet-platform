@@ -516,7 +516,7 @@ export class FeedbackLoopIntegration extends EventEmitter {
   }>> {
     const applied = [];
 
-    for (const correction: ImmediateCorrectionAction of corrections) {
+    for (const correction of corrections) {
       try {
         // Apply the correction immediately
         switch (correction.type) {
