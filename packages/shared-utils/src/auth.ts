@@ -601,18 +601,4 @@ export function authErrorHandler() {
   };
 }
 
-// Export all utilities for use in services
-export {
-  authConfig,
-  logger,
-  authenticateToken,
-  requireRole,
-  requirePermission,
-  requireAuth,
-  optionalAuth,
-  authRateLimit,
-  securityHeaders,
-  corsConfig,
-  requestLogging,
-  authErrorHandler
-};
+// All utilities are already exported inline via 'export const' declarations

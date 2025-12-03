@@ -20,11 +20,10 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
+import { diag, DiagConsoleLogger, DiagLogLevel, trace, metrics } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
-import { metrics } from '@opentelemetry/api-metrics';
-import { trace } from '@opentelemetry/api-tracer';
 import { MeterProvider } from '@opentelemetry/sdk-metrics';
+import { v4 as uuidv4 } from 'uuid';
 import { LoggerProvider, SimpleLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { TracerProvider } from '@opentelemetry/sdk-trace-node';
 
@@ -585,5 +584,4 @@ export async function initializeObservability(
   return observability;
 }
 
-// Import uuid for span tracking
-import { v4 as _uuidv4 } from 'uuid';
+// UUID is imported at the top of the file
