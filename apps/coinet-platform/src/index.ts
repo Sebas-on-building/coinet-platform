@@ -1596,6 +1596,117 @@ app.get('/api/test/derivatives-v2', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧠 INVESTOR PSYCHOLOGY ENGINE TEST ENDPOINT - Neuroeconomic Analysis
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/psychology', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { calculateInvestorPsychology, formatPsychologyForAI } = 
+      await import('./services/investor-psychology-engine');
+    
+    // Get market context from derivatives endpoint
+    const { calculateDerivativesIntelligenceV2 } = 
+      await import('./services/derivatives-intelligence-v2');
+    
+    const derivativesResult = await calculateDerivativesIntelligenceV2();
+    
+    // Build input from derivatives data
+    const psychologyInput = {
+      currentPrice: derivativesResult.marketContext.currentPrice,
+      ath30d: derivativesResult.marketContext.recentHigh,
+      priceChange24h: derivativesResult.marketContext.priceChange24h,
+      priceChange7d: derivativesResult.marketContext.priceChange7d,
+      priceChange30d: derivativesResult.marketContext.priceChange30d,
+      socialSentiment: (derivativesResult.headline.derivativesScore - 50) / 50, // Normalize to -1 to 1
+      fundingRate: derivativesResult.funding.weightedAvgRate,
+      longShortRatio: derivativesResult.liquidations.longShortRatio,
+      volatility: derivativesResult.headline.liquidationPressure / 100,
+      newsCount: 15, // Would come from news service
+      influencerSentiment: (derivativesResult.headline.derivativesScore - 50) / 50,
+      leverageLevel: 3,
+    };
+    
+    const result = await calculateInvestorPsychology(psychologyInput);
+    const aiContext = formatPsychologyForAI(result);
+    
+    res.json({
+      success: true,
+      section: '🧠 INVESTOR PSYCHOLOGY ENGINE - Neuroeconomic Analysis',
+      status: '✅ INVESTOR PSYCHOLOGY ENGINE OPERATIONAL',
+      
+      // Primary outputs
+      headline: result.headline,
+      
+      // Loss Aversion (Prospect Theory)
+      lossAversion: {
+        painIndex: `${result.lossAversion.painIndex}/100`,
+        painMultiplier: `${result.lossAversion.painMultiplier}x (losses hurt more than gains)`,
+        underwaterInvestors: `${result.lossAversion.underwaterInvestors.percentUnderwater}%`,
+        breakEvenPrice: `$${result.lossAversion.underwaterInvestors.breakEvenPrice.toLocaleString()}`,
+        hodlPressure: `${result.lossAversion.dispositionEffect.hodlPressure}/100`,
+        profitTakingPressure: `${result.lossAversion.dispositionEffect.profitTakingPressure}/100`,
+        anchors: result.lossAversion.anchors,
+      },
+      
+      // FOMO/FUD Analysis
+      fomoFud: {
+        fomo: result.fomoFud.fomo,
+        fud: result.fomoFud.fud,
+        netSentiment: result.fomoFud.netSentiment,
+        dominantEmotion: result.fomoFud.dominantEmotion,
+      },
+      
+      // Herding Behavior
+      herding: {
+        strength: `${result.herding.herdStrength}/100`,
+        direction: result.herding.herdDirection,
+        consensusLevel: `${result.herding.consensusLevel}/100`,
+        contrarianSignal: result.herding.contraindicator,
+        socialContagion: result.herding.socialContagion,
+      },
+      
+      // Cognitive Load (System 1 vs System 2)
+      cognitiveLoad: {
+        load: `${result.cognitiveLoad.currentLoad}/100`,
+        level: result.cognitiveLoad.loadLevel,
+        mode: result.cognitiveLoad.cognitiveMode,
+        system2Capacity: `${result.cognitiveLoad.system2Capacity}%`,
+        stressors: result.cognitiveLoad.stressors,
+        recommendation: result.cognitiveLoad.recommendedAction,
+      },
+      
+      // Behavioral Signals
+      signals: result.signals,
+      
+      // Risk Assessment
+      risk: result.risk,
+      
+      // Recommendations
+      recommendations: result.recommendations,
+      
+      // Academic Context
+      academicContext: result.academicContext,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${result.computeTime}ms`,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Investor Psychology test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -1608,7 +1719,8 @@ app.get('/', (_req: Request, res: Response) => {
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
-      testDerivativesV2: '/api/test/derivatives-v2', // NEW
+      testPsychology: '/api/test/psychology', // NEW: Neuroeconomic Analysis
+      testDerivativesV2: '/api/test/derivatives-v2',
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
       testCSS: '/api/test/css',
@@ -1622,7 +1734,7 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/derivatives-v2 for Derivatives Intelligence, /api/test/news-v2 for News, /api/test/social-v2 for Social',
+    documentation: 'Use /api/test/psychology for Investor Psychology (Neuroeconomic), /api/test/derivatives-v2 for Derivatives',
   });
 });
 
