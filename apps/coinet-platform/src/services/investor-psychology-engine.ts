@@ -361,7 +361,7 @@ function analyzeLossAversion(
     underwaterInvestors: {
       percentUnderwater: Math.round(percentUnderwater),
       avgDrawdown,
-      timeSinceProfit: drawdown30d > 0.05 ? Math.round(30 * drawdown30d / 0.15) : 0,
+      timeSinceProfit: drawdownFromRecentHigh > 0.05 ? Math.round(30 * drawdownFromRecentHigh / 0.15) : 0,
       breakEvenPrice: Math.round(breakEvenPrice),
     },
   };

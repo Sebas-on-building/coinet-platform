@@ -1735,8 +1735,8 @@ app.get('/api/test/behavioral-finance', async (req: Request, res: Response) => {
       priceChange24h: derivativesResult.marketContext.priceChange24h,
       priceChange7d: derivativesResult.marketContext.priceChange7d,
       priceChange30d: derivativesResult.marketContext.priceChange30d,
-      fearGreedIndex: csiResult.headlineSentiment.value,
-      socialSentiment: (csiResult.headlineSentiment.value - 50) / 50, // Convert 0-100 to -1 to 1
+      fearGreedIndex: csiResult.index.rounded,
+      socialSentiment: (csiResult.index.rounded - 50) / 50, // Convert 0-100 to -1 to 1
       herdStrength: 65, // Default - would come from social data
       fundingRate: derivativesResult.funding.weightedAvgRate,
       volatility: Math.abs(derivativesResult.marketContext.drawdownFromHigh) * 3, // Proxy

@@ -139,7 +139,7 @@ export class ChatService {
               priceChange24h: derivativesV2.marketContext.priceChange24h,
               priceChange7d: derivativesV2.marketContext.priceChange7d,
               priceChange30d: derivativesV2.marketContext.priceChange30d,
-              fearGreedIndex: csiResult.headlineSentiment.value,
+              fearGreedIndex: csiResult.index.rounded,
               socialSentiment: socialV2Result ? (socialV2Result.headline.socialScore - 50) / 50 : 0,
               herdStrength: cssResult ? cssResult.scores.composite : 50,
               fundingRate: derivativesV2.funding.weightedAvgRate,
