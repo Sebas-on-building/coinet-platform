@@ -1707,19 +1707,123 @@ app.get('/api/test/psychology', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧠 BEHAVIORAL FINANCE INTELLIGENCE - Complete Neuroeconomic Analysis
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/behavioral-finance', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    // Import services
+    const { calculateBehavioralFinanceIntelligence } = 
+      await import('./services/behavioral-finance-intelligence');
+    const { calculateDerivativesIntelligenceV2 } = 
+      await import('./services/derivatives-intelligence-v2');
+    const { calculateCSI } = 
+      await import('./services/coinet-sentiment-index');
+    
+    // Get market context
+    const [derivativesResult, csiResult] = await Promise.all([
+      calculateDerivativesIntelligenceV2(),
+      calculateCSI(),
+    ]);
+    
+    // Build behavioral finance input
+    const input = {
+      currentPrice: derivativesResult.marketContext.currentPrice,
+      recentHigh: derivativesResult.marketContext.recentHigh,
+      priceChange24h: derivativesResult.marketContext.priceChange24h,
+      priceChange7d: derivativesResult.marketContext.priceChange7d,
+      priceChange30d: derivativesResult.marketContext.priceChange30d,
+      fearGreedIndex: csiResult.headlineSentiment.value,
+      socialSentiment: (csiResult.headlineSentiment.value - 50) / 50, // Convert 0-100 to -1 to 1
+      herdStrength: 65, // Default - would come from social data
+      fundingRate: derivativesResult.funding.weightedAvgRate,
+      volatility: Math.abs(derivativesResult.marketContext.drawdownFromHigh) * 3, // Proxy
+      newsCount: 50, // Default
+      cognitiveLoad: 50, // Default
+    };
+    
+    const result = await calculateBehavioralFinanceIntelligence(input);
+    
+    res.json({
+      success: true,
+      section: '🧠 BEHAVIORAL FINANCE INTELLIGENCE - Neuroeconomic Analysis',
+      status: '✅ BEHAVIORAL FINANCE ENGINE OPERATIONAL',
+      
+      // Emotional Cycle
+      emotionalCycle: {
+        phase: result.profile.emotionalPhase,
+        confidence: result.profile.phaseConfidence,
+        description: result.profile.phaseDescription,
+        riskLevel: result.profile.riskLevel,
+      },
+      
+      // Contrarian Signal
+      contrarianSignal: result.profile.contrarianSignal,
+      
+      // Loss Aversion (Prospect Theory)
+      lossAversion: result.profile.lossAversion,
+      
+      // Cognitive State (System 1 vs System 2)
+      cognitiveState: result.profile.cognitiveState,
+      
+      // Active Biases
+      activeBiases: result.profile.activeBiases.map(b => ({
+        bias: b.bias,
+        severity: b.severity,
+        mitigation: b.mitigation,
+        academicReference: b.academicReference,
+      })),
+      biasRiskScore: result.profile.biasRiskScore,
+      
+      // Alerts
+      alerts: result.profile.alerts,
+      
+      // Trading Psychology Coaching
+      coaching: result.profile.coaching,
+      
+      // Manipulation Risk
+      manipulationRisk: result.profile.manipulationRisk,
+      
+      // Key Insights
+      keyInsights: result.keyInsights,
+      
+      // Warnings & Opportunities
+      warnings: result.warnings,
+      opportunities: result.opportunities,
+      
+      // AI Context Preview
+      aiContextPreview: result.aiContext,
+      
+      // Performance
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Behavioral Finance test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     service: 'coinet-platform',
-    version: '2.0.0',
+    version: '2.1.0',
     status: 'running',
-    tagline: 'Revolutionary Derivatives & Social Intelligence for Crypto Markets',
+    tagline: 'Divine Perfection: Revolutionary AI Intelligence for Crypto Markets',
     endpoints: {
       health: '/api/health',
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
-      testPsychology: '/api/test/psychology', // NEW: Neuroeconomic Analysis
+      testBehavioralFinance: '/api/test/behavioral-finance', // NEW: Full Neuroeconomic Analysis
+      testPsychology: '/api/test/psychology',
       testDerivativesV2: '/api/test/derivatives-v2',
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
@@ -1734,7 +1838,14 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/psychology for Investor Psychology (Neuroeconomic), /api/test/derivatives-v2 for Derivatives',
+    documentation: 'Use /api/test/behavioral-finance for complete Neuroeconomic Analysis (Prospect Theory, Cognitive Biases, Emotional Cycles)',
+    academicFoundations: {
+      prospectTheory: 'Kahneman & Tversky (1979)',
+      dualProcessTheory: 'Kahneman (2011)',
+      dispositionEffect: 'Shefrin & Statman (1985)',
+      herdBehavior: 'Banerjee (1992)',
+      irrationalExuberance: 'Shiller (2000)',
+    },
   });
 });
 

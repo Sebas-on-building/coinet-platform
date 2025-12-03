@@ -27,6 +27,7 @@ import { calculateNewsIntelligenceV2, formatNewsIntelligenceV2ForAI } from '../.
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } from '../../services/derivatives-intelligence-v2';
+import { calculateBehavioralFinanceIntelligence, BehavioralFinanceInput } from '../../services/behavioral-finance-intelligence';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -111,6 +112,7 @@ export class ChatService {
         // Note: Using Social Intelligence v2.0 - 10/10 Divine Perfection (Section 1.2 Complete)
         // Note: Using News Intelligence v2.0 - 10/10 Divine Perfection (Section 1.1 Complete)
         // Note: Using Derivatives Intelligence v2.0 - 10/10 Divine Perfection (Section 1.3 Complete)
+        // Note: Using Behavioral Finance Intelligence - Neuroeconomic Analysis (Prospect Theory, Cognitive Biases)
         const [userContext, marketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2] = await Promise.all([
           buildUserContextForAI(userId),  // 🧠 User memory
           fetchPricesForMessage(request.message),
@@ -126,6 +128,30 @@ export class ChatService {
           needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data (legacy)
           calculateDerivativesIntelligenceV2(),  // 💀 Derivatives Intelligence v2.0 - Divine Perfection
         ]);
+        
+        // Calculate behavioral finance intelligence using derivatives data
+        let behavioralFinance = null;
+        if (derivativesV2 && csiResult) {
+          try {
+            const behavioralInput: BehavioralFinanceInput = {
+              currentPrice: derivativesV2.marketContext.currentPrice,
+              recentHigh: derivativesV2.marketContext.recentHigh,
+              priceChange24h: derivativesV2.marketContext.priceChange24h,
+              priceChange7d: derivativesV2.marketContext.priceChange7d,
+              priceChange30d: derivativesV2.marketContext.priceChange30d,
+              fearGreedIndex: csiResult.headlineSentiment.value,
+              socialSentiment: socialV2Result ? (socialV2Result.headline.socialScore - 50) / 50 : 0,
+              herdStrength: cssResult ? cssResult.scores.composite : 50,
+              fundingRate: derivativesV2.funding.weightedAvgRate,
+              volatility: Math.abs(derivativesV2.marketContext.drawdownFromHigh) * 3,
+              newsCount: newsV2Result ? newsV2Result.articles.total : 50,
+              cognitiveLoad: derivativesV2.headline.derivativesScore > 70 || derivativesV2.headline.derivativesScore < 30 ? 70 : 40,
+            };
+            behavioralFinance = await calculateBehavioralFinanceIntelligence(behavioralInput);
+          } catch (error) {
+            logger.warn('⚠️ Behavioral finance calculation failed, continuing without', { error });
+          }
+        }
         
         let contextParts: string[] = [];
         
@@ -296,7 +322,23 @@ export class ChatService {
             regime: newsV2Result.regime.current,
             confidence: newsV2Result.confidence.overall,
             articles: newsV2Result.articles.total,
-            dataQuality: newsV2Result.dataQuality.overall,
+          });
+        }
+        
+        // 12. Add Behavioral Finance Intelligence - Neuroeconomic Analysis
+        // Based on: Kahneman & Tversky's Prospect Theory, Dual Process Theory, Disposition Effect
+        // Provides: Emotional cycle position, cognitive biases, contrarian signals, trading psychology coaching
+        if (behavioralFinance) {
+          contextParts.push(behavioralFinance.aiContext);
+          logger.debug('🧠 Behavioral Finance Intelligence context added', {
+            emotionalPhase: behavioralFinance.profile.emotionalPhase,
+            riskLevel: behavioralFinance.profile.riskLevel,
+            contrarianSignal: behavioralFinance.profile.contrarianSignal.signal,
+            biasRiskScore: behavioralFinance.profile.biasRiskScore,
+            activeBiases: behavioralFinance.profile.activeBiases.length,
+            decisionQuality: behavioralFinance.profile.cognitiveState.decisionQuality,
+            alerts: behavioralFinance.profile.alerts.length,
+            coachingReadiness: behavioralFinance.profile.coaching.trilogyAssessment.overallReadiness,
           });
         }
         
