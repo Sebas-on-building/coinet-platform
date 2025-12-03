@@ -120,15 +120,24 @@ export class AlchemyWhalesService {
     this.logger.info('Initializing Alchemy Whales Service...');
 
     try {
-      // Connect to database (optional in development)
-      const requireDatabase = process.env.REQUIRE_DATABASE === 'true' || process.env.NODE_ENV === 'production';
+      // Connect to database (optional - service runs in degraded mode without it)
+      const skipDatabase = process.env.SKIP_DATABASE === 'true';
       
-      if (requireDatabase) {
-        await this.db.connect();
-        this.logger.info({ msg: '✅ Database connected' });
+      if (!skipDatabase) {
+        try {
+          await this.db.connect();
+          this.logger.info({ msg: '✅ Database connected' });
+        } catch (dbError: any) {
+          this.logger.warn({ 
+            msg: '⚠️  Database connection failed - running in degraded mode (no persistence)',
+            error: dbError.message,
+            hint: 'Set DATABASE_URL or individual DB vars, or set SKIP_DATABASE=true to suppress this warning'
+          });
+          // Don't throw - continue without database
+        }
       } else {
         this.logger.info({ 
-          msg: 'ℹ️  Database connection skipped (optional). Set REQUIRE_DATABASE=true to enable.' 
+          msg: 'ℹ️  Database skipped (SKIP_DATABASE=true)' 
         });
       }
 
