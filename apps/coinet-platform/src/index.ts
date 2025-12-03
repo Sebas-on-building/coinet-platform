@@ -1615,7 +1615,7 @@ app.get('/api/test/psychology', async (req: Request, res: Response) => {
     // Build input from derivatives data
     const psychologyInput = {
       currentPrice: derivativesResult.marketContext.currentPrice,
-      ath30d: derivativesResult.marketContext.recentHigh,
+      recentHigh30d: derivativesResult.marketContext.recentHigh,  // RENAMED: This is recent high, NOT ATH
       priceChange24h: derivativesResult.marketContext.priceChange24h,
       priceChange7d: derivativesResult.marketContext.priceChange7d,
       priceChange30d: derivativesResult.marketContext.priceChange30d,

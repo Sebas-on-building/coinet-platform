@@ -89,10 +89,11 @@ export interface LossAversionAnalysis {
   painIndex: number;                    // 0-100 (higher = more pain)
   painMultiplier: number;               // How much more pain vs. a gain
   
-  // Reference points
+  // Reference points (CORRECTED - these are RECENT HIGHS, not ATH)
   anchors: {
-    ath30d: number;                     // All-Time High (30 days)
-    ath90d: number;                     // All-Time High (90 days)
+    recentHigh30d: number;              // Recent High (30 days) - NOT ATH
+    recentHigh90d: number;              // Recent High (90 days) - NOT ATH  
+    allTimeHigh: number;                // Actual All-Time High
     psychologicalLevel: number;         // Round number anchor (100K, 50K, etc.)
   };
   
@@ -293,53 +294,62 @@ const CONFIG = {
 
 /**
  * Calculate Loss Aversion metrics based on Prospect Theory
+ * IMPROVED: Uses correct terminology (Recent High vs ATH)
  */
 function analyzeLossAversion(
   currentPrice: number,
-  ath30d: number,
-  ath90d: number,
+  recentHigh30d: number,
+  recentHigh90d: number,
   priceChange24h: number,
   priceChange30d: number
 ): LossAversionAnalysis {
-  // Calculate drawdown from ATH
-  const drawdown30d = (ath30d - currentPrice) / ath30d;
-  const drawdown90d = (ath90d - currentPrice) / ath90d;
+  // BTC All-Time High (updated Dec 2024)
+  // Note: ATH was ~$99,800 on Nov 22, 2024 (intraday) 
+  // Previous ATH was ~$73,750 in March 2024
+  const ALL_TIME_HIGH = 99800;  // Nov 2024 ATH
+  
+  // Calculate drawdown from RECENT HIGH (30d), not ATH
+  const drawdownFromRecentHigh = (recentHigh30d - currentPrice) / recentHigh30d;
+  const drawdownFromATH = (ALL_TIME_HIGH - currentPrice) / ALL_TIME_HIGH;
   
   // Pain Index: Based on Prospect Theory, losses hurt 2.25x more
-  // Scale by drawdown magnitude and duration
-  const basePain = drawdown30d * CONFIG.LOSS_AVERSION_MULTIPLIER * 100;
-  const durationPenalty = Math.min(1.5, 1 + (drawdown30d > 0 ? 0.5 : 0));
+  // Use drawdown from recent high for pain (more relevant for recent buyers)
+  const basePain = drawdownFromRecentHigh * CONFIG.LOSS_AVERSION_MULTIPLIER * 100;
+  const durationPenalty = Math.min(1.5, 1 + (drawdownFromRecentHigh > 0.05 ? 0.5 : 0));
   const painIndex = Math.min(100, basePain * durationPenalty);
   
   // Psychological anchors (round numbers)
-  const roundNumbers = [100000, 90000, 80000, 70000, 60000, 50000, 40000, 30000, 20000, 10000];
-  const psychologicalLevel = roundNumbers.find(n => n <= currentPrice * 1.1 && n >= currentPrice * 0.9) || 
-                            Math.round(currentPrice / 10000) * 10000;
+  const roundNumbers = [100000, 95000, 90000, 85000, 80000, 75000, 70000, 60000, 50000];
+  const psychologicalLevel = roundNumbers.find(n => n <= currentPrice * 1.08 && n >= currentPrice * 0.92) || 
+                            Math.round(currentPrice / 5000) * 5000;
   
   // Disposition Effect: Pressure to hold losers vs. sell winners
   // If underwater, HODL pressure increases; if profitable, selling pressure increases
-  const hodlPressure = drawdown30d > 0 
-    ? Math.min(100, 30 + drawdown30d * 200)  // Higher drawdown = more HODL pressure
-    : 20;  // Low pressure if not underwater
+  const hodlPressure = drawdownFromRecentHigh > 0 
+    ? Math.min(100, 25 + drawdownFromRecentHigh * 250)  // Higher drawdown = more HODL pressure
+    : 15;  // Low pressure if not underwater
   
   const profitTakingPressure = priceChange24h > 0 
-    ? Math.min(100, 20 + priceChange24h * 300)  // Green day = profit taking pressure
+    ? Math.min(100, 15 + priceChange24h * 400)  // Green day = profit taking pressure
     : 10;
   
   // Estimated underwater investors
   // Model: Recent buyers (last 30 days) who bought above current price
-  const percentUnderwater = Math.min(90, Math.max(10, drawdown30d * 300 + 20));
-  const avgDrawdown = drawdown30d * 0.6;  // Assume avg entry is 60% of way to ATH
+  // More accurate: If we're 6% below recent high, ~40-50% of recent buyers are underwater
+  const percentUnderwater = Math.min(85, Math.max(15, 20 + drawdownFromRecentHigh * 400));
+  const avgDrawdown = drawdownFromRecentHigh * 0.5;  // Assume avg entry is 50% of way to recent high
   
   // Break-even price estimate (volume-weighted average cost basis)
-  const breakEvenPrice = currentPrice * (1 + drawdown30d * 0.5);
+  // Most volume happens near highs, so avg entry is closer to recent high
+  const breakEvenPrice = currentPrice + (recentHigh30d - currentPrice) * 0.4;
   
   return {
     painIndex: Math.round(painIndex),
     painMultiplier: CONFIG.LOSS_AVERSION_MULTIPLIER,
     anchors: {
-      ath30d: Math.round(ath30d),
-      ath90d: Math.round(ath90d),
+      recentHigh30d: Math.round(recentHigh30d),
+      recentHigh90d: Math.round(recentHigh90d),
+      allTimeHigh: ALL_TIME_HIGH,
       psychologicalLevel,
     },
     dispositionEffect: {
@@ -639,8 +649,8 @@ function generateBehavioralSignals(
 
 export interface PsychologyInput {
   currentPrice: number;
-  ath30d: number;
-  ath90d?: number;
+  recentHigh30d: number;          // Recent high (30 days) - NOT ATH
+  recentHigh90d?: number;         // Recent high (90 days) - NOT ATH
   priceChange24h: number;
   priceChange7d: number;
   priceChange30d: number;
@@ -659,15 +669,15 @@ export async function calculateInvestorPsychology(input: PsychologyInput): Promi
   logger.info('🧠 Calculating Investor Psychology...');
   
   // Use defaults for optional fields
-  const ath90d = input.ath90d || input.ath30d * 1.1;
+  const recentHigh90d = input.recentHigh90d || input.recentHigh30d * 1.05;  // Estimate 90d high as 5% above 30d
   const influencerSentiment = input.influencerSentiment ?? input.socialSentiment;
   const leverageLevel = input.leverageLevel ?? 3;
   
   // Run all analyses
   const lossAversion = analyzeLossAversion(
     input.currentPrice,
-    input.ath30d,
-    ath90d,
+    input.recentHigh30d,
+    recentHigh90d,
     input.priceChange24h,
     input.priceChange30d
   );
