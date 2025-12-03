@@ -1927,15 +1927,52 @@ app.get('/api/test/neuroeconomic', async (req: Request, res: Response) => {
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     service: 'coinet-platform',
-    version: '2.2.0',
+    version: '2.3.0',
     status: 'running',
-    tagline: 'Divine Perfection: Neuroeconomic AI Intelligence for Crypto Markets',
+    tagline: 'Multi-Signal Fusion Engine for Crypto Markets',
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 4-ENGINE ARCHITECTURE (External View)
+    // ═══════════════════════════════════════════════════════════════════════
+    architecture: {
+      description: 'Coinet combines 4 specialized engines to answer 3 core questions',
+      
+      engines: {
+        marketEngine: {
+          description: 'Real-time market data, derivatives, and whale intelligence',
+          components: ['Prices', 'Funding Rates', 'Open Interest', 'Liquidations', 'Whale Flows'],
+          answers: 'What is the market doing?',
+        },
+        sentimentEngine: {
+          description: 'Multi-source sentiment from news, social, and influencers',
+          components: ['News AI', 'Social (Twitter/Reddit/Telegram)', 'Influencer Tracking', 'FUD/FOMO Index'],
+          answers: 'What are others doing and feeling?',
+        },
+        traderEngine: {
+          description: 'Neuroeconomics-informed decision quality analysis',
+          components: ['Behavior Patterns', 'Cognitive Biases', 'Decision Grading', 'Risk Profile'],
+          answers: 'What am I doing wrong or right?',
+          note: 'Based on patterns from behavioral finance research (Kahneman, Tversky, Shiller)',
+        },
+        fusionEngine: {
+          description: 'Combines all signals into regime detection and action recommendations',
+          outputs: ['Market Regime', 'Risk Stance', 'Trading Actions', 'Alerts'],
+        },
+      },
+      
+      coreQuestions: [
+        '1. What is the market doing? (Regime + Risk)',
+        '2. What are others doing? (Herding + Sentiment + Whales)',
+        '3. What am I doing wrong/right? (Behavior + Decision Grade)',
+      ],
+    },
+    
     endpoints: {
       health: '/api/health',
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       keys: '/api/keys',
-      testNeuroeconomic: '/api/test/neuroeconomic', // NEW: Neural Decision Analysis
+      testNeuroeconomic: '/api/test/neuroeconomic',
       testBehavioralFinance: '/api/test/behavioral-finance',
       testPsychology: '/api/test/psychology',
       testDerivativesV2: '/api/test/derivatives-v2',
@@ -1952,25 +1989,41 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/neuroeconomic for Neural Decision Analysis, /api/test/behavioral-finance for Behavioral Finance',
+    documentation: 'Use /api/test/neuroeconomic for decision quality analysis, /api/test/behavioral-finance for bias detection',
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // ACADEMIC FOUNDATIONS
+    // ═══════════════════════════════════════════════════════════════════════
     academicFoundations: {
-      neuroeconomics: 'Glimcher & Fehr (2013) - Decision Neuroscience',
-      prospectTheory: 'Kahneman & Tversky (1979, 1992)',
-      temporalDiscounting: 'Laibson (1997), McClure et al. (2004)',
-      rewardPredictionError: 'Schultz (1997), Montague et al. (1996)',
-      riskProcessing: 'Tom et al. (2007), De Martino et al. (2010)',
-      socialDecisions: 'Fehr & Schmidt (1999)',
-      cognitiveControl: 'Shenhav et al. (2017)',
-      dualProcessTheory: 'Kahneman (2011)',
-      dispositionEffect: 'Shefrin & Statman (1985)',
+      note: 'Our Trader Engine models decision patterns using insights from behavioral finance research',
+      sources: {
+        prospectTheory: 'Kahneman & Tversky (1979, 1992) - Loss aversion, reference dependence',
+        temporalDiscounting: 'Laibson (1997) - Present bias, hyperbolic discounting',
+        herdBehavior: 'Banerjee (1992) - Social proof, crowd following',
+        overconfidence: 'Barber & Odean (2001) - Trading frequency and returns',
+        dispositionEffect: 'Shefrin & Statman (1985) - Selling winners, holding losers',
+        irrationalExuberance: 'Shiller (2000) - Bubble psychology',
+        dualProcess: 'Kahneman (2011) - System 1 vs System 2 thinking',
+      },
     },
-    neuralRegionsModeled: {
-      vmPFC: 'Subjective value computation',
-      ventralStriatum: 'Reward prediction & dopamine',
-      amygdala: 'Fear processing & threat detection',
-      insula: 'Risk aversion & interoception',
-      ACC: 'Conflict monitoring & error detection',
-      dlPFC: 'Working memory & cognitive control',
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // IMPLEMENTATION PHASES
+    // ═══════════════════════════════════════════════════════════════════════
+    phases: {
+      phase1_core: {
+        status: '✅ LIVE',
+        components: ['Market Engine', 'Basic Sentiment', 'Derivatives', 'Influencer Tracking'],
+      },
+      phase2_advanced: {
+        status: '✅ LIVE',
+        components: ['Social v2', 'News v2', 'CSS', 'CSI', 'Behavioral Finance'],
+      },
+      phase3_premium: {
+        status: '✅ LIVE',
+        components: ['Neuroeconomics-informed Grading', 'Fusion Engine', 'Decision Coaching'],
+        note: 'Premium feature: Decision quality grading based on patterns from neuroeconomics research',
+      },
     },
   });
 });

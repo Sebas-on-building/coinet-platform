@@ -1,12 +1,23 @@
 /**
- * 🧠 NEUROECONOMIC INTELLIGENCE ENGINE v1.0
+ * 🧠 NEUROECONOMICS-INFORMED DECISION ENGINE v1.0
  * 
  * ═══════════════════════════════════════════════════════════════════════════
- * Comprehensive integration of neuroeconomic research into Coinet AI
- * Based on: Glimcher & Fehr (2013) "Neuroeconomics" - 500+ page textbook
+ * Decision quality grading based on patterns from neuroeconomics research
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * NEURAL ARCHITECTURE MODELED:
+ * IMPORTANT DISCLAIMER:
+ * We do NOT measure actual brain activity. We analyze trading behavior patterns
+ * that are CONSISTENT WITH neuroeconomic research findings. The "neural regions"
+ * are METAPHORICAL FRAMEWORKS to help understand decision quality.
+ * 
+ * WHAT WE ACTUALLY DO:
+ * - Detect patterns consistent with loss aversion (Kahneman & Tversky)
+ * - Identify temporal discounting behavior (Laibson, McClure)
+ * - Measure reward/risk sensitivity from trading patterns
+ * - Assess cognitive load from decision complexity
+ * - Grade decision quality from A-F based on evidence of biases
+ * 
+ * NEURAL FRAMEWORK (Metaphorical, for understanding):
  * 
  * ┌─────────────────────────────────────────────────────────────────────────┐
  * │                    BRAIN REGIONS & FUNCTIONS                           │
@@ -965,8 +976,9 @@ function assessDecisionQuality(
  * Format neuroeconomic intelligence for AI chat context
  */
 export function formatNeuroeconomicForAI(profile: NeuroeconomicProfile): string {
-  let context = '\n[🧠 NEUROECONOMIC INTELLIGENCE - Neural Decision Analysis]\n';
+  let context = '\n[🧠 DECISION QUALITY ANALYSIS - Neuroeconomics-Informed]\n';
   context += `${'═'.repeat(70)}\n`;
+  context += `(Based on patterns from behavioral finance research)\n`;
   
   // Market regime & neural state
   const regimeEmoji: Record<MarketRegime, string> = {
@@ -978,17 +990,19 @@ export function formatNeuroeconomicForAI(profile: NeuroeconomicProfile): string 
   context += `   "${profile.regimeNeuralProfile.description}"\n`;
   context += `${'═'.repeat(70)}\n`;
   
-  // Neural activations
-  context += `\n🧠 NEURAL ARCHITECTURE STATE:\n`;
-  context += `   Dominant Region: ${profile.neural.dominantRegion.toUpperCase()}\n`;
-  context += `   Neural Balance: ${profile.neural.neuralBalance > 0 ? '+' : ''}${profile.neural.neuralBalance} (${profile.neural.neuralBalance > 0 ? 'reward-seeking' : 'risk-averse'})\n`;
-  context += `   Rationality (dlPFC): ${profile.neural.rationalityScore}/100\n`;
-  context += `   Emotionality (limbic): ${profile.neural.emotionalityScore}/100\n`;
+  // Decision pattern analysis (metaphorical neural framework)
+  context += `\n🧠 DECISION PATTERN ANALYSIS:\n`;
+  context += `   (Using neuroeconomics research framework for interpretation)\n`;
+  context += `   Dominant Pattern: ${profile.neural.dominantRegion.toUpperCase()}-like behavior\n`;
+  context += `   Risk/Reward Balance: ${profile.neural.neuralBalance > 0 ? '+' : ''}${profile.neural.neuralBalance} (${profile.neural.neuralBalance > 0 ? 'reward-seeking' : 'risk-averse'})\n`;
+  context += `   Rational Thinking: ${profile.neural.rationalityScore}/100\n`;
+  context += `   Emotional Influence: ${profile.neural.emotionalityScore}/100\n`;
   context += `   Reward Sensitivity: ${profile.neural.rewardSensitivity}/100\n`;
-  context += `   Conflict Level: ${profile.neural.conflictLevel}/100\n`;
+  context += `   Decision Conflict: ${profile.neural.conflictLevel}/100\n`;
   
-  // Key activations
-  context += `\n📊 BRAIN REGION ACTIVATIONS:\n`;
+  // Pattern indicators (inspired by neural research)
+  context += `\n📊 BEHAVIORAL PATTERN INDICATORS:\n`;
+  context += `   (Patterns consistent with neuroeconomics findings)\n`;
   for (const activation of profile.neural.activations) {
     const bar = '█'.repeat(Math.round(activation.activation * 10)) + '░'.repeat(10 - Math.round(activation.activation * 10));
     context += `   ${activation.region.padEnd(8)} [${bar}] ${(activation.activation * 100).toFixed(0)}%\n`;
