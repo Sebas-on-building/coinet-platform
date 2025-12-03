@@ -15,6 +15,7 @@
     "db:push": "turbo db:push",
     "db:studio": "turbo db:studio",
     "prisma:gen:root": "cd apps/coinet-platform && npx prisma generate",
+    "prisma:migrate:root": "cd apps/coinet-platform && npx prisma migrate deploy",
     "benchmark": "cd services/market-prices && npm run benchmark",
     "benchmark:quick": "cd services/market-prices && npm run benchmark:quick",
     "benchmark:compare": "cd services/market-prices && npm run benchmark:compare",
