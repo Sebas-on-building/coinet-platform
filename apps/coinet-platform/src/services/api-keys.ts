@@ -183,10 +183,50 @@ const API_KEYS: ApiKeyConfig[] = [
     envVar: 'COINGLASS_API_KEY',
     required: false,
     category: 'derivatives',
-    description: 'Liquidation data & funding rates',
-    freeAlternative: 'Limited derivatives insights',
+    description: 'Primary liquidation data & funding rates aggregator',
+    freeAlternative: 'Exchange APIs (Binance, OKX, Bybit)',
     docsUrl: 'https://coinglass.com/api',
     tier: 'basic',
+  },
+  {
+    name: 'Laevitas',
+    envVar: 'LAEVITAS_API_KEY',
+    required: false,
+    category: 'derivatives',
+    description: 'Options & derivatives analytics (cross-verification)',
+    freeAlternative: 'Coinglass or exchange APIs',
+    docsUrl: 'https://laevitas.ch/',
+    tier: 'pro',
+  },
+  {
+    name: 'Deribit',
+    envVar: 'DERIBIT_API_KEY',
+    required: false,
+    category: 'derivatives',
+    description: 'Options market data & funding rates',
+    freeAlternative: 'Public API endpoints',
+    docsUrl: 'https://docs.deribit.com/',
+    tier: 'free',
+  },
+  {
+    name: 'CryptoQuant',
+    envVar: 'CRYPTOQUANT_API_KEY',
+    required: false,
+    category: 'derivatives',
+    description: 'On-chain & derivatives analytics',
+    freeAlternative: 'Basic metrics only',
+    docsUrl: 'https://cryptoquant.com/docs',
+    tier: 'pro',
+  },
+  {
+    name: 'Glassnode',
+    envVar: 'GLASSNODE_API_KEY',
+    required: false,
+    category: 'derivatives',
+    description: 'On-chain metrics & market indicators',
+    freeAlternative: 'Limited free tier',
+    docsUrl: 'https://docs.glassnode.com/',
+    tier: 'pro',
   },
 
   // Infrastructure
@@ -429,10 +469,27 @@ export function getGracefulDegradation(service: string): {
       return { available: true, tier: 'fallback', message: 'Basic sentiment analysis only' };
     
     case 'derivatives':
-      if (isKeyConfigured('COINGLASS_API_KEY')) {
-        return { available: true, tier: 'premium', message: 'Coinglass liquidation data' };
+      const coinglassOk = isKeyConfigured('COINGLASS_API_KEY');
+      const laevitasOk = isKeyConfigured('LAEVITAS_API_KEY');
+      const deribitOk = isKeyConfigured('DERIBIT_API_KEY');
+      const cryptoquantOk = isKeyConfigured('CRYPTOQUANT_API_KEY');
+      const glassnodeOk = isKeyConfigured('GLASSNODE_API_KEY');
+      
+      const premiumSources = [coinglassOk, laevitasOk, cryptoquantOk, glassnodeOk].filter(Boolean).length;
+      
+      if (coinglassOk) {
+        return { 
+          available: true, 
+          tier: 'premium', 
+          message: `Coinglass primary + ${premiumSources} backup sources active` 
+        };
       }
-      return { available: false, tier: 'fallback', message: 'No derivatives data available' };
+      // Free exchange APIs always work as backup
+      return { 
+        available: true, 
+        tier: 'basic', 
+        message: 'Using Binance/OKX/Bybit APIs (Coinglass unavailable)' 
+      };
     
     default:
       return { available: false, tier: 'fallback', message: 'Unknown service' };

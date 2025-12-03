@@ -1983,6 +1983,191 @@ app.get('/api/test/derivatives-comprehensive', async (req: Request, res: Respons
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 🛡️ DATA SOURCE RESILIENCE TEST ENDPOINT - Step 1.3.3 Divine Perfection
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/derivatives-resilience', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  
+  try {
+    const { 
+      generateResilienceReport,
+      fetchResilientLiquidationData,
+      fetchResilientFundingData,
+      fetchResilientOIData,
+      getDataSourceRegistry,
+      getAllSourceHealth,
+      formatResilienceForAI,
+    } = await import('./services/derivatives-data-resilience');
+    
+    // Generate resilience report
+    const report = await generateResilienceReport();
+    
+    // Fetch data from all sources with resilience
+    const [liquidations, funding, oi] = await Promise.all([
+      fetchResilientLiquidationData(),
+      fetchResilientFundingData(),
+      fetchResilientOIData(),
+    ]);
+    
+    // Get source registry and health
+    const sourceRegistry = getDataSourceRegistry();
+    const sourceHealth = getAllSourceHealth();
+    const aiContext = formatResilienceForAI(report);
+    
+    res.json({
+      success: true,
+      section: '🛡️ DATA SOURCE RESILIENCE v1.0',
+      subtitle: 'Step 1.3.3 - Multi-Source Failover System',
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // OVERALL HEALTH
+      // ═══════════════════════════════════════════════════════════════════════
+      overallHealth: {
+        status: report.overallHealth,
+        score: `${report.healthScore}/100`,
+        sources: {
+          total: report.sources.total,
+          healthy: report.sources.healthy,
+          degraded: report.sources.degraded,
+          offline: report.sources.offline,
+        },
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // DATA SOURCE REGISTRY
+      // ═══════════════════════════════════════════════════════════════════════
+      sourceRegistry: sourceRegistry.map(s => ({
+        id: s.id,
+        name: s.name,
+        tier: s.tier,
+        dataTypes: s.dataTypes,
+        requiresApiKey: !!s.apiKeyEnvVar,
+        apiKeyEnvVar: s.apiKeyEnvVar || 'N/A (free)',
+        reliability: {
+          uptime: `${s.reliability.uptimePercent}%`,
+          avgLatency: `${s.reliability.avgLatencyMs}ms`,
+          accuracy: `${s.reliability.accuracyScore}%`,
+        },
+        capabilities: s.capabilities,
+      })),
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // SOURCE HEALTH STATUS
+      // ═══════════════════════════════════════════════════════════════════════
+      sourceHealth: Array.from(sourceHealth.entries()).map(([id, health]) => ({
+        sourceId: id,
+        status: health.status,
+        circuitBreakerOpen: health.circuitBreakerOpen,
+        consecutiveFailures: health.consecutiveFailures,
+        avgLatencyMs: Math.round(health.avgLatencyMs),
+        dataQualityScore: health.dataQualityScore,
+        lastSuccess: health.lastSuccess?.toISOString() || 'Never',
+        recentErrors: health.recentErrors.length,
+      })),
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // DATA TYPE STATUS
+      // ═══════════════════════════════════════════════════════════════════════
+      byDataType: Object.fromEntries(
+        Object.entries(report.byDataType).map(([dt, status]) => [dt, {
+          primarySource: status.primarySource,
+          activeBackups: status.activeBackups,
+          status: status.status,
+          quality: `${status.quality}/100`,
+        }])
+      ),
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // RESILIENT DATA FETCH RESULTS
+      // ═══════════════════════════════════════════════════════════════════════
+      dataFetch: {
+        liquidations: {
+          success: liquidations.success,
+          source: liquidations.source,
+          latencyMs: liquidations.latencyMs,
+          quality: liquidations.quality,
+          fallbacksUsed: liquidations.fallbacksUsed,
+          warnings: liquidations.warnings,
+          errors: liquidations.errors,
+          data: liquidations.data ? {
+            total24h: `$${(liquidations.data.total24h / 1_000_000).toFixed(1)}M`,
+            longs: `$${(liquidations.data.totalLong24h / 1_000_000).toFixed(1)}M`,
+            shorts: `$${(liquidations.data.totalShort24h / 1_000_000).toFixed(1)}M`,
+            sources: liquidations.data.sources,
+            verificationConfidence: `${liquidations.data.verification.confidence}%`,
+            outliers: liquidations.data.verification.outliers,
+          } : null,
+        },
+        funding: {
+          success: funding.success,
+          source: funding.source,
+          latencyMs: funding.latencyMs,
+          quality: funding.quality,
+          fallbacksUsed: funding.fallbacksUsed,
+          warnings: funding.warnings,
+          errors: funding.errors,
+          data: funding.data ? {
+            btcRate: `${(funding.data.btcRate * 100).toFixed(4)}%`,
+            ethRate: `${(funding.data.ethRate * 100).toFixed(4)}%`,
+            avgRate: `${(funding.data.avgRate * 100).toFixed(4)}%`,
+            sources: funding.data.sources,
+            verificationConfidence: `${funding.data.verification.confidence}%`,
+            outliers: funding.data.verification.outliers,
+          } : null,
+        },
+        openInterest: {
+          success: oi.success,
+          source: oi.source,
+          latencyMs: oi.latencyMs,
+          quality: oi.quality,
+          fallbacksUsed: oi.fallbacksUsed,
+          warnings: oi.warnings,
+          errors: oi.errors,
+          data: oi.data ? {
+            btcOI: `$${(oi.data.btcOI / 1_000_000_000).toFixed(2)}B`,
+            ethOI: `$${(oi.data.ethOI / 1_000_000_000).toFixed(2)}B`,
+            totalOI: `$${(oi.data.totalOI / 1_000_000_000).toFixed(2)}B`,
+            sources: oi.data.sources,
+            verificationConfidence: `${oi.data.verification.confidence}%`,
+            outliers: oi.data.verification.outliers,
+          } : null,
+        },
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // MISSING API KEYS
+      // ═══════════════════════════════════════════════════════════════════════
+      missingKeys: report.missingKeys.map(k => ({
+        keyName: k.keyName,
+        severity: k.severity,
+        impactedSources: k.impactedSources,
+        impactedDataTypes: k.impactedDataTypes,
+      })),
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // ALERTS & RECOMMENDATIONS
+      // ═══════════════════════════════════════════════════════════════════════
+      alerts: report.alerts,
+      recommendations: report.recommendations,
+      
+      // AI Context Preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Data Source Resilience test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 🧠 INVESTOR PSYCHOLOGY ENGINE TEST ENDPOINT - Neuroeconomic Analysis
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/psychology', async (req: Request, res: Response) => {
@@ -2362,7 +2547,8 @@ app.get('/', (_req: Request, res: Response) => {
       testBehavioralFinance: '/api/test/behavioral-finance',
       testPsychology: '/api/test/psychology',
       testDerivativesV2: '/api/test/derivatives-v2',
-      testDerivativesComprehensive: '/api/test/derivatives-comprehensive', // NEW: Step 1.3.2 Full Analysis
+      testDerivativesComprehensive: '/api/test/derivatives-comprehensive', // Step 1.3.2 Full Analysis
+      testDerivativesResilience: '/api/test/derivatives-resilience', // Step 1.3.3 Multi-Source Failover
       testDerivativesSources: '/api/test/derivatives-sources', // Multi-exchange data
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
