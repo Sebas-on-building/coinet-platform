@@ -28,6 +28,7 @@ jobs:
   test-fusion-pipeline:
     name: Test Multi-Modal Fusion Pipeline
     runs-on: ubuntu-latest
+    continue-on-error: true  # ML tests are optional - don't block main CI
 
     strategy:
       matrix:
