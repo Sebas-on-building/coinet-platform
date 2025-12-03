@@ -2377,6 +2377,126 @@ app.get('/api/test/derivatives-complete', async (req: Request, res: Response) =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 🔥 LIQUIDATION HEATMAP v2.0 - Data-Driven Analysis
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/liquidation-heatmap', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const symbol = (req.query.symbol as string)?.toUpperCase() === 'ETH' ? 'ETH' : 'BTC';
+  
+  try {
+    const { generateLiquidationHeatmapV2, formatLiquidationHeatmapV2ForAI } = 
+      await import('./services/liquidation-heatmap-v2');
+    
+    // Get current price from derivatives service
+    const { calculateDerivativesIntelligenceV2 } = 
+      await import('./services/derivatives-intelligence-v2');
+    
+    const derivativesResult = await calculateDerivativesIntelligenceV2();
+    
+    const currentPrice = symbol === 'ETH' ? 3500 : derivativesResult.marketContext.currentPrice;
+    
+    const heatmap = await generateLiquidationHeatmapV2(symbol as 'BTC' | 'ETH', currentPrice, {
+      priceChange7d: derivativesResult.marketContext.priceChange7d,
+      priceChange30d: derivativesResult.marketContext.priceChange30d,
+      fundingRate: derivativesResult.funding.weightedAvgRate,
+      recentSwingHigh: derivativesResult.marketContext.recentHigh,
+      recentSwingLow: derivativesResult.marketContext.recentLow,
+    });
+    
+    const aiContext = formatLiquidationHeatmapV2ForAI(heatmap);
+    
+    res.json({
+      success: true,
+      section: '🔥 LIQUIDATION HEATMAP v2.0 - Data-Driven Analysis',
+      description: 'Real liquidation data analysis matching Coinglass-style maps',
+      
+      // Basic info
+      symbol: heatmap.symbol,
+      currentPrice: `$${heatmap.currentPrice.toLocaleString()}`,
+      dataSource: heatmap.dataSource,
+      dataFreshness: `${heatmap.dataFreshness}%`,
+      
+      // Cumulative leverage structure
+      leverageStructure: {
+        totalLongLeverage: `$${(heatmap.cumulatives.totalLongLeverage / 1_000_000).toFixed(0)}M`,
+        totalShortLeverage: `$${(heatmap.cumulatives.totalShortLeverage / 1_000_000_000).toFixed(1)}B`,
+        longLeverageBelow: `$${(heatmap.cumulatives.longLeverageBelow / 1_000_000).toFixed(0)}M`,
+        shortLeverageAbove: `$${(heatmap.cumulatives.shortLeverageAbove / 1_000_000_000).toFixed(1)}B`,
+        longShortRatio: `${(heatmap.cumulatives.longShortRatio * 100).toFixed(2)}%`,
+        interpretation: heatmap.cumulatives.longShortRatio < 0.03 
+          ? 'Extremely short-biased market (typical: ~3.75%)'
+          : heatmap.cumulatives.longShortRatio > 0.06 
+            ? 'Long-biased market (unusual)'
+            : 'Normal leverage structure',
+      },
+      
+      // Key levels
+      keyLevels: {
+        highestLongCluster: heatmap.keyLevels.highestLongCluster.amount > 0 ? {
+          price: `$${heatmap.keyLevels.highestLongCluster.price.toLocaleString()}`,
+          amount: `$${(heatmap.keyLevels.highestLongCluster.amount / 1_000_000).toFixed(0)}M`,
+          note: 'Highest concentration of long liquidations',
+        } : null,
+        highestShortCluster: heatmap.keyLevels.highestShortCluster.amount > 0 ? {
+          price: `$${heatmap.keyLevels.highestShortCluster.price.toLocaleString()}`,
+          amount: `$${(heatmap.keyLevels.highestShortCluster.amount / 1_000_000).toFixed(0)}M`,
+          note: 'Highest concentration of short liquidations',
+        } : null,
+        nearestDangerZone: heatmap.keyLevels.nearestDangerZone.amount > 0 ? {
+          price: `$${heatmap.keyLevels.nearestDangerZone.price.toLocaleString()}`,
+          side: heatmap.keyLevels.nearestDangerZone.side,
+          amount: `$${(heatmap.keyLevels.nearestDangerZone.amount / 1_000_000).toFixed(0)}M`,
+        } : null,
+        magnetPrices: heatmap.keyLevels.magnetPrices.map(p => `$${p.toLocaleString()}`),
+      },
+      
+      // Analysis
+      analysis: {
+        regime: heatmap.analysis.regime,
+        biasDirection: heatmap.analysis.biasDirection,
+        biasStrength: `${heatmap.analysis.biasStrength}%`,
+        cascadeRiskDown: `${heatmap.analysis.cascadeRiskDown}%`,
+        cascadeRiskUp: `${heatmap.analysis.cascadeRiskUp}%`,
+        recommendation: heatmap.analysis.recommendation,
+      },
+      
+      // Significant levels (filtered)
+      significantLevels: heatmap.levels
+        .filter(l => l.intensity !== 'low')
+        .map(l => ({
+          price: l.priceLabel,
+          longLiq: `$${(l.longLiquidations / 1_000_000).toFixed(1)}M`,
+          shortLiq: `$${(l.shortLiquidations / 1_000_000).toFixed(1)}M`,
+          cumulativeLong: `$${(l.cumulativeLongLiq / 1_000_000).toFixed(0)}M`,
+          cumulativeShort: `$${(l.cumulativeShortLiq / 1_000_000_000).toFixed(2)}B`,
+          dominantSide: l.dominantSide,
+          intensity: l.intensity,
+          isPsychological: l.isPsychologicalLevel,
+          cascadeRisk: `${l.cascadeRisk}%`,
+        })),
+      
+      // Visualization
+      visualization: heatmap.visualization.ascii,
+      summary: heatmap.visualization.summary,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      // Performance
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Liquidation Heatmap v2.0 test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 🧠 INVESTOR PSYCHOLOGY ENGINE TEST ENDPOINT - Neuroeconomic Analysis
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/psychology', async (req: Request, res: Response) => {
@@ -2759,6 +2879,7 @@ app.get('/', (_req: Request, res: Response) => {
       testDerivativesComprehensive: '/api/test/derivatives-comprehensive', // Step 1.3.2 Full Analysis
       testDerivativesResilience: '/api/test/derivatives-resilience', // Step 1.3.3 Multi-Source Failover
       testDerivativesComplete: '/api/test/derivatives-complete', // Section 1.3 FINAL - All ACs
+      testLiquidationHeatmap: '/api/test/liquidation-heatmap?symbol=BTC', // v2.0 Data-Driven Heatmap
       testDerivativesSources: '/api/test/derivatives-sources', // Multi-exchange data
       testNewsV2: '/api/test/news-v2',
       testSocialV2: '/api/test/social-v2',
