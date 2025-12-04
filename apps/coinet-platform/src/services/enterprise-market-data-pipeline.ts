@@ -1233,23 +1233,10 @@ export async function fetchEnterpriseMarketPrices(
   if (cgFreeConfig && !hasCgProData && !sourceData.has('coingecko-free')) {
     if (healthTracker.isAvailable(cgFreeConfig.id)) {
       sourcesQueried.push(cgFreeConfig.id);
-      
-      logger.debug('🪙 Fetching CoinGecko-free', { coinIds, symbols });
-      
       const cgData = await fetchFromCoinGecko(coinIds, cgFreeConfig);
       if (cgData.size > 0) {
-        logger.info('🪙 CoinGecko-free data received', { 
-          count: cgData.size, 
-          keys: [...cgData.keys()],
-          sampleEntry: { 
-            price: cgData.values().next().value?.price,
-            mcap: cgData.values().next().value?.marketCap,
-            symbol: cgData.values().next().value?.symbol
-          }
-        });
         sourceData.set(cgFreeConfig.id, cgData);
-      } else {
-        logger.warn('⚠️ CoinGecko-free returned empty data', { coinIds });
+        logger.debug('🪙 CoinGecko-free data received', { count: cgData.size });
       }
     }
   }
@@ -1547,17 +1534,6 @@ export async function fetchEnterpriseMarketPrices(
   const foundSymbolsList = finalPrices.map(p => p.symbol);
   const missingSymbolsList = symbols.filter(s => !foundSymbolsList.includes(s.toUpperCase()));
   
-  // Debug: show what data each source has
-  const sourceDebug: Record<string, { count: number; keys: string[]; hasMcap: boolean }> = {};
-  for (const [sourceId, data] of sourceData) {
-    const firstValue = data.values().next().value;
-    sourceDebug[sourceId] = {
-      count: data.size,
-      keys: [...data.keys()].slice(0, 5),
-      hasMcap: firstValue?.marketCap > 0
-    };
-  }
-  
   return {
     timestamp: new Date().toISOString(),
     prices: finalPrices,
@@ -1574,7 +1550,6 @@ export async function fetchEnterpriseMarketPrices(
     },
     regime,
     warnings,
-    _debug: { sourceData: sourceDebug, coinIds, symbolToCoinId: Object.fromEntries(symbolToCoinId) },
   };
 }
 
