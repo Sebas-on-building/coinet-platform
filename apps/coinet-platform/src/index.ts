@@ -3016,6 +3016,9 @@ app.get('/api/test/enterprise-market', async (req: Request, res: Response) => {
         avgDataQuality: result.metrics.avgDataQuality,
       },
       
+      // Global Quality Metrics (Divine Perfection)
+      globalQuality: result.globalQuality,
+      
       // Pipeline status
       pipelineStatus: {
         sources: pipelineStatus.sources.map(s => ({
