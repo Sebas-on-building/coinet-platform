@@ -900,25 +900,39 @@ async function fetchFromDexScreener(
 
 /**
  * Cross-verify price data from multiple sources
+ * 
+ * FIXED: Now properly handles both coinGeckoId ('bitcoin') and symbol ('BTC') lookups
  */
 function crossVerifyPrices(
   sourceData: Map<string, Map<string, Partial<EnterpriseMarketPrice>>>,
-  symbol: string
+  coinIdOrSymbol: string,
+  actualSymbol?: string  // Optional: the real ticker symbol (e.g., 'BTC')
 ): CrossVerificationResult {
   const prices: { source: string; price: number }[] = [];
   const volumes: { source: string; volume: number }[] = [];
   const marketCaps: { source: string; marketCap: number }[] = [];
   
+  const lookupKey = coinIdOrSymbol.toLowerCase();
+  const symbolUpper = (actualSymbol || coinIdOrSymbol).toUpperCase();
+  
   // Collect data from all sources - try ALL keys to find the data
   // Different sources store with different keys (coinGeckoId vs symbol)
   for (const [sourceId, data] of sourceData) {
     // Try multiple key variations to find the data
-    let coinData = data.get(symbol.toLowerCase());
+    let coinData = data.get(lookupKey);
     
-    // If not found, search through all entries for matching symbol
+    // Try with actual symbol if different from coinId
+    if (!coinData && actualSymbol) {
+      coinData = data.get(actualSymbol.toLowerCase());
+    }
+    
+    // If not found, search through all entries for matching symbol OR coinGeckoId
     if (!coinData) {
       for (const [key, value] of data) {
-        if (value.symbol?.toUpperCase() === symbol.toUpperCase()) {
+        if (value.symbol?.toUpperCase() === symbolUpper ||
+            value.coinGeckoId === lookupKey ||
+            key === lookupKey ||
+            key === actualSymbol?.toLowerCase()) {
           coinData = value;
           break;
         }
@@ -1398,16 +1412,8 @@ export async function fetchEnterpriseMarketPrices(
   for (const symbol of symbols) {
     const coinId = symbolToCoinId.get(symbol) || symbol.toLowerCase();
     
-    // Cross-verify from all sources
-    const verification = crossVerifyPrices(sourceData, coinId);
-    
-    if (verification.consensusPrice === 0) {
-      // Try symbol as key
-      const altVerification = crossVerifyPrices(sourceData, symbol.toLowerCase());
-      if (altVerification.consensusPrice > 0) {
-        Object.assign(verification, altVerification);
-      }
-    }
+    // Cross-verify from all sources (pass both coinId and symbol for proper matching)
+    const verification = crossVerifyPrices(sourceData, coinId, symbol);
     
     if (verification.verified) {
       crossVerificationPassed++;
