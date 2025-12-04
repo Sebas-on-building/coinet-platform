@@ -848,9 +848,22 @@ function crossVerifyPrices(
   const volumes: { source: string; volume: number }[] = [];
   const marketCaps: { source: string; marketCap: number }[] = [];
   
-  // Collect data from all sources
+  // Collect data from all sources - try ALL keys to find the data
+  // Different sources store with different keys (coinGeckoId vs symbol)
   for (const [sourceId, data] of sourceData) {
-    const coinData = data.get(symbol.toLowerCase());
+    // Try multiple key variations to find the data
+    let coinData = data.get(symbol.toLowerCase());
+    
+    // If not found, search through all entries for matching symbol
+    if (!coinData) {
+      for (const [key, value] of data) {
+        if (value.symbol?.toUpperCase() === symbol.toUpperCase()) {
+          coinData = value;
+          break;
+        }
+      }
+    }
+    
     if (coinData) {
       if (coinData.price && coinData.price > 0) {
         prices.push({ source: sourceId, price: coinData.price });
