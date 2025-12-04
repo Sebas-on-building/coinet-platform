@@ -100,6 +100,7 @@ const COMMON_COINS: Map<string, CoinInfo> = new Map([
   ['pepe', { id: 'pepe', symbol: 'pepe', name: 'Pepe', aliases: ['pepe'] }],
   ['floki', { id: 'floki', symbol: 'floki', name: 'FLOKI', aliases: ['floki inu'] }],
   ['bonk', { id: 'bonk', symbol: 'bonk', name: 'Bonk', aliases: ['bonk'] }],
+  ['turbo', { id: 'turbo', symbol: 'turbo', name: 'Turbo', aliases: ['turbo'] }],  // Meme coin (not based-turbo!)
   ['wld', { id: 'worldcoin-wld', symbol: 'wld', name: 'Worldcoin', aliases: ['worldcoin'] }],
   ['jup', { id: 'jupiter-exchange-solana', symbol: 'jup', name: 'Jupiter', aliases: ['jupiter'] }],
   ['pyth', { id: 'pyth-network', symbol: 'pyth', name: 'Pyth Network', aliases: ['pyth'] }],
