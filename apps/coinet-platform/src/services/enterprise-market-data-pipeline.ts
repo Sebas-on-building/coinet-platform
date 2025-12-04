@@ -1222,8 +1222,30 @@ export async function fetchEnterpriseMarketPrices(
   const missingSymbols = symbols.filter(s => !foundSymbols.has(s));
   const needsCrossVerification = sourceData.size < 2;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ALWAYS fetch CoinGecko-free (critical for market cap, ATH, supply data)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const cgFreeConfig = DATA_SOURCES.find(s => s.id === 'coingecko-free');
+  if (cgFreeConfig && !sourceData.has('coingecko-pro') && !sourceData.has('coingecko-free')) {
+    if (healthTracker.isAvailable(cgFreeConfig.id)) {
+      sourcesQueried.push(cgFreeConfig.id);
+      const cgData = await fetchFromCoinGecko(coinIds, cgFreeConfig);
+      if (cgData.size > 0) {
+        logger.debug('🪙 CoinGecko-free data received', { 
+          count: cgData.size, 
+          keys: [...cgData.keys()].slice(0, 5),
+          samplePrice: cgData.values().next().value?.price,
+          sampleMcap: cgData.values().next().value?.marketCap
+        });
+        sourceData.set(cgFreeConfig.id, cgData);
+      } else {
+        logger.warn('⚠️ CoinGecko-free returned empty data');
+      }
+    }
+  }
+  
   if (missingSymbols.length > 0 || needsCrossVerification) {
-    const secondarySources = availableSources.filter(s => s.tier === 'secondary');
+    const secondarySources = availableSources.filter(s => s.tier === 'secondary' && s.id !== 'coingecko-free');
     const secondaryPromises: Promise<void>[] = [];
     
     for (const source of secondarySources) {
@@ -1231,22 +1253,7 @@ export async function fetchEnterpriseMarketPrices(
       
       sourcesQueried.push(source.id);
       
-      if (source.id === 'coingecko-free' && !sourceData.has('coingecko-pro')) {
-        secondaryPromises.push(
-          fetchFromCoinGecko(coinIds, source).then(data => {
-            if (data.size > 0) {
-              logger.debug('🪙 CoinGecko-free data received', { 
-                count: data.size, 
-                keys: [...data.keys()].slice(0, 5),
-                samplePrice: data.values().next().value?.price
-              });
-            } else {
-              logger.warn('⚠️ CoinGecko-free returned empty data');
-            }
-            sourceData.set(source.id, data);
-          })
-        );
-      } else if (source.id === 'binance') {
+      if (source.id === 'binance') {
         secondaryPromises.push(
           fetchFromBinance(symbols, source).then(data => {
             sourceData.set(source.id, data);
