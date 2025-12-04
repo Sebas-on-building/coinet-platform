@@ -595,6 +595,9 @@ async function fetchFromCMC(
 
 /**
  * Fetch from Binance
+ * 
+ * FIXED: Only use USDT pairs (most liquid and accurate)
+ * Previous bug: iterating all pairs caused later matches to overwrite correct USDT prices
  */
 async function fetchFromBinance(
   symbols: string[],
@@ -610,28 +613,27 @@ async function fetchFromBinance(
     
     const startTime = Date.now();
     
-    // Get 24h ticker for all symbols
+    // Build the exact USDT pairs we want (e.g., BTCUSDT, ETHUSDT)
+    const symbolSet = new Set(symbols.map(s => s.toUpperCase()));
+    const usdtPairs = symbols.map(s => `${s.toUpperCase()}USDT`);
+    
+    // Fetch specific pairs instead of all tickers (more efficient)
     const response = await axios.get(`${config.apiUrl}/ticker/24hr`, {
+      params: { symbols: JSON.stringify(usdtPairs) },
       timeout: config.timeoutMs,
     });
     
     const latency = Date.now() - startTime;
     
-    // Build symbol mapping (Binance uses BTCUSDT format)
-    const symbolSet = new Set(symbols.map(s => s.toUpperCase()));
+    // Process only USDT pairs
+    const tickers = Array.isArray(response.data) ? response.data : [response.data];
     
-    for (const ticker of response.data) {
-      // Extract base symbol from pair (BTCUSDT -> BTC)
-      let baseSymbol = '';
-      if (ticker.symbol.endsWith('USDT')) {
-        baseSymbol = ticker.symbol.replace('USDT', '');
-      } else if (ticker.symbol.endsWith('BUSD')) {
-        baseSymbol = ticker.symbol.replace('BUSD', '');
-      } else if (ticker.symbol.endsWith('USD')) {
-        baseSymbol = ticker.symbol.replace('USD', '');
-      }
+    for (const ticker of tickers) {
+      if (!ticker?.symbol?.endsWith('USDT')) continue;
       
-      if (baseSymbol && symbolSet.has(baseSymbol)) {
+      const baseSymbol = ticker.symbol.replace('USDT', '');
+      
+      if (symbolSet.has(baseSymbol)) {
         results.set(baseSymbol.toLowerCase(), {
           symbol: baseSymbol,
           price: parseFloat(ticker.lastPrice) || 0,
@@ -642,6 +644,8 @@ async function fetchFromBinance(
           low24h: parseFloat(ticker.lowPrice),
           lastUpdated: new Date(ticker.closeTime).toISOString(),
         });
+        
+        logger.debug(`📊 Binance price: ${baseSymbol} = $${ticker.lastPrice}`);
       }
     }
     
