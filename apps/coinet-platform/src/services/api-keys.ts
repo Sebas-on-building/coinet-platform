@@ -448,10 +448,23 @@ export function getGracefulDegradation(service: string): {
       return { available: true, tier: 'fallback', message: 'Using RSS feeds (CoinDesk, Decrypt, etc.)' };
     
     case 'market':
-      if (isKeyConfigured('COINGECKO_API_KEY')) {
-        return { available: true, tier: 'premium', message: 'CoinGecko Pro tier (500 req/min)' };
+      const hasCoingeckoPro = isKeyConfigured('COINGECKO_API_KEY');
+      const hasCMCPro = isKeyConfigured('CMC_API_KEY');
+      
+      if (hasCoingeckoPro && hasCMCPro) {
+        return { 
+          available: true, 
+          tier: 'premium', 
+          message: 'Enterprise Pipeline: CoinGecko Pro + CMC Pro + Binance + Kraken + DefiLlama (cross-verified)' 
+        };
       }
-      return { available: true, tier: 'basic', message: 'CoinGecko free tier (10 req/min)' };
+      if (hasCoingeckoPro) {
+        return { available: true, tier: 'premium', message: 'CoinGecko Pro tier (500 req/min) + secondary sources' };
+      }
+      if (hasCMCPro) {
+        return { available: true, tier: 'basic', message: 'CMC Pro + free tier sources (cross-verified)' };
+      }
+      return { available: true, tier: 'basic', message: 'Free tier sources: CoinGecko (10 req/min), Binance, DefiLlama, DexScreener' };
     
     case 'ai':
       if (isKeyConfigured('XAI_API_KEY') || isKeyConfigured('GROK_API_KEY')) {
