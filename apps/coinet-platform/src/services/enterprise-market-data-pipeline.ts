@@ -1229,17 +1229,23 @@ export async function fetchEnterpriseMarketPrices(
   if (cgFreeConfig && !sourceData.has('coingecko-pro') && !sourceData.has('coingecko-free')) {
     if (healthTracker.isAvailable(cgFreeConfig.id)) {
       sourcesQueried.push(cgFreeConfig.id);
+      
+      logger.debug('🪙 Fetching CoinGecko-free', { coinIds, symbols });
+      
       const cgData = await fetchFromCoinGecko(coinIds, cgFreeConfig);
       if (cgData.size > 0) {
-        logger.debug('🪙 CoinGecko-free data received', { 
+        logger.info('🪙 CoinGecko-free data received', { 
           count: cgData.size, 
-          keys: [...cgData.keys()].slice(0, 5),
-          samplePrice: cgData.values().next().value?.price,
-          sampleMcap: cgData.values().next().value?.marketCap
+          keys: [...cgData.keys()],
+          sampleEntry: { 
+            price: cgData.values().next().value?.price,
+            mcap: cgData.values().next().value?.marketCap,
+            symbol: cgData.values().next().value?.symbol
+          }
         });
         sourceData.set(cgFreeConfig.id, cgData);
       } else {
-        logger.warn('⚠️ CoinGecko-free returned empty data');
+        logger.warn('⚠️ CoinGecko-free returned empty data', { coinIds });
       }
     }
   }
