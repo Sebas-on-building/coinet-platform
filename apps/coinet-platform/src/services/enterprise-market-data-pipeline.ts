@@ -28,6 +28,13 @@ import axios, { AxiosError, AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
 import { symbolDetector } from './symbol-detector';
 import { getCache, getCacheStatistics, type CacheStats } from './low-latency-cache';
+import { 
+  anomalyMonitor, 
+  filterAnomalousPrices, 
+  type MarketRegimeForAnomaly,
+  type PriceAnomaly,
+  type SourceHealthAlert
+} from './anomaly-latency-monitor';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -380,6 +387,11 @@ class SourceHealthTracker {
       health.qualityScore = (health.qualityScore * 0.9) + (qualityScore * 0.1);  // Slow EMA for quality
     }
     
+    // Report to Anomaly Monitor (Step 1.4.3)
+    const source = DATA_SOURCES.find(s => s.id === sourceId);
+    const tier = source?.tier || 'secondary';
+    anomalyMonitor.recordRequest(sourceId, latencyMs, tier);
+    
     logger.debug(`📊 Source ${sourceId} success`, { latencyMs, successRate: health.successRate.toFixed(3) });
   }
   
@@ -391,6 +403,9 @@ class SourceHealthTracker {
     health.lastFailureTime = new Date();
     health.successRate = health.successCount / (health.successCount + health.failureCount);
     health.status = health.successRate > 0.9 ? 'healthy' : health.successRate > 0.7 ? 'degraded' : 'unhealthy';
+    
+    // Report to Anomaly Monitor (Step 1.4.3)
+    anomalyMonitor.recordError(sourceId, 'api_error', error);
     
     // Check circuit breaker
     const recentFailures = this.getRecentFailureCount(sourceId, 60000);
@@ -1332,6 +1347,43 @@ export async function fetchEnterpriseMarketPrices(
       crossVerificationPassed++;
     } else if (verification.discrepancies.length > 0) {
       crossVerificationFailed++;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 1.4.3: ANOMALY DETECTION
+    // Check for price anomalies before using data
+    // ═══════════════════════════════════════════════════════════════════════
+    const pricePoints: { sourceId: string; price: number }[] = [];
+    for (const [sourceId, data] of sourceData) {
+      const coinData = data.get(coinId) || data.get(symbol.toLowerCase());
+      if (coinData && coinData.price && coinData.price > 0) {
+        pricePoints.push({ sourceId, price: coinData.price });
+        
+        // Record price for time-series tracking
+        anomalyMonitor.recordPrice(symbol, coinData.price);
+      }
+    }
+    
+    // Determine anomaly regime from available data
+    // (Full regime detection happens later with all prices, use 'normal' as default)
+    const anomalyRegime: MarketRegimeForAnomaly = 'normal';
+    
+    // Filter out anomalous prices (Step 1.4.3)
+    const { validPrices, discardedPrices, anomaly } = filterAnomalousPrices(
+      symbol,
+      pricePoints,
+      anomalyRegime
+    );
+    
+    // Log if any prices were discarded due to anomalies
+    if (discardedPrices.length > 0) {
+      logger.warn(`🔬 Price anomaly detected for ${symbol}`, {
+        discarded: discardedPrices,
+        anomalyType: anomaly?.anomalyType,
+        severity: anomaly?.severity,
+        confidence: anomaly?.confidence,
+      });
+      warnings.push(`⚠️ ${symbol}: Anomalous price from ${discardedPrices[0].sourceId} was discarded (${anomaly?.message})`);
     }
     
     // ═══════════════════════════════════════════════════════════════════════

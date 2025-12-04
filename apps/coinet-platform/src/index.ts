@@ -3187,6 +3187,157 @@ app.get('/api/test/cache', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TEST ENDPOINT: Anomaly & Latency Monitoring (Step 1.4.3)
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const {
+      anomalyMonitor,
+      filterAnomalousPrices,
+      formatMonitorStatusForAI,
+    } = await import('./services/anomaly-latency-monitor');
+    
+    const {
+      fetchEnterpriseMarketPrices,
+    } = await import('./services/enterprise-market-data-pipeline');
+
+    // Get symbols from query or use defaults
+    const symbolsParam = req.query.symbols as string;
+    const symbols = symbolsParam 
+      ? symbolsParam.split(',').map(s => s.trim().toUpperCase())
+      : ['BTC', 'ETH', 'SOL', 'TURBO'];
+
+    // Fetch market data (this will record latencies and check anomalies)
+    const marketData = await fetchEnterpriseMarketPrices(symbols);
+    
+    // Get source health status
+    const sourceIds = ['coingecko-pro', 'coingecko-free', 'cmc-pro', 'binance', 'kraken', 'defillama', 'dexscreener'];
+    const healthStatus = anomalyMonitor.getHealthStatus(sourceIds);
+    
+    // Get individual source metrics
+    const sourceMetrics = sourceIds.map(sourceId => ({
+      sourceId,
+      latency: anomalyMonitor.getSourceLatency(sourceId),
+      errors: anomalyMonitor.getSourceErrors(sourceId),
+    })).filter(m => m.latency || m.errors);
+    
+    // Test anomaly detection with simulated data
+    const testAnomalyResult = filterAnomalousPrices('BTC', [
+      { sourceId: 'binance', price: 92000 },
+      { sourceId: 'kraken', price: 92050 },
+      { sourceId: 'coingecko', price: 91980 },
+      { sourceId: 'bad-source', price: 50000 },  // Obvious anomaly
+    ], 'normal');
+    
+    // Format for AI
+    const aiContext = formatMonitorStatusForAI(sourceIds);
+
+    res.json({
+      success: true,
+      section: '🔬 ANOMALY & LATENCY MONITORING - Step 1.4.3',
+      description: 'Statistical anomaly detection with per-source health monitoring',
+      
+      // Overall health
+      overallHealth: healthStatus.overallHealth,
+      
+      // Source health details
+      sourceHealth: healthStatus.sources.map(s => ({
+        sourceId: s.sourceId,
+        status: s.status,
+        recommendation: s.recommendation,
+        latency: s.latency ? {
+          current: s.latency.current.toFixed(0) + 'ms',
+          p50: s.latency.p50.toFixed(0) + 'ms',
+          p95: s.latency.p95.toFixed(0) + 'ms',
+          p99: s.latency.p99.toFixed(0) + 'ms',
+          slaBreachRate: s.latency.slaBreachRate.toFixed(1) + '%',
+          trend: s.latency.trend,
+        } : null,
+        errors: s.errors ? {
+          errorRate: s.errors.errorRate.toFixed(1) + '%',
+          consecutiveErrors: s.errors.consecutiveErrors,
+          trend: s.errors.trend,
+        } : null,
+      })),
+      
+      // Test anomaly detection
+      anomalyTest: {
+        description: 'Testing with 3 valid prices + 1 obvious anomaly ($50k vs $92k)',
+        validPrices: testAnomalyResult.validPrices,
+        discardedPrices: testAnomalyResult.discardedPrices,
+        anomalyDetected: !!testAnomalyResult.anomaly,
+        anomalyDetails: testAnomalyResult.anomaly ? {
+          type: testAnomalyResult.anomaly.anomalyType,
+          severity: testAnomalyResult.anomaly.severity,
+          deviationPercent: testAnomalyResult.anomaly.deviationPercent.toFixed(2) + '%',
+          zScore: testAnomalyResult.anomaly.zScore.toFixed(2),
+          action: testAnomalyResult.anomaly.action,
+          confidence: (testAnomalyResult.anomaly.confidence * 100).toFixed(1) + '%',
+        } : null,
+      },
+      
+      // Market data from real fetch (with warnings if anomalies detected)
+      marketData: {
+        regime: marketData.regime,
+        priceCount: marketData.prices.length,
+        warnings: marketData.warnings,
+        prices: marketData.prices.slice(0, 5).map(p => ({
+          symbol: p.symbol,
+          price: p.price,
+          confidence: p.confidence,
+          sourcesUsed: p.sourcesUsed,
+        })),
+      },
+      
+      // Source metrics (for those with data)
+      sourceMetrics: sourceMetrics.map(m => ({
+        sourceId: m.sourceId,
+        latency: m.latency ? {
+          samples: m.latency.sampleCount,
+          mean: m.latency.mean.toFixed(0) + 'ms',
+          stdDev: m.latency.stdDev.toFixed(0) + 'ms',
+        } : 'No data',
+        errors: m.errors ? {
+          totalRequests: m.errors.totalRequests,
+          errorRate: m.errors.errorRate.toFixed(1) + '%',
+        } : 'No data',
+      })),
+      
+      // SLA Configuration
+      slaConfig: {
+        primary: { target: '200ms', warning: '500ms', critical: '1000ms' },
+        secondary: { target: '500ms', warning: '1000ms', critical: '2000ms' },
+        tertiary: { target: '1000ms', warning: '2000ms', critical: '5000ms' },
+      },
+      
+      // Anomaly thresholds by asset class
+      anomalyThresholds: {
+        major: { zScore: 3.5, percentDeviation: '2%', note: 'BTC, ETH' },
+        large_cap: { zScore: 3.0, percentDeviation: '3%', note: 'Top 20 alts' },
+        mid_cap: { zScore: 2.5, percentDeviation: '5%', note: 'Top 100' },
+        small_cap: { zScore: 2.0, percentDeviation: '8%', note: 'Top 500' },
+        meme: { zScore: 1.5, percentDeviation: '15%', note: 'DOGE, SHIB, PEPE, etc.' },
+      },
+      
+      // AI Context
+      aiContextPreview: aiContext,
+      
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Anomaly Monitor test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -3258,6 +3409,7 @@ app.get('/', (_req: Request, res: Response) => {
       testCSI: '/api/test/csi',
       testEnterpriseMarket: '/api/test/enterprise-market?symbols=BTC,ETH,SOL', // Step 1.4.1 Enterprise Data Pipeline
       testCache: '/api/test/cache?symbols=BTC,ETH,SOL&refresh=true', // Step 1.4.2 Low-Latency Cache
+      testAnomalyMonitor: '/api/test/anomaly-monitor?symbols=BTC,ETH,SOL,TURBO', // Step 1.4.3 Anomaly & Latency Monitoring
       chat: '/api/chat',
     },
     documentation: 'Use /api/test/cache to see cache performance with sub-100ms response targets',
