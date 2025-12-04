@@ -1547,6 +1547,17 @@ export async function fetchEnterpriseMarketPrices(
   const foundSymbolsList = finalPrices.map(p => p.symbol);
   const missingSymbolsList = symbols.filter(s => !foundSymbolsList.includes(s.toUpperCase()));
   
+  // Debug: show what data each source has
+  const sourceDebug: Record<string, { count: number; keys: string[]; hasMcap: boolean }> = {};
+  for (const [sourceId, data] of sourceData) {
+    const firstValue = data.values().next().value;
+    sourceDebug[sourceId] = {
+      count: data.size,
+      keys: [...data.keys()].slice(0, 5),
+      hasMcap: firstValue?.marketCap > 0
+    };
+  }
+  
   return {
     timestamp: new Date().toISOString(),
     prices: finalPrices,
@@ -1563,6 +1574,7 @@ export async function fetchEnterpriseMarketPrices(
     },
     regime,
     warnings,
+    _debug: { sourceData: sourceDebug, coinIds, symbolToCoinId: Object.fromEntries(symbolToCoinId) },
   };
 }
 
