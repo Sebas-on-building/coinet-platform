@@ -291,11 +291,12 @@ const VERIFICATION_THRESHOLDS = {
   },
 };
 
-// Circuit breaker configuration
+// Circuit breaker configuration (Divine Perfection - More Lenient for Free APIs)
 const CIRCUIT_BREAKER_CONFIG = {
-  failureThreshold: 5,        // Open circuit after 5 failures
-  resetTimeMs: 60000,         // Try again after 1 minute
-  halfOpenRequests: 2,        // Allow 2 test requests in half-open state
+  failureThreshold: 10,       // Open circuit after 10 failures (was 5) - more lenient
+  resetTimeMs: 30000,         // Try again after 30 seconds (was 60s) - faster recovery
+  halfOpenRequests: 3,        // Allow 3 test requests in half-open state
+  rateLimitRecoveryMs: 10000, // Wait 10 seconds after rate limit before retry
 };
 
 // ============================================================================
@@ -408,9 +409,26 @@ class SourceHealthTracker {
     logger.debug(`📊 Source ${sourceId} success`, { latencyMs, successRate: health.successRate.toFixed(3) });
   }
   
-  recordFailure(sourceId: string, error: string): void {
+  recordFailure(sourceId: string, error: string, isRateLimited: boolean = false): void {
     const health = this.health.get(sourceId);
     if (!health) return;
+    
+    // Rate limit errors are counted differently - they're expected for free APIs
+    if (isRateLimited) {
+      // Don't increment failure count for rate limits, just mark degraded
+      health.status = 'degraded';
+      health.lastFailureTime = new Date();
+      
+      // Rate limit recovery: open circuit briefly then auto-close
+      if (!health.circuitBreakerOpen) {
+        health.circuitBreakerOpen = true;
+        health.circuitBreakerResetTime = new Date(Date.now() + CIRCUIT_BREAKER_CONFIG.rateLimitRecoveryMs);
+        logger.debug(`⏳ Rate limit pause for ${sourceId}`, { 
+          resetIn: `${CIRCUIT_BREAKER_CONFIG.rateLimitRecoveryMs / 1000}s` 
+        });
+      }
+      return;
+    }
     
     health.failureCount++;
     health.lastFailureTime = new Date();
@@ -420,7 +438,7 @@ class SourceHealthTracker {
     // Report to Enhanced Anomaly Monitor v2.0 (Step 1.4.3)
     enhancedAnomalyMonitor.recordRequest(sourceId, 0, false);
     
-    // Check circuit breaker
+    // Check circuit breaker (only for real failures, not rate limits)
     const recentFailures = this.getRecentFailureCount(sourceId, 60000);
     if (recentFailures >= CIRCUIT_BREAKER_CONFIG.failureThreshold) {
       health.circuitBreakerOpen = true;
@@ -554,8 +572,18 @@ async function fetchFromCoinGecko(
     logger.debug(`✅ ${config.name} fetch`, { requested: coinIds.length, found: results.size, latencyMs: latency });
     
   } catch (error: any) {
-    healthTracker.recordFailure(config.id, error.message);
-    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message });
+    // Detect rate limit errors (429 status or specific error messages)
+    const isRateLimited = error.response?.status === 429 || 
+                          error.message?.includes('rate') ||
+                          error.message?.includes('429') ||
+                          error.message?.includes('Too Many');
+    
+    healthTracker.recordFailure(config.id, error.message, isRateLimited);
+    logger.debug(`❌ ${config.name} fetch failed`, { 
+      error: error.message, 
+      isRateLimited,
+      status: error.response?.status 
+    });
   }
   
   return results;
@@ -614,8 +642,9 @@ async function fetchFromCMC(
     logger.debug(`✅ ${config.name} fetch`, { requested: symbols.length, found: results.size, latencyMs: latency });
     
   } catch (error: any) {
-    healthTracker.recordFailure(config.id, error.message);
-    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message });
+    const isRateLimited = error.response?.status === 429 || error.message?.includes('rate');
+    healthTracker.recordFailure(config.id, error.message, isRateLimited);
+    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message, isRateLimited });
   }
   
   return results;
@@ -681,8 +710,9 @@ async function fetchFromBinance(
     logger.debug(`✅ ${config.name} fetch`, { requested: symbols.length, found: results.size, latencyMs: latency });
     
   } catch (error: any) {
-    healthTracker.recordFailure(config.id, error.message);
-    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message });
+    const isRateLimited = error.response?.status === 429 || error.response?.status === 418;
+    healthTracker.recordFailure(config.id, error.message, isRateLimited);
+    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message, isRateLimited });
   }
   
   return results;
@@ -730,8 +760,9 @@ async function fetchFromDefiLlama(
     logger.debug(`✅ ${config.name} fetch`, { requested: coinIds.length, found: results.size, latencyMs: latency });
     
   } catch (error: any) {
-    healthTracker.recordFailure(config.id, error.message);
-    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message });
+    const isRateLimited = error.response?.status === 429;
+    healthTracker.recordFailure(config.id, error.message, isRateLimited);
+    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message, isRateLimited });
   }
   
   return results;
@@ -800,8 +831,9 @@ async function fetchFromKraken(
     logger.debug(`✅ ${config.name} fetch`, { requested: symbols.length, found: results.size, latencyMs: latency });
     
   } catch (error: any) {
-    healthTracker.recordFailure(config.id, error.message);
-    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message });
+    const isRateLimited = error.response?.status === 429;
+    healthTracker.recordFailure(config.id, error.message, isRateLimited);
+    logger.debug(`❌ ${config.name} fetch failed`, { error: error.message, isRateLimited });
   }
   
   return results;
@@ -856,7 +888,8 @@ async function fetchFromDexScreener(
     return null;
     
   } catch (error: any) {
-    healthTracker.recordFailure(config.id, error.message);
+    const isRateLimited = error.response?.status === 429;
+    healthTracker.recordFailure(config.id, error.message, isRateLimited);
     return null;
   }
 }
