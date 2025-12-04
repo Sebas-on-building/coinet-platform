@@ -3004,6 +3004,7 @@ app.get('/api/test/enterprise-market', async (req: Request, res: Response) => {
           discrepancyFlags: p.discrepancyFlags,
         })),
         missingSymbols: result.missingSymbols,
+        _debug: (result as any)._debug,  // Debug info for tracing
       },
       
       // Metrics
