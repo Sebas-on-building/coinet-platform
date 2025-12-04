@@ -1224,9 +1224,13 @@ export async function fetchEnterpriseMarketPrices(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // ALWAYS fetch CoinGecko-free (critical for market cap, ATH, supply data)
+  // Check if we have USEFUL CoinGecko data (not just an empty result)
   // ═══════════════════════════════════════════════════════════════════════════
+  const cgProData = sourceData.get('coingecko-pro');
+  const hasCgProData = cgProData && cgProData.size > 0;
+  
   const cgFreeConfig = DATA_SOURCES.find(s => s.id === 'coingecko-free');
-  if (cgFreeConfig && !sourceData.has('coingecko-pro') && !sourceData.has('coingecko-free')) {
+  if (cgFreeConfig && !hasCgProData && !sourceData.has('coingecko-free')) {
     if (healthTracker.isAvailable(cgFreeConfig.id)) {
       sourcesQueried.push(cgFreeConfig.id);
       
