@@ -881,14 +881,70 @@ function crossVerifyPrices(
   const discrepancies: DiscrepancyReport[] = [];
   
   // Calculate spreads and consensus
-  const priceValues = prices.map(p => p.price);
+  let priceValues = prices.map(p => p.price);
   const minPrice = Math.min(...priceValues);
   const maxPrice = Math.max(...priceValues);
   const avgPrice = priceValues.reduce((a, b) => a + b, 0) / priceValues.length;
-  const priceSpread = (maxPrice - minPrice) / avgPrice;
+  let priceSpread = (maxPrice - minPrice) / avgPrice;
   
-  // Use weighted median for consensus (weight by source tier)
-  const consensusPrice = calculateWeightedMedian(prices.map(p => ({
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXTREME DISCREPANCY DETECTION (Divine Perfection)
+  // If prices differ by >10x (1000%), we likely have DIFFERENT TOKENS with same symbol
+  // In this case, prefer Binance (exchange-listed tokens are definitive)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const extremeThreshold = 10; // 10x difference = different tokens
+  let filteredPrices = prices;
+  
+  if (maxPrice / minPrice > extremeThreshold) {
+    logger.warn('⚠️ Extreme price discrepancy detected - likely different tokens with same symbol', {
+      symbol,
+      minPrice,
+      maxPrice,
+      ratio: (maxPrice / minPrice).toFixed(1) + 'x',
+      sources: prices.map(p => `${p.source}: $${p.price}`),
+    });
+    
+    // Prefer Binance for exchange-listed tokens (definitive source)
+    const binancePrice = prices.find(p => p.source === 'binance');
+    if (binancePrice) {
+      // Filter to only prices within 2x of Binance price (same token cluster)
+      filteredPrices = prices.filter(p => {
+        const ratio = Math.max(p.price, binancePrice.price) / Math.min(p.price, binancePrice.price);
+        return ratio < 2; // Within 2x = same token
+      });
+      
+      if (filteredPrices.length === 0) {
+        filteredPrices = [binancePrice]; // Fallback to just Binance
+      }
+      
+      logger.debug('📊 Using Binance-aligned prices', {
+        original: prices.length,
+        filtered: filteredPrices.length,
+        binancePrice: binancePrice.price,
+      });
+    } else {
+      // No Binance - use prices closest to median (filter outliers)
+      const sortedPrices = [...prices].sort((a, b) => a.price - b.price);
+      const median = sortedPrices[Math.floor(sortedPrices.length / 2)].price;
+      
+      filteredPrices = prices.filter(p => {
+        const ratio = Math.max(p.price, median) / Math.min(p.price, median);
+        return ratio < 5; // Within 5x of median
+      });
+    }
+    
+    // Recalculate spread with filtered prices
+    if (filteredPrices.length > 0) {
+      priceValues = filteredPrices.map(p => p.price);
+      const newMin = Math.min(...priceValues);
+      const newMax = Math.max(...priceValues);
+      const newAvg = priceValues.reduce((a, b) => a + b, 0) / priceValues.length;
+      priceSpread = (newMax - newMin) / newAvg;
+    }
+  }
+  
+  // Use weighted median for consensus (weight by source tier) - from FILTERED prices
+  const consensusPrice = calculateWeightedMedian(filteredPrices.map(p => ({
     value: p.price,
     weight: getSourceWeight(p.source),
   })));
