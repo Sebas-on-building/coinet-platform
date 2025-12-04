@@ -3188,17 +3188,18 @@ app.get('/api/test/cache', async (req: Request, res: Response) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TEST ENDPOINT: Anomaly & Latency Monitoring (Step 1.4.3)
+// TEST ENDPOINT: Enhanced Anomaly & Latency Monitoring v2.0 (Step 1.4.3)
+// Divine Perfection Implementation
 // ═══════════════════════════════════════════════════════════════════════════
 app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
   const startTime = Date.now();
 
   try {
     const {
-      anomalyMonitor,
-      filterAnomalousPrices,
-      formatMonitorStatusForAI,
-    } = await import('./services/anomaly-latency-monitor');
+      enhancedAnomalyMonitor,
+      filterAnomalousPricesV2,
+      formatEnhancedMonitorStatusForAI,
+    } = await import('./services/anomaly-latency-monitor-v2');
     
     const {
       fetchEnterpriseMarketPrices,
@@ -3213,73 +3214,138 @@ app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
     // Fetch market data (this will record latencies and check anomalies)
     const marketData = await fetchEnterpriseMarketPrices(symbols);
     
-    // Get source health status
+    // Get comprehensive status
     const sourceIds = ['coingecko-pro', 'coingecko-free', 'cmc-pro', 'binance', 'kraken', 'defillama', 'dexscreener'];
-    const healthStatus = anomalyMonitor.getHealthStatus(sourceIds);
-    
-    // Get individual source metrics
-    const sourceMetrics = sourceIds.map(sourceId => ({
-      sourceId,
-      latency: anomalyMonitor.getSourceLatency(sourceId),
-      errors: anomalyMonitor.getSourceErrors(sourceId),
-    })).filter(m => m.latency || m.errors);
+    const status = enhancedAnomalyMonitor.getComprehensiveStatus(sourceIds);
     
     // Test anomaly detection with simulated data
-    const testAnomalyResult = filterAnomalousPrices('BTC', [
+    const testAnomalyResult = filterAnomalousPricesV2('BTC', [
       { sourceId: 'binance', price: 92000 },
       { sourceId: 'kraken', price: 92050 },
       { sourceId: 'coingecko', price: 91980 },
-      { sourceId: 'bad-source', price: 50000 },  // Obvious anomaly
+      { sourceId: 'bad-source', price: 50000 },  // Obvious anomaly - 45% deviation
     ], 'normal');
     
+    // Get flash crash events
+    const flashCrashes = enhancedAnomalyMonitor.getFlashCrashEvents();
+    
     // Format for AI
-    const aiContext = formatMonitorStatusForAI(sourceIds);
+    const aiContext = formatEnhancedMonitorStatusForAI(sourceIds);
 
     res.json({
       success: true,
-      section: '🔬 ANOMALY & LATENCY MONITORING - Step 1.4.3',
-      description: 'Statistical anomaly detection with per-source health monitoring',
+      section: '🔬 ENHANCED ANOMALY & LATENCY MONITORING v2.0 - Divine Perfection',
+      description: 'Multi-method statistical anomaly detection with flash crash detection, correlation analysis, and source quality scoring',
       
       // Overall health
-      overallHealth: healthStatus.overallHealth,
+      overall: status.overall,
       
-      // Source health details
-      sourceHealth: healthStatus.sources.map(s => ({
+      // Source health with quality scores
+      sourceHealth: status.sources.map(s => ({
         sourceId: s.sourceId,
         status: s.status,
-        recommendation: s.recommendation,
+        qualityScore: s.quality.overallScore.toFixed(1) + '/100',
+        qualityComponents: {
+          latency: s.quality.components.latencyScore.toFixed(0),
+          reliability: s.quality.components.reliabilityScore.toFixed(0),
+          accuracy: s.quality.components.accuracyScore.toFixed(0),
+          freshness: s.quality.components.freshnessScore.toFixed(0),
+          consistency: s.quality.components.consistencyScore.toFixed(0),
+        },
+        trend: s.quality.trend,
+        recommendations: s.quality.recommendations,
         latency: s.latency ? {
           current: s.latency.current.toFixed(0) + 'ms',
-          p50: s.latency.p50.toFixed(0) + 'ms',
-          p95: s.latency.p95.toFixed(0) + 'ms',
-          p99: s.latency.p99.toFixed(0) + 'ms',
-          slaBreachRate: s.latency.slaBreachRate.toFixed(1) + '%',
+          percentiles: {
+            p50: s.latency.percentiles.p50.toFixed(0) + 'ms',
+            p95: s.latency.percentiles.p95.toFixed(0) + 'ms',
+            p99: s.latency.percentiles.p99.toFixed(0) + 'ms',
+          },
+          statistics: {
+            mean: s.latency.statistics.mean.toFixed(1) + 'ms',
+            stdDev: s.latency.statistics.stdDev.toFixed(1) + 'ms',
+            cv: (s.latency.statistics.cv * 100).toFixed(1) + '%',
+            skewness: s.latency.statistics.skewness.toFixed(2),
+          },
+          sla: {
+            target: s.latency.sla.target + 'ms',
+            breachRate: s.latency.sla.breachRate.toFixed(1) + '%',
+          },
           trend: s.latency.trend,
-        } : null,
-        errors: s.errors ? {
-          errorRate: s.errors.errorRate.toFixed(1) + '%',
-          consecutiveErrors: s.errors.consecutiveErrors,
-          trend: s.errors.trend,
         } : null,
       })),
       
-      // Test anomaly detection
+      // Enhanced anomaly test with all statistical methods
       anomalyTest: {
-        description: 'Testing with 3 valid prices + 1 obvious anomaly ($50k vs $92k)',
-        validPrices: testAnomalyResult.validPrices,
-        discardedPrices: testAnomalyResult.discardedPrices,
+        description: 'Testing 4 prices: 3 valid (~$92k) + 1 anomaly ($50k = 45.6% deviation)',
+        input: [
+          { sourceId: 'binance', price: 92000 },
+          { sourceId: 'kraken', price: 92050 },
+          { sourceId: 'coingecko', price: 91980 },
+          { sourceId: 'bad-source', price: 50000, note: 'ANOMALY' },
+        ],
+        result: {
+          validPrices: testAnomalyResult.validPrices,
+          discardedPrices: testAnomalyResult.discardedPrices,
+        },
         anomalyDetected: !!testAnomalyResult.anomaly,
         anomalyDetails: testAnomalyResult.anomaly ? {
           type: testAnomalyResult.anomaly.anomalyType,
           severity: testAnomalyResult.anomaly.severity,
-          deviationPercent: testAnomalyResult.anomaly.deviationPercent.toFixed(2) + '%',
-          zScore: testAnomalyResult.anomaly.zScore.toFixed(2),
-          action: testAnomalyResult.anomaly.action,
-          confidence: (testAnomalyResult.anomaly.confidence * 100).toFixed(1) + '%',
+          prices: {
+            observed: '$' + testAnomalyResult.anomaly.prices.observed.toFixed(2),
+            consensus: '$' + testAnomalyResult.anomaly.prices.consensus.toFixed(2),
+            deviation: testAnomalyResult.anomaly.prices.deviationPercent.toFixed(2) + '%',
+          },
+          statistics: {
+            zScore: testAnomalyResult.anomaly.statistics.zScore.toFixed(3),
+            modifiedZScore: testAnomalyResult.anomaly.statistics.modifiedZScore.toFixed(3),
+            grubbs: testAnomalyResult.anomaly.statistics.grubbs.toFixed(3),
+            dixonQ: testAnomalyResult.anomaly.statistics.dixonQ.toFixed(3),
+            anomalyProbability: (testAnomalyResult.anomaly.statistics.anomalyProbability * 100).toFixed(1) + '%',
+            falsePositiveRisk: (testAnomalyResult.anomaly.statistics.falsePositiveRisk * 100).toFixed(1) + '%',
+          },
+          action: {
+            type: testAnomalyResult.anomaly.action.type,
+            reason: testAnomalyResult.anomaly.action.reason,
+            alternativePrice: testAnomalyResult.anomaly.action.alternativePrice 
+              ? '$' + testAnomalyResult.anomaly.action.alternativePrice.toFixed(2)
+              : null,
+          },
+          risk: {
+            impactScore: testAnomalyResult.anomaly.risk.impactScore.toFixed(0) + '/100',
+            urgency: testAnomalyResult.anomaly.risk.urgency.toFixed(0) + '/100',
+            recommendation: testAnomalyResult.anomaly.risk.recommendation,
+          },
         } : null,
       },
       
-      // Market data from real fetch (with warnings if anomalies detected)
+      // Flash crash monitoring
+      flashCrashes: {
+        active: flashCrashes.active.length,
+        recent24h: flashCrashes.recent.length,
+        events: flashCrashes.active.map(e => ({
+          id: e.id,
+          assets: e.assets.map(a => `${a.symbol}: -${a.dropPercent.toFixed(1)}%`),
+          detection: e.detection.method,
+          confidence: (e.detection.confidence * 100).toFixed(1) + '%',
+        })),
+      },
+      
+      // Recent alerts
+      alerts: {
+        critical: status.alerts.critical,
+        warning: status.alerts.warning,
+        recent: status.alerts.recent.slice(0, 5).map(a => ({
+          type: a.type,
+          severity: a.severity,
+          source: a.affected.sources[0],
+          metric: `${a.metrics.primary.name}: ${a.metrics.primary.value.toFixed(1)}${a.metrics.primary.unit}`,
+          timestamp: a.timestamp.toISOString(),
+        })),
+      },
+      
+      // Market data from real fetch
       marketData: {
         regime: marketData.regime,
         priceCount: marketData.prices.length,
@@ -3292,34 +3358,37 @@ app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
         })),
       },
       
-      // Source metrics (for those with data)
-      sourceMetrics: sourceMetrics.map(m => ({
-        sourceId: m.sourceId,
-        latency: m.latency ? {
-          samples: m.latency.sampleCount,
-          mean: m.latency.mean.toFixed(0) + 'ms',
-          stdDev: m.latency.stdDev.toFixed(0) + 'ms',
-        } : 'No data',
-        errors: m.errors ? {
-          totalRequests: m.errors.totalRequests,
-          errorRate: m.errors.errorRate.toFixed(1) + '%',
-        } : 'No data',
-      })),
-      
-      // SLA Configuration
-      slaConfig: {
-        primary: { target: '200ms', warning: '500ms', critical: '1000ms' },
-        secondary: { target: '500ms', warning: '1000ms', critical: '2000ms' },
-        tertiary: { target: '1000ms', warning: '2000ms', critical: '5000ms' },
-      },
-      
-      // Anomaly thresholds by asset class
-      anomalyThresholds: {
-        major: { zScore: 3.5, percentDeviation: '2%', note: 'BTC, ETH' },
-        large_cap: { zScore: 3.0, percentDeviation: '3%', note: 'Top 20 alts' },
-        mid_cap: { zScore: 2.5, percentDeviation: '5%', note: 'Top 100' },
-        small_cap: { zScore: 2.0, percentDeviation: '8%', note: 'Top 500' },
-        meme: { zScore: 1.5, percentDeviation: '15%', note: 'DOGE, SHIB, PEPE, etc.' },
+      // Configuration
+      configuration: {
+        latencySLA: {
+          cex_primary: { target: '150ms', warning: '350ms', critical: '800ms' },
+          cex_secondary: { target: '300ms', warning: '600ms', critical: '1200ms' },
+          dex: { target: '800ms', warning: '1500ms', critical: '3000ms' },
+          aggregator: { target: '500ms', warning: '1000ms', critical: '2000ms' },
+        },
+        anomalyThresholds: {
+          major: { zScore: 3.5, percentDeviation: '1.5%', velocity: '0.5%/s', note: 'BTC, ETH' },
+          large_cap: { zScore: 3.2, percentDeviation: '2.5%', velocity: '1.0%/s', note: 'Top alts' },
+          mid_cap: { zScore: 2.8, percentDeviation: '4%', velocity: '2.0%/s', note: 'Top 100' },
+          small_cap: { zScore: 2.5, percentDeviation: '6%', velocity: '3.0%/s', note: 'Top 500' },
+          meme: { zScore: 2.0, percentDeviation: '12%', velocity: '5.0%/s', note: 'DOGE, TURBO, etc.' },
+          defi: { zScore: 2.5, percentDeviation: '5%', velocity: '2.5%/s', note: 'DeFi tokens' },
+          stablecoin: { zScore: 5.0, percentDeviation: '0.5%', velocity: '0.1%/s', note: 'USDT, USDC' },
+        },
+        flashCrash: {
+          velocityThreshold: '5%/second',
+          minDuration: '100ms',
+          maxDuration: '60s',
+          recoveryThreshold: '80%',
+        },
+        qualityWeights: {
+          latency: '20%',
+          reliability: '25%',
+          accuracy: '30%',
+          freshness: '10%',
+          coverage: '5%',
+          consistency: '10%',
+        },
       },
       
       // AI Context
@@ -3328,7 +3397,7 @@ app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
       computeTime: `${Date.now() - startTime}ms`,
     });
   } catch (error: any) {
-    logger.error('❌ Anomaly Monitor test endpoint error', { error: error.message });
+    logger.error('❌ Enhanced Anomaly Monitor test endpoint error', { error: error.message });
     res.status(500).json({
       success: false,
       error: error.message,
