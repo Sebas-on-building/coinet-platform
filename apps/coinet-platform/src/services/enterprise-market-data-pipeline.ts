@@ -1234,6 +1234,15 @@ export async function fetchEnterpriseMarketPrices(
       if (source.id === 'coingecko-free' && !sourceData.has('coingecko-pro')) {
         secondaryPromises.push(
           fetchFromCoinGecko(coinIds, source).then(data => {
+            if (data.size > 0) {
+              logger.debug('🪙 CoinGecko-free data received', { 
+                count: data.size, 
+                keys: [...data.keys()].slice(0, 5),
+                samplePrice: data.values().next().value?.price
+              });
+            } else {
+              logger.warn('⚠️ CoinGecko-free returned empty data');
+            }
             sourceData.set(source.id, data);
           })
         );
@@ -1338,7 +1347,21 @@ export async function fetchEnterpriseMarketPrices(
     const allSourceData: { sourceId: string; data: Partial<EnterpriseMarketPrice>; weight: number }[] = [];
     
     for (const [sourceId, data] of sourceData) {
-      const coinData = data.get(coinId) || data.get(symbol.toLowerCase());
+      // Try coinId first, then symbol, then iterate to find by symbol property
+      let coinData = data.get(coinId) || data.get(symbol.toLowerCase());
+      
+      // If not found by key, try to find by symbol property in data values
+      if (!coinData) {
+        for (const [key, value] of data) {
+          if (value.symbol?.toUpperCase() === symbol.toUpperCase() || 
+              value.coinGeckoId === coinId ||
+              key === coinId) {
+            coinData = value;
+            break;
+          }
+        }
+      }
+      
       if (coinData && (coinData.price ?? 0) > 0) {
         const weight = getSourceWeight(sourceId);
         allSourceData.push({ sourceId, data: coinData, weight });
