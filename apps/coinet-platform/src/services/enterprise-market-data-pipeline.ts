@@ -2229,4 +2229,4 @@ export default {
   getMarketDataCacheStats,
   getCostReport,
   getCostReportForAI,
-};
+};// Deploy trigger: Fri Dec  5 22:04:12 CET 2025
