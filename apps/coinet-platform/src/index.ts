@@ -3034,6 +3034,14 @@ app.get('/api/test/enterprise-market', async (req: Request, res: Response) => {
         recommendations: pipelineStatus.recommendations,
       },
       
+      // Cost Optimization Report (Step 1.4.4)
+      costOptimization: {
+        budgetStatus: pipelineStatus.costReport.budgetStatus,
+        costEfficiency: pipelineStatus.costReport.costEfficiency,
+        bySource: pipelineStatus.costReport.bySource,
+        recommendations: pipelineStatus.costReport.recommendations,
+      },
+      
       // Warnings
       warnings: result.warnings,
       
@@ -3410,6 +3418,108 @@ app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TEST ENDPOINT: Cost Optimization Dashboard (Step 1.4.4)
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/cost', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const {
+      getCostReport,
+      getCostReportForAI,
+      getEnterprisePipelineStatus,
+    } = await import('./services/enterprise-market-data-pipeline');
+    
+    const { costOptimizer, SOURCE_COSTS } = await import('./services/cost-optimization');
+
+    // Get period from query (hourly, daily, monthly)
+    const period = (req.query.period as 'hourly' | 'daily' | 'monthly') || 'daily';
+    
+    // Get cost report
+    const report = getCostReport(period);
+    
+    // Get AI-formatted context
+    const aiContext = getCostReportForAI(period);
+    
+    // Get budget config
+    const budgetConfig = costOptimizer.getBudgetConfig();
+
+    res.json({
+      success: true,
+      section: '💰 COST OPTIMIZATION DASHBOARD - Step 1.4.4',
+      description: 'Intelligent API cost management with free-first routing, budget tracking, and efficiency optimization',
+      
+      // Budget overview
+      budget: {
+        monthly: `$${budgetConfig.monthlyBudget}`,
+        daily: `$${budgetConfig.dailyBudget.toFixed(2)}`,
+        alertAt: `${budgetConfig.alertThreshold * 100}%`,
+        hardLimitAt: `${budgetConfig.hardLimitThreshold * 100}%`,
+      },
+      
+      // Current status
+      status: {
+        period,
+        used: `$${report.budgetStatus.used.toFixed(4)}`,
+        remaining: `$${report.budgetStatus.remaining.toFixed(2)}`,
+        percentUsed: `${report.budgetStatus.percentUsed.toFixed(1)}%`,
+        projectedMonthly: `$${report.budgetStatus.projectedMonthly.toFixed(2)}`,
+        onTrack: report.budgetStatus.onTrack,
+      },
+      
+      // Efficiency metrics
+      efficiency: {
+        costPerDataPoint: `$${report.costEfficiency.costPerDataPoint.toFixed(6)}`,
+        cacheHitRate: `${(report.costEfficiency.cacheHitRate * 100).toFixed(1)}%`,
+        freeSourceUtilization: `${(report.costEfficiency.freeSourceUtilization * 100).toFixed(1)}%`,
+        goal: 'Maximize free source usage, minimize paid API calls',
+      },
+      
+      // Source costs
+      sourceCosts: SOURCE_COSTS.map(s => ({
+        id: s.sourceId,
+        name: s.name,
+        tier: s.tier,
+        costPerRequest: s.tier === 'free' ? 'FREE' : `$${s.costPerRequest.toFixed(4)}`,
+        monthlySubscription: s.tier === 'free' ? 'FREE' : `$${s.monthlySubscriptionCost}`,
+        rateLimit: `${s.rateLimitPerMin}/min`,
+        uniqueData: Object.entries(s.dataUniqueness)
+          .filter(([_, v]) => v)
+          .map(([k]) => k)
+          .join(', '),
+      })),
+      
+      // Usage breakdown
+      usage: report.bySource,
+      
+      // Recommendations
+      recommendations: report.recommendations,
+      
+      // Strategy explanation
+      strategy: {
+        freeFirst: 'Always try FREE sources (Binance, Kraken, DefiLlama) before paid APIs',
+        paidOnlyFor: 'Market cap, supply data, ATH, token fundamentals',
+        cacheAggressive: 'Longer TTLs for paid source data (30-60s vs 5s)',
+        budgetLimits: 'Automatic throttling at 95% budget utilization',
+      },
+      
+      // AI Context
+      aiContextPreview: aiContext,
+      
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('❌ Cost Optimization test endpoint error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      fetchTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -3482,9 +3592,10 @@ app.get('/', (_req: Request, res: Response) => {
       testEnterpriseMarket: '/api/test/enterprise-market?symbols=BTC,ETH,SOL', // Step 1.4.1 Enterprise Data Pipeline
       testCache: '/api/test/cache?symbols=BTC,ETH,SOL&refresh=true', // Step 1.4.2 Low-Latency Cache
       testAnomalyMonitor: '/api/test/anomaly-monitor?symbols=BTC,ETH,SOL,TURBO', // Step 1.4.3 Anomaly & Latency Monitoring
+      testCostOptimization: '/api/test/cost?period=daily', // Step 1.4.4 Cost Optimization
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/cache to see cache performance with sub-100ms response targets',
+    documentation: 'Use /api/test/cost to monitor API costs and budget status',
     
     // ═══════════════════════════════════════════════════════════════════════
     // ACADEMIC FOUNDATIONS

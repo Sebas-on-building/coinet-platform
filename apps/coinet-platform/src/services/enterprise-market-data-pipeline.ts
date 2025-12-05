@@ -34,6 +34,12 @@ import {
   type MarketRegime as AnomalyMarketRegime,
   type EnhancedPriceAnomaly,
 } from './anomaly-latency-monitor-v2';
+import {
+  costOptimizer,
+  shouldSkipPaidSource,
+  formatCostReportForAI,
+  type CostReport,
+} from './cost-optimization';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -388,7 +394,7 @@ class SourceHealthTracker {
     }
   }
   
-  recordSuccess(sourceId: string, latencyMs: number, qualityScore?: number): void {
+  recordSuccess(sourceId: string, latencyMs: number, qualityScore?: number, isCacheHit: boolean = false): void {
     const health = this.health.get(sourceId);
     if (!health) return;
     
@@ -406,7 +412,14 @@ class SourceHealthTracker {
     // Report to Enhanced Anomaly Monitor v2.0 (Step 1.4.3)
     enhancedAnomalyMonitor.recordRequest(sourceId, latencyMs, true);
     
-    logger.debug(`📊 Source ${sourceId} success`, { latencyMs, successRate: health.successRate.toFixed(3) });
+    // Record cost (Step 1.4.4 - Cost Optimization)
+    if (isCacheHit) {
+      costOptimizer.recordCacheHit(sourceId);
+    } else {
+      costOptimizer.recordRequest(sourceId, false);
+    }
+    
+    logger.debug(`📊 Source ${sourceId} success`, { latencyMs, successRate: health.successRate.toFixed(3), isCacheHit });
   }
   
   recordFailure(sourceId: string, error: string, isRateLimited: boolean = false): void {
@@ -473,6 +486,12 @@ class SourceHealthTracker {
       return false;
     }
     
+    // Step 1.4.4: Check budget constraints for paid sources
+    if (shouldSkipPaidSource(sourceId)) {
+      logger.debug(`💰 Budget limit reached - skipping paid source ${sourceId}`);
+      return false;
+    }
+    
     return true;
   }
   
@@ -490,11 +509,19 @@ class SourceHealthTracker {
       .sort((a, b) => {
         const healthA = this.health.get(a.id);
         const healthB = this.health.get(b.id);
-        // Sort by tier priority first, then by quality/latency within tier
-        if (a.tier !== b.tier) {
-          return a.tier === 'primary' ? -1 : b.tier === 'primary' ? 1 : a.tier === 'secondary' ? -1 : 1;
-        }
-        // Within same tier: by priority and health
+        
+        // Step 1.4.4: Cost-aware sorting - FREE sources first!
+        const costConfigA = costOptimizer.getSourceCostConfig(a.id);
+        const costConfigB = costOptimizer.getSourceCostConfig(b.id);
+        
+        const isFreeA = costConfigA?.tier === 'free';
+        const isFreeB = costConfigB?.tier === 'free';
+        
+        // Free sources always come before paid
+        if (isFreeA && !isFreeB) return -1;
+        if (!isFreeA && isFreeB) return 1;
+        
+        // Within same cost tier: sort by quality and priority
         if (a.priority !== b.priority) return a.priority - b.priority;
         return (healthB?.qualityScore || 0) - (healthA?.qualityScore || 0);
       });
@@ -1863,6 +1890,7 @@ export function getEnterprisePipelineStatus(): {
   sources: { id: string; name: string; tier: SourceTier; health: SourceHealth | null }[];
   rateLimit: Record<string, { remaining: number; resetIn: number }>;
   recommendations: string[];
+  costReport: CostReport;
 } {
   const sources = DATA_SOURCES.map(s => ({
     id: s.id,
@@ -1897,7 +1925,28 @@ export function getEnterprisePipelineStatus(): {
     recommendations.push('💡 Add CMC_API_KEY for CoinMarketCap Pro backup source');
   }
   
-  return { sources, rateLimit: rateLimitStatus, recommendations };
+  // Step 1.4.4: Get cost report
+  const costReport = costOptimizer.generateCostReport('daily');
+  
+  // Add cost-based recommendations
+  recommendations.push(...costReport.recommendations);
+  
+  return { sources, rateLimit: rateLimitStatus, recommendations, costReport };
+}
+
+/**
+ * Get cost optimization report
+ */
+export function getCostReport(period: 'hourly' | 'daily' | 'monthly' = 'daily'): CostReport {
+  return costOptimizer.generateCostReport(period);
+}
+
+/**
+ * Format cost report for AI context
+ */
+export function getCostReportForAI(period: 'hourly' | 'daily' | 'monthly' = 'daily'): string {
+  const report = costOptimizer.generateCostReport(period);
+  return formatCostReportForAI(report);
 }
 
 // ============================================================================
@@ -2019,5 +2068,7 @@ export default {
   formatEnterpriseMarketDataForAI,
   getEnterprisePipelineStatus,
   getMarketDataCacheStats,
+  getCostReport,
+  getCostReportForAI,
 };
 
