@@ -106,6 +106,10 @@ export interface EnterpriseMarketPrice {
   dataQuality: DataQualityMetrics;
   crossVerified: boolean;
   discrepancyFlags: string[];
+  // Debug fields (for confidence tuning)
+  _debugPricePoints?: number;
+  _debugDirectConf?: number;
+  _debugVerifyConf?: number;
   // Timestamps
   lastUpdated: string;
   fetchedAt: string;
@@ -1817,10 +1821,6 @@ export async function fetchEnterpriseMarketPrices(
       dataQuality,
       crossVerified: verification.verified || pricePoints.length >= 2,
       discrepancyFlags,
-      // DEBUG: Track pricePoints found (remove later)
-      _debugPricePoints: pricePoints.length,
-      _debugDirectConf: directConfidence,
-      _debugVerifyConf: verification.consensusConfidence,
       lastUpdated: mergedData.lastUpdated || new Date().toISOString(),
       fetchedAt: new Date().toISOString(),
     });
