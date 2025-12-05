@@ -116,6 +116,8 @@ export interface CostReport {
     cost: number;
     percentOfBudget: number;
     savedByCache: number;
+    tier: 'free' | 'paid';
+    avgCostPerRequest: number;
   }>;
   budgetStatus: {
     used: number;
@@ -123,13 +125,40 @@ export interface CostReport {
     percentUsed: number;
     projectedMonthly: number;
     onTrack: boolean;
+    daysUntilExhausted: number | null;
+    burnRate: number;  // USD per hour
   };
   recommendations: string[];
   costEfficiency: {
     costPerDataPoint: number;
     cacheHitRate: number;
     freeSourceUtilization: number;
+    paidSourceROI: number;  // Value gained per $ spent
+    overallGrade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F';
   };
+  savings: {
+    fromCache: number;
+    fromFreeSourceUsage: number;
+    totalSaved: number;
+    potentialAdditionalSavings: number;
+  };
+  trends: {
+    costTrend: 'increasing' | 'stable' | 'decreasing';
+    efficiencyTrend: 'improving' | 'stable' | 'degrading';
+    forecastNextDay: number;
+    forecastEndOfMonth: number;
+  };
+}
+
+export interface CostAlert {
+  id: string;
+  type: 'budget_warning' | 'budget_critical' | 'efficiency_drop' | 'source_expensive' | 'cache_miss_high';
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  timestamp: Date;
+  sourceId?: string;
+  metrics: Record<string, number>;
+  recommendation: string;
 }
 
 // ============================================================================
@@ -317,6 +346,9 @@ class CostOptimizer {
   private budget: BudgetConfig;
   private cacheHits: number = 0;
   private cacheMisses: number = 0;
+  private alerts: CostAlert[] = [];
+  private costHistory: { timestamp: Date; hourlyTotal: number }[] = [];
+  private lastEfficiencyScore: number = 100;
   
   constructor(budget: BudgetConfig = DEFAULT_BUDGET) {
     this.budget = budget;
@@ -325,11 +357,42 @@ class CostOptimizer {
     // Reset counters periodically
     this.scheduleResets();
     
+    // Record cost history every hour
+    this.scheduleCostHistoryRecording();
+    
     logger.info('💰 Cost Optimizer initialized', {
       monthlyBudget: `$${budget.monthlyBudget}`,
       dailyBudget: `$${budget.dailyBudget.toFixed(2)}`,
       alertThreshold: `${budget.alertThreshold * 100}%`,
     });
+  }
+  
+  /**
+   * Schedule hourly cost history recording
+   */
+  private scheduleCostHistoryRecording(): void {
+    setInterval(() => {
+      const hourlyTotal = this.getTotalHourlyCost();
+      this.costHistory.push({
+        timestamp: new Date(),
+        hourlyTotal,
+      });
+      
+      // Keep last 30 days of hourly data
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      this.costHistory = this.costHistory.filter(h => h.timestamp > thirtyDaysAgo);
+    }, 60 * 60 * 1000); // Every hour
+  }
+  
+  /**
+   * Get total hourly cost
+   */
+  private getTotalHourlyCost(): number {
+    let total = 0;
+    for (const tracker of this.trackers.values()) {
+      total += tracker.hourlyCost;
+    }
+    return total;
   }
   
   /**
@@ -470,19 +533,59 @@ class CostOptimizer {
     const dailyPercent = dailyUsed / this.budget.dailyBudget;
     const monthlyPercent = monthlyUsed / this.budget.monthlyBudget;
     
-    if (dailyPercent >= this.budget.alertThreshold) {
-      logger.warn('⚠️ Daily budget alert', {
-        used: `$${dailyUsed.toFixed(4)}`,
-        budget: `$${this.budget.dailyBudget.toFixed(2)}`,
-        percent: `${(dailyPercent * 100).toFixed(1)}%`,
+    // Daily budget warning
+    if (dailyPercent >= this.budget.alertThreshold && dailyPercent < this.budget.hardLimitThreshold) {
+      this.addAlert({
+        type: 'budget_warning',
+        severity: 'warning',
+        message: `Daily budget at ${(dailyPercent * 100).toFixed(1)}% - $${dailyUsed.toFixed(4)} of $${this.budget.dailyBudget.toFixed(2)}`,
+        metrics: { used: dailyUsed, budget: this.budget.dailyBudget, percent: dailyPercent * 100 },
+        recommendation: 'Increase cache TTLs or switch to free sources for non-critical data',
       });
     }
     
-    if (monthlyPercent >= this.budget.alertThreshold) {
-      logger.warn('⚠️ Monthly budget alert', {
-        used: `$${monthlyUsed.toFixed(4)}`,
-        budget: `$${this.budget.monthlyBudget}`,
-        percent: `${(monthlyPercent * 100).toFixed(1)}%`,
+    // Daily budget critical
+    if (dailyPercent >= this.budget.hardLimitThreshold) {
+      this.addAlert({
+        type: 'budget_critical',
+        severity: 'critical',
+        message: `Daily budget CRITICAL at ${(dailyPercent * 100).toFixed(1)}% - paid sources will be blocked`,
+        metrics: { used: dailyUsed, budget: this.budget.dailyBudget, percent: dailyPercent * 100 },
+        recommendation: 'Paid source calls are being blocked. Use only free sources until budget resets.',
+      });
+    }
+    
+    // Monthly budget warning
+    if (monthlyPercent >= this.budget.alertThreshold && monthlyPercent < this.budget.hardLimitThreshold) {
+      this.addAlert({
+        type: 'budget_warning',
+        severity: 'warning',
+        message: `Monthly budget at ${(monthlyPercent * 100).toFixed(1)}% - $${monthlyUsed.toFixed(4)} of $${this.budget.monthlyBudget}`,
+        metrics: { used: monthlyUsed, budget: this.budget.monthlyBudget, percent: monthlyPercent * 100 },
+        recommendation: 'Consider upgrading cache strategy or reducing request frequency',
+      });
+    }
+    
+    // Monthly budget critical
+    if (monthlyPercent >= this.budget.hardLimitThreshold) {
+      this.addAlert({
+        type: 'budget_critical',
+        severity: 'critical',
+        message: `Monthly budget CRITICAL at ${(monthlyPercent * 100).toFixed(1)}% - paid sources blocked for rest of month`,
+        metrics: { used: monthlyUsed, budget: this.budget.monthlyBudget, percent: monthlyPercent * 100 },
+        recommendation: 'All paid source calls are blocked. Consider increasing monthly budget or waiting until next month.',
+      });
+    }
+    
+    // Check cache hit rate
+    const cacheHitRate = this.cacheHits / (this.cacheHits + this.cacheMisses) || 0;
+    if (cacheHitRate < 0.3 && (this.cacheHits + this.cacheMisses) > 100) {
+      this.addAlert({
+        type: 'cache_miss_high',
+        severity: 'warning',
+        message: `Cache hit rate very low: ${(cacheHitRate * 100).toFixed(1)}% - wasting API calls`,
+        metrics: { hitRate: cacheHitRate, hits: this.cacheHits, misses: this.cacheMisses },
+        recommendation: 'Increase cache TTLs from 5s to 15-30s for price data, 60s for market cap data',
       });
     }
   }
@@ -682,13 +785,14 @@ class CostOptimizer {
   // ═══════════════════════════════════════════════════════════════════════════
   
   /**
-   * Generate comprehensive cost report
+   * Generate comprehensive cost report with advanced analytics
    */
   generateCostReport(period: 'hourly' | 'daily' | 'monthly' = 'daily'): CostReport {
     const bySource: CostReport['bySource'] = {};
     let totalCost = 0;
     let totalRequests = 0;
     let totalSavedByCache = 0;
+    let totalSavedByCacheCost = 0;
     
     for (const [sourceId, tracker] of this.trackers) {
       const config = SOURCE_COSTS.find(s => s.sourceId === sourceId);
@@ -722,11 +826,14 @@ class CostOptimizer {
         cost,
         percentOfBudget: budget > 0 ? (cost / budget) * 100 : 0,
         savedByCache: tracker.savedByCache,
+        tier: config?.tier || 'free',
+        avgCostPerRequest: requests > 0 ? cost / requests : 0,
       };
       
       totalCost += cost;
       totalRequests += requests;
       totalSavedByCache += tracker.savedByCache;
+      totalSavedByCacheCost += tracker.savedByCacheCost;
     }
     
     const budget = period === 'hourly'
@@ -745,6 +852,12 @@ class CostOptimizer {
       projectedMonthly = totalCost * 30;
     }
     
+    // Calculate burn rate and days until exhausted
+    const burnRate = period === 'hourly' ? totalCost : totalCost / 24;
+    const daysUntilExhausted = burnRate > 0 
+      ? (this.budget.monthlyBudget - this.getTotalMonthlyCost()) / (burnRate * 24)
+      : null;
+    
     // Generate recommendations
     const recommendations: string[] = [];
     
@@ -754,7 +867,7 @@ class CostOptimizer {
     
     const cacheHitRate = this.cacheHits / (this.cacheHits + this.cacheMisses) || 0;
     if (cacheHitRate < 0.5) {
-      recommendations.push('💡 Cache hit rate low - consider longer TTLs for price data');
+      recommendations.push('💡 Cache hit rate low (' + (cacheHitRate * 100).toFixed(1) + '%) - increase TTLs');
     }
     
     // Check if paid sources are being overused
@@ -770,12 +883,58 @@ class CostOptimizer {
     
     if (freeUtilization < 0.7) {
       recommendations.push('💡 Increase free source utilization - currently ' + 
-        (freeUtilization * 100).toFixed(1) + '%');
+        (freeUtilization * 100).toFixed(1) + '% (target: 70%+)');
     }
     
     if (projectedMonthly > this.budget.monthlyBudget) {
-      recommendations.push(`🚨 Projected monthly cost ($${projectedMonthly.toFixed(2)}) exceeds budget`);
+      recommendations.push(`🚨 Projected monthly cost ($${projectedMonthly.toFixed(2)}) exceeds budget ($${this.budget.monthlyBudget})`);
     }
+    
+    // Check for expensive sources
+    for (const [sourceId, data] of Object.entries(bySource)) {
+      if (data.tier === 'paid' && data.percentOfBudget > 50) {
+        recommendations.push(`⚠️ ${sourceId} using ${data.percentOfBudget.toFixed(1)}% of budget - consider alternatives`);
+      }
+    }
+    
+    // Calculate savings
+    const estimatedPaidCostIfNoFree = totalRequests * 0.001; // Avg paid cost
+    const savingsFromFreeUsage = estimatedPaidCostIfNoFree * freeUtilization;
+    const totalSaved = totalSavedByCacheCost + savingsFromFreeUsage;
+    
+    // Potential additional savings
+    const potentialCacheSavings = totalRequests * 0.3 * 0.001; // 30% more cache hits
+    const potentialFreeUsageSavings = (0.9 - freeUtilization) * totalRequests * 0.001;
+    const potentialAdditionalSavings = potentialCacheSavings + potentialFreeUsageSavings;
+    
+    // Calculate efficiency grade
+    let efficiencyScore = 100;
+    if (cacheHitRate < 0.5) efficiencyScore -= 20;
+    if (freeUtilization < 0.7) efficiencyScore -= 20;
+    if (percentUsed > 80) efficiencyScore -= 15;
+    if (projectedMonthly > this.budget.monthlyBudget) efficiencyScore -= 25;
+    
+    const overallGrade: CostReport['costEfficiency']['overallGrade'] = 
+      efficiencyScore >= 95 ? 'A+' :
+      efficiencyScore >= 85 ? 'A' :
+      efficiencyScore >= 75 ? 'B' :
+      efficiencyScore >= 65 ? 'C' :
+      efficiencyScore >= 50 ? 'D' : 'F';
+    
+    // Calculate ROI (value per dollar spent)
+    // Assuming each data point saves $0.01 in user value (trades, decisions)
+    const valueGenerated = totalRequests * 0.01;
+    const paidSourceROI = totalCost > 0 ? valueGenerated / totalCost : Infinity;
+    
+    // Trend analysis
+    const costTrend = this.analyzeCostTrend();
+    const efficiencyTrend = efficiencyScore >= this.lastEfficiencyScore ? 'improving' : 
+                           efficiencyScore === this.lastEfficiencyScore ? 'stable' : 'degrading';
+    this.lastEfficiencyScore = efficiencyScore;
+    
+    // Forecasts
+    const forecastNextDay = totalCost * (period === 'daily' ? 1 : period === 'hourly' ? 24 : 1/30);
+    const forecastEndOfMonth = projectedMonthly;
     
     return {
       timestamp: new Date().toISOString(),
@@ -789,14 +948,86 @@ class CostOptimizer {
         percentUsed,
         projectedMonthly,
         onTrack: projectedMonthly <= this.budget.monthlyBudget,
+        daysUntilExhausted,
+        burnRate,
       },
       recommendations,
       costEfficiency: {
         costPerDataPoint: totalRequests > 0 ? totalCost / totalRequests : 0,
         cacheHitRate,
         freeSourceUtilization: freeUtilization,
+        paidSourceROI,
+        overallGrade,
+      },
+      savings: {
+        fromCache: totalSavedByCacheCost,
+        fromFreeSourceUsage: savingsFromFreeUsage,
+        totalSaved,
+        potentialAdditionalSavings,
+      },
+      trends: {
+        costTrend,
+        efficiencyTrend,
+        forecastNextDay,
+        forecastEndOfMonth,
       },
     };
+  }
+  
+  /**
+   * Analyze cost trend from history
+   */
+  private analyzeCostTrend(): 'increasing' | 'stable' | 'decreasing' {
+    if (this.costHistory.length < 2) return 'stable';
+    
+    const recent = this.costHistory.slice(-24); // Last 24 hours
+    if (recent.length < 2) return 'stable';
+    
+    const firstHalf = recent.slice(0, Math.floor(recent.length / 2));
+    const secondHalf = recent.slice(Math.floor(recent.length / 2));
+    
+    const avgFirst = firstHalf.reduce((sum, h) => sum + h.hourlyTotal, 0) / firstHalf.length;
+    const avgSecond = secondHalf.reduce((sum, h) => sum + h.hourlyTotal, 0) / secondHalf.length;
+    
+    const changePercent = avgFirst > 0 ? ((avgSecond - avgFirst) / avgFirst) * 100 : 0;
+    
+    if (changePercent > 10) return 'increasing';
+    if (changePercent < -10) return 'decreasing';
+    return 'stable';
+  }
+  
+  /**
+   * Add a cost alert
+   */
+  addAlert(alert: Omit<CostAlert, 'id' | 'timestamp'>): void {
+    const fullAlert: CostAlert = {
+      ...alert,
+      id: `alert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+    };
+    
+    this.alerts.push(fullAlert);
+    
+    // Keep only last 100 alerts
+    if (this.alerts.length > 100) {
+      this.alerts = this.alerts.slice(-100);
+    }
+    
+    // Log based on severity
+    if (alert.severity === 'critical') {
+      logger.error(`🚨 ${alert.type}: ${alert.message}`);
+    } else if (alert.severity === 'warning') {
+      logger.warn(`⚠️ ${alert.type}: ${alert.message}`);
+    } else {
+      logger.info(`ℹ️ ${alert.type}: ${alert.message}`);
+    }
+  }
+  
+  /**
+   * Get recent alerts
+   */
+  getAlerts(limit: number = 10): CostAlert[] {
+    return this.alerts.slice(-limit);
   }
   
   /**
@@ -882,31 +1113,55 @@ export function formatCostReportForAI(report: CostReport): string {
   let context = `
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║              💰 API COST OPTIMIZATION REPORT                               ║
-║              Period: ${report.period.toUpperCase().padEnd(10)}                                        ║
+║              Period: ${report.period.toUpperCase().padEnd(10)} | Grade: ${report.costEfficiency.overallGrade}                         ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
 📊 BUDGET STATUS:
    Used: $${report.budgetStatus.used.toFixed(4)} / $${(report.budgetStatus.used + report.budgetStatus.remaining).toFixed(2)} (${report.budgetStatus.percentUsed.toFixed(1)}%)
    Remaining: $${report.budgetStatus.remaining.toFixed(2)}
    Projected Monthly: $${report.budgetStatus.projectedMonthly.toFixed(2)}
+   Burn Rate: $${report.budgetStatus.burnRate.toFixed(4)}/hour
    Status: ${report.budgetStatus.onTrack ? '✅ On Track' : '⚠️ Over Budget'}
+   ${report.budgetStatus.daysUntilExhausted ? `Days Until Exhausted: ${report.budgetStatus.daysUntilExhausted.toFixed(1)}` : ''}
 
 📈 EFFICIENCY METRICS:
+   Overall Grade: ${report.costEfficiency.overallGrade}
    Cost per Data Point: $${report.costEfficiency.costPerDataPoint.toFixed(6)}
    Cache Hit Rate: ${(report.costEfficiency.cacheHitRate * 100).toFixed(1)}%
    Free Source Utilization: ${(report.costEfficiency.freeSourceUtilization * 100).toFixed(1)}%
+   Paid Source ROI: ${report.costEfficiency.paidSourceROI === Infinity ? '∞' : report.costEfficiency.paidSourceROI.toFixed(2) + 'x'}
+
+💵 SAVINGS:
+   From Cache: $${report.savings.fromCache.toFixed(4)}
+   From Free Sources: $${report.savings.fromFreeSourceUsage.toFixed(4)}
+   Total Saved: $${report.savings.totalSaved.toFixed(4)}
+   Potential Additional: $${report.savings.potentialAdditionalSavings.toFixed(4)}
+
+📉 TRENDS:
+   Cost Trend: ${report.trends.costTrend === 'increasing' ? '📈 Increasing' : report.trends.costTrend === 'decreasing' ? '📉 Decreasing' : '➡️ Stable'}
+   Efficiency: ${report.trends.efficiencyTrend === 'improving' ? '📈 Improving' : report.trends.efficiencyTrend === 'degrading' ? '📉 Degrading' : '➡️ Stable'}
+   Forecast (End of Month): $${report.trends.forecastEndOfMonth.toFixed(2)}
 
 📋 SOURCE BREAKDOWN:
 `;
 
-  for (const [sourceId, data] of Object.entries(report.bySource)) {
-    const config = SOURCE_COSTS.find(s => s.sourceId === sourceId);
-    const tier = config?.tier === 'free' ? '🆓' : '💳';
+  // Sort sources: paid first (most interesting), then free
+  const sortedSources = Object.entries(report.bySource)
+    .sort((a, b) => {
+      if (a[1].tier !== b[1].tier) return a[1].tier === 'paid' ? -1 : 1;
+      return b[1].cost - a[1].cost;
+    });
+
+  for (const [sourceId, data] of sortedSources) {
+    const tier = data.tier === 'free' ? '🆓' : '💳';
     
     if (data.requests > 0 || data.savedByCache > 0) {
-      context += `   ${tier} ${sourceId}: ${data.requests} calls, $${data.cost.toFixed(4)} (${data.percentOfBudget.toFixed(1)}% of budget)`;
+      context += `   ${tier} ${sourceId}: ${data.requests} calls`;
+      if (data.tier === 'paid') {
+        context += `, $${data.cost.toFixed(4)} (${data.percentOfBudget.toFixed(1)}% of budget)`;
+      }
       if (data.savedByCache > 0) {
-        context += ` | Saved by cache: ${data.savedByCache}`;
+        context += ` | Cache saved: ${data.savedByCache}`;
       }
       context += '\n';
     }

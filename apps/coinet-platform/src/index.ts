@@ -3034,12 +3034,25 @@ app.get('/api/test/enterprise-market', async (req: Request, res: Response) => {
         recommendations: pipelineStatus.recommendations,
       },
       
-      // Cost Optimization Report (Step 1.4.4)
+      // Cost Optimization Report (Step 1.4.4 - Divine Perfection)
       costOptimization: {
-        budgetStatus: pipelineStatus.costReport.budgetStatus,
-        costEfficiency: pipelineStatus.costReport.costEfficiency,
-        bySource: pipelineStatus.costReport.bySource,
-        recommendations: pipelineStatus.costReport.recommendations,
+        grade: pipelineStatus.costReport.costEfficiency.overallGrade,
+        budgetStatus: {
+          used: `$${pipelineStatus.costReport.budgetStatus.used.toFixed(4)}`,
+          remaining: `$${pipelineStatus.costReport.budgetStatus.remaining.toFixed(2)}`,
+          percentUsed: `${pipelineStatus.costReport.budgetStatus.percentUsed.toFixed(1)}%`,
+          onTrack: pipelineStatus.costReport.budgetStatus.onTrack,
+        },
+        efficiency: {
+          cacheHitRate: `${(pipelineStatus.costReport.costEfficiency.cacheHitRate * 100).toFixed(1)}%`,
+          freeSourceUtilization: `${(pipelineStatus.costReport.costEfficiency.freeSourceUtilization * 100).toFixed(1)}%`,
+        },
+        savings: {
+          total: `$${pipelineStatus.costReport.savings.totalSaved.toFixed(4)}`,
+          potential: `$${pipelineStatus.costReport.savings.potentialAdditionalSavings.toFixed(4)}`,
+        },
+        trends: pipelineStatus.costReport.trends,
+        recommendations: pipelineStatus.costReport.recommendations.slice(0, 3),
       },
       
       // Warnings
@@ -3445,6 +3458,9 @@ app.get('/api/test/cost', async (req: Request, res: Response) => {
     // Get budget config
     const budgetConfig = costOptimizer.getBudgetConfig();
 
+    // Get alerts
+    const alerts = costOptimizer.getAlerts(10);
+
     res.json({
       success: true,
       section: '💰 COST OPTIMIZATION DASHBOARD - Step 1.4.4',
@@ -3466,14 +3482,38 @@ app.get('/api/test/cost', async (req: Request, res: Response) => {
         percentUsed: `${report.budgetStatus.percentUsed.toFixed(1)}%`,
         projectedMonthly: `$${report.budgetStatus.projectedMonthly.toFixed(2)}`,
         onTrack: report.budgetStatus.onTrack,
+        burnRate: `$${report.budgetStatus.burnRate.toFixed(4)}/hour`,
+        daysUntilExhausted: report.budgetStatus.daysUntilExhausted 
+          ? `${report.budgetStatus.daysUntilExhausted.toFixed(1)} days`
+          : 'N/A',
       },
       
-      // Efficiency metrics
+      // Efficiency metrics (Divine Perfection)
       efficiency: {
+        overallGrade: report.costEfficiency.overallGrade,
         costPerDataPoint: `$${report.costEfficiency.costPerDataPoint.toFixed(6)}`,
         cacheHitRate: `${(report.costEfficiency.cacheHitRate * 100).toFixed(1)}%`,
         freeSourceUtilization: `${(report.costEfficiency.freeSourceUtilization * 100).toFixed(1)}%`,
+        paidSourceROI: report.costEfficiency.paidSourceROI === Infinity 
+          ? '∞ (no paid calls)' 
+          : `${report.costEfficiency.paidSourceROI.toFixed(2)}x`,
         goal: 'Maximize free source usage, minimize paid API calls',
+      },
+      
+      // Savings analysis
+      savings: {
+        fromCache: `$${report.savings.fromCache.toFixed(4)}`,
+        fromFreeSourceUsage: `$${report.savings.fromFreeSourceUsage.toFixed(4)}`,
+        totalSaved: `$${report.savings.totalSaved.toFixed(4)}`,
+        potentialAdditional: `$${report.savings.potentialAdditionalSavings.toFixed(4)}`,
+      },
+      
+      // Trends
+      trends: {
+        costTrend: report.trends.costTrend,
+        efficiencyTrend: report.trends.efficiencyTrend,
+        forecastNextDay: `$${report.trends.forecastNextDay.toFixed(4)}`,
+        forecastEndOfMonth: `$${report.trends.forecastEndOfMonth.toFixed(2)}`,
       },
       
       // Source costs
@@ -3493,6 +3533,15 @@ app.get('/api/test/cost', async (req: Request, res: Response) => {
       // Usage breakdown
       usage: report.bySource,
       
+      // Recent alerts
+      alerts: alerts.map(a => ({
+        type: a.type,
+        severity: a.severity,
+        message: a.message,
+        timestamp: a.timestamp.toISOString(),
+        recommendation: a.recommendation,
+      })),
+      
       // Recommendations
       recommendations: report.recommendations,
       
@@ -3502,6 +3551,7 @@ app.get('/api/test/cost', async (req: Request, res: Response) => {
         paidOnlyFor: 'Market cap, supply data, ATH, token fundamentals',
         cacheAggressive: 'Longer TTLs for paid source data (30-60s vs 5s)',
         budgetLimits: 'Automatic throttling at 95% budget utilization',
+        costAwareness: 'Source selection prioritizes free sources, even with slightly lower quality',
       },
       
       // AI Context
