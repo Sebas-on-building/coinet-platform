@@ -4034,7 +4034,11 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
         },
       },
       
-      opportunityScore: {
+      opportunityScore: omniScore.opportunityScore.gated ? {
+        gated: true,
+        gateReason: omniScore.opportunityScore.gateReason,
+        description: 'OS display requires sufficient fundamental (QS) data coverage',
+      } : {
         score: omniScore.opportunityScore.score.toFixed(1),
         tier: omniScore.opportunityScore.tier,
         description: 'What the market MIGHT DO (regime-adjusted positioning)',
@@ -4045,6 +4049,7 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
           momentum: `${omniScore.opportunityScore.momentum.toFixed(0)}%`,
         },
         regimeAdjustment: `${(omniScore.opportunityScore.regimeAdjustment * 100).toFixed(0)}%`,
+        gated: false,
       },
       
       compositeScore: {
@@ -4054,11 +4059,14 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       
       // ═══════════════════════════════════════════════════════════════════════
       // NARRATIVE VS REALITY GAP (Signature Metric)
+      // Percentile-based interpretation (regime-conditioned)
       // ═══════════════════════════════════════════════════════════════════════
       narrativeRealityGap: {
         index: omniScore.narrativeRealityGap.index.toFixed(2),
+        percentile: `${(omniScore.narrativeRealityGap.percentile * 100).toFixed(0)}th`,
         interpretation: omniScore.narrativeRealityGap.interpretation,
         tradingImplication: omniScore.narrativeRealityGap.tradingImplication,
+        statisticalBasis: omniScore.narrativeRealityGap.statisticalBasis,
         details: {
           narrativeZ: omniScore.narrativeRealityGap.narrativeZ.toFixed(2),
           realityZ: omniScore.narrativeRealityGap.realityZ.toFixed(2),
@@ -4067,9 +4075,12 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       
       // ═══════════════════════════════════════════════════════════════════════
       // EVENT RISK (Red Flag Engine)
+      // Severity-weighted adjustment: POS_adj = POS - γ × ERS
       // ═══════════════════════════════════════════════════════════════════════
       eventRisk: omniScore.eventRisk.active ? {
         level: omniScore.eventRisk.level,
+        severityScore: omniScore.eventRisk.severityScore.toFixed(2),
+        posAdjustment: `-${omniScore.eventRisk.posAdjustment.toFixed(1)} points`,
         tierOverride: omniScore.eventRisk.tierOverride,
         events: omniScore.eventRisk.events.map(e => ({
           type: e.type,
@@ -4104,7 +4115,7 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       },
       
       // ═══════════════════════════════════════════════════════════════════════
-      // COUNTERFACTUAL SIMULATIONS
+      // COUNTERFACTUAL SIMULATIONS (Constrained & Realistic)
       // ═══════════════════════════════════════════════════════════════════════
       counterfactuals: omniScore.counterfactuals.slice(0, 3).map(cf => ({
         scenario: cf.scenario,
@@ -4113,6 +4124,9 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
         timeEstimate: cf.timeEstimate,
         costEstimate: cf.costEstimate,
         feasibility: cf.feasibility,
+        isRealistic: cf.isRealistic,
+        constraints: cf.constraints,
+        realismNote: cf.realismNote,
       })),
       
       // ═══════════════════════════════════════════════════════════════════════

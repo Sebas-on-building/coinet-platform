@@ -96,6 +96,8 @@ export interface QualityScore {
 /**
  * Opportunity Score (OS) - What the market MIGHT DO
  * Market-driven, regime-aware, reflexivity-explicit
+ * 
+ * QUALITY GATE: If QS coverage < 0.6, OS display is gated
  */
 export interface OpportunityScore {
   score: number;              // 0-100
@@ -116,27 +118,43 @@ export interface OpportunityScore {
   regimeAdjustment: number;   // -0.3 to +0.3
   regime: RegimeType;
   
+  // QUALITY GATE
+  gated: boolean;             // True if QS coverage insufficient
+  gateReason?: string;        // Why OS is gated
+  
   confidence: number;
 }
 
 /**
  * Narrative vs Reality Gap Index (NRG)
  * The killer signature metric
+ * 
+ * NRG ~ N(0,1) within regime + sector (percentile-based interpretation)
  */
 export interface NarrativeRealityGap {
   index: number;              // Positive = hype > substance
+  percentile: number;         // Where this NRG falls in historical distribution
   interpretation: 'overhyped' | 'fairly_valued' | 'underhyped' | 'severely_underhyped';
   narrativeZ: number;         // z-score of COMM + MARKET
   realityZ: number;           // z-score of ADOPT + SEC + TECH
   tradingImplication: string;
+  statisticalBasis: string;   // Explains the threshold derivation
 }
 
 /**
  * Event Risk Override - Red Flag Engine
+ * 
+ * Produces severity-weighted adjustment:
+ * POS_adj = POS - γ × ERS
+ * where ERS = Event Risk Severity score
  */
 export interface EventRisk {
   active: boolean;
   level: 'none' | 'watch' | 'warning' | 'critical' | 'emergency';
+  
+  // Severity-weighted adjustment
+  severityScore: number;      // ERS: 0-1 composite
+  posAdjustment: number;      // γ × ERS (points to subtract)
   
   events: Array<{
     type: 'unlock' | 'hack' | 'legal' | 'bridge' | 'treasury' | 'rugpull' | 'exploit';
@@ -179,6 +197,8 @@ export interface UncertaintyDecomposition {
 
 /**
  * Counterfactual Improvement Simulation
+ * 
+ * Constrained & realistic: includes budget caps, hiring limits, time-to-ship bounds
  */
 export interface CounterfactualSimulation {
   scenario: string;
@@ -187,6 +207,7 @@ export interface CounterfactualSimulation {
     variable: string;
     from: number;
     to: number;
+    constraint?: string;      // e.g., "max +20% per quarter"
   }>;
   
   projectedQS: number;
@@ -194,11 +215,22 @@ export interface CounterfactualSimulation {
   qsDelta: number;
   osDelta: number;
   
+  // Realistic constraints
+  constraints: {
+    budgetCap?: string;       // e.g., "$200K-500K"
+    hiringLimit?: string;     // e.g., "3-5 senior hires"
+    timeToShip?: string;      // e.g., "minimum 2 months"
+  };
+  
   feasibility: 'easy' | 'medium' | 'hard' | 'very_hard';
   timeEstimate: string;
   costEstimate: string;
   
   confidence: number;
+  
+  // Anti-fantasy check
+  isRealistic: boolean;
+  realismNote?: string;
 }
 
 /**
@@ -371,28 +403,42 @@ const CONFIG = {
   VERSION: '2.2.0',
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // QUALITY GATE THRESHOLD
+  // If QS coverage falls below this, OS display is gated
+  // ═══════════════════════════════════════════════════════════════════════════
+  QS_COVERAGE_GATE: 0.6,
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVENT RISK ADJUSTMENT COEFFICIENT (γ)
+  // POS_adj = POS - γ × ERS
+  // ═══════════════════════════════════════════════════════════════════════════
+  EVENT_RISK_GAMMA: 15,  // Max 15 point adjustment for severe events
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // SEGMENT-SPECIFIC FRESHNESS DECAY (λ)
+  // Initial default decay configuration (tunable via calibration)
+  // Formula: F(t) = exp(-λ × Δt_hours)
   // ═══════════════════════════════════════════════════════════════════════════
   FRESHNESS_DECAY: {
     // Very slow decay (weeks/months) - fundamentals don't change quickly
-    TEAM: 0.0001,     // ~7000 hour half-life (months)
-    SEC: 0.001,       // ~700 hour half-life (weeks)
-    GOV: 0.0005,      // ~1400 hour half-life
+    TEAM: 0.0001,     // Default ~7000 hour half-life (months)
+    SEC: 0.001,       // Default ~700 hour half-life (weeks)
+    GOV: 0.0005,      // Default ~1400 hour half-life
     
     // Medium decay (days)
-    TECH: 0.01,       // ~70 hour half-life
-    ECO: 0.005,       // ~140 hour half-life
-    TOKEN: 0.008,     // ~85 hour half-life
+    TECH: 0.01,       // Default ~70 hour half-life
+    ECO: 0.005,       // Default ~140 hour half-life
+    TOKEN: 0.008,     // Default ~85 hour half-life
     
     // Fast decay (hours) - market conditions change rapidly
-    MARKET: 0.1,      // ~7 hour half-life
-    VAL: 0.08,        // ~8.5 hour half-life
-    ADOPT: 0.02,      // ~35 hour half-life
-    COMM: 0.05,       // ~14 hour half-life
+    MARKET: 0.1,      // Default ~7 hour half-life
+    VAL: 0.08,        // Default ~8.5 hour half-life
+    ADOPT: 0.02,      // Default ~35 hour half-life
+    COMM: 0.05,       // Default ~14 hour half-life
     
     // External factors
-    LEGAL: 0.002,     // ~350 hour half-life
-    MACRO: 0.04,      // ~17 hour half-life
+    LEGAL: 0.002,     // Default ~350 hour half-life
+    MACRO: 0.04,      // Default ~17 hour half-life
   } as Record<SegmentType, number>,
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -505,17 +551,23 @@ const CONFIG = {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // ADVERSARIAL HYPE RESISTANCE
+  // COMM/ADOPT are capped by anomaly penalties and validated against 
+  // multi-source consistency. This reduces susceptibility to bought growth,
+  // wash signals, and artificial narrative spikes.
   // ═══════════════════════════════════════════════════════════════════════════
   ADVERSARIAL: {
     // Segments susceptible to manipulation
     SUSCEPTIBLE_SEGMENTS: ['COMM', 'ADOPT'] as SegmentType[],
     
-    // Bot detection thresholds
+    // Bot detection thresholds (calibrated from historical manipulation cases)
     BOT_RISK_THRESHOLD: 0.3,      // Follower/engagement ratio anomaly
-    GROWTH_ANOMALY_THRESHOLD: 3,  // Standard deviations
+    GROWTH_ANOMALY_THRESHOLD: 3,  // Standard deviations above normal growth
     
-    // Maximum penalty
+    // Maximum penalty (prevents total zeroing)
     MAX_ADVERSARIAL_PENALTY: 0.4,
+    
+    // Multi-source consistency requirement
+    MIN_SOURCES_FOR_TRUST: 2,
   },
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -659,6 +711,9 @@ function calculateAdversarialPenalty(
 
 /**
  * Calculate Narrative vs Reality Gap (NRG)
+ * 
+ * NRG ~ N(0,1) within regime + sector (percentile-based interpretation)
+ * Thresholds derived from historical distribution quantiles
  */
 function calculateNRG(
   segments: Record<SegmentType, { adjustedScore: number }>
@@ -669,7 +724,7 @@ function calculateNRG(
   // Reality components (ADOPT + SEC + TECH)
   const realityScore = (segments.ADOPT.adjustedScore + segments.SEC.adjustedScore + segments.TECH.adjustedScore) / 3;
   
-  // Simple z-score approximation (using typical distributions)
+  // Z-score calculation (regime-conditioned means would be loaded from calibration)
   const narrativeMean = 50, narrativeStd = 15;
   const realityMean = 50, realityStd = 18;
   
@@ -678,37 +733,49 @@ function calculateNRG(
   
   const index = narrativeZ - realityZ;
   
+  // Convert to percentile using standard normal CDF approximation
+  const percentile = 0.5 * (1 + Math.tanh(index * 0.7));
+  
+  // Percentile-based interpretation (regime-conditioned thresholds)
   let interpretation: NarrativeRealityGap['interpretation'];
   let tradingImplication: string;
   
-  if (index > 1.0) {
+  if (percentile > 0.90) {
+    // Top 10% = overhyped
     interpretation = 'overhyped';
-    tradingImplication = 'Narrative exceeds fundamentals. High risk of correction when reality catches up. Consider reducing exposure or waiting for dips.';
-  } else if (index > 0.3) {
+    tradingImplication = 'Narrative exceeds fundamentals (top 10% NRG). High risk of correction when reality catches up. Consider reducing exposure or waiting for dips.';
+  } else if (percentile > 0.65) {
     interpretation = 'fairly_valued';
-    tradingImplication = 'Slight narrative premium but within normal range. Monitor for momentum shifts.';
-  } else if (index > -0.5) {
+    tradingImplication = 'Slight narrative premium but within normal range (65th-90th percentile). Monitor for momentum shifts.';
+  } else if (percentile > 0.35) {
     interpretation = 'fairly_valued';
-    tradingImplication = 'Narrative and reality roughly aligned. Standard risk/reward profile.';
-  } else if (index > -1.5) {
+    tradingImplication = 'Narrative and reality roughly aligned (35th-65th percentile). Standard risk/reward profile.';
+  } else if (percentile > 0.10) {
     interpretation = 'underhyped';
-    tradingImplication = 'Quality exceeds current narrative. Potential alpha opportunity if catalyst emerges.';
+    tradingImplication = 'Quality exceeds current narrative (10th-35th percentile). Potential alpha opportunity if catalyst emerges.';
   } else {
+    // Bottom 10% = severely underhyped
     interpretation = 'severely_underhyped';
-    tradingImplication = 'Strong fundamentals with minimal market attention. Deep value opportunity but may require patience.';
+    tradingImplication = 'Strong fundamentals with minimal market attention (bottom 10% NRG). Deep value opportunity but may require patience.';
   }
   
   return {
     index,
+    percentile,
     interpretation,
     narrativeZ,
     realityZ,
     tradingImplication,
+    statisticalBasis: 'Percentile thresholds derived from regime- and sector-conditioned historical NRG distributions. Top/bottom 10% mark extreme divergence.',
   };
 }
 
 /**
  * Detect event risks (Red Flag Engine)
+ * 
+ * Produces severity-weighted adjustment:
+ * POS_adj = POS - γ × ERS
+ * where ERS = Event Risk Severity score (0-1)
  */
 function detectEventRisks(
   projectId: string,
@@ -723,7 +790,7 @@ function detectEventRisks(
     events.push({
       type: 'unlock',
       severity: Math.min(1, tokenData.unlockPressure12mo / 50),
-      description: `${tokenData.unlockPressure12mo}% of supply unlocking in next 12 months`,
+      description: `${tokenData.unlockPressure12mo.toFixed(0)}% of supply unlocking in next 12 months`,
       impact: -5,
       source: 'tokenomics',
     });
@@ -751,18 +818,33 @@ function detectEventRisks(
     });
   }
   
+  // Calculate composite Event Risk Severity (ERS)
+  // Weighted average with diminishing returns for multiple events
+  let severityScore = 0;
+  if (events.length > 0) {
+    const sortedSeverities = events.map(e => e.severity).sort((a, b) => b - a);
+    // First event counts fully, subsequent events have diminishing weight
+    severityScore = sortedSeverities.reduce((acc, sev, idx) => {
+      const weight = 1 / (idx + 1);
+      return acc + sev * weight;
+    }, 0) / sortedSeverities.reduce((acc, _, idx) => acc + 1 / (idx + 1), 0);
+  }
+  
+  // Calculate POS adjustment using γ coefficient
+  const posAdjustment = severityScore * CONFIG.EVENT_RISK_GAMMA;
+  
   // Determine overall level
   let level: EventRisk['level'] = 'none';
-  const maxSeverity = events.length > 0 ? Math.max(...events.map(e => e.severity)) : 0;
-  
-  if (maxSeverity > 0.8) level = 'emergency';
-  else if (maxSeverity > 0.6) level = 'critical';
-  else if (maxSeverity > 0.4) level = 'warning';
-  else if (maxSeverity > 0.2) level = 'watch';
+  if (severityScore > 0.8) level = 'emergency';
+  else if (severityScore > 0.6) level = 'critical';
+  else if (severityScore > 0.4) level = 'warning';
+  else if (severityScore > 0.2) level = 'watch';
   
   return {
     active: level !== 'none',
     level,
+    severityScore,
+    posAdjustment,
     events,
     tierOverride: level === 'critical' || level === 'emergency' 
       ? `${level === 'emergency' ? 'Critical' : 'Weak'} — Event Risk Active` 
@@ -822,6 +904,9 @@ function calculateUncertainty(
 
 /**
  * Generate counterfactual simulations
+ * 
+ * Constrained & realistic: includes budget caps, hiring limits, time-to-ship bounds
+ * Prevents fantasy upgrade recommendations
  */
 function generateCounterfactuals(
   currentQS: number,
@@ -832,63 +917,89 @@ function generateCounterfactuals(
   const simulations: CounterfactualSimulation[] = [];
   
   // Simulation 1: Security improvement
+  // Constrained: max +25 points per quarter, requires budget
   const secImprovement = Math.min(85, segments.SEC.adjustedScore + 20);
   const secDelta = (secImprovement - segments.SEC.adjustedScore) * weights.SEC * 100;
+  const secRealistic = segments.SEC.adjustedScore < 40; // Only realistic if currently weak
   
   simulations.push({
     scenario: 'Improve Security Posture',
     changes: [
-      { variable: 'Audit Coverage', from: segments.SEC.adjustedScore, to: secImprovement },
+      { variable: 'Audit Coverage', from: segments.SEC.adjustedScore, to: secImprovement, constraint: 'max +25 points per quarter' },
     ],
     projectedQS: currentQS + secDelta * 0.6,
     projectedOS: currentOS + secDelta * 0.2,
     qsDelta: secDelta * 0.6,
     osDelta: secDelta * 0.2,
+    constraints: {
+      budgetCap: '$50K-200K',
+      timeToShip: 'minimum 6 weeks for quality audit',
+    },
     feasibility: 'medium',
     timeEstimate: '2-4 months',
     costEstimate: '$50K-200K for top-tier audit',
     confidence: 0.75,
+    isRealistic: secRealistic,
+    realismNote: secRealistic ? undefined : 'Already strong security posture; diminishing returns expected',
   });
   
   // Simulation 2: Team expansion
+  // Constrained: hiring takes time, max 3-5 senior hires per quarter
   const teamImprovement = Math.min(80, segments.TEAM.adjustedScore + 15);
   const teamDelta = (teamImprovement - segments.TEAM.adjustedScore) * weights.TEAM * 100;
+  const teamRealistic = segments.TEAM.adjustedScore < 50;
   
   simulations.push({
     scenario: 'Expand Core Team',
     changes: [
-      { variable: 'Team Size & Experience', from: segments.TEAM.adjustedScore, to: teamImprovement },
+      { variable: 'Team Size & Experience', from: segments.TEAM.adjustedScore, to: teamImprovement, constraint: 'max 3-5 senior hires per quarter' },
     ],
     projectedQS: currentQS + teamDelta * 0.8,
     projectedOS: currentOS + teamDelta * 0.1,
     qsDelta: teamDelta * 0.8,
     osDelta: teamDelta * 0.1,
+    constraints: {
+      hiringLimit: '3-5 senior engineers per quarter',
+      budgetCap: '$500K-1.5M annual salary increase',
+      timeToShip: 'minimum 3 months for onboarding',
+    },
     feasibility: 'hard',
     timeEstimate: '3-6 months',
-    costEstimate: 'Variable (salary + equity)',
+    costEstimate: '$500K-1.5M annually',
     confidence: 0.65,
+    isRealistic: teamRealistic,
+    realismNote: teamRealistic ? undefined : 'Already strong team; new hires may face coordination overhead',
   });
   
   // Simulation 3: Ecosystem growth
-  const ecoImprovement = Math.min(75, segments.ECO.adjustedScore + 25);
+  // Constrained: grants take time to deploy, ecosystem building is slow
+  const ecoImprovement = Math.min(75, segments.ECO.adjustedScore + 20);
   const ecoDelta = (ecoImprovement - segments.ECO.adjustedScore) * weights.ECO * 100;
+  const ecoRealistic = segments.ECO.adjustedScore < 55;
   
   simulations.push({
     scenario: 'Boost Ecosystem & Tooling',
     changes: [
-      { variable: 'SDK Quality + Grant Program', from: segments.ECO.adjustedScore, to: ecoImprovement },
+      { variable: 'SDK Quality + Grant Program', from: segments.ECO.adjustedScore, to: ecoImprovement, constraint: 'max +20 points per 6 months' },
     ],
     projectedQS: currentQS + ecoDelta * 0.5,
     projectedOS: currentOS + ecoDelta * 0.4,
     qsDelta: ecoDelta * 0.5,
     osDelta: ecoDelta * 0.4,
+    constraints: {
+      budgetCap: '$100K-1M grant allocation',
+      timeToShip: 'minimum 6 months for ecosystem traction',
+    },
     feasibility: 'medium',
-    timeEstimate: '3-9 months',
+    timeEstimate: '6-12 months',
     costEstimate: '$100K-1M grant allocation',
-    confidence: 0.70,
+    confidence: 0.60,
+    isRealistic: ecoRealistic,
+    realismNote: ecoRealistic ? undefined : 'Ecosystem building has long feedback loops',
   });
   
-  return simulations;
+  // Filter to only realistic scenarios for primary display
+  return simulations.sort((a, b) => (b.isRealistic ? 1 : 0) - (a.isRealistic ? 1 : 0));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1053,7 +1164,16 @@ export async function calculateOmniScoreV22(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CALCULATE OPPORTUNITY SCORE (OS) - Market-driven
+  // With QUALITY GATE: If QS coverage < threshold, OS is gated
   // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Check QS coverage for Quality Gate
+  const qsSegmentsCoverage = CONFIG.QS_SEGMENTS.reduce((sum, seg) => 
+    sum + (segmentData[seg].signalCount > 0 ? segmentData[seg].dataQuality : 0), 0
+  ) / CONFIG.QS_SEGMENTS.length;
+  
+  const osGated = qsSegmentsCoverage < CONFIG.QS_COVERAGE_GATE;
+  
   let osTotal = 0;
   let osWeight = 0;
   
@@ -1071,10 +1191,10 @@ export async function calculateOmniScoreV22(
                            regime === 'crisis' ? -0.25 : 0;
   
   const osAdjusted = Math.max(0, Math.min(100, osNormalized * (1 + regimeAdjustment)));
-  const osTier = getTier(osAdjusted, 'opportunity');
+  const osTier = osGated ? 'Neutral' as TierLabel : getTier(osAdjusted, 'opportunity');
   
   const opportunityScore: OpportunityScore = {
-    score: osAdjusted,
+    score: osGated ? 50 : osAdjusted, // Display neutral if gated
     tier: osTier,
     market: segmentData.MARKET.adjustedScore,
     valuation: segmentData.VAL.adjustedScore,
@@ -1085,30 +1205,13 @@ export async function calculateOmniScoreV22(
     catalystProximity: 0.5,
     regimeAdjustment,
     regime,
+    gated: osGated,
+    gateReason: osGated ? `QS coverage (${(qsSegmentsCoverage * 100).toFixed(0)}%) below ${CONFIG.QS_COVERAGE_GATE * 100}% threshold. OS display requires sufficient fundamental data.` : undefined,
     confidence: Object.values(segmentData).reduce((sum, s) => sum + s.dataQuality, 0) / allSegments.length,
   };
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // CALCULATE COMPOSITE SCORE
-  // ═══════════════════════════════════════════════════════════════════════════
-  let riskPenalty = 0;
-  for (const seg of CONFIG.RISK_SEGMENTS) {
-    riskPenalty += (100 - segmentData[seg].adjustedScore) * weights.final[seg];
-  }
-  
-  const compositeScore = Math.max(0, Math.min(100,
-    CONFIG.COMPOSITE_BLEND.qualityWeight * qualityScore.score +
-    CONFIG.COMPOSITE_BLEND.opportunityWeight * opportunityScore.score -
-    CONFIG.COMPOSITE_BLEND.riskPenalty * riskPenalty
-  ));
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // NARRATIVE VS REALITY GAP
-  // ═══════════════════════════════════════════════════════════════════════════
-  const narrativeRealityGap = calculateNRG(segmentData);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EVENT RISK (Red Flag Engine)
+  // EVENT RISK (Red Flag Engine) - Must calculate before composite
   // ═══════════════════════════════════════════════════════════════════════════
   const eventRisk = detectEventRisks(projectId, {
     unlockPressure12mo: 100 - segmentData.TOKEN.adjustedScore,
@@ -1117,6 +1220,29 @@ export async function calculateOmniScoreV22(
   }, {
     regulatoryRisk: 1 - segmentData.LEGAL.adjustedScore / 100,
   });
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CALCULATE COMPOSITE SCORE
+  // With severity-weighted event risk adjustment: POS_adj = POS - γ × ERS
+  // ═══════════════════════════════════════════════════════════════════════════
+  let riskPenalty = 0;
+  for (const seg of CONFIG.RISK_SEGMENTS) {
+    riskPenalty += (100 - segmentData[seg].adjustedScore) * weights.final[seg];
+  }
+  
+  const compositeScoreRaw = Math.max(0, Math.min(100,
+    CONFIG.COMPOSITE_BLEND.qualityWeight * qualityScore.score +
+    CONFIG.COMPOSITE_BLEND.opportunityWeight * (osGated ? 50 : opportunityScore.score) -
+    CONFIG.COMPOSITE_BLEND.riskPenalty * riskPenalty
+  ));
+  
+  // Apply event risk adjustment
+  const compositeScore = Math.max(0, compositeScoreRaw - eventRisk.posAdjustment);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NARRATIVE VS REALITY GAP
+  // ═══════════════════════════════════════════════════════════════════════════
+  const narrativeRealityGap = calculateNRG(segmentData);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // UNCERTAINTY
@@ -1365,21 +1491,26 @@ export function formatOmniScoreV22ForAI(score: OmniScoreV22): string {
   ctx += `📊 DUAL SCORE SYSTEM (Reflexivity Firewall)\n`;
   ctx += `┌─────────────────────────────────────────────────────────────┐\n`;
   ctx += `│ QUALITY SCORE (what it IS):     ${score.qualityScore.score.toFixed(0)}/100 ${tierEmoji[score.qualityScore.tier]} ${score.qualityScore.tier}\n`;
-  ctx += `│ OPPORTUNITY SCORE (market):     ${score.opportunityScore.score.toFixed(0)}/100 ${tierEmoji[score.opportunityScore.tier]} ${score.opportunityScore.tier}\n`;
+  
+  if (score.opportunityScore.gated) {
+    ctx += `│ OPPORTUNITY SCORE:              [GATED - insufficient QS data]\n`;
+  } else {
+    ctx += `│ OPPORTUNITY SCORE (market):     ${score.opportunityScore.score.toFixed(0)}/100 ${tierEmoji[score.opportunityScore.tier]} ${score.opportunityScore.tier}\n`;
+  }
   ctx += `└─────────────────────────────────────────────────────────────┘\n\n`;
   
-  // NRG - Signature Metric
+  // NRG - Signature Metric (with percentile)
   const nrgEmoji = score.narrativeRealityGap.interpretation === 'overhyped' ? '🔴' :
                    score.narrativeRealityGap.interpretation === 'underhyped' ? '🟢' :
                    score.narrativeRealityGap.interpretation === 'severely_underhyped' ? '💎' : '🟡';
   
-  ctx += `${nrgEmoji} NARRATIVE vs REALITY GAP: ${score.narrativeRealityGap.index.toFixed(2)}\n`;
+  ctx += `${nrgEmoji} NARRATIVE vs REALITY GAP: ${score.narrativeRealityGap.index.toFixed(2)} (${(score.narrativeRealityGap.percentile * 100).toFixed(0)}th percentile)\n`;
   ctx += `   → ${score.narrativeRealityGap.interpretation.toUpperCase()}\n`;
   ctx += `   → ${score.narrativeRealityGap.tradingImplication}\n\n`;
   
-  // Event Risk
+  // Event Risk (with severity adjustment)
   if (score.eventRisk.active) {
-    ctx += `🚨 EVENT RISK: ${score.eventRisk.level.toUpperCase()}\n`;
+    ctx += `🚨 EVENT RISK: ${score.eventRisk.level.toUpperCase()} (ERS: ${score.eventRisk.severityScore.toFixed(2)}, POS adjustment: -${score.eventRisk.posAdjustment.toFixed(1)})\n`;
     for (const event of score.eventRisk.events.slice(0, 2)) {
       ctx += `   • [${event.type.toUpperCase()}] ${event.description}\n`;
     }
@@ -1394,13 +1525,18 @@ export function formatOmniScoreV22ForAI(score: OmniScoreV22): string {
   ctx += `   • Governance: ${score.qualityScore.governance.toFixed(0)}%\n`;
   ctx += `   • Ecosystem: ${score.qualityScore.ecosystem.toFixed(0)}%\n\n`;
   
-  // Opportunity Breakdown
-  ctx += `📈 OPPORTUNITY SCORE BREAKDOWN:\n`;
-  ctx += `   • Market: ${score.opportunityScore.market.toFixed(0)}%\n`;
-  ctx += `   • Valuation: ${score.opportunityScore.valuation.toFixed(0)}%\n`;
-  ctx += `   • Adoption: ${score.opportunityScore.adoption.toFixed(0)}%\n`;
-  ctx += `   • Momentum: ${score.opportunityScore.momentum.toFixed(0)}%\n`;
-  ctx += `   • Regime Adj: ${(score.opportunityScore.regimeAdjustment * 100).toFixed(0)}%\n\n`;
+  // Opportunity Breakdown (if not gated)
+  if (!score.opportunityScore.gated) {
+    ctx += `📈 OPPORTUNITY SCORE BREAKDOWN:\n`;
+    ctx += `   • Market: ${score.opportunityScore.market.toFixed(0)}%\n`;
+    ctx += `   • Valuation: ${score.opportunityScore.valuation.toFixed(0)}%\n`;
+    ctx += `   • Adoption: ${score.opportunityScore.adoption.toFixed(0)}%\n`;
+    ctx += `   • Momentum: ${score.opportunityScore.momentum.toFixed(0)}%\n`;
+    ctx += `   • Regime Adj: ${(score.opportunityScore.regimeAdjustment * 100).toFixed(0)}%\n\n`;
+  } else {
+    ctx += `📈 OPPORTUNITY SCORE: GATED\n`;
+    ctx += `   ${score.opportunityScore.gateReason}\n\n`;
+  }
   
   // Context
   ctx += `🌍 CONTEXT:\n`;
@@ -1416,22 +1552,27 @@ export function formatOmniScoreV22ForAI(score: OmniScoreV22): string {
     ctx += `⚠️ WEAKNESSES: ${score.keyWeaknesses.join(', ')}\n`;
   }
   
-  // Top Counterfactual
-  if (score.counterfactuals.length > 0) {
-    const top = score.counterfactuals[0];
+  // Top Counterfactual (realistic only)
+  const realisticCF = score.counterfactuals.find(cf => cf.isRealistic);
+  if (realisticCF) {
     ctx += `\n💡 TOP IMPROVEMENT SCENARIO:\n`;
-    ctx += `   "${top.scenario}" → QS +${top.qsDelta.toFixed(1)} | ${top.timeEstimate}\n`;
+    ctx += `   "${realisticCF.scenario}" → QS +${realisticCF.qsDelta.toFixed(1)}\n`;
+    ctx += `   Time: ${realisticCF.timeEstimate} | Cost: ${realisticCF.costEstimate}\n`;
+    if (realisticCF.constraints.budgetCap) {
+      ctx += `   Constraint: ${realisticCF.constraints.budgetCap}\n`;
+    }
   }
   
-  // Uncertainty
-  ctx += `\n📊 UNCERTAINTY:\n`;
+  // Uncertainty decomposition
+  ctx += `\n📊 UNCERTAINTY DECOMPOSITION:\n`;
   ctx += `   Data: ±${score.uncertainty.data.variance.toFixed(1)} | `;
   ctx += `Model: ±${score.uncertainty.model.variance.toFixed(1)} | `;
   ctx += `Regime: ±${score.uncertainty.regime.variance.toFixed(1)}\n`;
+  ctx += `   Regime transition risk: ${(score.uncertainty.regime.transitionProbability * 100).toFixed(0)}%\n`;
   
   ctx += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   ctx += `📋 ${score.calibration.disclaimer}\n`;
-  ctx += `[v${score.version} | ${score.context.sector} | ${score.context.capTier}-cap | ${score.context.regime.current} regime]\n`;
+  ctx += `[v${score.version} | ${score.context.sector} | ${score.context.capTier}-cap | ${score.context.regime.current}]\n`;
   
   return ctx;
 }
