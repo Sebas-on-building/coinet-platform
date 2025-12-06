@@ -3687,19 +3687,6 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
-// 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: {
-      code: 'NOT_FOUND',
-      message: `Route ${req.method} ${req.path} not found`,
-    },
-    requestId: (req as any).requestId,
-  });
-});
-
-// Error handler
 // ═══════════════════════════════════════════════════════════════════════════
 // TEST ENDPOINT: Project Research Intelligence (Trust Score)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4213,6 +4200,23 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 404 HANDLER (Must be AFTER all route definitions)
+// ═══════════════════════════════════════════════════════════════════════════
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'NOT_FOUND',
+      message: `Route ${req.method} ${req.path} not found`,
+    },
+    requestId: (req as any).requestId,
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ERROR HANDLER (Must be LAST)
+// ═══════════════════════════════════════════════════════════════════════════
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   logger.error('❌ Unhandled error', err, {
     requestId: (req as any).requestId,
