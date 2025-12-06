@@ -1318,9 +1318,14 @@ function calculateTitleSimilarity(a: string, b: string): number {
 /**
  * 🎯 MAIN: Fetch news from all available sources with intelligent failover
  */
-export async function fetchNews(coins?: string[]): Promise<NewsSnapshot> {
+interface FetchNewsOptions {
+  skipBackgroundRefresh?: boolean;
+}
+
+export async function fetchNews(coins?: string[], options?: FetchNewsOptions): Promise<NewsSnapshot> {
   const startTime = Date.now();
   const cacheKey = getCacheKey(coins);
+  const skipBackgroundRefresh = options?.skipBackgroundRefresh ?? false;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // Step 0: Check REDIS CACHE first (populated by ai-data-feeder)
@@ -1360,9 +1365,9 @@ export async function fetchNews(coins?: string[]): Promise<NewsSnapshot> {
   // ═══════════════════════════════════════════════════════════════════════════
   const cached = getFromCache(cacheKey);
   if (cached) {
-    // If stale, trigger background refresh
+    // If stale and NOT already in a background refresh, trigger refresh
     const cacheAge = Date.now() - (newsCache.get(cacheKey)?.timestamp || 0);
-    if (cacheAge > CONFIG.CACHE_TTL_MS) {
+    if (cacheAge > CONFIG.CACHE_TTL_MS && !skipBackgroundRefresh) {
       // Background refresh (don't await)
       refreshNewsInBackground(coins, cacheKey).catch(() => {});
     }
@@ -1501,14 +1506,25 @@ export async function fetchNews(coins?: string[]): Promise<NewsSnapshot> {
   return snapshot;
 }
 
+// Flag to prevent recursive background refresh calls
+let isBackgroundRefreshInProgress = false;
+
 async function refreshNewsInBackground(coins?: string[], cacheKey?: string): Promise<void> {
+  // Prevent recursive calls that cause stack overflow
+  if (isBackgroundRefreshInProgress) {
+    return;
+  }
+  
+  isBackgroundRefreshInProgress = true;
   try {
-    const snapshot = await fetchNews(coins);
+    const snapshot = await fetchNews(coins, { skipBackgroundRefresh: true });
     if (cacheKey) {
       setCache(cacheKey, snapshot);
     }
   } catch (error) {
     logger.debug('📰 Background refresh failed', { error });
+  } finally {
+    isBackgroundRefreshInProgress = false;
   }
 }
 
