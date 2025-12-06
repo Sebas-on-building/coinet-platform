@@ -3644,10 +3644,11 @@ app.get('/', (_req: Request, res: Response) => {
       testAnomalyMonitor: '/api/test/anomaly-monitor?symbols=BTC,ETH,SOL,TURBO', // Step 1.4.3 Anomaly & Latency Monitoring
       testCostOptimization: '/api/test/cost?period=daily', // Step 1.4.4 Cost Optimization
       testProjectResearch: '/api/test/project-research?project=supra', // Project Research Intelligence v1.0
-      omniScoreV2: '/api/omniscore?project=supra', // 🏆 OmniScore v2.1 - INSTITUTIONAL GRADE
+      omniScoreV21: '/api/omniscore?project=supra', // OmniScore v2.1
+      omniScoreV22: '/api/omniscore/v2?project=supra', // 🏆 OmniScore v2.2 — DIVINE PERFECTION
       chat: '/api/chat',
     },
-    documentation: 'Use /api/omniscore for institutional-grade project analysis (v2.1). Uses multi-objective decomposition (POS-F, POS-M, POS-A, POS-R) with only controllable variables in recommendations.',
+    documentation: 'Use /api/omniscore/v2 for the latest Divine Perfection analysis. Features: Reflexivity Firewall (QS vs OS), Hierarchical Weights, Adversarial Hype Resistance, Event Risk Override, Narrative vs Reality Gap, Counterfactual Simulations.',
     
     // ═══════════════════════════════════════════════════════════════════════
     // ACADEMIC FOUNDATIONS
@@ -3960,6 +3961,236 @@ app.get('/api/omniscore', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('❌ OmniScore v2.1 error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROJECT OMNISCORE v2.2 — DIVINE PERFECTION
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * OmniScore v2.2 — The Ultimate Project Analysis System
+ * 
+ * "OmniScore is not a single score. It is a regime-aware, quality-gated,
+ *  adversarially robust decision system that outputs both an investable
+ *  assessment and an actionable improvement roadmap."
+ * 
+ * KEY v2.2 FEATURES:
+ * 1. REFLEXIVITY FIREWALL - Quality Score (QS) vs Opportunity Score (OS)
+ * 2. HIERARCHICAL WEIGHTS - global → sector → cap → regime
+ * 3. SEGMENT-SPECIFIC FRESHNESS - SEC decays slow, MARKET decays fast
+ * 4. ADVERSARIAL HYPE RESISTANCE - Bot/anomaly penalties on COMM/ADOPT
+ * 5. THREE-PART UNCERTAINTY - data + model + regime variance
+ * 6. EVENT-RISK OVERRIDE - Red Flag Engine
+ * 7. NARRATIVE VS REALITY GAP - The signature metric
+ * 8. COUNTERFACTUAL SIMULATIONS - "If you do X, QS moves from A → B"
+ */
+app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const projectId = (req.query.project as string) || (req.query.coin as string) || 'bitcoin';
+    
+    // Import v2.2 modules
+    const { fetchProjectDataV22 } = await import('./services/omniscore-data-fetcher-v22');
+    const { calculateOmniScoreV22, formatOmniScoreV22ForAI } = await import('./services/omniscore-v2.2');
+    
+    // Fetch all variable data with segment tags
+    const dataBundle = await fetchProjectDataV22(projectId);
+    
+    // Calculate OmniScore v2.2
+    const omniScore = await calculateOmniScoreV22(
+      projectId,
+      dataBundle.variables,
+      dataBundle.marketData,
+      dataBundle.sector
+    );
+    
+    // Format for AI context
+    const aiContext = formatOmniScoreV22ForAI(omniScore);
+    
+    res.json({
+      success: true,
+      section: '🏆 PROJECT OMNISCORE v2.2 — DIVINE PERFECTION',
+      description: 'Regime-aware, quality-gated, adversarially robust decision system with dual scores and improvement roadmap',
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // DUAL SCORE SYSTEM (Reflexivity Firewall)
+      // ═══════════════════════════════════════════════════════════════════════
+      qualityScore: {
+        score: omniScore.qualityScore.score.toFixed(1),
+        tier: omniScore.qualityScore.tier,
+        description: 'What the project IS (fundamentals, immune to market reflexivity)',
+        breakdown: {
+          team: `${omniScore.qualityScore.team.toFixed(0)}%`,
+          tech: `${omniScore.qualityScore.tech.toFixed(0)}%`,
+          security: `${omniScore.qualityScore.security.toFixed(0)}%`,
+          governance: `${omniScore.qualityScore.governance.toFixed(0)}%`,
+          ecosystem: `${omniScore.qualityScore.ecosystem.toFixed(0)}%`,
+        },
+      },
+      
+      opportunityScore: {
+        score: omniScore.opportunityScore.score.toFixed(1),
+        tier: omniScore.opportunityScore.tier,
+        description: 'What the market MIGHT DO (regime-adjusted positioning)',
+        breakdown: {
+          market: `${omniScore.opportunityScore.market.toFixed(0)}%`,
+          valuation: `${omniScore.opportunityScore.valuation.toFixed(0)}%`,
+          adoption: `${omniScore.opportunityScore.adoption.toFixed(0)}%`,
+          momentum: `${omniScore.opportunityScore.momentum.toFixed(0)}%`,
+        },
+        regimeAdjustment: `${(omniScore.opportunityScore.regimeAdjustment * 100).toFixed(0)}%`,
+      },
+      
+      compositeScore: {
+        score: omniScore.compositeScore.toFixed(1),
+        tier: omniScore.compositeTier,
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // NARRATIVE VS REALITY GAP (Signature Metric)
+      // ═══════════════════════════════════════════════════════════════════════
+      narrativeRealityGap: {
+        index: omniScore.narrativeRealityGap.index.toFixed(2),
+        interpretation: omniScore.narrativeRealityGap.interpretation,
+        tradingImplication: omniScore.narrativeRealityGap.tradingImplication,
+        details: {
+          narrativeZ: omniScore.narrativeRealityGap.narrativeZ.toFixed(2),
+          realityZ: omniScore.narrativeRealityGap.realityZ.toFixed(2),
+        },
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // EVENT RISK (Red Flag Engine)
+      // ═══════════════════════════════════════════════════════════════════════
+      eventRisk: omniScore.eventRisk.active ? {
+        level: omniScore.eventRisk.level,
+        tierOverride: omniScore.eventRisk.tierOverride,
+        events: omniScore.eventRisk.events.map(e => ({
+          type: e.type,
+          severity: `${(e.severity * 100).toFixed(0)}%`,
+          description: e.description,
+        })),
+      } : { level: 'none', message: 'No active event risks detected' },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // THREE-PART UNCERTAINTY
+      // ═══════════════════════════════════════════════════════════════════════
+      uncertainty: {
+        total: `±${omniScore.uncertainty.total.toFixed(1)}`,
+        decomposition: {
+          data: `±${omniScore.uncertainty.data.variance.toFixed(1)}`,
+          model: `±${omniScore.uncertainty.model.variance.toFixed(1)}`,
+          regime: `±${omniScore.uncertainty.regime.variance.toFixed(1)}`,
+        },
+        regimeTransitionRisk: `${(omniScore.uncertainty.regime.transitionProbability * 100).toFixed(0)}%`,
+        confidenceBand: `[${(omniScore.compositeScore + omniScore.uncertainty.confidenceBand[0]).toFixed(1)}, ${(omniScore.compositeScore + omniScore.uncertainty.confidenceBand[1]).toFixed(1)}]`,
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // HIERARCHICAL WEIGHTS
+      // ═══════════════════════════════════════════════════════════════════════
+      weights: {
+        explanation: omniScore.weights.explanation,
+        topSegments: Object.entries(omniScore.weights.final)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([seg, w]) => ({ segment: seg, weight: `${(w * 100).toFixed(1)}%` })),
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // COUNTERFACTUAL SIMULATIONS
+      // ═══════════════════════════════════════════════════════════════════════
+      counterfactuals: omniScore.counterfactuals.slice(0, 3).map(cf => ({
+        scenario: cf.scenario,
+        qsDelta: `+${cf.qsDelta.toFixed(1)}`,
+        osDelta: `+${cf.osDelta.toFixed(1)}`,
+        timeEstimate: cf.timeEstimate,
+        costEstimate: cf.costEstimate,
+        feasibility: cf.feasibility,
+      })),
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // UPGRADE RECOMMENDATIONS
+      // ═══════════════════════════════════════════════════════════════════════
+      upgradeRecommendations: {
+        note: 'Only controllable variables. OS is NOT contaminated into QS recommendations.',
+        highImpact: omniScore.upgradeRecommendations.highImpact.slice(0, 3).map(r => ({
+          variable: r.variable,
+          currentValue: `${r.currentValue.toFixed(0)}%`,
+          targetValue: `${r.targetValue.toFixed(0)}%`,
+          qsUplift: `+${r.impact.qsUplift.toFixed(1)}`,
+          feasibility: r.feasibility,
+          time: r.estimatedTime,
+        })),
+        potentialQSUplift: {
+          realistic: `+${omniScore.upgradeRecommendations.potentialUplift.qsRealistic.toFixed(1)}`,
+          optimistic: `+${omniScore.upgradeRecommendations.potentialUplift.qsOptimistic.toFixed(1)}`,
+          timeframe: omniScore.upgradeRecommendations.potentialUplift.timeToAchieve,
+        },
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // CONTEXT
+      // ═══════════════════════════════════════════════════════════════════════
+      context: {
+        regime: omniScore.context.regime.current,
+        regimeConfidence: `${(omniScore.context.regime.probabilities[omniScore.context.regime.current] * 100).toFixed(0)}%`,
+        sector: omniScore.context.sector,
+        capTier: omniScore.context.capTier,
+        thresholds: omniScore.context.thresholds,
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // DATA COVERAGE
+      // ═══════════════════════════════════════════════════════════════════════
+      dataCoverage: {
+        overall: `${(omniScore.dataCoverage.overall * 100).toFixed(0)}%`,
+        confidenceLevel: omniScore.dataCoverage.confidenceLevel,
+        blindSpots: omniScore.dataCoverage.blindSpots.slice(0, 5),
+        staleData: omniScore.dataCoverage.staleData.slice(0, 3),
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // SUMMARY
+      // ═══════════════════════════════════════════════════════════════════════
+      summary: omniScore.summary,
+      keyStrengths: omniScore.keyStrengths,
+      keyWeaknesses: omniScore.keyWeaknesses,
+      tradingContext: omniScore.tradingContext,
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // CALIBRATION TRANSPARENCY
+      // ═══════════════════════════════════════════════════════════════════════
+      calibration: {
+        weightSource: omniScore.calibration.weightSource,
+        status: omniScore.calibration.validationStatus,
+        disclaimer: omniScore.calibration.disclaimer,
+      },
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // METADATA
+      // ═══════════════════════════════════════════════════════════════════════
+      metadata: {
+        project: projectId,
+        sector: omniScore.context.sector,
+        capTier: omniScore.context.capTier,
+        sourcesUsed: omniScore.dataSourcesUsed,
+        version: omniScore.version,
+      },
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error) {
+    logger.error('❌ OmniScore v2.2 error:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
