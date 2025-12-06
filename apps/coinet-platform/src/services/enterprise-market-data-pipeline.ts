@@ -106,10 +106,6 @@ export interface EnterpriseMarketPrice {
   dataQuality: DataQualityMetrics;
   crossVerified: boolean;
   discrepancyFlags: string[];
-  // Debug fields (for confidence tuning)
-  _debugPricePoints?: number;
-  _debugDirectConf?: number;
-  _debugVerifyConf?: number;
   // Timestamps
   lastUpdated: string;
   fetchedAt: string;
@@ -2229,4 +2225,4 @@ export default {
   getMarketDataCacheStats,
   getCostReport,
   getCostReportForAI,
-};// Deploy trigger: Fri Dec  5 22:04:12 CET 2025
+};

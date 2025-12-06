@@ -3643,9 +3643,10 @@ app.get('/', (_req: Request, res: Response) => {
       testCache: '/api/test/cache?symbols=BTC,ETH,SOL&refresh=true', // Step 1.4.2 Low-Latency Cache
       testAnomalyMonitor: '/api/test/anomaly-monitor?symbols=BTC,ETH,SOL,TURBO', // Step 1.4.3 Anomaly & Latency Monitoring
       testCostOptimization: '/api/test/cost?period=daily', // Step 1.4.4 Cost Optimization
+      testProjectResearch: '/api/test/project-research?project=supra', // Project Research Intelligence
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/cost to monitor API costs and budget status',
+    documentation: 'Use /api/test/project-research to get Trust Score and project fundamentals',
     
     // ═══════════════════════════════════════════════════════════════════════
     // ACADEMIC FOUNDATIONS
@@ -3697,6 +3698,110 @@ app.use((req: Request, res: Response) => {
 });
 
 // Error handler
+// ═══════════════════════════════════════════════════════════════════════════
+// TEST ENDPOINT: Project Research Intelligence (Trust Score)
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/test/project-research', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const { calculateProjectTrustScore, formatTrustScoreForAI } = await import('./services/project-research-intelligence');
+    
+    // Get project ID from query
+    const projectId = (req.query.project as string) || (req.query.coin as string) || 'bitcoin';
+    
+    // Calculate trust score
+    const trustScore = await calculateProjectTrustScore(projectId);
+    
+    // Format for AI
+    const aiContext = formatTrustScoreForAI(trustScore);
+    
+    res.json({
+      success: true,
+      section: '🔬 PROJECT RESEARCH INTELLIGENCE - Trust Score v1.0',
+      description: 'Multi-source project fundamentals with empirically-calibrated Trust Score',
+      
+      // Trust Score summary
+      trustScore: {
+        overall: trustScore.overall,
+        grade: trustScore.grade,
+        label: trustScore.label,
+        confidence: `${(trustScore.confidence * 100).toFixed(0)}%`,
+        confidenceBand: `${trustScore.confidenceBand.low.toFixed(0)}-${trustScore.confidenceBand.high.toFixed(0)}`,
+        dataCompleteness: `${(trustScore.dataCompleteness * 100).toFixed(0)}%`,
+      },
+      
+      // Pillar breakdown
+      breakdown: {
+        team: {
+          score: trustScore.breakdown.team.score,
+          strengths: trustScore.breakdown.team.strengths,
+          weaknesses: trustScore.breakdown.team.weaknesses,
+        },
+        funding: {
+          score: trustScore.breakdown.funding.score,
+          strengths: trustScore.breakdown.funding.strengths,
+          weaknesses: trustScore.breakdown.funding.weaknesses,
+        },
+        development: {
+          score: trustScore.breakdown.development.score,
+          strengths: trustScore.breakdown.development.strengths,
+          weaknesses: trustScore.breakdown.development.weaknesses,
+        },
+        security: {
+          score: trustScore.breakdown.security.score,
+          strengths: trustScore.breakdown.security.strengths,
+          weaknesses: trustScore.breakdown.security.weaknesses,
+        },
+        tokenomics: {
+          score: trustScore.breakdown.tokenomics.score,
+          strengths: trustScore.breakdown.tokenomics.strengths,
+          weaknesses: trustScore.breakdown.tokenomics.weaknesses,
+        },
+        community: {
+          score: trustScore.breakdown.community.score,
+          strengths: trustScore.breakdown.community.strengths,
+          weaknesses: trustScore.breakdown.community.weaknesses,
+        },
+        market: {
+          score: trustScore.breakdown.market.score,
+          strengths: trustScore.breakdown.market.strengths,
+          weaknesses: trustScore.breakdown.market.weaknesses,
+        },
+      },
+      
+      // Regime adjustment
+      regime: trustScore.regimeAdjustment,
+      
+      // Flags
+      redFlags: trustScore.redFlags.slice(0, 5),
+      greenFlags: trustScore.greenFlags.slice(0, 5),
+      
+      // Summary
+      summary: trustScore.summary,
+      keyStrengths: trustScore.keyStrengths,
+      keyWeaknesses: trustScore.keyWeaknesses,
+      recommendations: trustScore.recommendations,
+      
+      // Metadata
+      sources: trustScore.dataSourcesUsed,
+      version: trustScore.version,
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error) {
+    logger.error('❌ Project Research Intelligence error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   logger.error('❌ Unhandled error', err, {
     requestId: (req as any).requestId,
