@@ -110,14 +110,14 @@ async function fetchMarketData(symbol: string): Promise<{
       variables.push(createVar('circulating_ratio', 60, 'TOKEN', 'estimate', now)); // Would come from actual API
       
       // MACRO segment
-      variables.push(createVar('volatility', Math.min(100, Math.abs(price.change24h) * 2), 'MACRO', 'coingecko', now));
+      variables.push(createVar('volatility', Math.min(100, Math.abs(price.priceChangePercent24h) * 2), 'MACRO', 'coingecko', now));
       
       return {
         variables,
         marketCap: price.marketCap,
-        btcTrend30d: price.change24h * 1.5 || 0,
-        btcTrend90d: price.change24h * 3 || 0,
-        volatilityIndex: Math.abs(price.change24h) * 3 || 20,
+        btcTrend30d: price.priceChangePercent24h * 1.5 || 0,
+        btcTrend90d: price.priceChangePercent24h * 3 || 0,
+        volatilityIndex: Math.abs(price.priceChangePercent24h) * 3 || 20,
       };
     }
   } catch (error) {

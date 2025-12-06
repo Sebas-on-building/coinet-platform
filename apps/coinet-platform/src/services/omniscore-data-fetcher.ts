@@ -95,9 +95,9 @@ async function fetchMarketData(symbol: string): Promise<{
       return {
         variables,
         marketCap: price.marketCap,
-        btcTrend30d: price.change24h * 30 / 24 || 0, // Rough estimate
-        btcTrend90d: price.change24h * 90 / 24 || 0,
-        volatilityIndex: Math.abs(price.change24h) * 3 || 20,
+        btcTrend30d: price.priceChangePercent24h * 30 / 24 || 0, // Rough estimate
+        btcTrend90d: price.priceChangePercent24h * 90 / 24 || 0,
+        volatilityIndex: Math.abs(price.priceChangePercent24h) * 3 || 20,
       };
     }
   } catch (error) {
