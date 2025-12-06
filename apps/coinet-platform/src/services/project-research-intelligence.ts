@@ -16,9 +16,7 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { createLogger } from '../utils/logger';
-
-const logger = createLogger('project-research-intelligence');
+import { logger } from '../utils/logger';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES & INTERFACES
@@ -568,7 +566,7 @@ async function fetchMessariProfile(projectId: string): Promise<DataSourceResult<
       throw new Error(`Messari API error: ${response.status}`);
     }
     
-    const json = await response.json();
+    const json = await response.json() as { data: Record<string, any> };
     const data = json.data;
     
     const profile: Partial<ProjectProfile> = {
@@ -645,7 +643,7 @@ async function fetchCoinGeckoProfile(coinId: string): Promise<DataSourceResult<P
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as Record<string, any>;
     
     const profile: Partial<ProjectProfile> = {
       id: data.id,
@@ -780,7 +778,7 @@ async function fetchGitHubMetrics(repoUrl: string): Promise<DataSourceResult<Git
           { headers, signal: AbortSignal.timeout(10000) }
         );
         if (contribResponse.ok) {
-          const contribData = await contribResponse.json();
+          const contribData = await contribResponse.json() as Array<unknown>;
           contributors = contribData.length || 0;
         }
       } catch { /* ignore */ }

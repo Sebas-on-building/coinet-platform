@@ -43,9 +43,7 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { createLogger } from '../utils/logger';
-
-const logger = createLogger('omniscore-v2.2');
+import { logger } from '../utils/logger';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

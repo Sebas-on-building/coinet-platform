@@ -14,11 +14,9 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { createLogger } from '../utils/logger';
+import { logger } from '../utils/logger';
 import { RawVariableInput } from './project-omniscore-v2';
-import { getEnterpriseMarketPrice } from './enterprise-market-data-pipeline';
-
-const logger = createLogger('omniscore-data-fetcher');
+import { getCachedPrice } from './enterprise-market-data-pipeline';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTERFACE
@@ -56,7 +54,7 @@ async function fetchMarketData(symbol: string): Promise<{
   
   try {
     // Use enterprise market data
-    const price = await getEnterpriseMarketPrice(symbol);
+    const price = await getCachedPrice(symbol);
     
     if (price) {
       // Market variables
@@ -153,7 +151,13 @@ async function fetchGitHubData(projectId: string): Promise<RawVariableInput[]> {
       });
       
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as {
+          stargazers_count?: number;
+          subscribers_count?: number;
+          pushed_at?: string;
+          has_wiki?: boolean;
+          language?: string;
+        };
         
         variables.push({
           id: 'tech_stars',
@@ -177,7 +181,7 @@ async function fetchGitHubData(projectId: string): Promise<RawVariableInput[]> {
         });
         
         // Estimate commits from push date
-        const daysSinceUpdate = Math.max(1, (Date.now() - new Date(data.pushed_at).getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceUpdate = Math.max(1, (Date.now() - new Date(data.pushed_at || new Date().toISOString()).getTime()) / (1000 * 60 * 60 * 24));
         const estimatedCommits = daysSinceUpdate < 7 ? 100 : daysSinceUpdate < 30 ? 50 : 20;
         
         variables.push({
@@ -212,7 +216,7 @@ async function fetchGitHubData(projectId: string): Promise<RawVariableInput[]> {
         });
       }
     } catch (error) {
-      logger.warn(`Failed to fetch GitHub data for ${projectId}:`, error);
+      logger.warn('Failed to fetch GitHub data', { projectId, error });
     }
   } else {
     // Fallback estimates for projects without known repos
@@ -271,11 +275,16 @@ async function fetchDefiLlamaData(projectId: string): Promise<RawVariableInput[]
       const response = await fetch(`https://api.llama.fi/protocol/${protocol}`);
       
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as {
+          tvl?: number | Array<{ totalLiquidityUSD?: number }>;
+          chains?: string[];
+          modules?: string[];
+          mcap?: number;
+        };
         
         // TVL
         if (data.tvl) {
-          const currentTvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD : data.tvl;
+          const currentTvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD || 0 : data.tvl;
           variables.push({
             id: 'adopt_tvl',
             value: currentTvl || 0,
@@ -306,7 +315,7 @@ async function fetchDefiLlamaData(projectId: string): Promise<RawVariableInput[]
         
         // Valuation metrics
         if (data.mcap && data.tvl) {
-          const currentTvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD : data.tvl;
+          const currentTvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD || 0 : data.tvl;
           variables.push({
             id: 'val_mcap_tvl',
             value: currentTvl > 0 ? data.mcap / currentTvl : 10,
@@ -316,7 +325,7 @@ async function fetchDefiLlamaData(projectId: string): Promise<RawVariableInput[]
         }
       }
     } catch (error) {
-      logger.warn(`Failed to fetch DefiLlama data for ${projectId}:`, error);
+      logger.warn('Failed to fetch DefiLlama data', { projectId, error });
     }
   }
   
@@ -555,7 +564,7 @@ async function fetchFearGreedIndex(): Promise<number> {
   try {
     const response = await fetch('https://api.alternative.me/fng/');
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as { data?: Array<{ value?: string }> };
       return parseInt(data.data?.[0]?.value || '50');
     }
   } catch {

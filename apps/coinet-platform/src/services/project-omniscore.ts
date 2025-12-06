@@ -18,9 +18,7 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { createLogger } from '../utils/logger';
-
-const logger = createLogger('project-omniscore');
+import { logger } from '../utils/logger';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

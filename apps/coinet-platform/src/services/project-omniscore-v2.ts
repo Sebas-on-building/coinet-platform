@@ -20,9 +20,7 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { createLogger } from '../utils/logger';
-
-const logger = createLogger('project-omniscore-v2');
+import { logger } from '../utils/logger';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

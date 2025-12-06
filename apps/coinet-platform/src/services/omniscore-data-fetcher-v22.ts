@@ -14,11 +14,9 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { createLogger } from '../utils/logger';
+import { logger } from '../utils/logger';
 import { RawVariableInput, SegmentType, SectorType, MarketContext } from './omniscore-v2.2';
-import { getEnterpriseMarketPrice } from './enterprise-market-data-pipeline';
-
-const logger = createLogger('omniscore-data-fetcher-v22');
+import { getCachedPrice } from './enterprise-market-data-pipeline';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTERFACE
@@ -95,7 +93,7 @@ async function fetchMarketData(symbol: string): Promise<{
   const now = new Date().toISOString();
   
   try {
-    const price = await getEnterpriseMarketPrice(symbol);
+    const price = await getCachedPrice(symbol);
     
     if (price) {
       // MARKET segment
@@ -166,7 +164,13 @@ async function fetchGitHubData(projectId: string): Promise<RawVariableInput[]> {
       });
       
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as {
+          stargazers_count?: number;
+          subscribers_count?: number;
+          pushed_at?: string;
+          has_wiki?: boolean;
+          language?: string;
+        };
         
         // TECH segment
         const stars = data.stargazers_count || 0;
@@ -225,11 +229,16 @@ async function fetchDefiLlamaData(projectId: string): Promise<RawVariableInput[]
       const response = await fetch(`https://api.llama.fi/protocol/${protocol}`);
       
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as {
+          tvl?: number | Array<{ totalLiquidityUSD?: number }>;
+          chains?: string[];
+          modules?: string[];
+          mcap?: number;
+        };
         
         // ADOPT segment
         if (data.tvl) {
-          const currentTvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD : data.tvl;
+          const currentTvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD || 0 : data.tvl;
           variables.push(createVar('tvl', Math.min(100, Math.log10(currentTvl + 1) * 10), 'ADOPT', 'defillama', now));
         }
         
@@ -241,13 +250,13 @@ async function fetchDefiLlamaData(projectId: string): Promise<RawVariableInput[]
         
         // VAL segment
         if (data.mcap && data.tvl) {
-          const tvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD : data.tvl;
+          const tvl = Array.isArray(data.tvl) ? data.tvl[data.tvl.length - 1]?.totalLiquidityUSD || 0 : data.tvl;
           const mcapTvl = tvl > 0 ? data.mcap / tvl : 10;
           variables.push(createVar('mcap_tvl', Math.max(0, 100 - mcapTvl * 10), 'VAL', 'defillama', now));
         }
       }
     } catch (error) {
-      logger.warn(`Failed to fetch DefiLlama data for ${projectId}:`, error);
+      logger.warn('Failed to fetch DefiLlama data', { projectId, error });
     }
   }
   
@@ -323,7 +332,7 @@ async function fetchFearGreedIndex(): Promise<number> {
   try {
     const response = await fetch('https://api.alternative.me/fng/');
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as { data?: Array<{ value?: string }> };
       return parseInt(data.data?.[0]?.value || '50');
     }
   } catch {
