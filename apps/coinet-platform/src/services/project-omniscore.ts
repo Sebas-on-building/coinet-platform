@@ -297,7 +297,7 @@ const OMNISCORE_CONFIG = {
       'COMM-MARKET': 0.58,
       'TOKEN-VAL': 0.48,
       'GOV-LEGAL': 0.42,
-    },
+    } as Record<string, number>,
   },
   
   // Tier thresholds (based on historical percentiles)

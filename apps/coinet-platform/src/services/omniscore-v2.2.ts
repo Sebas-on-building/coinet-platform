@@ -1437,6 +1437,8 @@ function generateUpgradeRecommendations(
       else if (seg === 'TEAM') { feasibility = 'hard'; cost = 'high'; time = '3-6 months'; }
       else if (seg === 'TECH') { feasibility = 'medium'; cost = 'medium'; time = '1-3 months'; }
       else if (seg === 'ECO') { feasibility = 'medium'; cost = 'high'; time = '3-9 months'; }
+      else if (seg === 'GOV') { feasibility = 'easy'; cost = 'low'; time = '1-2 months'; }
+      else if (seg === 'TOKEN') { feasibility = 'hard'; cost = 'medium'; time = '3-6 months'; }
       
       recommendations.push({
         variable: seg,

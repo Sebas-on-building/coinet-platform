@@ -1043,7 +1043,7 @@ function crossVerifyPrices(
   
   if (maxPrice / minPrice > extremeThreshold) {
     logger.warn('⚠️ Extreme price discrepancy detected - likely different tokens with same symbol', {
-      symbol,
+      identifier: actualSymbol || coinIdOrSymbol,
       minPrice,
       maxPrice,
       ratio: (maxPrice / minPrice).toFixed(1) + 'x',
