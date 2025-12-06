@@ -986,9 +986,7 @@ export class AnomalyLatencyMonitor {
           status = 'unhealthy';
           recommendation = `High latency: P95=${latency.p95.toFixed(0)}ms, ${latency.slaBreachRate.toFixed(1)}% SLA breaches`;
         } else if (latency.slaBreachRate > 10 || latency.trend === 'degrading') {
-          if (status !== 'unhealthy') {
-            status = 'degraded';
-          }
+          status = 'degraded';
           recommendation = `Elevated latency: P95=${latency.p95.toFixed(0)}ms, trend ${latency.trend}`;
         }
       }

@@ -54,7 +54,8 @@ async function fetchMarketData(symbol: string): Promise<{
   
   try {
     // Use enterprise market data
-    const price = await getCachedPrice(symbol);
+    const result = await getCachedPrice(symbol);
+    const price = result.price;
     
     if (price) {
       // Market variables
@@ -73,9 +74,10 @@ async function fetchMarketData(symbol: string): Promise<{
       });
       
       // Valuation
+      const ath = price.ath || price.price * 1.5;
       variables.push({
         id: 'val_price_drawdown',
-        value: Math.max(0, 1 - (price.price / (price.ath || price.price * 1.5))),
+        value: Math.max(0, 1 - (price.price / ath)),
         source: 'coingecko',
         lastUpdated: now,
       });
@@ -99,7 +101,7 @@ async function fetchMarketData(symbol: string): Promise<{
       };
     }
   } catch (error) {
-    logger.warn(`Failed to fetch market data for ${symbol}:`, error);
+    logger.warn('Failed to fetch market data', { symbol, error: String(error) });
   }
   
   return {

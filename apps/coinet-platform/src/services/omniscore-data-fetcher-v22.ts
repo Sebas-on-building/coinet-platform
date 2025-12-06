@@ -93,7 +93,8 @@ async function fetchMarketData(symbol: string): Promise<{
   const now = new Date().toISOString();
   
   try {
-    const price = await getCachedPrice(symbol);
+    const result = await getCachedPrice(symbol);
+    const price = result.price;
     
     if (price) {
       // MARKET segment
@@ -102,7 +103,8 @@ async function fetchMarketData(symbol: string): Promise<{
       variables.push(createVar('exchange_listings', price.marketCap > 1_000_000_000 ? 80 : price.marketCap > 100_000_000 ? 60 : 40, 'MARKET', 'coingecko', now));
       
       // VAL segment
-      variables.push(createVar('drawdown', Math.max(0, Math.min(100, 100 - (price.price / (price.ath || price.price * 2)) * 100)), 'VAL', 'coingecko', now));
+      const ath = price.ath || price.price * 2;
+      variables.push(createVar('drawdown', Math.max(0, Math.min(100, 100 - (price.price / ath) * 100)), 'VAL', 'coingecko', now));
       
       // TOKEN segment
       variables.push(createVar('circulating_ratio', 60, 'TOKEN', 'estimate', now)); // Would come from actual API
@@ -119,7 +121,7 @@ async function fetchMarketData(symbol: string): Promise<{
       };
     }
   } catch (error) {
-    logger.warn(`Failed to fetch market data for ${symbol}:`, error);
+    logger.warn('Failed to fetch market data', { symbol, error: String(error) });
   }
   
   return {
@@ -177,7 +179,8 @@ async function fetchGitHubData(projectId: string): Promise<RawVariableInput[]> {
         variables.push(createVar('stars', Math.min(100, Math.log10(stars + 1) * 25), 'TECH', 'github', now));
         variables.push(createVar('contributors', Math.min(100, (data.subscribers_count || 10) / 5), 'TECH', 'github', now));
         
-        const daysSinceUpdate = Math.max(1, (Date.now() - new Date(data.pushed_at).getTime()) / (1000 * 60 * 60 * 24));
+        const pushedAt = data.pushed_at || new Date().toISOString();
+        const daysSinceUpdate = Math.max(1, (Date.now() - new Date(pushedAt).getTime()) / (1000 * 60 * 60 * 24));
         variables.push(createVar('commits_30d', daysSinceUpdate < 7 ? 85 : daysSinceUpdate < 30 ? 65 : 40, 'TECH', 'github', now));
         variables.push(createVar('documentation', data.has_wiki ? 70 : 45, 'TECH', 'github', now));
         variables.push(createVar('release_frequency', daysSinceUpdate < 30 ? 75 : 40, 'TECH', 'github', now));
@@ -189,7 +192,7 @@ async function fetchGitHubData(projectId: string): Promise<RawVariableInput[]> {
         variables.push(createVar('sdk_quality', data.language ? 65 : 35, 'ECO', 'github', now));
       }
     } catch (error) {
-      logger.warn(`Failed to fetch GitHub data for ${projectId}:`, error);
+      logger.warn('Failed to fetch GitHub data', { projectId, error: String(error) });
     }
   }
   
