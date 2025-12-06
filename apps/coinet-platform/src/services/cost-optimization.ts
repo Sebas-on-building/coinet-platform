@@ -1183,7 +1183,6 @@ export function formatCostReportForAI(report: CostReport): string {
 
 export {
   CostOptimizer,
-  SOURCE_COSTS,
   DEFAULT_BUDGET,
 };
 

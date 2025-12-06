@@ -835,12 +835,13 @@ export class AnomalyLatencyMonitor {
     if (!this.shouldAlert(alertKey)) return;
     
     // Log based on severity
-    const logMethod = {
+    const severityMap: Record<string, 'info' | 'warn' | 'error'> = {
       'info': 'info',
       'warning': 'warn',
       'critical': 'error',
       'emergency': 'error',
-    }[(alert as any).severity] as 'info' | 'warn' | 'error';
+    };
+    const logMethod = severityMap[(alert as any).severity] || 'info';
     
     logger[logMethod]((alert as any).message, { alert });
     
@@ -985,7 +986,9 @@ export class AnomalyLatencyMonitor {
           status = 'unhealthy';
           recommendation = `High latency: P95=${latency.p95.toFixed(0)}ms, ${latency.slaBreachRate.toFixed(1)}% SLA breaches`;
         } else if (latency.slaBreachRate > 10 || latency.trend === 'degrading') {
-          status = status === 'unhealthy' ? 'unhealthy' : 'degraded';
+          if (status !== 'unhealthy') {
+            status = 'degraded';
+          }
           recommendation = `Elevated latency: P95=${latency.p95.toFixed(0)}ms, trend ${latency.trend}`;
         }
       }
