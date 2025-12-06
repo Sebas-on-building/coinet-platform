@@ -3643,10 +3643,11 @@ app.get('/', (_req: Request, res: Response) => {
       testCache: '/api/test/cache?symbols=BTC,ETH,SOL&refresh=true', // Step 1.4.2 Low-Latency Cache
       testAnomalyMonitor: '/api/test/anomaly-monitor?symbols=BTC,ETH,SOL,TURBO', // Step 1.4.3 Anomaly & Latency Monitoring
       testCostOptimization: '/api/test/cost?period=daily', // Step 1.4.4 Cost Optimization
-      testProjectResearch: '/api/test/project-research?project=supra', // Project Research Intelligence
+      testProjectResearch: '/api/test/project-research?project=supra', // Project Research Intelligence v1.0
+      omniScoreV2: '/api/omniscore?project=supra', // 🏆 OmniScore v2.1 - INSTITUTIONAL GRADE
       chat: '/api/chat',
     },
-    documentation: 'Use /api/test/project-research to get Trust Score and project fundamentals',
+    documentation: 'Use /api/omniscore for institutional-grade project analysis (v2.1). Uses multi-objective decomposition (POS-F, POS-M, POS-A, POS-R) with only controllable variables in recommendations.',
     
     // ═══════════════════════════════════════════════════════════════════════
     // ACADEMIC FOUNDATIONS
@@ -3794,6 +3795,171 @@ app.get('/api/test/project-research', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('❌ Project Research Intelligence error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROJECT OMNISCORE v2.1 - INSTITUTIONAL GRADE
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * OmniScore v2.1 - Defensible, Reproducible Project Analysis
+ * 
+ * KEY IMPROVEMENTS over v1.0:
+ * • Multi-objective decomposition (POS-F, POS-M, POS-A, POS-R)
+ * • All weights labeled as "initial priors pending calibration"
+ * • Only controllable variables in upgrade recommendations
+ * • Data coverage score with confidence levels
+ * • Proper disclaimers for backtest context
+ * • Leakage controls documentation
+ * 
+ * Formula: POS = ω_F·POS-F + ω_M·POS-M + ω_A·POS-A - ω_R·POS-R
+ */
+app.get('/api/omniscore', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const projectId = (req.query.project as string) || (req.query.coin as string) || 'bitcoin';
+    
+    // Import v2.1 modules
+    const { fetchProjectData } = await import('./services/omniscore-data-fetcher');
+    const { calculateOmniScoreV2, formatOmniScoreV2ForAI } = await import('./services/project-omniscore-v2');
+    
+    // Fetch all variable data
+    const dataBundle = await fetchProjectData(projectId);
+    
+    // Calculate OmniScore v2.1
+    const omniScore = await calculateOmniScoreV2(
+      projectId,
+      dataBundle.variables,
+      dataBundle.marketData,
+      dataBundle.category
+    );
+    
+    // Format for AI context
+    const aiContext = formatOmniScoreV2ForAI(omniScore);
+    
+    res.json({
+      success: true,
+      section: '🏆 PROJECT OMNISCORE v2.1 - INSTITUTIONAL GRADE',
+      description: 'Multi-objective project analysis with regime awareness, data quality weighting, and controllable-only recommendations',
+      
+      // Core score
+      score: {
+        pos: omniScore.posScaled.toFixed(1),
+        tier: omniScore.tier,
+        confidenceBand: `[${(omniScore.uncertainty.confidenceBand[0] * 100).toFixed(1)}, ${(omniScore.uncertainty.confidenceBand[1] * 100).toFixed(1)}]`,
+      },
+      
+      // Multi-objective breakdown (prevents hot marketing from overpowering fundamentals)
+      subScores: {
+        fundamentals: `${(omniScore.subScores.fundamentals * 100).toFixed(0)}% (TEAM + TECH + SEC + GOV)`,
+        market: `${(omniScore.subScores.market * 100).toFixed(0)}% (MARKET + TOKEN + VAL)`,
+        adoption: `${(omniScore.subScores.adoption * 100).toFixed(0)}% (ADOPT + COMM + ECO)`,
+        riskPenalty: `${((1 - omniScore.subScores.risk) * 100).toFixed(0)}% (LEGAL + MACRO)`,
+      },
+      
+      // Data coverage (transparency about completeness)
+      dataCoverage: {
+        score: `${(omniScore.dataCoverage.score * 100).toFixed(0)}%`,
+        level: omniScore.dataCoverage.confidenceLevel,
+        variablesCovered: `${omniScore.dataCoverage.availableVariables}/${omniScore.dataCoverage.totalVariables}`,
+        blindSpots: omniScore.dataCoverage.blindSpots.slice(0, 5),
+      },
+      
+      // Regime context
+      regime: {
+        current: omniScore.regime.current,
+        confidence: `${(omniScore.regime.confidence * 100).toFixed(0)}%`,
+        indicators: omniScore.regime.forwardIndicators,
+      },
+      
+      // Tier thresholds (conditioned on regime + cap tier)
+      tierContext: {
+        thresholds: {
+          elite: `>${(omniScore.thresholds.elite * 100).toFixed(0)}`,
+          strong: `>${(omniScore.thresholds.strong * 100).toFixed(0)}`,
+          neutral: `>${(omniScore.thresholds.neutral * 100).toFixed(0)}`,
+          weak: `>${(omniScore.thresholds.weak * 100).toFixed(0)}`,
+        },
+        context: omniScore.thresholds.context,
+      },
+      
+      // Segments
+      segments: Object.fromEntries(
+        Object.entries(omniScore.segments).map(([key, seg]) => [
+          key,
+          {
+            score: `${((seg as any).score * 100).toFixed(0)}%`,
+            confidence: `${((seg as any).confidence * 100).toFixed(0)}%`,
+            strengths: (seg as any).strengths,
+            weaknesses: (seg as any).weaknesses,
+          }
+        ])
+      ),
+      
+      // Upgrade recommendations (CONTROLLABLE ONLY)
+      upgradeRecommendations: {
+        note: 'Only controllable variables are included. Macro/market factors are shown as CONTEXT, not recommendations.',
+        highImpact: omniScore.upgradeRecommendations.highImpact.slice(0, 3).map(r => ({
+          variable: r.variable,
+          segment: r.segment,
+          currentScore: `${(r.currentNormalized * 100).toFixed(0)}%`,
+          potentialUplift: `+${(r.estimatedImpact.posUplift * 100).toFixed(2)} points`,
+          feasibility: r.feasibility,
+          timeframe: r.estimatedTime,
+        })),
+        quickWins: omniScore.upgradeRecommendations.quickWins.slice(0, 3).map(r => ({
+          variable: r.variable,
+          segment: r.segment,
+          feasibility: r.feasibility,
+        })),
+        potentialUplift: {
+          realistic: `+${(omniScore.upgradeRecommendations.potentialUplift.realistic * 100).toFixed(1)} points`,
+          band: `[+${(omniScore.upgradeRecommendations.potentialUplift.confidenceBand[0] * 100).toFixed(1)}, +${(omniScore.upgradeRecommendations.potentialUplift.confidenceBand[1] * 100).toFixed(1)}]`,
+        },
+      },
+      
+      // Risk alerts
+      riskAlerts: omniScore.riskAlerts.level !== 'none' ? {
+        level: omniScore.riskAlerts.level,
+        alerts: omniScore.riskAlerts.alerts,
+      } : null,
+      
+      // Summary
+      summary: omniScore.summary,
+      keyStrengths: omniScore.keyStrengths,
+      keyWeaknesses: omniScore.keyWeaknesses,
+      
+      // Calibration transparency (CRITICAL for institutional credibility)
+      calibration: {
+        weightSource: omniScore.calibration.weightSource,
+        disclaimer: omniScore.calibration.disclaimer,
+        validationStatus: 'Weights are INITIAL PRIORS. Live calibration requires 6+ months of prediction tracking.',
+        leakageControls: 'Target implementation: Walk-forward validation, purged K-fold, 7-day embargo windows.',
+      },
+      
+      // Metadata
+      metadata: {
+        project: projectId,
+        category: omniScore.category,
+        marketCapTier: omniScore.marketCapTier,
+        sourcesUsed: omniScore.dataSourcesUsed,
+        version: omniScore.version,
+        formula: 'POS = ω_F·POS-F + ω_M·POS-M + ω_A·POS-A - ω_R·POS-R',
+      },
+      
+      // AI context preview
+      aiContextPreview: aiContext,
+      
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error) {
+    logger.error('❌ OmniScore v2.1 error:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
