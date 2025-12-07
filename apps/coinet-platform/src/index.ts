@@ -4203,40 +4203,137 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OMNISCORE v2.3.1 — PRODUCTION HARDENED (Trading-Desk Grade)
+// OMNISCORE v2.3.2 — PRODUCTION HARDENED + STABILITY GUARD (Trading-Desk Grade)
 // ═══════════════════════════════════════════════════════════════════════════
 /**
  * @route GET /api/omniscore/v2.3
+ * @route GET /api/omniscore/latest (canonical alias)
  * @query project - Project ID (e.g., "ethereum", "supra", "bitcoin")
  * 
  * FEATURES:
  * 1. REFLEXIVITY FIREWALL - QS (fundamentals) vs OS (opportunity)
- * 2. 11 PRODUCTION INVARIANTS - Fail-closed, audit-visible
+ * 2. 12 PRODUCTION INVARIANTS - Fail-closed, audit-visible
  * 3. INV-4a/4b CLAMP TRACKING - Visible honesty
  * 4. REFLEXIVITY SENTINEL - Live QS/price correlation monitoring
  * 5. METHODOLOGY PROVENANCE - Hash, ID, URL in every response
  * 6. ADVERSARIAL RESISTANCE - COMM cap, bot/anomaly penalties
  * 7. EVENT-RISK OVERRIDE - Severity-weighted POS adjustment
  * 8. NRG (Narrative vs Reality Gap) - Percentile-based interpretation
+ * 9. SCORE STABILITY GUARD (INV-12) - Prevents wild swings from data degradation
+ * 10. LAST-KNOWN-GOOD (LKG) SNAPSHOTS - Continuity on data failure
+ * 11. SOURCE HEALTH SUPPRESSION - Degraded sources get reduced weight
+ * 12. GATING WITH FREEZE - Uses LKG OS, not neutral reset
  */
-app.get('/api/omniscore/v2.3', async (req: Request, res: Response) => {
+const handleOmniScoreRequest = async (req: Request, res: Response) => {
   const startTime = Date.now();
 
   try {
     const projectId = (req.query.project as string) || (req.query.coin as string) || 'bitcoin';
     
-    // Import v2.3.1 modules
+    // Import v2.3.2 modules
     const { getProjectOmniScoreV23, formatOmniScoreForAI } = await import('./services/omniscore-data-fetcher-v23');
+    const { 
+      saveLKGSnapshot, 
+      getLKGSnapshot, 
+      applyContinuityGuard,
+      calculateSourceHealth,
+      generateStabilitySummary,
+      applyGatingWithFreeze,
+    } = await import('./services/omniscore-stability');
     
-    // Fetch data and calculate OmniScore v2.3.1
+    // Get LKG snapshot for continuity guard
+    const lkgSnapshot = getLKGSnapshot(projectId);
+    
+    // Calculate source health from current API configuration
+    const sourceHealth = calculateSourceHealth({
+      marketKeysConfigured: process.env.COINGECKO_API_KEY ? 1 : 0,
+      marketKeysTotal: 2,
+      socialKeysConfigured: [
+        process.env.LUNARCRUSH_API_KEY,
+        process.env.TWITTER_API_KEY,
+        process.env.TWITTER_BEARER_TOKEN,
+      ].filter(Boolean).length,
+      socialKeysTotal: 4,
+      derivativesKeysConfigured: process.env.COINGLASS_API_KEY ? 1 : 0,
+      derivativesKeysTotal: 2,
+      newsKeysConfigured: process.env.CRYPTOPANIC_API_KEY ? 1 : 0,
+      newsKeysTotal: 2,
+    });
+    
+    // Fetch data and calculate OmniScore v2.3.2
     const result = await getProjectOmniScoreV23(projectId);
+    
+    // Apply stability guards if we have historical data
+    let stabilityResult = null;
+    let stabilitySummary = null;
+    
+    if (result.success) {
+      // Apply continuity guard (INV-12)
+      stabilityResult = applyContinuityGuard({
+        prevSnapshot: lkgSnapshot,
+        newPOS: result.pos.adjusted,
+        newQS: result.qualityScore.score,
+        newOS: result.opportunityScore.gated ? null : result.opportunityScore.score,
+        newCoverageQS: result.audit.coverageQS,
+        newCoverageOS: result.audit.coverageOS,
+        eventRiskSeverity: result.eventRiskOverride?.severity ?? 0,
+        sourceHealth,
+      });
+      
+      // Check if gating with freeze should be applied
+      const gatingResult = applyGatingWithFreeze(
+        projectId,
+        result.audit.coverageQS
+      );
+      
+      // Generate stability summary for audit trail
+      stabilitySummary = generateStabilitySummary({
+        continuityResult: stabilityResult,
+        gatingResult,
+        sourceHealth,
+        lkgSnapshot,
+      });
+      
+      // Apply adjusted values if continuity guard was triggered
+      if (stabilityResult.continuityApplied && stabilityResult.adjustedPOS !== undefined) {
+        result.pos.adjusted = stabilityResult.adjustedPOS;
+        result.pos.stabilityGuardApplied = true;
+      }
+      
+      // Save as LKG if confidence is sufficient
+      if (result.audit.confidence !== 'insufficient') {
+        saveLKGSnapshot({
+          projectId,
+          timestamp: new Date(),
+          pos: result.pos.adjusted,
+          posAdj: result.pos.adjusted,
+          qs: result.qualityScore.score,
+          os: result.opportunityScore.gated ? null : result.opportunityScore.score,
+          coverageQS: result.audit.coverageQS,
+          coverageOS: result.audit.coverageOS,
+          confidence: result.audit.confidence,
+          sourceHealth,
+          version: '2.3.2',
+        });
+      }
+    }
     
     // Format for AI context
     const aiContext = formatOmniScoreForAI(result);
     
     res.json({
-      // Core response from v2.3.1
+      // Core response from v2.3.2
       ...result,
+      
+      // Stability information
+      stability: stabilitySummary ? {
+        guardApplied: stabilitySummary.continuityGuardActive,
+        sourceHealth: sourceHealth.overall,
+        lkgUsed: stabilitySummary.lkgUsed,
+        lkgAge: stabilitySummary.lkgAge,
+        notes: stabilitySummary.stabilityNotes,
+        warnings: stabilitySummary.dataQualityWarnings,
+      } : null,
       
       // AI-friendly context
       aiContextPreview: aiContext,
@@ -4245,16 +4342,22 @@ app.get('/api/omniscore/v2.3', async (req: Request, res: Response) => {
       computeTime: `${Date.now() - startTime}ms`,
     });
   } catch (error) {
-    logger.error('❌ OmniScore v2.3.1 error:', error);
+    logger.error('❌ OmniScore v2.3.2 error:', error);
     res.status(500).json({
       success: false,
       engine: 'OmniScore',
-      version: '2.3.1',
+      version: '2.3.2',
       error: error instanceof Error ? error.message : 'Unknown error',
       computeTime: `${Date.now() - startTime}ms`,
     });
   }
-});
+};
+
+// Main endpoint
+app.get('/api/omniscore/v2.3', handleOmniScoreRequest);
+
+// Canonical "latest" alias - always points to current production version
+app.get('/api/omniscore/latest', handleOmniScoreRequest);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 404 HANDLER (Must be AFTER all route definitions)

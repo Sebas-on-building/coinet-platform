@@ -451,9 +451,10 @@ export class ChatService {
           });
         }
         
-        // 14. Add OmniScore v2.3.1 - Production Hardened Project Analysis
+        // 14. Add OmniScore v2.3.2 - Production Hardened + Stability Guard
         // Provides: Quality Score (QS), Opportunity Score (OS), Narrative vs Reality Gap (NRG)
-        // Features: Reflexivity firewall, 11 production invariants, adversarial resistance
+        // Features: Reflexivity firewall, 12 production invariants, stability guard, fail-closed
+        // CRITICAL: Chat must NEVER improvise OmniScore numbers - always use real API data
         if (detectedCoins.length > 0) {
           try {
             // Check if user wants a comparison/ranking of multiple coins
@@ -496,6 +497,17 @@ export class ChatService {
                   coins: coinsToAnalyze.map(c => c.symbol),
                   count: validScores.length
                 });
+              } else {
+                // FAIL-CLOSED: No valid scores available - tell AI not to improvise
+                contextParts.push(`
+⚠️ OMNISCORE DATA UNAVAILABLE
+The OmniScore engine could not retrieve reliable data for the requested projects.
+DO NOT improvise or estimate OmniScore values. Instead, inform the user that:
+- OmniScore analysis is temporarily unavailable for these projects
+- They should try again in a few minutes
+- Basic market data may still be available
+`);
+                logger.warn('⚠️ OmniScore Multi-Coin: No valid scores - fail-closed activated');
               }
             } else {
               // Single coin deep dive
@@ -503,8 +515,26 @@ export class ChatService {
               const omniScore = await getProjectOmniScoreV23(primaryCoin.coinGeckoId || primaryCoin.symbol.toLowerCase());
               
               if (omniScore && omniScore.success) {
+                // Check confidence level - if insufficient, add warning
+                if (omniScore.audit.confidence === 'insufficient') {
+                  contextParts.push(`
+⚠️ OMNISCORE LOW CONFIDENCE WARNING
+The OmniScore for ${primaryCoin.symbol} has INSUFFICIENT confidence.
+Data sources may be degraded. Present these numbers with appropriate caveats.
+`);
+                }
+                
+                // Add stability warning if applicable
+                if ((omniScore as any).stability?.guardApplied) {
+                  contextParts.push(`
+📊 STABILITY GUARD ACTIVE
+Score stability guard was applied due to data coverage changes.
+${(omniScore as any).stability.notes?.join('\n') || ''}
+`);
+                }
+                
                 contextParts.push(formatOmniScoreForAI(omniScore));
-                logger.debug('🎯 OmniScore v2.3.1 context added', {
+                logger.debug('🎯 OmniScore v2.3.2 context added', {
                   project: omniScore.project,
                   posAdjusted: omniScore.pos.adjusted,
                   posTier: omniScore.pos.tier,
@@ -516,11 +546,33 @@ export class ChatService {
                   confidence: omniScore.audit.confidence,
                   invariantStatus: omniScore.audit.invariantStatus,
                   reflexivityStatus: omniScore.audit.reflexivitySentinel.status,
+                  stabilityApplied: (omniScore as any).stability?.guardApplied || false,
+                });
+              } else {
+                // FAIL-CLOSED: OmniScore failed - tell AI not to improvise
+                contextParts.push(`
+⚠️ OMNISCORE DATA UNAVAILABLE FOR ${primaryCoin.symbol.toUpperCase()}
+The OmniScore engine could not retrieve reliable data for this project.
+DO NOT improvise or estimate OmniScore values. Instead:
+- Inform the user that detailed OmniScore analysis is temporarily unavailable
+- Offer to provide basic market data (price, volume) if available
+- Suggest trying again in a few minutes
+`);
+                logger.warn('⚠️ OmniScore Single-Coin: Analysis failed - fail-closed activated', {
+                  coin: primaryCoin.symbol,
+                  reason: omniScore ? 'success=false' : 'null response',
                 });
               }
             }
           } catch (error) {
-            logger.warn('⚠️ OmniScore v2.3.1 analysis failed, continuing without', { error });
+            // FAIL-CLOSED: On any error, tell AI not to improvise
+            contextParts.push(`
+⚠️ OMNISCORE ENGINE ERROR
+The OmniScore analysis engine encountered an error.
+DO NOT improvise or estimate any OmniScore values.
+Inform the user that OmniScore analysis is temporarily unavailable.
+`);
+            logger.warn('⚠️ OmniScore v2.3.2 analysis failed - fail-closed activated', { error });
           }
         }
         
