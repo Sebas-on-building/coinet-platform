@@ -4080,13 +4080,13 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       // THREE-PART UNCERTAINTY
       // ═══════════════════════════════════════════════════════════════════════
       uncertainty: {
-        total: `±${omniScore.uncertainty.total.toFixed(1)}`,
+        total: `±${omniScore.uncertainty.totalStd.toFixed(1)}`,
         decomposition: {
-          data: `±${omniScore.uncertainty.data.variance.toFixed(1)}`,
-          model: `±${omniScore.uncertainty.model.variance.toFixed(1)}`,
-          regime: `±${omniScore.uncertainty.regime.variance.toFixed(1)}`,
+          data: `±${omniScore.uncertainty.components.data.std.toFixed(1)} (${(omniScore.uncertainty.components.data.varianceShare * 100).toFixed(0)}%)`,
+          model: `±${omniScore.uncertainty.components.model.std.toFixed(1)} (${(omniScore.uncertainty.components.model.varianceShare * 100).toFixed(0)}%)`,
+          regime: `±${omniScore.uncertainty.components.regime.std.toFixed(1)} (${(omniScore.uncertainty.components.regime.varianceShare * 100).toFixed(0)}%)`,
         },
-        regimeTransitionRisk: `${(omniScore.uncertainty.regime.transitionProbability * 100).toFixed(0)}%`,
+        regimeTransitionRisk: `${(omniScore.uncertainty.components.regime.transitionProbability * 100).toFixed(0)}%`,
         confidenceBand: `[${(omniScore.compositeScore + omniScore.uncertainty.confidenceBand[0]).toFixed(1)}, ${(omniScore.compositeScore + omniScore.uncertainty.confidenceBand[1]).toFixed(1)}]`,
       },
       
@@ -4151,10 +4151,12 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       // DATA COVERAGE
       // ═══════════════════════════════════════════════════════════════════════
       dataCoverage: {
-        overall: `${(omniScore.dataCoverage.overall * 100).toFixed(0)}%`,
-        confidenceLevel: omniScore.dataCoverage.confidenceLevel,
-        blindSpots: omniScore.dataCoverage.blindSpots.slice(0, 5),
-        staleData: omniScore.dataCoverage.staleData.slice(0, 3),
+        overall: `${(omniScore.dataCoverage.all * 100).toFixed(0)}%`,
+        confidenceLevel: omniScore.dataCoverage.level,
+        qs: `${(omniScore.dataCoverage.qs * 100).toFixed(0)}%`,
+        os: `${(omniScore.dataCoverage.os * 100).toFixed(0)}%`,
+        blindSpots: omniScore.dataCoverageLegacy.blindSpots.slice(0, 5),
+        staleData: omniScore.dataCoverageLegacy.staleData.slice(0, 3),
       },
       
       // ═══════════════════════════════════════════════════════════════════════
@@ -4194,6 +4196,60 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
     logger.error('❌ OmniScore v2.2 error:', error);
     res.status(500).json({
       success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OMNISCORE v2.3.1 — PRODUCTION HARDENED (Trading-Desk Grade)
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * @route GET /api/omniscore/v2.3
+ * @query project - Project ID (e.g., "ethereum", "supra", "bitcoin")
+ * 
+ * FEATURES:
+ * 1. REFLEXIVITY FIREWALL - QS (fundamentals) vs OS (opportunity)
+ * 2. 11 PRODUCTION INVARIANTS - Fail-closed, audit-visible
+ * 3. INV-4a/4b CLAMP TRACKING - Visible honesty
+ * 4. REFLEXIVITY SENTINEL - Live QS/price correlation monitoring
+ * 5. METHODOLOGY PROVENANCE - Hash, ID, URL in every response
+ * 6. ADVERSARIAL RESISTANCE - COMM cap, bot/anomaly penalties
+ * 7. EVENT-RISK OVERRIDE - Severity-weighted POS adjustment
+ * 8. NRG (Narrative vs Reality Gap) - Percentile-based interpretation
+ */
+app.get('/api/omniscore/v2.3', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const projectId = (req.query.project as string) || (req.query.coin as string) || 'bitcoin';
+    
+    // Import v2.3.1 modules
+    const { getProjectOmniScoreV23, formatOmniScoreForAI } = await import('./services/omniscore-data-fetcher-v23');
+    
+    // Fetch data and calculate OmniScore v2.3.1
+    const result = await getProjectOmniScoreV23(projectId);
+    
+    // Format for AI context
+    const aiContext = formatOmniScoreForAI(result);
+    
+    res.json({
+      // Core response from v2.3.1
+      ...result,
+      
+      // AI-friendly context
+      aiContextPreview: aiContext,
+      
+      // Performance
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error) {
+    logger.error('❌ OmniScore v2.3.1 error:', error);
+    res.status(500).json({
+      success: false,
+      engine: 'OmniScore',
+      version: '2.3.1',
       error: error instanceof Error ? error.message : 'Unknown error',
       computeTime: `${Date.now() - startTime}ms`,
     });

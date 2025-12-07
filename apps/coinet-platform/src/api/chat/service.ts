@@ -33,6 +33,8 @@ import { calculateBehavioralFinanceIntelligence, BehavioralFinanceInput } from '
 import { calculateNeuroeconomicIntelligence, formatNeuroeconomicForAI, NeuroeconomicInput } from '../../services/neuroeconomic-intelligence';
 import { fetchCachedEnterpriseMarketPrices, formatEnterpriseMarketDataForAI } from '../../services/enterprise-market-data-pipeline';
 import { calculateProjectTrustScore, formatTrustScoreForAI } from '../../services/project-research-intelligence';
+import { getProjectOmniScoreV23, formatOmniScoreForAI } from '../../services/omniscore-data-fetcher-v23';
+import { generateQuadrantVisualization, VisualizerProject } from '../../services/omniscore-visualizer';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -447,6 +449,79 @@ export class ChatService {
             optimalAction: neuroeconomicIntel.tradingImplications.optimalAction,
             decisionGrade: neuroeconomicIntel.decisionQuality.grade,
           });
+        }
+        
+        // 14. Add OmniScore v2.3.1 - Production Hardened Project Analysis
+        // Provides: Quality Score (QS), Opportunity Score (OS), Narrative vs Reality Gap (NRG)
+        // Features: Reflexivity firewall, 11 production invariants, adversarial resistance
+        if (detectedCoins.length > 0) {
+          try {
+            // Check if user wants a comparison/ranking of multiple coins
+            // Limit to top 5 to avoid timeouts
+            const coinsToAnalyze = detectedCoins.slice(0, 5);
+            
+            if (coinsToAnalyze.length > 1) {
+              // Multi-coin analysis: Generate Quadrant Board
+              const omniScores = await Promise.all(
+                coinsToAnalyze.map(coin => 
+                  getProjectOmniScoreV23(coin.coinGeckoId || coin.symbol.toLowerCase())
+                    .catch(() => null)
+                )
+              );
+              
+              const validScores = omniScores.filter(s => s && s.success);
+              
+              if (validScores.length > 0) {
+                // Generate visual quadrant map
+                const visualizerData: VisualizerProject[] = validScores.map((s: any) => ({
+                  ticker: s.project.toUpperCase(),
+                  qs: s.qualityScore.score,
+                  os: s.opportunityScore.gated ? null : s.opportunityScore.score,
+                  pos: s.pos.raw,
+                  posAdj: s.pos.adjusted,
+                  confidence: s.audit.confidence,
+                  nmiTier: s.nmi?.tier || 'clean',
+                }));
+                
+                const visualChart = generateQuadrantVisualization(visualizerData);
+                contextParts.push(visualChart);
+                
+                // Add individual summaries too if needed, or rely on visual chart
+                // Maybe add brief summary for top 1
+                if (validScores[0]) {
+                  contextParts.push(formatOmniScoreForAI(validScores[0] as any));
+                }
+                
+                logger.debug('🎯 OmniScore Multi-Coin Quadrant generated', {
+                  coins: coinsToAnalyze.map(c => c.symbol),
+                  count: validScores.length
+                });
+              }
+            } else {
+              // Single coin deep dive
+              const primaryCoin = detectedCoins[0];
+              const omniScore = await getProjectOmniScoreV23(primaryCoin.coinGeckoId || primaryCoin.symbol.toLowerCase());
+              
+              if (omniScore && omniScore.success) {
+                contextParts.push(formatOmniScoreForAI(omniScore));
+                logger.debug('🎯 OmniScore v2.3.1 context added', {
+                  project: omniScore.project,
+                  posAdjusted: omniScore.pos.adjusted,
+                  posTier: omniScore.pos.tier,
+                  qsScore: omniScore.qualityScore.score,
+                  qsTier: omniScore.qualityScore.tier,
+                  osStatus: omniScore.opportunityScore.status,
+                  osScore: omniScore.opportunityScore.score,
+                  nrgInterpretation: omniScore.nrg.interpretation,
+                  confidence: omniScore.audit.confidence,
+                  invariantStatus: omniScore.audit.invariantStatus,
+                  reflexivityStatus: omniScore.audit.reflexivitySentinel.status,
+                });
+              }
+            }
+          } catch (error) {
+            logger.warn('⚠️ OmniScore v2.3.1 analysis failed, continuing without', { error });
+          }
         }
         
         if (contextParts.length > 0) {

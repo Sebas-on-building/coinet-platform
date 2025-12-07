@@ -1,166 +1,323 @@
-# 🏆 OMNISCORE v2.2 — DIVINE PERFECTION
+# 🏆 OMNISCORE v2.2.2 FINAL FORM — INVARIANT-VALIDATED, AUDIT-READY
 
-## What's New
+## Design Goal
 
-OmniScore v2.2 elevates project analysis from a single composite number into a **regime-aware, quality-gated, adversarially robust decision system** that outputs both:
-
-* an **investable assessment** (resistant to hype contamination), and
-* an **actionable improvement roadmap** for founders.
-
-Backtesting and walk-forward evaluation are used where sufficient history exists.
-
----
-
-## 1) Reflexivity Firewall (QS vs OS)
-
-We fully separate:
-
-* **Quality Score (QS):** what the project *is*
-  (TEAM, TECH, SEC, GOV, ECO)
-
-* **Opportunity Score (OS):** what market conditions *might reward*
-  (MARKET, VAL, ADOPT, COMM, TOKEN)
-
-This prevents narrative momentum or price-driven signals from inflating fundamental quality.
-
-**Quality Gate:** If QS data coverage *(quality-weighted variable availability)* falls below 60%, OS display is gated to prevent "market noise looks like opportunity."
+A globally consistent, adversarially hardened, regime-aware project decision system with:
+- Strict definitions
+- Probability hygiene
+- Weight-aware data confidence
+- Anti-gaming defenses
+- Explainability that holds up in institutional review
 
 ---
 
-## 2) Hierarchical Weights
+## System Invariants (Verified via Property-Based Testing)
 
-Weights are structured as:
+| Code | Constraint | Description | Severity |
+|------|------------|-------------|----------|
+| **INV-1** | 0 ≤ Q_i(t) ≤ 1 | Data quality bounded | ERROR |
+| **INV-2** | 0 ≤ Coverage_w(S) ≤ 1 | Coverage bounded | ERROR |
+| **INV-3** | Σ_r p_r^final(t) = 1 | Probability hygiene | ERROR |
+| **INV-4** | 0 ≤ QS, OS, POS ≤ 100 | Score bounds enforced | WARN |
+| **INV-5** | ERS > 0 ⇒ POS_adj ≤ POS | Risk monotonicity | ERROR |
+| **INV-6** | Coverage_w_QS < 0.60 ⇒ OS = GATED | Quality gate | ERROR |
+| **INV-7** | ω_k ∈ [0,1], Σ_k ω_k = 1 | Weight sanity | WARN |
+| **INV-8** | γ ≥ 0 | Gamma safety | ERROR |
+| **INV-9** | QS ∩ OS inputs = ∅ | Feature isolation | ERROR |
 
-```text
-w = w^global + δ^sector + δ^cap + δ^regime
+**Fail-Closed Behavior:**
+- ERROR → gate OS, label POS low confidence, or stop response
+- WARN → show explanation, continue with caveats
+
+---
+
+## Canonical Definitions (Single Source of Truth)
+
+### Data Quality
+
+```
+Q_i(t) = R_i × F_g(t) × C_i(t)    ∈ [0, 1]
 ```
 
-This enables context-specific scoring that remains stable and defensible across cycles.
+### Freshness Decay
 
----
-
-## 3) Segment-Specific Freshness Decay
-
-We apply **segment-aware decay defaults** (tunable via calibration):
-
-| Domain        | Decay Speed        | Rationale                         |
-| ------------- | ------------------ | --------------------------------- |
-| TEAM / GOV    | Very slow (months) | Fundamentals don't change quickly |
-| SEC           | Slow (weeks)       | Audits remain valid               |
-| TECH          | Medium (days)      | Code changes regularly            |
-| MARKET / COMM | Fast (hours)       | Markets move rapidly              |
-
----
-
-## 4) Adversarial Hype Resistance
-
-COMM and ADOPT are adjusted with bot- and anomaly-risk penalties:
-
-```text
-COMM_adj = COMM × (1 - BotRisk) × (1 - AnomalyScore)
+```
+F_g(t) = exp(-λ_g × Δt_days)
+HalfLife_g = ln(2) / λ_g
 ```
 
-**COMM/ADOPT are capped by anomaly penalties and validated against multi-source consistency.** This reduces susceptibility to bought growth, wash signals, and artificial narrative spikes.
+| Segment | λ (days⁻¹) | Half-Life |
+|---------|------------|-----------|
+| TEAM | 0.0033 | 210 days |
+| GOV | 0.0050 | 139 days |
+| SEC | 0.0330 | 21 days |
+| TECH | 0.0990 | 7 days |
+| MARKET | 0.6931 | 1 day |
 
----
+### Canonical Coverage
 
-## 5) Multi-Uncertainty Decomposition
-
-We separate uncertainty into:
-
-```text
-Var(POS) = Var_data + Var_model + Var_regime
+```
+Coverage_w(S, t) = Σᵢ∈S 1[xᵢ] × Qᵢ × w̄ᵢ / Σᵢ∈S w̄ᵢ
 ```
 
-Scores are displayed with confidence bands and explicit data coverage so users can see where uncertainty originates.
+**Derived:**
+- Coverage_w_all — Global
+- Coverage_w_QS — Quality Score segments
+- Coverage_w_OS — Opportunity Score segments
+- Coverage_w_NRG — NRG calculation segments
 
 ---
 
-## 6) Event-Risk Override (Severity-Weighted)
+## Score Construction
 
-A dedicated **Red Flag Engine** identifies high-severity conditions:
+### Segment Scores
 
-* large unlock cliffs
-* recent exploits
-* legal/regulatory shocks
-* extreme bridge concentration
-* tight treasury runway
-
-**Mathematical adjustment:**
-
-```text
-POS_adj = POS - γ × ERS
+```
+S_g(t) = Σᵢ∈g w_{g,i} × Q_i(t) × z̃_i(t)
 ```
 
-Where **ERS** = Event Risk Severity (0–1) and **γ = 15** *(default cap; tunable per sector).*
+### Quality Score (Fundamentals)
+
+```
+QS(t) = Σ_{g∈{TEAM,TECH,SEC,GOV,ECO}} α_g × S_g(t)
+```
+
+### Opportunity Score (Market)
+
+```
+OS_r(t) = Σ_{g∈{MARKET,TOKEN,VAL,ADOPT,COMM}} β_{r,g} × S_g(t)
+```
+
+### Risk Core
+
+```
+Risk(t) = S_LEGAL(t) + S_MACRO(t) + ERS(t)
+```
+
+**Scaling note:** Risk components are z-normalized within regime × sector before aggregation.
 
 ---
 
-## 7) Narrative vs Reality Gap (NRG)
+## POS Aggregation
 
-```text
+```
+POS_r(t) = ω_F × QS(t) + ω_O × OS_r(t) - ω_R × Risk(t)
+POS(t) = Σ_r p_r^final(t) × POS_r(t)
+```
+
+**Initial priors (pending empirical calibration):**
+- ω_F = 0.45
+- ω_O = 0.40
+- ω_R = 0.15
+
+---
+
+## Regime Detection (Hybrid + Smoothed)
+
+```
+p_r(t) = η × p_r^model(t) + (1-η) × p_r^rules(t)
+p̃_r(t) = EMA(p_r(t), τ)    where τ = 5 days
+p_r^final(t) = p̃_r(t) / Σ_k p̃_k(t)    [INV-3: mandatory re-normalization]
+```
+
+---
+
+## Event-Risk Override
+
+```
+ERS(t) = max(event severities)
+POS_adj(t) = POS(t) - γ × ERS(t)
+```
+
+Where γ ≥ 0 (INV-8), default 15 (sector-tunable)
+
+**INV-5:** ERS > 0 ⇒ POS_adj ≤ POS (risk monotonicity)
+
+---
+
+## Manipulation & Gaming Defenses
+
+### Cross-Venue Validation
+
+Increase WashRisk when CEX volume spikes without:
+- DEX volume confirmation
+- Order book depth coherence
+- Price impact coherence
+
+### Hierarchical Peer Normalization (Fallback Ladder)
+
+Compare within progressively broader buckets:
+
+1. regime × sector × cap
+2. regime × sector
+3. sector × cap
+4. sector
+5. global
+
+Ensures stability for thin buckets.
+
+### Token Entity Clustering (Fallback Heuristic — Uncalibrated Default)
+
+**Per-sector override map:**
+- DeFi: 1.4x
+- Meme: 1.5x
+- L1/L2: 1.2x
+- Infrastructure: 1.25x
+- Default: 1.3x
+
+**Cluster signals (future full implementation):**
+- Shared funding graph
+- Time-synchronized transfers
+- Correlated deposit/withdraw behavior
+- Synchronized sell-offs
+
+---
+
+## NRG (Narrative vs Reality Gap)
+
+```
 NRG = z(COMM + MARKET) - z(ADOPT + SEC + TECH)
 ```
 
-Interpreted using **percentile thresholds derived from regime- and sector-conditioned historical distributions**.
+### Confidence Gate (No Defaults)
 
-Percentiles are computed per regime + sector:
+```
+Coverage_w_NRG < 0.60 ⇒ NRG.label = "low_confidence"
+```
 
-| Percentile | Interpretation         |
-| ---------- | ---------------------- |
-| Top 10%    | Overhyped 🔴           |
-| 35th–65th  | Fairly valued 🟡       |
-| Bottom 10% | Severely underhyped 💎 |
+**Important:** Do NOT auto-assign "fairly valued."
 
 ---
 
-## 8) Counterfactual Improvement Simulator
+## Feature Isolation (INV-9)
 
-Founders receive **realistic, constrained** upgrade scenarios with:
+**QS features must NOT include:** MARKET, VAL, COMM, TOKEN raw inputs
 
-* expected QS uplift
-* cost/time ranges
-* budget caps & hiring limits
-* feasibility weighting
-* realism checks
+**OS features must NOT include:** TEAM, TECH, SEC, GOV, ECO raw inputs
+
+This is the moat — prevents price-driven signals from contaminating fundamentals.
 
 ---
 
-## Why v2.2 Is a Real Moat
+## Reflexivity Leak Monitoring
 
-OmniScore v2.2 combines:
+```
+Leak(t) = Corr(QS, ΔPrice_30d)
+QS_Integrity = 1 - |Leak(t)|
+```
 
-* reflexivity separation
-* hierarchical weights
-* adversarial social defenses
-* event-risk overrides
-* multi-uncertainty reporting
-* counterfactual improvement planning
-
-into one unified system.
+| QS_Integrity | Level |
+|--------------|-------|
+| ≥ 0.9 | Excellent |
+| ≥ 0.7 | Good |
+| ≥ 0.5 | Moderate |
+| < 0.5 | Poor |
 
 ---
 
-## API Endpoint
+## Explainability Pack (Trading-Desk Grade)
 
-```bash
-curl "https://api.coinet.ai/api/omniscore/v2?project=supra"
+Expose:
+- **Top 5 QS drivers** — each with z̃_i, Q_i, contribution
+- **Top 5 OS drivers** — each with z̃_i, Q_i, contribution
+
+**Example:**
+
+```json
+{
+  "qsDrivers": [
+    { "feature": "sec_audit_depth", "z": 1.1, "Q": 0.92, "contribution": 0.8 }
+  ],
+  "osDrivers": [
+    { "feature": "market_liquidity_depth", "z": 0.9, "Q": 0.88, "contribution": 0.5 }
+  ]
+}
 ```
 
 ---
 
-## What's Next (v2.3 Roadmap)
+## Uncertainty (Initial Calibrated Priors)
 
-* Cross-chain entity resolution
-* Sector plug-in packs (40 core + 200 sector-specific variables)
-* Reflexivity leak monitoring (`Corr(QS, ΔPrice_30d)` tracking)
-* Causal-ish protections (separate signals from reflections of price)
+```
+σ_data = (1 - Coverage_w_all) × k_data
+σ_model = k_model
+σ_regime = H(p_r^final) / H_max × k_regime
+
+σ_total = √(σ²_data + σ²_model + σ²_regime)
+```
+
+**Upgrade path (v3.0):**
+
+```
+σ_data → √(Σᵢ (1-Qᵢ)² × wᵢ² × σᵢ²)
+```
 
 ---
 
-## The One-Line Summary
+## Testing
 
-> **OmniScore is not a single score. It is a regime-aware, quality-gated, adversarially robust decision system that outputs both an investable assessment and an actionable improvement roadmap.**
+### Property-Based Tests
+
+Invariant compliance is verified via property-based testing across:
+- Missing data
+- Negative values
+- Exploding variances
+- Weird regime distributions
+
+### Golden-Case Snapshot Tests
+
+10 known projects with frozen historical states:
+- QS, OS, POS
+- Gating flags
+- NRG interpretation
+- ERS adjustments
+
+No regression across versions.
+
+---
+
+## API Response Structure
+
+```json
+{
+  "version": "2.2.2-final",
+  "qualityScore": { "score": 75.4, "tier": "Strong" },
+  "opportunityScore": { "score": 62.3, "tier": "Neutral", "gated": false },
+  "explainability": {
+    "qsDrivers": [...],
+    "osDrivers": [...],
+    "topDrivers": [...],
+    "topRisks": [...]
+  },
+  "manipulationDefenses": {
+    "peerBucketAnomaly": { "bucketTier": 2 },
+    "entityClustering": { "method": "placeholder", "multiplier": 1.3 }
+  },
+  "dataCoverage": { "all": 0.78, "qs": 0.82, "os": 0.74, "nrg": 0.76 },
+  "reflexivityMonitor": { "qsIntegrity": 0.88 },
+  "invariantValidation": { "allPassed": true, "errorCount": 0, "warnCount": 0 },
+  "methodologyFooter": "Scores are probabilistic estimates. Confidence depends on data coverage, regime stability, and model maturity."
+}
+```
+
+---
+
+## The Summary Line
+
+> **OmniScore v2.2.2 is a regime-aware, quality-gated, adversarially defended project decision system with explicit invariants, hierarchical peer normalization, event-risk severity adjustments, and trading-desk-grade explainability.**
+
+---
+
+## What This Achieves
+
+With this final-form implementation:
+- ✅ No known loose ends in v2.2.x scope
+- ✅ Invariant-validated via property-based testing
+- ✅ Fail-closed behavior on ERROR violations
+- ✅ Trading-desk-grade explainability pack
+- ✅ Feature isolation enforced (QS/OS firewall)
+- ✅ Hierarchical peer normalization for thin-bucket stability
+- ✅ Uncalibrated defaults clearly labeled
 
 ---
 
@@ -170,5 +327,4 @@ Scores are probabilistic estimates. Confidence depends on data coverage, regime 
 
 ---
 
-*OmniScore v2.2 | Coinet Platform | Divine Perfection Depth Standard*
-
+*OmniScore v2.2.2 Final Form | Coinet Platform | Invariant-Validated, Audit-Ready*
