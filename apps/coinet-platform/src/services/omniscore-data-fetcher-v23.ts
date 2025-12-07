@@ -644,39 +644,56 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
 export function formatOmniScoreForAI(result: OmniScoreProductionResponse): string {
   const { qualityScore, opportunityScore, pos, risk, nrg, explainability, upgradeRecommendations, audit } = result;
   
+  // NMI data if available
+  const nmi = (result as any).nmi;
+  const stability = (result as any).stability;
+  
   let output = `
-## 🎯 OmniScore Analysis: ${result.project}
+═══════════════════════════════════════════════════════════════════════════════
+🎯 OFFICIAL OMNISCORE ANALYSIS: ${result.project.toUpperCase()}
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ CRITICAL: This is the AUTHORITATIVE OmniScore. When the user asks for 
+"OmniScore", "general score", or "project rating", use EXACTLY these numbers.
+DO NOT estimate, improvise, or adjust these values.
+═══════════════════════════════════════════════════════════════════════════════
 
-### 📊 Project OmniScore (POS)
-- **Score**: ${pos.adjusted}/100 (${pos.tier})
-- **Confidence Band**: ${pos.confidenceBand[0].toFixed(1)} - ${pos.confidenceBand[1].toFixed(1)}
-- **Confidence Level**: ${audit.confidence}
+### 📊 PROJECT OMNISCORE (POS) — THE SINGLE NUMBER
+┌─────────────────────────────────────────────────────────────┐
+│ SCORE: ${pos.adjusted}/100                                              │
+│ TIER:  ${pos.tier.toUpperCase().padEnd(10)}                                         │
+│ CONFIDENCE: ${audit.confidence.toUpperCase()}                                        │
+│ BAND: ${pos.confidenceBand[0].toFixed(1)} - ${pos.confidenceBand[1].toFixed(1)}                                         │
+└─────────────────────────────────────────────────────────────┘
 
-### 🔷 Quality Score (QS) — What the project IS
-- **Score**: ${qualityScore.score}/100 (${qualityScore.tier})
-- **Coverage**: ${(qualityScore.coverage * 100).toFixed(0)}%
-- **Breakdown**:
-  - Team: ${(qualityScore.breakdown.team * 100).toFixed(0)}%
-  - Technology: ${(qualityScore.breakdown.tech * 100).toFixed(0)}%
-  - Security: ${(qualityScore.breakdown.security * 100).toFixed(0)}%
-  - Governance: ${(qualityScore.breakdown.governance * 100).toFixed(0)}%
-  - Ecosystem: ${(qualityScore.breakdown.ecosystem * 100).toFixed(0)}%
+This is THE "general score" the user wants. Present this prominently.
 
-### 🔶 Opportunity Score (OS) — What the market might reward
-- **Status**: ${opportunityScore.status === 'gated' ? '⚠️ GATED (insufficient QS coverage)' : '✅ Active'}
-- **Score**: ${opportunityScore.score}/100 (${opportunityScore.tier})
-- **Coverage**: ${(opportunityScore.coverage * 100).toFixed(0)}%
+### 🔷 QUALITY SCORE (QS) — Fundamentals / What the project IS
+- **QS Score**: ${qualityScore.score}/100 (${qualityScore.tier})
+- **Coverage**: ${(qualityScore.coverage * 100).toFixed(0)}% of QS variables measured
+- **Breakdown** (each 0-100):
+  - Team:       ${(qualityScore.breakdown.team * 100).toFixed(0)} (founder credibility, experience)
+  - Technology: ${(qualityScore.breakdown.tech * 100).toFixed(0)} (code quality, GitHub activity)
+  - Security:   ${(qualityScore.breakdown.security * 100).toFixed(0)} (audits, incident history)
+  - Governance: ${(qualityScore.breakdown.governance * 100).toFixed(0)} (decentralization, token dist)
+  - Ecosystem:  ${(qualityScore.breakdown.ecosystem * 100).toFixed(0)} (integrations, TVL, partners)
+
+### 🔶 OPPORTUNITY SCORE (OS) — Market Sentiment / What the market might reward
+- **Status**: ${opportunityScore.status === 'gated' ? '⚠️ GATED (QS coverage below 60%)' : '✅ Active'}
+- **OS Score**: ${opportunityScore.status === 'gated' ? 'N/A (gated)' : `${opportunityScore.score}/100 (${opportunityScore.tier})`}
+- **Coverage**: ${(opportunityScore.coverage * 100).toFixed(0)}% of OS variables measured
 ${opportunityScore.gateReason ? `- **Gate Reason**: ${opportunityScore.gateReason}` : ''}
+(OS tracks: price momentum, volume, social buzz, on-chain activity)
 
-### ⚡ Risk Assessment
-- **Risk Score**: ${risk.score.toFixed(2)}
-- **Event Risk Severity**: ${risk.eventRiskSeverity}
-- **Adjustment Gamma**: ${risk.adjustmentGamma}
+### ⚡ RISK ASSESSMENT
+- **Risk Score**: ${(risk.score * 100).toFixed(0)}/100 (higher = more risk)
+- **Event Risk**: ${risk.eventRiskSeverity}
+- **Adjustment Factor**: γ = ${risk.adjustmentGamma.toFixed(2)}
 
-### 📈 Narrative vs Reality Gap (NRG)
-- **Value**: ${nrg.value.toFixed(2)}
+### 📈 NARRATIVE VS REALITY GAP (NRG)
+- **NRG Value**: ${nrg.value >= 0 ? '+' : ''}${nrg.value.toFixed(2)} (positive = overhyped, negative = underhyped)
 - **Percentile**: ${(nrg.percentile * 100).toFixed(0)}th
-- **Interpretation**: ${getNRGEmoji(nrg.interpretation)} ${nrg.interpretation.replace('_', ' ')}
+- **Verdict**: ${getNRGEmoji(nrg.interpretation)} ${nrg.interpretation.replace('_', ' ').toUpperCase()}
+${nrg.value > 0.3 ? '⚠️ Social hype EXCEEDS fundamental reality' : nrg.value < -0.3 ? '💎 Fundamentals EXCEED social attention - potential opportunity' : '✅ Social attention matches reality'}
 `;
 
   // Explainability
@@ -719,6 +736,28 @@ ${upgradeRecommendations.quickWins.map(r =>
     }
   }
 
+  // NMI section if available
+  if (nmi) {
+    output += `
+### 🛡️ NARRATIVE MANIPULATION INDEX (NMI)
+- **Score**: ${nmi.score}/100 (${nmi.tier || 'N/A'})
+- **Bot Risk**: ${((nmi.components?.botLikelihood || 0) * 100).toFixed(0)}%
+- **Anomaly Bursts**: ${((nmi.components?.anomalyBursts || 0) * 100).toFixed(0)}%
+- **Influencer Concentration**: ${((nmi.components?.influencerConcentration || 0) * 100).toFixed(0)}%
+${nmi.tier === 'clean' ? '✅ No manipulation signals detected' : nmi.tier === 'suspicious' ? '⚠️ Some manipulation indicators present' : nmi.tier === 'manipulated' || nmi.tier === 'severe' ? '🚨 HIGH manipulation risk detected' : ''}
+`;
+  }
+
+  // Stability summary if available
+  if (stability) {
+    output += `
+### 🔒 SCORE STABILITY
+- **Guard Applied**: ${stability.guardApplied ? 'Yes' : 'No'}
+- **LKG Used**: ${stability.lkgUsed ? 'Yes (using cached stable data)' : 'No'}
+${stability.warnings?.length > 0 ? `- **Warnings**: ${stability.warnings.join(', ')}` : ''}
+`;
+  }
+
   // Audit summary
   output += `
 ### 📋 Audit Trail
@@ -726,7 +765,16 @@ ${upgradeRecommendations.quickWins.map(r =>
 - **Data As Of**: ${audit.dataAsOf}
 - **Sources Used**: ${audit.sourcesUsed.join(', ') || 'estimates only'}
 - **Invariant Status**: ${audit.invariantStatus === 'pass' ? '✅ Pass' : audit.invariantStatus === 'warn' ? '⚠️ Warnings' : '❌ Errors'}
-- **Reflexivity Sentinel**: ${audit.reflexivitySentinel.status === 'healthy' ? '✅ Healthy' : '⚠️ ' + audit.reflexivitySentinel.status}
+
+═══════════════════════════════════════════════════════════════════════════════
+📢 HOW TO PRESENT THIS TO THE USER:
+═══════════════════════════════════════════════════════════════════════════════
+1. START with the POS score: "${result.project} has an OmniScore of ${pos.adjusted}/100 (${pos.tier})"
+2. EXPLAIN what that means: QS=${qualityScore.score} (fundamentals) + OS=${opportunityScore.status === 'gated' ? 'GATED' : opportunityScore.score} (market)
+3. HIGHLIGHT any NRG warnings or opportunities
+4. ADD trading context based on the scores
+DO NOT improvise different numbers. These are the EXACT official OmniScores.
+═══════════════════════════════════════════════════════════════════════════════
 `;
 
   return output;
