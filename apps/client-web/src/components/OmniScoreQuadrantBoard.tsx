@@ -96,10 +96,11 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
   title,
 }) => {
   // Memoize data transformation to prevent unnecessary recalculations
+  // Add small jitter to prevent overlapping points
   const data = useMemo(() => {
     if (!projects || projects.length === 0) return [];
     
-    return projects.map((p) => ({
+    const baseData = projects.map((p) => ({
       x: Math.max(0, Math.min(100, p.qs)),
       y: p.os === null ? 50 : Math.max(0, Math.min(100, p.os)),
       z: getSize(p), // Use z for bubble size
@@ -110,6 +111,29 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
       nmiTier: p.nmi?.tier || "clean",
       color: getColor(p),
     }));
+    
+    // Add small jitter to overlapping points (within 2 units of each other)
+    const jitteredData = baseData.map((point, index) => {
+      const overlapping = baseData.filter((p, i) => 
+        i !== index && 
+        Math.abs(p.x - point.x) < 2 && 
+        Math.abs(p.y - point.y) < 2
+      );
+      
+      if (overlapping.length > 0) {
+        // Add small offset based on index to spread overlapping points
+        const offsetX = (index % 3 - 1) * 1.5; // -1.5, 0, 1.5
+        const offsetY = Math.floor(index / 3) % 2 === 0 ? 1.5 : -1.5;
+        return {
+          ...point,
+          x: Math.max(0, Math.min(100, point.x + offsetX)),
+          y: Math.max(0, Math.min(100, point.y + offsetY)),
+        };
+      }
+      return point;
+    });
+    
+    return jitteredData;
   }, [projects]);
   
   // Memoize the shape function to prevent recreation on every render
