@@ -4273,10 +4273,10 @@ const handleOmniScoreRequest = async (req: Request, res: Response) => {
         prevSnapshot: lkgSnapshot,
         newPOS: result.pos.adjusted,
         newQS: result.qualityScore.score,
-        newOS: result.opportunityScore.gated ? null : result.opportunityScore.score,
+        newOS: result.opportunityScore.status === 'gated' ? null : result.opportunityScore.score,
         newCoverageQS: result.audit.coverageQS,
         newCoverageOS: result.audit.coverageOS,
-        eventRiskSeverity: result.eventRiskOverride?.severity ?? 0,
+        eventRiskSeverity: result.risk?.eventRiskSeverity ?? 0,
         sourceHealth,
       });
       
@@ -4297,7 +4297,8 @@ const handleOmniScoreRequest = async (req: Request, res: Response) => {
       // Apply adjusted values if continuity guard was triggered
       if (stabilityResult.continuityApplied && stabilityResult.adjustedPOS !== undefined) {
         result.pos.adjusted = stabilityResult.adjustedPOS;
-        result.pos.stabilityGuardApplied = true;
+        // Mark stability guard in audit trail instead of mutating POSResponse type
+        (result as any).stabilityGuardApplied = true;
       }
       
       // Save as LKG if confidence is sufficient
@@ -4308,7 +4309,7 @@ const handleOmniScoreRequest = async (req: Request, res: Response) => {
           pos: result.pos.adjusted,
           posAdj: result.pos.adjusted,
           qs: result.qualityScore.score,
-          os: result.opportunityScore.gated ? null : result.opportunityScore.score,
+          os: result.opportunityScore.status === 'gated' ? null : result.opportunityScore.score,
           coverageQS: result.audit.coverageQS,
           coverageOS: result.audit.coverageOS,
           confidence: result.audit.confidence,
