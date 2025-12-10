@@ -4245,15 +4245,18 @@ const handleOmniScoreRequest = async (req: Request, res: Response) => {
     const lkgSnapshot = getLKGSnapshot(projectId);
     
     // Calculate source health from current API configuration
+    // Note: TWITTER_BEARER_TOKEN is not used by TwitterAPI.io (COMM v2.2), so we don't check it
     const sourceHealth = calculateSourceHealth({
-      marketKeysConfigured: process.env.COINGECKO_API_KEY ? 1 : 0,
+      marketKeysConfigured: [
+        process.env.COINGECKO_API_KEY,
+        process.env.CMC_API_KEY,
+      ].filter(Boolean).length,
       marketKeysTotal: 2,
       socialKeysConfigured: [
         process.env.LUNARCRUSH_API_KEY,
-        process.env.TWITTER_API_KEY,
-        process.env.TWITTER_BEARER_TOKEN,
+        process.env.TWITTER_API_KEY, // Used for TwitterAPI.io (COMM v2.2)
       ].filter(Boolean).length,
-      socialKeysTotal: 4,
+      socialKeysTotal: 2, // Fixed: Only checking 2 keys (LUNARCRUSH + TWITTER_API_KEY)
       derivativesKeysConfigured: process.env.COINGLASS_API_KEY ? 1 : 0,
       derivativesKeysTotal: 2,
       newsKeysConfigured: process.env.CRYPTOPANIC_API_KEY ? 1 : 0,
