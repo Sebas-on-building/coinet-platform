@@ -54,9 +54,16 @@ const getSize = (p: QuadrantProject) => {
 // Custom shape for Scatter points with colors
 const CustomShape = (props: any) => {
   const { cx, cy, payload } = props;
-  if (cx === null || cy === null) return null;
+  
+  console.log('🎨 CustomShape rendering:', { cx, cy, name: payload?.name, color: payload?.color });
+  
+  if (cx === null || cy === null || !payload) {
+    console.warn('⚠️ CustomShape: Invalid props', { cx, cy, payload });
+    return null;
+  }
   
   const radius = Math.sqrt(payload.z || 100) / 2;
+  const ticker = payload.name?.substring(0, 3) || payload.name || "?";
   
   return (
     <g>
@@ -65,22 +72,23 @@ const CustomShape = (props: any) => {
         cy={cy}
         r={radius}
         fill={payload.color || "#3b82f6"}
-        fillOpacity={0.7}
-        stroke="#111827"
-        strokeWidth={1.5}
+        fillOpacity={0.8}
+        stroke="#fff"
+        strokeWidth={2}
       />
       <text
         x={cx}
         y={cy}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={10}
+        fontSize={Math.max(8, Math.min(12, radius / 3))}
         fontWeight="bold"
         fill="#fff"
         stroke="#000"
-        strokeWidth={0.5}
+        strokeWidth={0.3}
+        pointerEvents="none"
       >
-        {payload.name?.substring(0, 3) || ""}
+        {ticker}
       </text>
     </g>
   );
@@ -101,17 +109,21 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
     );
   }
   
-  const data = projects.map((p) => ({
-    x: Math.max(0, Math.min(100, p.qs)),
-    y: p.os === null ? 50 : Math.max(0, Math.min(100, p.os)),
-    z: getSize(p), // Use z for bubble size
-    name: p.ticker || p.name,
-    pos: p.pos,
-    posAdj: p.posAdj ?? p.pos,
-    confidence: p.confidence || "unknown",
-    nmiTier: p.nmi?.tier || "clean",
-    color: getColor(p),
-  }));
+  const data = projects.map((p) => {
+    const point = {
+      x: Math.max(0, Math.min(100, p.qs)),
+      y: p.os === null ? 50 : Math.max(0, Math.min(100, p.os)),
+      z: getSize(p), // Use z for bubble size
+      name: p.ticker || p.name,
+      pos: p.pos,
+      posAdj: p.posAdj ?? p.pos,
+      confidence: p.confidence || "unknown",
+      nmiTier: p.nmi?.tier || "clean",
+      color: getColor(p),
+    };
+    console.log(`📍 Point: ${point.name} at (QS: ${point.x}, OS: ${point.y}), size: ${point.z}, color: ${point.color}`);
+    return point;
+  });
   
   console.log('📊 Chart data prepared:', data);
 
