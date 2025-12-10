@@ -170,7 +170,7 @@ newsSources.set('cryptopanic', {
 newsSources.set('coingecko', {
   name: 'CoinGecko News',
   priority: 2,
-  enabled: true,
+  enabled: false, // Disabled: CoinGecko /status_updates endpoint is unreliable. RSS aggregator provides better news coverage.
   apiKey: process.env.COINGECKO_API_KEY,
   rateLimit: {
     requestsPerMinute: process.env.COINGECKO_API_KEY ? 30 : 10,
