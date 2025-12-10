@@ -484,8 +484,16 @@ export class ChatService {
                   nmiTier: s.nmi?.tier || 'clean',
                 }));
                 
+                const quadrantChart = {
+                  type: 'omniscore-quadrant',
+                  projects: visualizerData,
+                };
+
                 const visualChart = generateQuadrantVisualization(visualizerData);
                 contextParts.push(visualChart);
+                
+                // Store quadrant data for frontend React component rendering via charts payload
+                (request as any)._omniscoreQuadrantChart = quadrantChart;
                 
                 // Add individual summaries too if needed, or rely on visual chart
                 // Maybe add brief summary for top 1
@@ -623,13 +631,19 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                                'I apologize, but I couldn\'t generate a response.';
 
       // 8. Store assistant message
+      const quadrantChart = (request as any)._omniscoreQuadrantChart;
+      const chartsCombined = [
+        ...(chartConfig ? [chartConfig] : []),
+        ...(quadrantChart ? [quadrantChart] : []),
+      ];
+
       const assistantMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
           role: 'assistant',
           content: assistantContent,
           sources: sources.length > 0 ? (sources as unknown as any) : undefined,
-          charts: chartConfig ? ([chartConfig] as unknown as any) : undefined,
+          charts: chartsCombined.length > 0 ? (chartsCombined as unknown as any) : undefined,
           confidence: aiResponse.data.confidence,
           model: aiResponse.metadata?.version || 'unknown',
           tokens: undefined, // Would be populated from AI service
@@ -669,7 +683,7 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             role: 'assistant',
             content: assistantContent,
             sources: sources.length > 0 ? sources : undefined,
-            charts: chartConfig ? [chartConfig] : undefined,
+            charts: chartsCombined.length > 0 ? chartsCombined : undefined,
             confidence: aiResponse.data.confidence,
             createdAt: assistantMessage.createdAt.toISOString(),
           },

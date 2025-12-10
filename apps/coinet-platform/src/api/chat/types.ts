@@ -23,7 +23,7 @@ export interface ChatMessageResponse {
       role: 'user' | 'assistant';
       content: string;
       sources?: Source[];
-      charts?: ChartConfig[];
+      charts?: (ChartConfig | OmniScoreQuadrantData)[];
       confidence?: number;
       createdAt: string;
     };
@@ -55,6 +55,19 @@ export interface ChartConfig {
   type?: 'candlestick' | 'line' | 'volume';
 }
 
+export interface OmniScoreQuadrantData {
+  type: 'omniscore-quadrant';
+  projects: Array<{
+    ticker: string;
+    qs: number;
+    os: number | null;
+    pos: number;
+    posAdj: number;
+    confidence: string;
+    nmiTier: string;
+  }>;
+}
+
 export interface ConversationHistoryResponse {
   success: boolean;
   data: {
@@ -73,7 +86,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   sources?: Source[];
-  charts?: ChartConfig[];
+  charts?: (ChartConfig | OmniScoreQuadrantData)[];
   confidence?: number;
   createdAt: string;
 }

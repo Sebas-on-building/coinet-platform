@@ -13,6 +13,7 @@ import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useLongPress } from '@/hooks/useLongPress';
 import { triggerHaptic } from '@/utils/haptics';
 import { TradingViewChatChart } from '@/components/charts/TradingViewChatChart';
+import { OmniScoreQuadrantBoard, QuadrantProject } from '@/components/OmniScoreQuadrantBoard';
 import { SourceCitation, Source } from '@/components/SourceCitation';
 import { SourcesPanel } from '@/components/SourcesPanel';
 
@@ -46,7 +47,7 @@ interface Message {
   timestamp: string;
   timestampMs: number;
   isRead?: boolean;
-  charts?: { type: string; symbol?: string; interval?: string }[];
+  charts?: any[];
   sources?: Source[];
 }
 
@@ -325,17 +326,39 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
     toast({ title: "Message exported", description: "Message saved to file" });
   };
 
-  const renderCharts = (charts: { type: string; symbol?: string; interval?: string }[]) => {
+  const renderCharts = (charts: any[]) => {
     return (
       <div className="space-y-4 mb-4">
-        {charts.map((chart, index) => (
-          <TradingViewChatChart
-            key={index}
-            symbol={chart.symbol || 'BTCUSD'}
-            interval={(chart.interval || '1H') as any}
-            isMobile={true}
-          />
-        ))}
+        {charts.map((chart, index) => {
+          if (chart?.type === 'omniscore-quadrant' && Array.isArray(chart.projects)) {
+            const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
+              name: p.ticker || p.name || 'Project',
+              ticker: p.ticker,
+              qs: p.qs ?? 0,
+              os: p.os ?? null,
+              osStatus: p.os === null ? 'gated' : 'ok',
+              pos: p.pos ?? 0,
+              posAdj: p.posAdj ?? p.pos ?? 0,
+              confidence: p.confidence,
+              nmi: { tier: p.nmiTier },
+            }));
+
+            return (
+              <div key={index} className="mb-4">
+                <OmniScoreQuadrantBoard projects={projects} title="OmniScore Quadrant" />
+              </div>
+            );
+          }
+
+          return (
+            <TradingViewChatChart
+              key={index}
+              symbol={chart.symbol || 'BTCUSD'}
+              interval={(chart.interval || '1H') as any}
+              isMobile={true}
+            />
+          );
+        })}
       </div>
     );
   };

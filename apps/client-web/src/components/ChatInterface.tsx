@@ -23,12 +23,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SourceCitation, Source } from "@/components/SourceCitation";
 import { SourcesPanel } from "@/components/SourcesPanel";
 import { apiClient } from "@/services/api-client";
+import { OmniScoreQuadrantBoard, QuadrantProject } from "@/components/OmniScoreQuadrantBoard";
 
 interface Message {
   id: string;
   type: "user" | "assistant";
   content: string;
-  charts?: { type: string; symbol?: string; interval?: string }[];
+  charts?: any[];
   timestamp: number;
   isRead?: boolean;
   sources?: Source[];
@@ -112,6 +113,50 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
     return null;
   };
 
+  const renderChatCharts = (charts: any[]) => {
+    if (!charts || charts.length === 0) return null;
+    
+    console.log('🎨 Rendering charts:', charts);
+    
+    return charts.map((chart, index) => {
+      console.log(`📈 Chart ${index}:`, chart);
+      
+      if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
+        console.log('✅ Detected OmniScore quadrant chart with', chart.projects.length, 'projects');
+        
+        const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
+          name: p.ticker || p.name || "Project",
+          ticker: p.ticker,
+          qs: p.qs ?? 0,
+          os: p.os ?? null,
+          pos: p.pos ?? 0,
+          posAdj: p.posAdj ?? p.pos ?? 0,
+          confidence: p.confidence,
+          nmi: { tier: p.nmiTier },
+        }));
+
+        console.log('📊 Mapped projects:', projects);
+
+        return (
+          <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
+            <OmniScoreQuadrantBoard projects={projects} title="OmniScore Quadrant" />
+          </div>
+        );
+      }
+
+      // Fallback to TradingView charts
+      return (
+        <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
+          <TradingViewChatChart
+            symbol={chart.symbol || "BTCUSD"}
+            interval={(chart.interval || "1H") as any}
+            isMobile={isMobile}
+          />
+        </div>
+      );
+    });
+  };
+
   // Load conversation history when conversationId changes
   useEffect(() => {
     if (currentConversationId) {
@@ -123,11 +168,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
               type: msg.role === 'assistant' ? 'assistant' : 'user',
               content: msg.content,
               sources: msg.sources,
-              charts: msg.charts?.map(c => ({
-                type: c.type || 'tradingview',
-                symbol: c.symbol,
-                interval: c.interval,
-              })),
+              charts: msg.charts as any[] | undefined,
               timestamp: new Date(msg.createdAt).getTime(),
               isRead: true,
             }));
@@ -185,15 +226,14 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
       }
 
       // Convert backend response to frontend message format
+      const charts = apiResponse.data.message.charts as any[] | undefined;
+      console.log('📊 Charts received from backend:', charts);
+      
       const assistantMessage: Message = {
         id: apiResponse.data.message.id,
         type: "assistant",
         content: apiResponse.data.message.content,
-        charts: apiResponse.data.message.charts?.map(c => ({
-          type: c.type || 'tradingview',
-          symbol: c.symbol,
-          interval: c.interval,
-        })),
+        charts: charts,
         timestamp: new Date(apiResponse.data.message.createdAt).getTime(),
         isRead: true,
         sources: apiResponse.data.message.sources,
@@ -438,18 +478,8 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                        }`}>
                           {/* TradingView Charts FIRST */}
                           {message.charts && message.charts.length > 0 && (
-                            <div className={cn(
-                              "mb-6",
-                              isMobile ? "mb-4" : "mb-6"
-                            )}>
-                              {message.charts.map((chart, index) => (
-                                <TradingViewChatChart
-                                  key={index}
-                                  symbol={chart.symbol || 'BTCUSD'}
-                                  interval={(chart.interval || '1H') as any}
-                                  isMobile={isMobile}
-                                />
-                              ))}
+                            <div>
+                              {renderChatCharts(message.charts)}
                             </div>
                           )}
 
