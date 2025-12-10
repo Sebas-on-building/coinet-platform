@@ -9,7 +9,6 @@ import {
   Tooltip,
   ReferenceLine,
   ZAxis,
-  Cell,
 } from "recharts";
 
 export type QuadrantProject = {
@@ -52,10 +51,56 @@ const getSize = (p: QuadrantProject) => {
   return 80 + val * 6; // simple scaling
 };
 
+// Custom shape for Scatter points with colors
+const CustomShape = (props: any) => {
+  const { cx, cy, payload } = props;
+  if (cx === null || cy === null) return null;
+  
+  const radius = Math.sqrt(payload.z || 100) / 2;
+  
+  return (
+    <g>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={radius}
+        fill={payload.color || "#3b82f6"}
+        fillOpacity={0.7}
+        stroke="#111827"
+        strokeWidth={1.5}
+      />
+      <text
+        x={cx}
+        y={cy}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={10}
+        fontWeight="bold"
+        fill="#fff"
+        stroke="#000"
+        strokeWidth={0.5}
+      >
+        {payload.name?.substring(0, 3) || ""}
+      </text>
+    </g>
+  );
+};
+
 export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
   projects,
   title,
 }) => {
+  console.log('🎯 OmniScoreQuadrantBoard rendering with', projects.length, 'projects');
+  
+  if (!projects || projects.length === 0) {
+    console.warn('⚠️ No projects provided to OmniScoreQuadrantBoard');
+    return (
+      <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
+        <p className="text-muted-foreground">No data available</p>
+      </div>
+    );
+  }
+  
   const data = projects.map((p) => ({
     x: Math.max(0, Math.min(100, p.qs)),
     y: p.os === null ? 50 : Math.max(0, Math.min(100, p.os)),
@@ -67,6 +112,8 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
     nmiTier: p.nmi?.tier || "clean",
     color: getColor(p),
   }));
+  
+  console.log('📊 Chart data prepared:', data);
 
   return (
     <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
@@ -101,7 +148,7 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
                 if (name === "z") return [`${payload.posAdj.toFixed(1)}`, "POS*"];
                 return value;
               }}
-              contentStyle={{ fontSize: 12 }}
+              contentStyle={{ fontSize: 12, backgroundColor: "rgba(0,0,0,0.8)", border: "1px solid #333" }}
               labelFormatter={(label, payload) => {
                 if (payload && payload[0]) {
                   return payload[0].payload.name;
@@ -111,12 +158,9 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
             />
             <Scatter 
               data={data} 
+              shape={CustomShape}
               fill="#8884d8"
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Scatter>
+            />
           </ScatterChart>
         </ResponsiveContainer>
       </div>
