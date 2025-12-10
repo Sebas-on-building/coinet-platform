@@ -569,7 +569,8 @@ async function fetchFromCoinGecko(coins?: string[]): Promise<NewsArticle[]> {
   }
   
   try {
-    // CoinGecko has a news endpoint (status_updates for coins or general news)
+    // CoinGecko doesn't have a /news endpoint - use /status_updates directly
+    // This endpoint provides project status updates which serve as news-like content
     const baseUrl = 'https://api.coingecko.com/api/v3';
     const headers: Record<string, string> = { 'Accept': 'application/json' };
     
@@ -577,40 +578,26 @@ async function fetchFromCoinGecko(coins?: string[]): Promise<NewsArticle[]> {
       headers['x-cg-pro-api-key'] = source.apiKey;
     }
     
-    // Fetch trending coins news or general market news
-    const response = await axios.get(`${baseUrl}/news`, {
-      timeout: CONFIG.REQUEST_TIMEOUT_MS,
-      headers,
-    });
+    // Go directly to status_updates endpoint (CoinGecko's only news-like endpoint)
+    const articles = await fetchCoinGeckoStatusUpdates(coins, headers);
     
-    if (!response.data?.data) {
-      // Fallback: try status updates endpoint
-      return await fetchCoinGeckoStatusUpdates(coins, headers);
+    if (articles.length > 0) {
+      markSourceSuccess('coingecko');
+      logger.debug('📰 CoinGecko fetch SUCCESS', { count: articles.length });
+      return articles;
     }
     
-    const articles = response.data.data.slice(0, CONFIG.MAX_NEWS_PER_SOURCE).map((item: any) => 
-      transformCoinGeckoArticle(item)
-    );
-    
-    markSourceSuccess('coingecko');
-    logger.debug('📰 CoinGecko fetch SUCCESS', { count: articles.length });
-    
-    return articles;
+    // No articles found
+    markSourceFailure('coingecko', 'No status updates available');
+    return [];
   } catch (error: any) {
-    // Try fallback endpoint
-    try {
-      const fallbackArticles = await fetchCoinGeckoStatusUpdates(coins);
-      if (fallbackArticles.length > 0) {
-        markSourceSuccess('coingecko');
-        return fallbackArticles;
-      }
-    } catch {}
-    
     const message = error.response?.status === 429 
       ? 'Rate limited' 
+      : error.response?.status === 400
+      ? 'Invalid endpoint or parameters'
       : error.message || 'Unknown error';
     markSourceFailure('coingecko', message);
-    logger.warn('📰 CoinGecko fetch FAILED', { error: message });
+    logger.warn('📰 CoinGecko fetch FAILED', { error: message, status: error.response?.status });
     return [];
   }
 }
