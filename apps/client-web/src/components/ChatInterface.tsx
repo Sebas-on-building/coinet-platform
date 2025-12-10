@@ -116,30 +116,19 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   const renderChatCharts = (charts: any[]) => {
     if (!charts || charts.length === 0) return null;
     
-    console.log('🎨 Rendering charts:', charts);
-    
     return charts.map((chart, index) => {
-      console.log(`📈 Chart ${index}:`, chart);
-      
       if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
-        console.log('✅ Detected OmniScore quadrant chart with', chart.projects.length, 'projects');
         
-        const projects: QuadrantProject[] = chart.projects.map((p: any) => {
-          const project = {
-            name: p.ticker || p.name || "Project",
-            ticker: p.ticker,
-            qs: p.qs ?? 0,
-            os: p.os ?? null,
-            pos: p.pos ?? 0,
-            posAdj: p.posAdj ?? p.pos ?? 0,
-            confidence: p.confidence,
-            nmi: { tier: p.nmiTier },
-          };
-          console.log(`📦 Project mapped: ${project.ticker} - QS: ${project.qs}, OS: ${project.os}, POS: ${project.pos}, POS_adj: ${project.posAdj}, NMI: ${project.nmi?.tier}`);
-          return project;
-        });
-
-        console.log('📊 Mapped projects:', projects);
+        const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
+          name: p.ticker || p.name || "Project",
+          ticker: p.ticker,
+          qs: p.qs ?? 0,
+          os: p.os ?? null,
+          pos: p.pos ?? 0,
+          posAdj: p.posAdj ?? p.pos ?? 0,
+          confidence: p.confidence,
+          nmi: { tier: p.nmiTier },
+        }));
 
         return (
           <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>

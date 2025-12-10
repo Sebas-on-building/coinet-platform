@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import {
   ResponsiveContainer,
   ScatterChart,
@@ -51,14 +51,11 @@ const getSize = (p: QuadrantProject) => {
   return 80 + val * 6; // simple scaling
 };
 
-// Custom shape for Scatter points with colors
-const CustomShape = (props: any) => {
+// Custom shape for Scatter points with colors - memoized to prevent excessive re-renders
+const CustomShape = React.memo((props: any) => {
   const { cx, cy, payload } = props;
   
-  console.log('🎨 CustomShape rendering:', { cx, cy, name: payload?.name, color: payload?.color });
-  
   if (cx === null || cy === null || !payload) {
-    console.warn('⚠️ CustomShape: Invalid props', { cx, cy, payload });
     return null;
   }
   
@@ -92,25 +89,17 @@ const CustomShape = (props: any) => {
       </text>
     </g>
   );
-};
+});
 
 export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
   projects,
   title,
 }) => {
-  console.log('🎯 OmniScoreQuadrantBoard rendering with', projects.length, 'projects');
-  
-  if (!projects || projects.length === 0) {
-    console.warn('⚠️ No projects provided to OmniScoreQuadrantBoard');
-    return (
-      <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
-        <p className="text-muted-foreground">No data available</p>
-      </div>
-    );
-  }
-  
-  const data = projects.map((p) => {
-    const point = {
+  // Memoize data transformation to prevent unnecessary recalculations
+  const data = useMemo(() => {
+    if (!projects || projects.length === 0) return [];
+    
+    return projects.map((p) => ({
       x: Math.max(0, Math.min(100, p.qs)),
       y: p.os === null ? 50 : Math.max(0, Math.min(100, p.os)),
       z: getSize(p), // Use z for bubble size
@@ -120,12 +109,19 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
       confidence: p.confidence || "unknown",
       nmiTier: p.nmi?.tier || "clean",
       color: getColor(p),
-    };
-    console.log(`📍 Point: ${point.name} at (QS: ${point.x}, OS: ${point.y}), size: ${point.z}, color: ${point.color}`);
-    return point;
-  });
+    }));
+  }, [projects]);
   
-  console.log('📊 Chart data prepared:', data);
+  // Memoize the shape function to prevent recreation on every render
+  const shapeFunction = useCallback((props: any) => <CustomShape {...props} />, []);
+  
+  if (!projects || projects.length === 0) {
+    return (
+      <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
+        <p className="text-muted-foreground">No data available</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
@@ -170,7 +166,7 @@ export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
             />
             <Scatter 
               data={data} 
-              shape={CustomShape}
+              shape={shapeFunction}
               fill="#8884d8"
             />
           </ScatterChart>
