@@ -16,6 +16,7 @@ import { TradingViewChatChart } from '@/components/charts/TradingViewChatChart';
 import { OmniScoreQuadrantBoard, QuadrantProject } from '@/components/OmniScoreQuadrantBoard';
 import { SourceCitation, Source } from '@/components/SourceCitation';
 import { SourcesPanel } from '@/components/SourcesPanel';
+import { apiClient } from '@/services/api-client';
 
 const suggestedPrompts = [
   {
@@ -170,9 +171,9 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
     return null;
   };
 
-  const handleSendMessage = (messageText?: string) => {
+  const handleSendMessage = async (messageText?: string) => {
     const text = messageText || inputValue.trim();
-    if (!text) return;
+    if (!text || isTyping) return; // Prevent duplicate submissions
 
     triggerHaptic('light');
     const now = Date.now();
@@ -187,63 +188,55 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
 
     setMessages(prev => [...prev, newMessage]);
     setInputValue('');
-
-    // Mock sources for demo
-    const mockSources: Source[] = [
-      {
-        id: "1",
-        domain: "labelyourdata.com",
-        url: "https://labelyourdata.com/articles/multimodal-machine-learning",
-        title: "Multimodal Machine Learning: Building Models with Mixed Data in 2025",
-        excerpt: "1. Multimodal machine learning works with different data types, like text, image, audio, sensors. Each modality provides unique insights that enhance model performance...",
-        favicon: "https://www.google.com/s2/favicons?domain=labelyourdata.com&sz=32"
-      },
-      {
-        id: "2",
-        domain: "squirro.com",
-        url: "https://squirro.com/blog/ai-agents-knowledge-graph/",
-        title: "AI Agents Need an Inference-Bearing Knowledge Graph. Here's Why.",
-        excerpt: "Think of a knowledge graph as a meticulously structured network of facts and their relationships. It enables AI agents to make logical inferences...",
-        favicon: "https://www.google.com/s2/favicons?domain=squirro.com&sz=32"
-      },
-      {
-        id: "3",
-        domain: "mc2.fi",
-        url: "https://mc2.fi/ai-agents-types-2025/",
-        title: "7 Types of AI Agents in 2025 and Beyond | MC² Finance",
-        excerpt: "The next component is the inference engine, which is responsible for formulating hypotheses. Using the knowledge base and reasoning capabilities...",
-        favicon: "https://www.google.com/s2/favicons?domain=mc2.fi&sz=32"
-      }
-    ];
-
-    // Simulate AI response with chart detection
     setIsTyping(true);
-    setTimeout(() => {
-      const chartRequest = detectChartRequest(text);
-      const charts = chartRequest ? [chartRequest] : undefined;
+
+    try {
+      // Call the real backend API
+      const apiResponse = await apiClient.sendChatMessage({
+        message: text,
+        conversationId: undefined,
+        agentId: undefined,
+        context: {
+          includeSources: true,
+          includeCharts: true,
+          analysisDepth: 'standard',
+        },
+      });
+
+      // Convert backend response to frontend message format
+      const charts = apiResponse.data.message.charts as any[] | undefined;
+      console.log('📊 Mobile: Charts received from backend:', charts);
+      console.log('📊 Mobile: Chart types:', charts?.map(c => c?.type));
       
-      const responseTime = Date.now();
-      const aiResponse: Message = {
-        id: responseTime.toString(),
+      const assistantMessage: Message = {
+        id: apiResponse.data.message.id,
         type: 'assistant',
-        content: charts 
-          ? "Here's the analysis you requested. I've included relevant charts and data visualization below."
-          : "I understand you're interested in crypto analysis. I can help you with market insights, technical analysis, and trading strategies. What specific aspect would you like to explore?",
-        timestamp: new Date(responseTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        timestampMs: responseTime,
+        content: apiResponse.data.message.content,
+        charts: charts,
+        timestamp: new Date(apiResponse.data.message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestampMs: new Date(apiResponse.data.message.createdAt).getTime(),
         isRead: true,
-        charts,
-        sources: mockSources
+        sources: apiResponse.data.message.sources,
       };
-      
+
+      // Mark user message as read
       setMessages(prev => prev.map(m => 
         m.id === newMessage.id ? { ...m, isRead: true } : m
       ));
-      
-      setMessages(prev => [...prev, aiResponse]);
-      setIsTyping(false);
+
+      setMessages(prev => [...prev, assistantMessage]);
       triggerHaptic('success');
-    }, 2000);
+    } catch (error) {
+      console.error('Chat API error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate response. Please try again.",
+        variant: "destructive",
+      });
+      triggerHaptic('error');
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleSuggestedPrompt = (prompt: string) => {
@@ -281,15 +274,28 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
     if (previousUserMessage.type !== 'user') return;
 
     setIsTyping(true);
-    setTimeout(() => {
-      const responseTime = Date.now();
+    try {
+      const apiResponse = await apiClient.sendChatMessage({
+        message: previousUserMessage.content,
+        conversationId: undefined,
+        agentId: undefined,
+        context: {
+          includeSources: true,
+          includeCharts: true,
+          analysisDepth: 'standard',
+        },
+      });
+
+      const charts = apiResponse.data.message.charts as any[] | undefined;
       const newMessage: Message = {
-        id: responseTime.toString(),
+        id: apiResponse.data.message.id,
         type: 'assistant',
-        content: "I understand you're interested in crypto analysis. I can help you with market insights, technical analysis, and trading strategies. What specific aspect would you like to explore? [Regenerated]",
-        timestamp: new Date(responseTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        timestampMs: responseTime,
-        isRead: true
+        content: apiResponse.data.message.content,
+        charts: charts,
+        timestamp: new Date(apiResponse.data.message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestampMs: new Date(apiResponse.data.message.createdAt).getTime(),
+        isRead: true,
+        sources: apiResponse.data.message.sources,
       };
 
       setMessages(prev => {
@@ -298,9 +304,17 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
         return newMessages;
       });
 
-      setIsTyping(false);
       toast({ title: "Response regenerated", description: "Generated a new response" });
-    }, 2000);
+    } catch (error) {
+      console.error('Regenerate API error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to regenerate response",
+        variant: "destructive",
+      });
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const deleteMessage = (messageId: string) => {
@@ -327,10 +341,17 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
   };
 
   const renderCharts = (charts: any[]) => {
+    if (!charts || charts.length === 0) return null;
+    
+    console.log('📊 Mobile: Rendering charts:', charts);
+    
     return (
-      <div className="space-y-4 mb-4">
+      <div className="space-y-4 mb-4 -mx-2">
         {charts.map((chart, index) => {
+          console.log(`📊 Mobile: Rendering chart ${index}:`, chart?.type, chart);
+          
           if (chart?.type === 'omniscore-quadrant' && Array.isArray(chart.projects)) {
+            console.log('📊 Mobile: Rendering OmniScore quadrant with projects:', chart.projects);
             const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
               name: p.ticker || p.name || 'Project',
               ticker: p.ticker,
@@ -344,20 +365,27 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
             }));
 
             return (
-              <div key={index} className="mb-4">
+              <div key={`omniscore-${index}`} className="mb-4 w-full overflow-x-auto -mx-2 px-2">
                 <OmniScoreQuadrantBoard projects={projects} title="OmniScore Quadrant" />
               </div>
             );
           }
 
-          return (
-            <TradingViewChatChart
-              key={index}
-              symbol={chart.symbol || 'BTCUSD'}
-              interval={(chart.interval || '1H') as any}
-              isMobile={true}
-            />
-          );
+          // Fallback to TradingView chart
+          if (chart?.symbol || chart?.type === 'tradingview') {
+            return (
+              <TradingViewChatChart
+                key={`tradingview-${index}`}
+                symbol={chart.symbol || 'BTCUSD'}
+                interval={(chart.interval || '1H') as any}
+                isMobile={true}
+              />
+            );
+          }
+
+          // Unknown chart type - log and skip
+          console.warn('📊 Mobile: Unknown chart type:', chart);
+          return null;
         })}
       </div>
     );
@@ -424,19 +452,19 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                       message.type === 'user' ? 'text-right' : 'text-left'
                     )}>
                       <div className={cn(
-                        "inline-block p-4 rounded-2xl max-w-[85%] break-words",
+                        "inline-block p-3 sm:p-4 rounded-2xl break-words",
                         message.type === 'user'
-                          ? "bg-primary text-primary-foreground ml-auto"
-                          : "bg-surface text-foreground border border-border"
+                          ? "bg-primary text-primary-foreground ml-auto max-w-[85%]"
+                          : "bg-surface text-foreground border border-border max-w-[95%] sm:max-w-[85%]"
                       )}>
                         {/* Charts first for assistant messages */}
                         {message.type === 'assistant' && message.charts && message.charts.length > 0 && (
-                          <div className="mb-4">
+                          <div className="mb-3 -mx-1 sm:-mx-2">
                             {renderCharts(message.charts)}
                           </div>
                         )}
                         
-                        <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                        <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
                           {message.content}
                         </p>
                       </div>

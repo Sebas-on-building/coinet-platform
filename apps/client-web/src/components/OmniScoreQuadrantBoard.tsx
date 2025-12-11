@@ -9,6 +9,7 @@ import {
   Tooltip,
   ReferenceLine,
   ZAxis,
+  Cell,
 } from "recharts";
 
 export type QuadrantProject = {
@@ -31,59 +32,81 @@ export interface OmniScoreQuadrantBoardProps {
 const QS_THRESHOLD = 60;
 const OS_THRESHOLD = 60;
 
+// Muted TradingView-style colors for better readability
 const COLORS: Record<string, string> = {
-  clean: "#10b981",
-  suspicious: "#f59e0b",
-  manipulated: "#f97316",
-  severe: "#ef4444",
-  default: "#3b82f6",
-  gated: "#6b7280",
+  clean: "#26a69a",        // Teal - muted green
+  suspicious: "#d4a574",    // Brown/amber - muted yellow
+  manipulated: "#ce7e5c",   // Orange - muted orange
+  severe: "#ef5350",        // Red - muted red
+  default: "#5b9cf6",       // Blue - muted blue
+  gated: "#5d606b",         // Gray - muted gray
 };
 
-const getColor = (p: QuadrantProject) => {
-  if (p.os === null) return COLORS.gated;
-  if (p.nmi?.tier) return COLORS[p.nmi.tier] || COLORS.default;
-  return COLORS.default;
-};
-
-const getSize = (p: QuadrantProject) => {
-  const val = p.posAdj ?? p.pos ?? 0;
-  return 80 + val * 6; // simple scaling
-};
-
-// Custom shape for Scatter points with colors - memoized to prevent excessive re-renders
-const CustomShape = React.memo((props: any) => {
-  const { cx, cy, payload } = props;
-  
-  if (cx === null || cy === null || !payload) {
-    return null;
+const getNMIColor = (tier?: "clean" | "suspicious" | "manipulated" | "severe", isGated?: boolean): string => {
+  if (isGated) return COLORS.gated;
+  switch (tier) {
+    case "clean":
+      return COLORS.clean;
+    case "suspicious":
+      return COLORS.suspicious;
+    case "manipulated":
+      return COLORS.manipulated;
+    case "severe":
+      return COLORS.severe;
+    default:
+      return COLORS.default;
   }
-  
-  const radius = Math.sqrt(payload.z || 100) / 2;
-  const ticker = payload.name?.substring(0, 3) || payload.name || "?";
-  
+};
+
+const getQuadrant = (qs: number, os: number | null): "target" | "hype" | "avoid" | "builder" => {
+  const effectiveOS = os ?? 50;
+  if (qs >= QS_THRESHOLD && effectiveOS >= OS_THRESHOLD) return "target";
+  if (qs < QS_THRESHOLD && effectiveOS >= OS_THRESHOLD) return "hype";
+  if (qs < QS_THRESHOLD && effectiveOS < OS_THRESHOLD) return "avoid";
+  return "builder";
+};
+
+// Custom bubble component with improved styling
+const CustomBubble = React.memo(({
+  cx,
+  cy,
+  payload,
+}: {
+  cx?: number;
+  cy?: number;
+  payload?: QuadrantProject & { displayOS: number; bubbleSize: number; color: string };
+}) => {
+  if (!cx || !cy || !payload) return null;
+
+  const isGated = payload.os === null;
+  const color = payload.color || getNMIColor(payload.nmi?.tier, isGated);
+  const size = payload.bubbleSize || 16;
+  const fontSize = Math.max(7, Math.min(10, size / 2.2));
+  const ticker = payload.ticker?.slice(0, 4) || payload.name?.slice(0, 4) || "?";
+
   return (
     <g>
       <circle
         cx={cx}
         cy={cy}
-        r={radius}
-        fill={payload.color || "#3b82f6"}
-        fillOpacity={0.8}
-        stroke="#fff"
-        strokeWidth={2}
+        r={size}
+        fill={color}
+        opacity={0.75}
+        stroke={color}
+        strokeWidth={1}
+        strokeOpacity={0.3}
+        style={{ cursor: "pointer" }}
       />
       <text
         x={cx}
         y={cy}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={Math.max(8, Math.min(12, radius / 3))}
-        fontWeight="bold"
-        fill="#fff"
-        stroke="#000"
-        strokeWidth={0.3}
-        pointerEvents="none"
+        fill="#1a1d29"
+        fontSize={fontSize}
+        fontWeight="600"
+        fontFamily="IBM Plex Mono, monospace"
+        style={{ pointerEvents: "none" }}
       >
         {ticker}
       </text>
@@ -91,114 +114,260 @@ const CustomShape = React.memo((props: any) => {
   );
 });
 
+CustomBubble.displayName = "CustomBubble";
+
+// Custom tooltip component
+const QuadrantTooltip = ({ active, payload }: any) => {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const data = payload[0].payload;
+  const isGated = data.os === null;
+  const color = data.color || getNMIColor(data.nmi?.tier, isGated);
+  const quadrant = getQuadrant(data.qs, data.os);
+
+  const quadrantLabels = {
+    target: "TARGET",
+    hype: "HYPE",
+    avoid: "AVOID",
+    builder: "BUILDER",
+  };
+
+  return (
+    <div className="bg-popover border border-border rounded px-3 py-2.5 shadow-lg animate-fade-in text-[13px]">
+      {/* Header */}
+      <div className="flex items-center gap-2 pb-2 border-b border-border mb-2">
+        <div
+          className="w-2 h-2 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="font-medium text-foreground">{data.name}</span>
+        {data.ticker && (
+          <span className="text-muted-foreground font-mono text-xs">
+            {data.ticker}
+          </span>
+        )}
+      </div>
+
+      {/* Scores Grid */}
+      <div className="space-y-1">
+        <div className="flex justify-between gap-6">
+          <span className="text-muted-foreground">QS</span>
+          <span className="font-mono text-foreground">{data.qs.toFixed(1)}</span>
+        </div>
+        <div className="flex justify-between gap-6">
+          <span className="text-muted-foreground">OS</span>
+          <span className="font-mono text-foreground">
+            {isGated ? <span className="text-muted-foreground">—</span> : data.os?.toFixed(1)}
+          </span>
+        </div>
+        <div className="flex justify-between gap-6">
+          <span className="text-muted-foreground">POS*</span>
+          <span className="font-mono" style={{ color }}>
+            {(data.posAdj ?? data.pos).toFixed(1)}
+          </span>
+        </div>
+        <div className="flex justify-between gap-6 pt-1 border-t border-border/50 mt-1">
+          <span className="text-muted-foreground">NMI</span>
+          <span className="font-mono text-xs uppercase" style={{ color }}>
+            {isGated ? "gated" : data.nmi?.tier || "—"}
+          </span>
+        </div>
+        <div className="flex justify-between gap-6">
+          <span className="text-muted-foreground">Zone</span>
+          <span className="text-foreground text-xs">{quadrantLabels[quadrant]}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const OmniScoreQuadrantBoard: React.FC<OmniScoreQuadrantBoardProps> = ({
   projects,
-  title,
+  title = "OmniScore Quadrant",
+  showLegend = true,
 }) => {
-  // Memoize data transformation to prevent unnecessary recalculations
-  // Add small jitter to prevent overlapping points
-  const data = useMemo(() => {
+  // Process data with improved jitter algorithm
+  const processedData = useMemo(() => {
     if (!projects || projects.length === 0) return [];
-    
-    const baseData = projects.map((p) => ({
-      x: Math.max(0, Math.min(100, p.qs)),
-      y: p.os === null ? 50 : Math.max(0, Math.min(100, p.os)),
-      z: getSize(p), // Use z for bubble size
-      name: p.ticker || p.name,
-      pos: p.pos,
-      posAdj: p.posAdj ?? p.pos,
-      confidence: p.confidence || "unknown",
-      nmiTier: p.nmi?.tier || "clean",
-      color: getColor(p),
+
+    const data = projects.map((project) => ({
+      ...project,
+      displayOS: project.os ?? 50,
+      bubbleSize: Math.max(12, Math.min(28, (project.posAdj ?? project.pos) / 4 + 8)),
+      color: getNMIColor(project.nmi?.tier, project.os === null),
     }));
-    
-    // Add small jitter to overlapping points (within 2 units of each other)
-    const jitteredData = baseData.map((point, index) => {
-      const overlapping = baseData.filter((p, i) => 
-        i !== index && 
-        Math.abs(p.x - point.x) < 2 && 
-        Math.abs(p.y - point.y) < 2
-      );
-      
-      if (overlapping.length > 0) {
-        // Add small offset based on index to spread overlapping points
-        const offsetX = (index % 3 - 1) * 1.5; // -1.5, 0, 1.5
-        const offsetY = Math.floor(index / 3) % 2 === 0 ? 1.5 : -1.5;
+
+    // Improved jitter algorithm using angle-based spreading
+    const jitterMap = new Map<string, number>();
+    return data.map((item) => {
+      const key = `${Math.round(item.qs / 3)}-${Math.round(item.displayOS / 3)}`;
+      const count = jitterMap.get(key) || 0;
+      jitterMap.set(key, count + 1);
+
+      if (count > 0) {
+        const angle = (count * 60 * Math.PI) / 180;
         return {
-          ...point,
-          x: Math.max(0, Math.min(100, point.x + offsetX)),
-          y: Math.max(0, Math.min(100, point.y + offsetY)),
+          ...item,
+          qs: Math.max(0, Math.min(100, item.qs + Math.cos(angle) * 1.5)),
+          displayOS: Math.max(0, Math.min(100, item.displayOS + Math.sin(angle) * 1.5)),
         };
       }
-      return point;
+      return item;
     });
-    
-    return jitteredData;
   }, [projects]);
-  
-  // Memoize the shape function to prevent recreation on every render
-  const shapeFunction = useCallback((props: any) => <CustomShape {...props} />, []);
+
+  // Calculate stats for header
+  const stats = useMemo(() => {
+    const targetCount = projects.filter(p => p.qs >= QS_THRESHOLD && (p.os ?? 0) >= OS_THRESHOLD).length;
+    const cleanCount = projects.filter(p => p.nmi?.tier === "clean").length;
+    return { targetCount, cleanCount };
+  }, [projects]);
+
+  const shapeFunction = useCallback((props: any) => <CustomBubble {...props} />, []);
   
   if (!projects || projects.length === 0) {
     return (
-      <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
+      <div className="w-full bg-card border border-border rounded-lg p-4">
         <p className="text-muted-foreground">No data available</p>
       </div>
     );
   }
 
+  const nmiTiers = [
+    { label: "Clean", color: COLORS.clean },
+    { label: "Suspicious", color: COLORS.suspicious },
+    { label: "Manipulated", color: COLORS.manipulated },
+    { label: "Severe", color: COLORS.severe },
+    { label: "Gated", color: COLORS.gated },
+  ];
+
   return (
-    <div className="w-full bg-muted/50 border border-border/50 rounded-2xl p-4">
-      {title && <h3 className="text-sm font-semibold mb-2">{title}</h3>}
-      <div className="h-[320px]">
+    <div className="w-full">
+      {/* Header Bar */}
+      <div className="flex items-center justify-between px-1 mb-3">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-foreground">{title}</span>
+          <span className="text-xs text-muted-foreground font-mono">
+            {projects.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <span className="text-muted-foreground">
+            Target: <span className="text-primary font-mono">{stats.targetCount}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Clean: <span className="font-mono" style={{ color: COLORS.clean }}>{stats.cleanCount}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="w-full h-[360px] sm:h-[420px] lg:h-[480px] bg-card rounded border border-border">
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 16, right: 16, bottom: 16, left: 16 }}>
-            <CartesianGrid strokeDasharray="3 3" />
+          <ScatterChart margin={{ top: 24, right: 24, bottom: 44, left: 44 }}>
+            <CartesianGrid
+              strokeDasharray="1 4"
+              stroke="hsl(225 10% 16%)"
+              opacity={0.6}
+            />
+
             <XAxis
               type="number"
-              dataKey="x"
-              name="QS"
+              dataKey="qs"
               domain={[0, 100]}
-              label={{ value: "Quality Score (QS)", position: "insideBottom", dy: 10 }}
+              tickCount={5}
+              tick={{ fill: "hsl(220 8% 45%)", fontSize: 11 }}
+              axisLine={{ stroke: "hsl(225 10% 20%)" }}
+              tickLine={{ stroke: "hsl(225 10% 20%)" }}
+              label={{
+                value: "Quality Score",
+                position: "bottom",
+                offset: 24,
+                style: { fill: "hsl(220 8% 45%)", fontSize: 11 },
+              }}
             />
+
             <YAxis
               type="number"
-              dataKey="y"
-              name="OS"
+              dataKey="displayOS"
               domain={[0, 100]}
-              label={{ value: "Opportunity Score (OS)", angle: -90, position: "insideLeft" }}
+              tickCount={5}
+              tick={{ fill: "hsl(220 8% 45%)", fontSize: 11 }}
+              axisLine={{ stroke: "hsl(225 10% 20%)" }}
+              tickLine={{ stroke: "hsl(225 10% 20%)" }}
+              label={{
+                value: "Opportunity Score",
+                angle: -90,
+                position: "left",
+                offset: 24,
+                style: { fill: "hsl(220 8% 45%)", fontSize: 11, textAnchor: "middle" },
+              }}
             />
-            <ZAxis dataKey="z" range={[50, 800]} />
-            <ReferenceLine x={QS_THRESHOLD} stroke="#9ca3af" strokeDasharray="4 4" />
-            <ReferenceLine y={OS_THRESHOLD} stroke="#9ca3af" strokeDasharray="4 4" />
+
+            <ZAxis type="number" dataKey="bubbleSize" range={[80, 600]} />
+
+            {/* Threshold lines */}
+            <ReferenceLine
+              x={QS_THRESHOLD}
+              stroke="hsl(220 8% 30%)"
+              strokeDasharray="6 3"
+            />
+            <ReferenceLine
+              y={OS_THRESHOLD}
+              stroke="hsl(220 8% 30%)"
+              strokeDasharray="6 3"
+            />
+
+            {/* Zone labels */}
+            <text x="88%" y="12%" textAnchor="middle" fill={COLORS.clean} fontSize={10} opacity={0.5}>
+              TARGET
+            </text>
+            <text x="20%" y="12%" textAnchor="middle" fill={COLORS.suspicious} fontSize={10} opacity={0.5}>
+              HYPE
+            </text>
+            <text x="20%" y="88%" textAnchor="middle" fill={COLORS.severe} fontSize={10} opacity={0.4}>
+              AVOID
+            </text>
+            <text x="88%" y="88%" textAnchor="middle" fill={COLORS.default} fontSize={10} opacity={0.5}>
+              BUILDER
+            </text>
+
             <Tooltip
-              cursor={{ strokeDasharray: "3 3" }}
-              formatter={(value: any, name: string, props: any) => {
-                const payload = props.payload;
-                if (name === "x") return [`${value.toFixed(1)}`, "QS"];
-                if (name === "y") return [`${value.toFixed(1)}`, "OS"];
-                if (name === "z") return [`${payload.posAdj.toFixed(1)}`, "POS*"];
-                return value;
-              }}
-              contentStyle={{ fontSize: 12, backgroundColor: "rgba(0,0,0,0.8)", border: "1px solid #333" }}
-              labelFormatter={(label, payload) => {
-                if (payload && payload[0]) {
-                  return payload[0].payload.name;
-                }
-                return "";
-              }}
+              content={<QuadrantTooltip />}
+              cursor={false}
             />
-            <Scatter 
-              data={data} 
-              shape={shapeFunction}
-              fill="#8884d8"
-            />
+
+            <Scatter name="Projects" data={processedData} shape={shapeFunction}>
+              {processedData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.color}
+                />
+              ))}
+            </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
       </div>
-      <div className="text-xs text-muted-foreground mt-2">
-        QS threshold = {QS_THRESHOLD} | OS threshold = {OS_THRESHOLD}. Bubble size = POS*, color = NMI tier.
-      </div>
+
+      {/* Legend */}
+      {showLegend && (
+        <div className="flex items-center justify-between mt-3 px-1">
+          <div className="flex items-center gap-4 flex-wrap">
+            {nmiTiers.map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-[11px] text-muted-foreground">{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            Bubble size = POS*
+          </div>
+        </div>
+      )}
     </div>
   );
 };

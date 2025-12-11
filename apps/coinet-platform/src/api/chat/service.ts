@@ -50,6 +50,42 @@ import {
 } from './types';
 
 export class ChatService {
+  // #region agent log helper
+  private logDebug(payload: any) {
+    try {
+      const entry = {
+        sessionId: 'debug-session',
+        runId: payload.runId || 'pre-fix',
+        hypothesisId: payload.hypothesisId || 'H-backend',
+        location: payload.location || 'chat/service',
+        message: payload.message || 'debug',
+        data: payload.data || {},
+        timestamp: Date.now(),
+      };
+
+      // Prefer HTTP ingest so it works in hosted environments
+      const endpoint = 'http://127.0.0.1:7242/ingest/b23bd58d-0401-4047-8e6d-705f7e8b0ea1';
+      // #region agent log
+      fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      }).catch(() => {
+        try {
+          const fs = require('fs');
+          const logPath = '/Users/sebastian/Desktop/Arbeit/Coinet v1/coinet-platform/.cursor/debug.log';
+          fs.appendFileSync(logPath, JSON.stringify(entry) + '\n');
+        } catch {
+          // swallow fallback errors
+        }
+      });
+      // #endregion
+    } catch {
+      // swallow all logging errors
+    }
+  }
+  // #endregion
+
   /**
    * Send a message and get AI response
    */
@@ -484,6 +520,20 @@ export class ChatService {
                   nmiTier: s.nmi?.tier || 'clean',
                 }));
                 
+                this.logDebug({
+                  runId: 'pre-fix',
+                  hypothesisId: 'H1-backend',
+                  location: 'chat/service:quadrant-build',
+                  message: 'Built visualizer data',
+                  data: {
+                    count: visualizerData.length,
+                    tickers: visualizerData.map(v => v.ticker),
+                    qs: visualizerData.map(v => v.qs),
+                    os: visualizerData.map(v => v.os),
+                    posAdj: visualizerData.map(v => v.posAdj),
+                  },
+                });
+
                 const quadrantChart = {
                   type: 'omniscore-quadrant',
                   projects: visualizerData,
@@ -637,6 +687,18 @@ Inform the user that OmniScore analysis is temporarily unavailable.
         ...(quadrantChart ? [quadrantChart] : []),
       ];
 
+      this.logDebug({
+        runId: 'pre-fix',
+        hypothesisId: 'H2-backend',
+        location: 'chat/service:charts-combined',
+        message: 'Charts combined before persistence',
+        data: {
+          chartConfigPresent: !!chartConfig,
+          quadrantPresent: !!quadrantChart,
+          totalCharts: chartsCombined.length,
+        },
+      });
+
       const assistantMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -647,6 +709,18 @@ Inform the user that OmniScore analysis is temporarily unavailable.
           confidence: aiResponse.data.confidence,
           model: aiResponse.metadata?.version || 'unknown',
           tokens: undefined, // Would be populated from AI service
+        },
+      });
+
+      this.logDebug({
+        runId: 'pre-fix',
+        hypothesisId: 'H3-backend',
+        location: 'chat/service:assistant-stored',
+        message: 'Assistant message stored',
+        data: {
+          assistantId: assistantMessage.id,
+          chartsPersisted: chartsCombined.length > 0,
+          chartsCount: chartsCombined.length,
         },
       });
 
