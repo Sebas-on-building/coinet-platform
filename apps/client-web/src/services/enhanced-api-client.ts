@@ -12,7 +12,7 @@
  * - Type safety
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { API_BASE_URL } from '@/utils/api-config';
 
 export interface ChatMessageRequest {
   message: string;

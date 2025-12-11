@@ -5,7 +5,7 @@
  * Provides real-time token-by-token streaming for optimal UX.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+import { API_BASE_URL } from '@/utils/api-config';
 
 export interface StreamChunk {
   type: 'token' | 'source' | 'chart' | 'metadata' | 'complete' | 'error';
