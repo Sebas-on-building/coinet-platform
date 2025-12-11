@@ -32,14 +32,27 @@ const getBackendURL = () => {
     return `https://${baseUrl}`;
   }
   
-  // Fallback to localhost
+  // Production fallback - check if we're on coinet.ai domain
+  if (typeof window !== 'undefined' && window.location.hostname.includes('coinet.ai')) {
+    console.error('⚠️ VITE_API_URL is not set in production!');
+    console.error('💡 Please set VITE_API_URL environment variable in Vercel dashboard');
+    console.error('💡 It should point to your Railway backend URL (e.g., https://your-service.railway.app)');
+    // Return empty string to use relative URLs (might work if backend is on same domain)
+    return '';
+  }
+  
+  // Fallback to localhost (only for local development)
+  console.warn('⚠️ Using localhost fallback - this will not work in production');
   return 'http://localhost:3000';
 };
 
 const API_BASE_URL = getBackendURL();
 
 // Log for debugging
-console.log('🔗 Backend API URL:', API_BASE_URL);
+console.log('🔗 Backend API URL:', API_BASE_URL || '(relative URLs)');
+if (!API_BASE_URL && !import.meta.env.DEV) {
+  console.warn('⚠️ No API URL configured - using relative URLs');
+}
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // Start at 1 second
@@ -162,7 +175,24 @@ class ApiClient {
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
         // Network error - backend might be unreachable
         console.error('🌐 Network error - Backend might be unreachable at:', url);
-        console.error('💡 Try checking if backend is running and accessible');
+        console.error('💡 Current API Base URL:', this.baseURL || '(relative URLs)');
+        
+        // Provide helpful error message based on environment
+        if (typeof window !== 'undefined' && window.location.hostname.includes('coinet.ai')) {
+          console.error('💡 Production detected - Check Vercel environment variables:');
+          console.error('💡 VITE_API_URL should be set to your Railway backend URL');
+        } else if (import.meta.env.DEV) {
+          console.error('💡 Development mode - Check if backend is running on port 3000');
+        } else {
+          console.error('💡 Try checking if backend is running and accessible');
+        }
+        
+        // Create a more helpful error
+        const helpfulError = new Error(
+          `Failed to connect to backend API. ${this.baseURL ? `URL: ${url}` : 'API URL not configured. Please set VITE_API_URL environment variable.'}`
+        );
+        helpfulError.name = 'NetworkError';
+        throw helpfulError;
       }
       throw error;
     }

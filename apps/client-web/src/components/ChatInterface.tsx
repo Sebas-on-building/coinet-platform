@@ -257,9 +257,22 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Chat API error:', error);
+      
+      // Provide more helpful error messages
+      let errorMessage = "Failed to generate response. Please try again.";
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to connect') || error.message.includes('Failed to fetch')) {
+          errorMessage = "Unable to connect to the backend API. Please check your connection or contact support.";
+        } else if (error.message.includes('API URL not configured')) {
+          errorMessage = "Backend API is not configured. Please check environment variables.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate response. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
