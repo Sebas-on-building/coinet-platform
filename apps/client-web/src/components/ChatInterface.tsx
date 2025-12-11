@@ -114,12 +114,22 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   };
 
   const renderChatCharts = (charts: any[]) => {
-    if (!charts || charts.length === 0) return null;
+    if (!charts || charts.length === 0) {
+      console.log('📊 ChatInterface: No charts to render');
+      return null;
+    }
     
     console.log('📊 ChatInterface: Rendering charts:', charts);
+    console.log('📊 ChatInterface: Charts array length:', charts.length);
+    console.log('📊 ChatInterface: Charts array:', JSON.stringify(charts, null, 2));
     
     return charts.map((chart, index) => {
-      console.log(`📊 ChatInterface: Chart ${index}:`, chart?.type, chart);
+      console.log(`📊 ChatInterface: Chart ${index}:`, {
+        type: chart?.type,
+        hasProjects: Array.isArray(chart?.projects),
+        projectsCount: chart?.projects?.length,
+        chart: chart,
+      });
       
       if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
         console.log('📊 ChatInterface: Rendering OmniScore quadrant with projects:', chart.projects);
@@ -135,8 +145,10 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
           nmi: { tier: p.nmiTier },
         }));
 
+        console.log('📊 ChatInterface: Mapped projects for OmniScoreQuadrantBoard:', projects);
+
         return (
-          <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
+          <div key={`omniscore-${index}`} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
             <OmniScoreQuadrantBoard projects={projects} title="OmniScore Quadrant" />
           </div>
         );
