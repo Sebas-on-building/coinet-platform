@@ -47,6 +47,7 @@ import {
   ChatMessage,
   Source,
   ChartConfig,
+  OmniScoreQuadrantData,
 } from './types';
 
 export class ChatService {
@@ -746,7 +747,15 @@ Inform the user that OmniScore analysis is temporarily unavailable.
         processingTime,
         confidence: aiResponse.data.confidence,
         hasSources: sources.length > 0,
-        hasCharts: !!chartConfig,
+        hasCharts: chartsCombined.length > 0,
+        chartsCount: chartsCombined.length,
+        chartTypes: chartsCombined.map((c: any) => c?.type),
+      });
+
+      logger.debug('📊 Sending charts in response', {
+        chartsCombined: chartsCombined,
+        quadrantChartPresent: !!quadrantChart,
+        chartConfigPresent: !!chartConfig,
       });
 
       return {
@@ -800,15 +809,26 @@ Inform the user that OmniScore analysis is temporarily unavailable.
         throw new Error('Conversation not found');
       }
 
-      const messages: ChatMessage[] = conversation.messages.map((msg: any) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        sources: (msg.sources as unknown) as Source[] | undefined,
-        charts: (msg.charts as unknown) as ChartConfig[] | undefined,
-        confidence: msg.confidence || undefined,
-        createdAt: msg.createdAt.toISOString(),
-      }));
+      const messages: ChatMessage[] = conversation.messages.map((msg: any) => {
+        const charts = msg.charts ? (msg.charts as unknown) as (ChartConfig | OmniScoreQuadrantData)[] : undefined;
+        
+        logger.debug('📊 Loading message charts from history', {
+          messageId: msg.id,
+          hasCharts: !!charts,
+          chartsCount: charts?.length || 0,
+          chartTypes: charts?.map((c: any) => c?.type) || [],
+        });
+        
+        return {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          sources: (msg.sources as unknown) as Source[] | undefined,
+          charts: charts,
+          confidence: msg.confidence || undefined,
+          createdAt: msg.createdAt.toISOString(),
+        };
+      });
 
       return {
         success: true,
