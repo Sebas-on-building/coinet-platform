@@ -34,9 +34,16 @@ const getBackendURL = () => {
   
   // Production fallback - check if we're on coinet.ai domain
   if (typeof window !== 'undefined' && window.location.hostname.includes('coinet.ai')) {
-    console.error('⚠️ VITE_API_URL is not set in production!');
-    console.error('💡 Please set VITE_API_URL environment variable in Vercel dashboard');
-    console.error('💡 It should point to your Railway backend URL (e.g., https://your-service.railway.app)');
+    // Smart default: if frontend is on app.coinet.ai, backend is likely api.coinet.ai
+    if (window.location.hostname === 'app.coinet.ai') {
+      console.log('🔗 Using production API: https://api.coinet.ai');
+      return 'https://api.coinet.ai';
+    }
+    
+    // Fallback: warn if VITE_API_URL is not set
+    console.warn('⚠️ VITE_API_URL is not set in production!');
+    console.warn('💡 Please set VITE_API_URL environment variable in Vercel dashboard');
+    console.warn('💡 Recommended: https://api.coinet.ai');
     // Return empty string to use relative URLs (might work if backend is on same domain)
     return '';
   }
