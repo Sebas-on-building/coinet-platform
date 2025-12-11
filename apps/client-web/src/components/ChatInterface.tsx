@@ -116,8 +116,13 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   const renderChatCharts = (charts: any[]) => {
     if (!charts || charts.length === 0) return null;
     
+    console.log('📊 ChatInterface: Rendering charts:', charts);
+    
     return charts.map((chart, index) => {
+      console.log(`📊 ChatInterface: Chart ${index}:`, chart?.type, chart);
+      
       if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
+        console.log('📊 ChatInterface: Rendering OmniScore quadrant with projects:', chart.projects);
         
         const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
           name: p.ticker || p.name || "Project",
