@@ -494,20 +494,50 @@ export class ChatService {
         // CRITICAL: Chat must NEVER improvise OmniScore numbers - always use real API data
         if (detectedCoins.length > 0) {
           try {
+            logger.debug('🔍 OmniScore: Detected coins', {
+              count: detectedCoins.length,
+              coins: detectedCoins.map(c => ({ symbol: c.symbol, coinGeckoId: c.coinGeckoId })),
+            });
+            
             // Check if user wants a comparison/ranking of multiple coins
             // Limit to top 5 to avoid timeouts
             const coinsToAnalyze = detectedCoins.slice(0, 5);
             
+            logger.debug('🔍 OmniScore: Coins to analyze', {
+              count: coinsToAnalyze.length,
+              coins: coinsToAnalyze.map(c => ({ symbol: c.symbol, coinGeckoId: c.coinGeckoId })),
+            });
+            
             if (coinsToAnalyze.length > 1) {
+              logger.debug('🎯 OmniScore: Multi-coin analysis detected, fetching scores...');
+              
               // Multi-coin analysis: Generate Quadrant Board
               const omniScores = await Promise.all(
                 coinsToAnalyze.map(coin => 
                   getProjectOmniScoreV23(coin.coinGeckoId || coin.symbol.toLowerCase())
-                    .catch(() => null)
+                    .catch((error) => {
+                      logger.warn(`⚠️ OmniScore fetch failed for ${coin.symbol}:`, error);
+                      return null;
+                    })
                 )
               );
               
+              logger.debug('🔍 OmniScore: Fetch results', {
+                requested: coinsToAnalyze.length,
+                received: omniScores.filter(s => s !== null).length,
+                results: omniScores.map((s, i) => ({
+                  coin: coinsToAnalyze[i].symbol,
+                  success: s?.success || false,
+                  hasData: !!s,
+                })),
+              });
+              
               const validScores = omniScores.filter(s => s && s.success);
+              
+              logger.debug('🔍 OmniScore: Valid scores', {
+                count: validScores.length,
+                validCoins: validScores.map((s: any) => s?.project),
+              });
               
               if (validScores.length > 0) {
                 // Generate visual quadrant map
@@ -546,16 +576,19 @@ export class ChatService {
                 // Store quadrant data for frontend React component rendering via charts payload
                 (request as any)._omniscoreQuadrantChart = quadrantChart;
                 
+                logger.info('✅ OmniScore Multi-Coin Quadrant generated and stored', {
+                  coins: coinsToAnalyze.map(c => c.symbol),
+                  count: validScores.length,
+                  chartType: quadrantChart.type,
+                  projectsCount: quadrantChart.projects.length,
+                  chartStored: !!(request as any)._omniscoreQuadrantChart,
+                });
+                
                 // Add individual summaries too if needed, or rely on visual chart
                 // Maybe add brief summary for top 1
                 if (validScores[0]) {
                   contextParts.push(formatOmniScoreForAI(validScores[0] as any));
                 }
-                
-                logger.debug('🎯 OmniScore Multi-Coin Quadrant generated', {
-                  coins: coinsToAnalyze.map(c => c.symbol),
-                  count: validScores.length
-                });
               } else {
                 // FAIL-CLOSED: No valid scores available - tell AI not to improvise
                 contextParts.push(`
@@ -687,6 +720,16 @@ Inform the user that OmniScore analysis is temporarily unavailable.
         ...(chartConfig ? [chartConfig] : []),
         ...(quadrantChart ? [quadrantChart] : []),
       ];
+
+      logger.info('📊 Charts combined before persistence', {
+        chartConfigPresent: !!chartConfig,
+        chartConfigType: chartConfig?.type,
+        quadrantPresent: !!quadrantChart,
+        quadrantType: quadrantChart?.type,
+        quadrantProjectsCount: quadrantChart?.projects?.length,
+        totalCharts: chartsCombined.length,
+        chartTypes: chartsCombined.map((c: any) => c?.type),
+      });
 
       this.logDebug({
         runId: 'pre-fix',
