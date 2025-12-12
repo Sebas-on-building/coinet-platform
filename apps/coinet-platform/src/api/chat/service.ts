@@ -795,10 +795,24 @@ Inform the user that OmniScore analysis is temporarily unavailable.
         chartTypes: chartsCombined.map((c: any) => c?.type),
       });
 
-      logger.debug('📊 Sending charts in response', {
-        chartsCombined: chartsCombined,
+      logger.info('📊 Sending charts in response', {
+        chartsCombinedLength: chartsCombined.length,
+        chartsCombined: chartsCombined.map((c: any) => ({
+          type: c?.type,
+          projectsCount: c?.projects?.length,
+          symbol: c?.symbol,
+        })),
         quadrantChartPresent: !!quadrantChart,
         chartConfigPresent: !!chartConfig,
+        willIncludeCharts: chartsCombined.length > 0,
+      });
+
+      const responseCharts = chartsCombined.length > 0 ? chartsCombined : undefined;
+      
+      logger.info('📤 Final response payload', {
+        hasCharts: !!responseCharts,
+        chartsCount: responseCharts?.length || 0,
+        chartTypes: responseCharts?.map((c: any) => c?.type) || [],
       });
 
       return {
@@ -809,7 +823,7 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             role: 'assistant',
             content: assistantContent,
             sources: sources.length > 0 ? sources : undefined,
-            charts: chartsCombined.length > 0 ? chartsCombined : undefined,
+            charts: responseCharts,
             confidence: aiResponse.data.confidence,
             createdAt: assistantMessage.createdAt.toISOString(),
           },
