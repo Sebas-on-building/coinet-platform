@@ -462,7 +462,35 @@ describe('Golden-Case Snapshots', () => {
     expect(result.success).toBe(true);
     expect(result.qualityScore.tier).toBe('Strong');
     expect(result.audit.invariantStatus).toBe('pass');
-    expect(result.version).toBe('2.3.1');
+    expect(result.version).toBe('2.3.3');
+  });
+
+  // v2.3.3: Tier consistency test - ensures tier labels match fixed thresholds
+  it('should use fixed threshold tier labels (not conditioned tier)', () => {
+    // Create a project with POS in the 40s to verify it gets "Weak" tier (30-49)
+    // NOT "Neutral" from conditioned percentile
+    const result = calculateOmniScoreProduction({
+      projectId: 'tier-consistency-test',
+      qsInputs: makeQSInputs({ TEAM: 45, TECH: 40, SEC: 42, GOV: 38, ECO: 35 }),
+      osInputs: makeOSInputs({ MARKET: 40, TOKEN: 38, VAL: 42, ADOPT: 35, COMM: 45 }),
+      sector: 'DeFi',
+    });
+
+    // Score should be in "Weak" range (30-49)
+    // Fixed tier thresholds: Elite 85+, Strong 70-84, Neutral 50-69, Weak 30-49, Critical <30
+    if (result.pos.adjusted >= 30 && result.pos.adjusted < 50) {
+      expect(result.pos.tier).toBe('Weak');
+    } else if (result.pos.adjusted >= 50 && result.pos.adjusted < 70) {
+      expect(result.pos.tier).toBe('Neutral');
+    }
+    
+    // Also verify tierContext shows both rawTier and conditionedTier
+    expect(result.tierContext).toHaveProperty('rawTier');
+    expect(result.tierContext).toHaveProperty('conditionedTier');
+    expect(result.tierContext).toHaveProperty('tierMismatch');
+    
+    // The pos.tier should ALWAYS match rawTier (fixed thresholds)
+    expect(result.pos.tier).toBe(result.tierContext.rawTier);
   });
 
   it('should gate OS for low QS coverage', () => {
@@ -484,7 +512,7 @@ describe('Golden-Case Snapshots', () => {
       osInputs: makeOSInputs({ MARKET: 60, TOKEN: 60, VAL: 60, ADOPT: 60, COMM: 60 }),
     });
 
-    expect(result.audit.methodology.id).toBe('OMNISCORE_V2.3.1_PRODUCTION');
+    expect(result.audit.methodology.id).toBe('OMNISCORE_V2.3.2_DIABOLICAL');
     expect(result.audit.methodology.url).toBe('/docs/omniscore/v2.3');
     expect(result.audit.methodology.hash).toMatch(/^sha256:/);
   });

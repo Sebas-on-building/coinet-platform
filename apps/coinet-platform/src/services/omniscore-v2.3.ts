@@ -125,6 +125,64 @@ export interface ScoreState {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// v2.3.4: CANONICAL SNAPSHOT INTERFACE (Single Source of Truth)
+// This is the ONLY format used by UI, chat, and API. No parallel scoring paths.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * OmniScoreSnapshot — Canonical format consumed by all UIs and chat
+ * 
+ * CRITICAL: All consumers (quadrant board, ASCII visualizer, chat) must use
+ * this exact shape. No recomputing scores elsewhere. Single source of truth.
+ */
+export interface OmniScoreSnapshot {
+  // Project identity
+  id: string;
+  symbol: string;
+  name: string;
+  sector: SectorType;
+  capBucket: CapBucket;
+  
+  // Core scores (0-100)
+  qs: number;              // Quality Score
+  qsTier: TierLabel;
+  os: number | null;       // Opportunity Score (null if gated)
+  osTier: TierLabel | null;
+  osStatus: 'active' | 'gated' | 'fallback';
+  
+  risk: number;            // Risk Score (0-100, higher = more risk)
+  
+  // POS progression (for debugging)
+  posRaw: number;          // Before smoothing/plausibility
+  posSmoothed: number;     // After smoothing
+  posAdjusted: number;     // After ERS/gamma (final)
+  tier: TierLabel;         // Final tier (from fixed thresholds)
+  
+  // Narrative metrics
+  nrg: number;
+  nrgTier: NRGInterpretation;
+  nmi: number;
+  nmiTier: NMITier;
+  
+  // Coverage & confidence
+  coverageQS: number;      // 0-1
+  coverageOS: number;      // 0-1
+  confidence: ConfidenceLevel;
+  
+  // Audit metadata
+  audit: {
+    engineVersion: string;           // "2.3.4"
+    methodologyVersion: string;
+    timestamp: string;
+    invariantStatus: 'pass' | 'warn' | 'fail';
+    smoothingApplied: boolean;
+    osCeilingApplied: boolean;
+    posPlausibilityCapped: boolean;
+    posBeforeCap: number | null;
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PRODUCTION API RESPONSE INTERFACES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -197,6 +255,19 @@ export interface ClampApplied {
   os: boolean;
   pos: boolean;
   posAdj: boolean;
+}
+
+// v2.3.4: Smoothing tracking
+export interface SmoothingApplied {
+  enabled: boolean;
+  alpha: number;
+  previousPos: number | null;
+  rawDelta: number;
+  boundedDelta: number;
+  maxDeltaAllowed: number;
+  wasLimited: boolean;
+  eventMode: boolean;  // High ERS = event mode (larger deltas allowed)
+  timeSinceLastHours: number | null;
 }
 
 // v2.3.1: Methodology provenance for compliance
@@ -398,8 +469,9 @@ export interface ConditionedTierContext {
   historicalMean: number;
   historicalStd: number;
   percentile: number;
-  rawTier: TierLabel;           // Simple threshold
-  conditionedTier: TierLabel;   // Adjusted for context
+  rawTier: TierLabel;           // Simple threshold - USE THIS FOR CHAT/USER-FACING
+  conditionedTier: TierLabel;   // Adjusted for context - INTERNAL USE ONLY
+  tierMismatch: boolean;        // Flag when raw ≠ conditioned for audit visibility
 }
 
 /**
@@ -435,13 +507,20 @@ export interface AuditTrail {
   clampApplied: ClampApplied;
   methodology: MethodologyProvenance;
   reflexivitySentinel: ReflexivitySentinel;
-  // v2.3.2: Additional audit fields
+  // v2.3.3: Additional audit fields with tier transparency
   featureSchemaVersion: string;
   sectorPackId: string;
   clampHistoryCount: number;
   coldStartMode: ColdStartPolicy['mode'];
   tierConditioningApplied: boolean;
+  tierMismatch: boolean;            // v2.3.3: Flag if rawTier ≠ conditionedTier
+  rawTierUsed: TierLabel;           // v2.3.3: The tier shown to users (fixed thresholds)
+  conditionedTierInternal: TierLabel;  // v2.3.3: For internal analytics only
   capBucket: CapBucket;
+  // v2.3.4: Smoothing and plausibility tracking
+  smoothingApplied: SmoothingApplied;
+  posPlausibilityCapped: boolean;
+  posBeforeCap: number | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -478,7 +557,7 @@ export interface OmniScoreMetrics {
 export interface OmniScoreProductionResponse {
   success: boolean;
   engine: 'OmniScore';
-  version: '2.3.2';
+  version: '2.3.4';
   project: string;
   timestamp: string;
   
@@ -518,10 +597,10 @@ function computeMethodologyHash(version: string): string {
 }
 
 const CONFIG = {
-  VERSION: '2.3.2' as const,
-  METHODOLOGY_VERSION: '2.3.2' as const,
+  VERSION: '2.3.4' as const,
+  METHODOLOGY_VERSION: '2.3.4' as const,
   ENGINE_NAME: 'OmniScore' as const,
-  FEATURE_SCHEMA_VERSION: '2.3.2-core40' as const,
+  FEATURE_SCHEMA_VERSION: '2.3.4-core40' as const,
   
   // Methodology provenance
   METHODOLOGY: {
@@ -699,6 +778,50 @@ const CONFIG = {
   // QUALITY GATE THRESHOLD
   // ═══════════════════════════════════════════════════════════════════════════
   QUALITY_GATE_THRESHOLD: 0.60,
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.3.3: OS CEILING BY CAP BUCKET (Mega-caps should rarely hit 100)
+  // This prevents BTC/ETH from trivially maxing out OS on any strong day.
+  // OS 100 should be EXCEPTIONAL, not "BTC had a good week".
+  // ═══════════════════════════════════════════════════════════════════════════
+  OS_CEILING_BY_CAP: {
+    mega: 92,    // $10B+ caps: OS capped at 92 (100 = truly exceptional)
+    large: 95,   // $1B+ caps: OS capped at 95
+    mid: 98,     // $100M+ caps: OS capped at 98
+    small: 100,  // $10M+ caps: no ceiling
+    micro: 100,  // <$10M caps: no ceiling
+  } as Record<CapBucket, number>,
+  
+  // v2.3.3: OS diminishing returns curve for mega-caps
+  // Raw OS above threshold gets compressed: final = threshold + (raw - threshold) * factor
+  OS_DIMINISHING_RETURNS: {
+    mega: { threshold: 80, factor: 0.4 },   // Above 80, only 40% counts → max ~92
+    large: { threshold: 85, factor: 0.5 },  // Above 85, only 50% counts → max ~92.5
+    mid: { threshold: 90, factor: 0.6 },    // Above 90, only 60% counts → max ~96
+    small: { threshold: 100, factor: 1.0 }, // No compression
+    micro: { threshold: 100, factor: 1.0 }, // No compression
+  } as Record<CapBucket, { threshold: number; factor: number }>,
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.3.4: POS PLAUSIBILITY CAP (Make 100/100 literally impossible)
+  // No live project should achieve perfect 100. Cap at 97 for realism.
+  // If POS > 97, either data is wrong or invariants are broken.
+  // ═══════════════════════════════════════════════════════════════════════════
+  POS_MAX_PLAUSIBLE: 97,
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.3.4: TEMPORAL SMOOTHING (Prevent SUI 70→37 overnight crashes)
+  // Smooth POS changes over time unless there's a real event (high ERS).
+  // Prevents wild swings from data noise or temporary API failures.
+  // ═══════════════════════════════════════════════════════════════════════════
+  SMOOTHING: {
+    ENABLED: true,
+    ALPHA: 0.35,              // Smoothing factor: new×0.35 + old×0.65
+    MAX_DELTA_NO_EVENT: 12,   // Max change per 24h without event
+    MAX_DELTA_WITH_EVENT: 30, // Max change per 24h with event
+    EVENT_ERS_THRESHOLD: 0.4, // ERS above this = "event" (allow larger moves)
+    MIN_TIME_BETWEEN_HOURS: 1, // Minimum hours between updates for smoothing
+  },
   
   // ═══════════════════════════════════════════════════════════════════════════
   // ADVERSARIAL RESISTANCE: COMM CONTRIBUTION CAP
@@ -1092,6 +1215,200 @@ function getCapBucket(marketCapUsd: number | undefined): CapBucket {
 }
 
 /**
+ * v2.3.3: Apply OS ceiling and diminishing returns for mega-caps
+ * Prevents BTC/ETH from trivially hitting OS=100 on any strong day.
+ * OS 100 should be EXCEPTIONAL (truly crazy conditions), not routine.
+ * 
+ * Logic:
+ * 1. If raw OS <= threshold: no adjustment
+ * 2. If raw OS > threshold: final = threshold + (raw - threshold) * factor
+ * 3. Then apply hard ceiling
+ */
+function applyOSCapAdjustment(rawOS: number, capBucket: CapBucket): { 
+  adjusted: number; 
+  wasAdjusted: boolean; 
+  reason: string;
+} {
+  const ceiling = CONFIG.OS_CEILING_BY_CAP[capBucket];
+  const diminishing = CONFIG.OS_DIMINISHING_RETURNS[capBucket];
+  
+  let adjusted = rawOS;
+  let wasAdjusted = false;
+  let reason = '';
+  
+  // Step 1: Apply diminishing returns above threshold
+  if (rawOS > diminishing.threshold) {
+    const excess = rawOS - diminishing.threshold;
+    adjusted = diminishing.threshold + excess * diminishing.factor;
+    wasAdjusted = true;
+    reason = `OS diminishing returns applied (${capBucket} cap: above ${diminishing.threshold}, factor ${diminishing.factor})`;
+  }
+  
+  // Step 2: Apply hard ceiling
+  if (adjusted > ceiling) {
+    adjusted = ceiling;
+    wasAdjusted = true;
+    reason = reason || `OS ceiling applied (${capBucket} cap: max ${ceiling})`;
+  }
+  
+  return {
+    adjusted: Math.round(adjusted * 10) / 10,
+    wasAdjusted,
+    reason: wasAdjusted ? reason : 'no adjustment needed',
+  };
+}
+
+/**
+ * v2.3.4: Apply POS plausibility cap
+ * No live project should achieve perfect 100/100. Cap at 97 for realism.
+ * If POS > 97, either data is wrong or invariants are broken.
+ * 
+ * This makes "ETH 100/100" literally impossible to return from the engine.
+ */
+function applyPOSPlausibilityCap(
+  pos: number, 
+  violations: InvariantViolation[]
+): { value: number; capped: boolean; originalValue: number } {
+  const maxPlausible = CONFIG.POS_MAX_PLAUSIBLE;
+  
+  if (pos > maxPlausible) {
+    violations.push({
+      code: 'INV-POS-PLAU',
+      severity: 'ERROR',
+      message: `POS ${pos.toFixed(2)} exceeds plausibility bound ${maxPlausible}. This indicates data anomaly or invariant failure.`,
+      value: pos,
+      bound: `<= ${maxPlausible}`,
+    });
+    
+    return {
+      value: maxPlausible,
+      capped: true,
+      originalValue: pos,
+    };
+  }
+  
+  return {
+    value: pos,
+    capped: false,
+    originalValue: pos,
+  };
+}
+
+/**
+ * v2.3.4: Apply temporal smoothing to POS
+ * Prevents wild swings like SUI 70→37 overnight unless there's a real event.
+ * 
+ * Smoothing formula:
+ *   POS_smoothed = α × POS_raw + (1-α) × POS_previous
+ * 
+ * Delta limiting:
+ *   IF |POS_smoothed - POS_previous| > maxDelta:
+ *     POS_final = POS_previous + sign(delta) × maxDelta
+ * 
+ * Event mode (high ERS):
+ *   maxDelta = MAX_DELTA_WITH_EVENT (larger moves allowed)
+ */
+function applySmoothingToPOS(
+  rawPos: number,
+  previousPos: number | null | undefined,
+  previousTimestamp: string | null | undefined,
+  ers: number,
+  now: Date,
+  violations: InvariantViolation[]
+): { smoothed: number; tracking: SmoothingApplied } {
+  const cfg = CONFIG.SMOOTHING;
+  
+  // If smoothing disabled or no previous data, return raw
+  if (!cfg.ENABLED || previousPos == null || !Number.isFinite(previousPos)) {
+    return {
+      smoothed: rawPos,
+      tracking: {
+        enabled: false,
+        alpha: 1.0,
+        previousPos: null,
+        rawDelta: 0,
+        boundedDelta: 0,
+        maxDeltaAllowed: 0,
+        wasLimited: false,
+        eventMode: false,
+        timeSinceLastHours: null,
+      },
+    };
+  }
+  
+  // Calculate time since last update
+  let timeSinceLastHours: number | null = null;
+  if (previousTimestamp) {
+    const prevTime = new Date(previousTimestamp);
+    timeSinceLastHours = (now.getTime() - prevTime.getTime()) / (1000 * 60 * 60);
+    
+    // If too recent, skip smoothing to avoid over-damping
+    if (timeSinceLastHours < cfg.MIN_TIME_BETWEEN_HOURS) {
+      return {
+        smoothed: rawPos,
+        tracking: {
+          enabled: false,
+          alpha: 1.0,
+          previousPos,
+          rawDelta: rawPos - previousPos,
+          boundedDelta: rawPos - previousPos,
+          maxDeltaAllowed: 0,
+          wasLimited: false,
+          eventMode: false,
+          timeSinceLastHours,
+        },
+      };
+    }
+  }
+  
+  // Apply exponential smoothing
+  const alpha = cfg.ALPHA;
+  const posSmoothed = alpha * rawPos + (1 - alpha) * previousPos;
+  
+  // Determine event mode
+  const isEventMode = ers >= cfg.EVENT_ERS_THRESHOLD;
+  const maxDelta = isEventMode ? cfg.MAX_DELTA_WITH_EVENT : cfg.MAX_DELTA_NO_EVENT;
+  
+  // Calculate deltas
+  const rawDelta = rawPos - previousPos;
+  const smoothedDelta = posSmoothed - previousPos;
+  
+  // Apply delta limiting
+  let finalPos = posSmoothed;
+  let boundedDelta = smoothedDelta;
+  let wasLimited = false;
+  
+  if (Math.abs(smoothedDelta) > maxDelta) {
+    finalPos = previousPos + Math.sign(smoothedDelta) * maxDelta;
+    boundedDelta = finalPos - previousPos;
+    wasLimited = true;
+    
+    violations.push({
+      code: 'INV-POS-SMOOTH',
+      severity: 'WARN',
+      message: `POS change ${smoothedDelta.toFixed(2)} exceeds maxDelta ${maxDelta} (${isEventMode ? 'event mode' : 'normal'}). Bounded to ${boundedDelta.toFixed(2)}.`,
+      value: smoothedDelta,
+      bound: `<= ${maxDelta}`,
+    });
+  }
+  
+  return {
+    smoothed: Math.round(finalPos * 10) / 10,
+    tracking: {
+      enabled: true,
+      alpha,
+      previousPos,
+      rawDelta: Math.round(rawDelta * 10) / 10,
+      boundedDelta: Math.round(boundedDelta * 10) / 10,
+      maxDeltaAllowed: maxDelta,
+      wasLimited,
+      eventMode: isEventMode,
+      timeSinceLastHours: timeSinceLastHours,
+    },
+  };
+}
+
+/**
  * Calculate conditioned tier based on regime × sector × cap
  */
 function calculateConditionedTier(
@@ -1130,6 +1447,7 @@ function calculateConditionedTier(
     percentile: Math.round(percentile * 100) / 100,
     rawTier,
     conditionedTier,
+    tierMismatch: rawTier !== conditionedTier,  // Flag for audit transparency
   };
 }
 
@@ -1654,6 +1972,9 @@ export interface CalculateOmniScoreParams {
   washTradingRisk?: number;
   sybilDevRisk?: number;
   identityGraph?: ProjectIdentityGraph;
+  // v2.3.4: Temporal smoothing inputs
+  previousPos?: number | null;
+  previousTimestamp?: string | null;
 }
 
 export function calculateOmniScoreProduction(
@@ -1795,8 +2116,12 @@ export function calculateOmniScoreProduction(
   }
   
   const osClampResult = clampScore100WithTracking(osRaw);
-  const osScore = osClampResult.value;
-  clampApplied.os = osClampResult.clamped;
+  
+  // v2.3.3: Apply OS ceiling/diminishing returns for mega-caps
+  // This prevents BTC/ETH from trivially hitting OS=100 on any strong day
+  const osCapAdjustment = applyOSCapAdjustment(osClampResult.value, capBucket);
+  const osScore = osCapAdjustment.adjusted;
+  clampApplied.os = osClampResult.clamped || osCapAdjustment.wasAdjusted;
   
   if (osClampResult.isHardFailure) {
     errors.push({
@@ -1809,6 +2134,15 @@ export function calculateOmniScoreProduction(
       code: 'INV-4a',
       severity: 'WARN',
       message: `OS score clamped to bounds (raw: ${osRaw.toFixed(2)})`,
+    });
+  }
+  
+  // v2.3.3: Log OS cap adjustment for mega-caps
+  if (osCapAdjustment.wasAdjusted) {
+    warnings.push({
+      code: 'OS-CAP-ADJ',
+      severity: 'WARN',
+      message: `OS adjusted for ${capBucket} cap: ${osClampResult.value.toFixed(1)} → ${osScore} (${osCapAdjustment.reason})`,
     });
   }
   
@@ -1828,7 +2162,7 @@ export function calculateOmniScoreProduction(
     effectiveOmegaO * (qsGated ? 50 : osScore) -
     OMEGA_R * riskScore;
   const posRawClampResult = clampScore100WithTracking(posRawValue);
-  const posRaw = posRawClampResult.value;
+  let posRaw = posRawClampResult.value;
   clampApplied.pos = posRawClampResult.clamped;
   
   if (posRawClampResult.isHardFailure) {
@@ -1845,8 +2179,26 @@ export function calculateOmniScoreProduction(
     });
   }
   
+  // v2.3.4: Apply POS plausibility cap (makes 100/100 impossible)
+  const plausibilityCap = applyPOSPlausibilityCap(posRaw, errors);
+  posRaw = plausibilityCap.value;
+  const posPlausibilityCapped = plausibilityCap.capped;
+  const posBeforeCap = plausibilityCap.capped ? plausibilityCap.originalValue : null;
+  
+  // v2.3.4: Apply temporal smoothing (prevents wild swings)
+  const smoothingResult = applySmoothingToPOS(
+    posRaw,
+    params.previousPos,
+    params.previousTimestamp,
+    ers,
+    new Date(),
+    warnings
+  );
+  const posSmoothed = smoothingResult.smoothed;
+  const smoothingTracking = smoothingResult.tracking;
+  
   // Apply event risk adjustment (INV-5: ERS > 0 ⇒ POS_adj ≤ POS)
-  const posAdjValue = posRaw - gamma * ers;
+  const posAdjValue = posSmoothed - gamma * ers;
   const posAdjClampResult = clampScore100WithTracking(posAdjValue);
   const posAdjusted = posAdjClampResult.value;
   clampApplied.posAdj = posAdjClampResult.clamped;
@@ -1878,9 +2230,9 @@ export function calculateOmniScoreProduction(
   const reflexivitySentinel = calculateReflexivitySentinel(qsScore, params.priceChange30d);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 7. NRG CALCULATION
+  // 7. NRG CALCULATION (v2.3.3: cap-bucket aware)
   // ═══════════════════════════════════════════════════════════════════════════
-  const nrg = calculateNRG(qsInputsWithData, osInputsWithData, coverageOS);
+  const nrg = calculateNRG(qsInputsWithData, osInputsWithData, coverageOS, capBucket, dominantRegime);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // 8. EXPLAINABILITY
@@ -1966,13 +2318,16 @@ export function calculateOmniScoreProduction(
     clampScore100(confidenceBand[1] + (uncertainty * (uncertaintyMultiplier - 1))),
   ];
   
-  // v2.3.2: Use conditioned tier for final tier (if enabled)
-  const finalTier = CONFIG.TIER_CONDITIONING.ENABLED ? tierContext.conditionedTier : getTier(posAdjusted);
+  // v2.3.3: CRITICAL FIX - Always use rawTier for user-facing tier label
+  // Conditioned tier is for internal analytics only. This prevents the 43="Neutral" bug
+  // where conditioned percentile-based tier didn't match fixed threshold spec.
+  // Spec: Elite 85+, Strong 70-84, Neutral 50-69, Weak 30-49, Critical <30
+  const finalTier = tierContext.rawTier;  // ALWAYS use fixed threshold tier for user-facing
   
   const response: OmniScoreProductionResponse = {
     success: !hasErrorsUpdated,
     engine: 'OmniScore',
-    version: '2.3.2',
+    version: '2.3.4',
     project: params.projectId,
     timestamp: now,
     
@@ -2049,30 +2404,112 @@ export function calculateOmniScoreProduction(
         url: CONFIG.METHODOLOGY.URL,
       },
       reflexivitySentinel,
-      // v2.3.2: Additional audit fields
+      // v2.3.3/v2.3.4: Additional audit fields with tier transparency and smoothing
       featureSchemaVersion: CONFIG.FEATURE_SCHEMA_VERSION,
       sectorPackId: `${sector.toLowerCase()}-core40`,
       clampHistoryCount: [clampApplied.qs, clampApplied.os, clampApplied.pos, clampApplied.posAdj].filter(Boolean).length,
       coldStartMode: coldStart.mode,
-      tierConditioningApplied: CONFIG.TIER_CONDITIONING.ENABLED,
+      tierConditioningApplied: false,  // v2.3.3: Disabled for user-facing to prevent tier/score mismatch
+      tierMismatch: tierContext.tierMismatch,  // v2.3.3: Flag if rawTier ≠ conditionedTier for audit
+      rawTierUsed: tierContext.rawTier,  // v2.3.3: The tier shown to users (fixed thresholds)
+      conditionedTierInternal: tierContext.conditionedTier,  // v2.3.3: For internal analytics only
       capBucket,
+      // v2.3.4: Smoothing and plausibility tracking
+      smoothingApplied: smoothingTracking,
+      posPlausibilityCapped,
+      posBeforeCap,
     },
   };
   
-  logger.info(`[OmniScore v2.3.2] Completed for ${params.projectId}`, {
+  logger.info(`[OmniScore v2.3.4] Completed for ${params.projectId}`, {
     requestId,
-    posAdjusted,
+    posRaw: Math.round(posRaw * 10) / 10,
+    posSmoothed: Math.round(posSmoothed * 10) / 10,
+    posAdjusted: Math.round(posAdjusted * 10) / 10,
     tier: finalTier,
     conditionedTier: tierContext.conditionedTier,
     percentile: tierContext.percentile,
     confidence,
     coldStartMode: coldStart.mode,
+    smoothingApplied: smoothingTracking.enabled,
+    smoothingDelta: smoothingTracking.enabled ? smoothingTracking.boundedDelta : null,
+    posPlausibilityCapped,
     nmiTier: nmi.tier,
     threatLevel: threatModel.overallRisk,
     invariantStatus: response.audit.invariantStatus,
   });
   
   return response;
+}
+
+/**
+ * v2.3.4: Convert OmniScoreProductionResponse to canonical OmniScoreSnapshot
+ * This is the SINGLE SOURCE OF TRUTH consumed by all UIs and chat
+ */
+export function toOmniScoreSnapshot(
+  response: OmniScoreProductionResponse
+): OmniScoreSnapshot {
+  const tierContext = (response as any).tierContext;
+  const smoothing = response.audit.smoothingApplied;
+  
+  // Determine quadrant zone
+  const qs = response.qualityScore.score;
+  const os = response.opportunityScore.status === 'gated' ? null : response.opportunityScore.score;
+  const qsThreshold = 60;
+  const osThreshold = 60;
+  
+  return {
+    id: response.project,
+    symbol: response.project.toUpperCase(),
+    name: response.project,
+    sector: tierContext?.sector || 'Unknown',
+    capBucket: response.audit.capBucket,
+    
+    qs: response.qualityScore.score,
+    qsTier: response.qualityScore.tier,
+    os: response.opportunityScore.status === 'gated' ? null : response.opportunityScore.score,
+    osTier: response.opportunityScore.status === 'gated' ? null : response.opportunityScore.tier,
+    osStatus: response.opportunityScore.status === 'gated' ? 'gated' : 'active',
+    
+    risk: response.risk.score,
+    
+    posRaw: response.pos.raw,
+    posSmoothed: smoothing?.enabled ? 
+      response.pos.raw - (smoothing.rawDelta - smoothing.boundedDelta) : 
+      response.pos.raw,
+    posAdjusted: response.pos.adjusted,
+    tier: response.pos.tier,
+    
+    nrg: response.nrg.value,
+    nrgTier: response.nrg.interpretation,
+    nmi: (response as any).nmi?.score || 0,
+    nmiTier: (response as any).nmi?.tier || 'clean',
+    
+    coverageQS: response.audit.coverageQS,
+    coverageOS: response.audit.coverageOS,
+    confidence: response.audit.confidence,
+    
+    audit: {
+      engineVersion: response.audit.engineVersion,
+      methodologyVersion: response.audit.methodologyVersion,
+      timestamp: response.timestamp,
+      invariantStatus: response.audit.invariantStatus,
+      smoothingApplied: smoothing?.enabled || false,
+      osCeilingApplied: response.audit.warnings?.some(w => w.code === 'OS-CAP-ADJ') || false,
+      posPlausibilityCapped: response.audit.posPlausibilityCapped,
+      posBeforeCap: response.audit.posBeforeCap,
+    },
+  };
+}
+
+/**
+ * v2.3.4: Determine quadrant zone from QS/OS
+ */
+export function getQuadrantZone(qs: number, os: number | null, qsThreshold = 60, osThreshold = 60): 'TARGET' | 'BUILDER' | 'HYPE' | 'AVOID' {
+  if (qs >= qsThreshold && os !== null && os >= osThreshold) return 'TARGET';
+  if (qs >= qsThreshold && (os === null || os < osThreshold)) return 'BUILDER';
+  if (qs < qsThreshold && os !== null && os >= osThreshold) return 'HYPE';
+  return 'AVOID';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2155,10 +2592,25 @@ function calculateRiskScore(inputs: FeatureInput[], ers: number): number {
   return clampScore100((baseRisk + ers * 100) / 2);
 }
 
+/**
+ * v2.3.3: Calculate NRG with cap-bucket awareness
+ * 
+ * IMPORTANT: NRG is RELATIVE (COMM+MARKET vs SEC+TECH+ADOPT), not absolute sentiment.
+ * It can show "overhyped" for BTC even in a fear regime if:
+ * - COMM/MARKET scores are high (ETF flows, volume, social buzz)
+ * - SEC/TECH/ADOPT scores are lower (by comparison)
+ * 
+ * For mega-caps in fear regimes, this is NORMAL behavior:
+ * - BTC often sees flight-to-quality flows during market fear
+ * - This creates high relative MARKET/COMM vs fundamentals
+ * - The NRG reflects "BTC is overhyped RELATIVE TO its fundamentals", not absolute sentiment
+ */
 function calculateNRG(
   qsInputs: FeatureInput[],
   osInputs: FeatureInput[],
-  coverageOS: number
+  coverageOS: number,
+  capBucket?: CapBucket,
+  regime?: RegimeType
 ): NRGResponse {
   // COMM + MARKET
   const narrativeInputs = osInputs.filter(f => ['COMM', 'MARKET'].includes(f.segment));
@@ -2177,12 +2629,22 @@ function calculateNRG(
   // Z-score (simplified)
   const narrativeZ = (narrativeScore - 50) / 20;
   const realityZ = (realityScore - 50) / 20;
-  const nrgValue = narrativeZ - realityZ;
+  let nrgValue = narrativeZ - realityZ;
+  
+  // v2.3.3: Cap-bucket adjustment for mega-caps
+  // Mega-caps naturally have higher MARKET scores due to liquidity/flows
+  // This can artificially inflate NRG even when fundamentals are strong
+  // Apply dampening factor for mega-caps to account for this
+  if (capBucket === 'mega' && nrgValue > 0) {
+    nrgValue *= 0.7; // Dampen positive NRG for mega-caps by 30%
+  } else if (capBucket === 'large' && nrgValue > 0) {
+    nrgValue *= 0.85; // Dampen by 15% for large caps
+  }
   
   // Percentile (using tanh approximation)
   const percentile = 0.5 * (1 + Math.tanh(nrgValue * 0.7));
   
-  // v2.3.2: Refined interpretation with no redundancy
+  // v2.3.3: Refined interpretation with cap-bucket context
   let interpretation: NRGInterpretation;
   if (coverageOS < CONFIG.QUALITY_GATE_THRESHOLD) {
     interpretation = 'low_confidence';
@@ -2334,5 +2796,8 @@ export {
   getHierarchicalWeight,
   normalizeHierarchicalWeights,
   scaleRiskToPOSRange,
+  // Note: toOmniScoreSnapshot, getQuadrantZone, applyPOSPlausibilityCap, 
+  // applySmoothingToPOS, applyOSCapAdjustment are already exported with 
+  // 'export function' keyword above
 };
 
