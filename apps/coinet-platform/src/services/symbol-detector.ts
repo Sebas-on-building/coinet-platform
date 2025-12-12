@@ -292,6 +292,26 @@ export class SymbolDetector {
       }
     }
 
+    // Strategy 3.5: Standalone lowercase symbols (btc, eth, sol) - common in chat
+    // Only check against known common coins to avoid false positives
+    const lowerMatches = message.match(/\b([a-z]{2,6})\b/g) || [];
+    for (const match of lowerMatches) {
+      const symbol = match.toLowerCase();
+      // Only check if it's in COMMON_COINS to avoid matching random words
+      if (COMMON_COINS.has(symbol)) {
+        const coin = this.findCoin(symbol);
+        if (coin && !seen.has(coin.id)) {
+          detected.push({
+            original: match,
+            symbol: symbol.toUpperCase(),
+            coinGeckoId: coin.id,
+            confidence: 0.8, // Slightly lower confidence than uppercase
+          });
+          seen.add(coin.id);
+        }
+      }
+    }
+
     // Strategy 4: Full names (Bitcoin, Ethereum, Solana)
     const words = message.toLowerCase().split(/\s+/);
     for (let i = 0; i < words.length; i++) {
