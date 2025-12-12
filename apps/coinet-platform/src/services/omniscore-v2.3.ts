@@ -171,14 +171,19 @@ export interface OmniScoreSnapshot {
   
   // Audit metadata
   audit: {
-    engineVersion: string;           // "2.3.4"
+    engineVersion: string;           // "2.3.4" or "2.4.0"
     methodologyVersion: string;
     timestamp: string;
+    formulaVersion: 'v2.3' | 'v2.4'; // Which formula was used
     invariantStatus: 'pass' | 'warn' | 'fail';
     smoothingApplied: boolean;
     osCeilingApplied: boolean;
     posPlausibilityCapped: boolean;
     posBeforeCap: number | null;
+    
+    // v2.4 specific
+    fundamentalsFloor: number | null;
+    fundamentalsFloorApplied: boolean;
   };
 }
 
@@ -597,10 +602,10 @@ function computeMethodologyHash(version: string): string {
 }
 
 const CONFIG = {
-  VERSION: '2.3.4' as const,
-  METHODOLOGY_VERSION: '2.3.4' as const,
+  VERSION: '2.4.0' as const,
+  METHODOLOGY_VERSION: '2.4.0' as const,
   ENGINE_NAME: 'OmniScore' as const,
-  FEATURE_SCHEMA_VERSION: '2.3.4-core40' as const,
+  FEATURE_SCHEMA_VERSION: '2.4.0-core40' as const,
   
   // Methodology provenance
   METHODOLOGY: {
@@ -713,9 +718,27 @@ const CONFIG = {
   // OBJECTIVE WEIGHTS (Initial Priors)
   // ═══════════════════════════════════════════════════════════════════════════
   WEIGHTS: {
-    OMEGA_F: 0.45,  // QS weight
-    OMEGA_O: 0.40,  // OS weight
-    OMEGA_R: 0.15,  // Risk weight
+    OMEGA_F: 0.45,  // QS weight (v2.3 formula)
+    OMEGA_O: 0.40,  // OS weight (v2.3 formula)
+    OMEGA_R: 0.15,  // Risk weight (v2.3 formula)
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.4: BASELINE+TILT FORMULA (fixes ETH/blue-chip undervaluation)
+  // POS = QS + K_OS*(OS-50) - K_RISK*(Risk-50) + floor
+  // ═══════════════════════════════════════════════════════════════════════════
+  FORMULA_V24_ENABLED: true,  // Toggle between v2.3 and v2.4 formula
+  FORMULA_V24: {
+    K_OS: 0.20,    // OS tilt factor: max ±10pts impact (20% of ±50 range)
+    K_RISK: 0.25,  // Risk tilt factor: max ±12.5pts impact (25% of ±50 range)
+    FUNDAMENTAL_FLOOR: {
+      // Prevents high-QS projects from being rated too low
+      QS_85_PLUS: 60,  // Elite fundamentals → at least Neutral+
+      QS_80_PLUS: 55,  // Very strong fundamentals
+      QS_75_PLUS: 50,  // Strong fundamentals
+      QS_70_PLUS: 45,  // Good fundamentals
+      QS_65_PLUS: 40,  // Decent fundamentals
+    } as Record<string, number>,
   },
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1977,6 +2000,73 @@ export interface CalculateOmniScoreParams {
   previousTimestamp?: string | null;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// v2.4: BASELINE+TILT FORMULA FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * v2.4: Calculate fundamentals-based floor
+ * Prevents high-QS projects from being rated too low
+ * This ensures blue-chips like ETH maintain reasonable scores even with low OS
+ */
+function calculateFundamentalsFloor(qs: number): number {
+  const { FUNDAMENTAL_FLOOR } = CONFIG.FORMULA_V24;
+  
+  if (qs >= 85) return FUNDAMENTAL_FLOOR.QS_85_PLUS;  // 60
+  if (qs >= 80) return FUNDAMENTAL_FLOOR.QS_80_PLUS;  // 55
+  if (qs >= 75) return FUNDAMENTAL_FLOOR.QS_75_PLUS;  // 50
+  if (qs >= 70) return FUNDAMENTAL_FLOOR.QS_70_PLUS;  // 45
+  if (qs >= 65) return FUNDAMENTAL_FLOOR.QS_65_PLUS;  // 40
+  
+  return 0;  // No floor for weak fundamentals
+}
+
+/**
+ * v2.4: Calculate POS using baseline+tilt formula
+ * Formula: POS = QS + K_OS*(OS-50) - K_RISK*(Risk-50) + floor
+ * 
+ * This makes:
+ * - QS the baseline (how good the project *is*)
+ * - OS a tilt (how much market rewards it *now*)
+ * - Risk a penalty
+ * - Floor ensures blue-chips don't drop too low
+ * 
+ * @returns {posCore: number, floor: number} - POS before smoothing/ERS
+ */
+function calculatePOSWithBaselineTilt(
+  qs: number,
+  os: number | null,
+  risk: number,
+  qsGated: boolean
+): { posCore: number; floor: number; appliedFloor: boolean } {
+  const { K_OS, K_RISK } = CONFIG.FORMULA_V24;
+  
+  // Safe defaults: OS=50 (neutral) if gated, Risk=50 (neutral) if missing
+  const osSafe = qsGated ? 50 : (os ?? 50);
+  const riskSafe = risk ?? 50;
+  
+  // Center around 50 (neutral) to create symmetric tilts
+  const osDev = osSafe - 50;      // Range: [-50, +50]
+  const riskDev = riskSafe - 50;  // Range: [-50, +50]
+  
+  // Calculate core POS: baseline + tilts
+  // - High OS (e.g., 100): +10 pts (0.20 * 50)
+  // - Low OS (e.g., 0): -10 pts (0.20 * -50)
+  // - High Risk (e.g., 100): -12.5 pts (0.25 * 50)
+  // - Low Risk (e.g., 0): +12.5 pts (0.25 * -50)
+  let posCore = qs + K_OS * osDev - K_RISK * riskDev;
+  
+  // Apply fundamentals floor
+  const floor = calculateFundamentalsFloor(qs);
+  const appliedFloor = posCore < floor;
+  
+  if (appliedFloor) {
+    posCore = floor;
+  }
+  
+  return { posCore, floor, appliedFloor };
+}
+
 export function calculateOmniScoreProduction(
   params: CalculateOmniScoreParams
 ): OmniScoreProductionResponse {
@@ -2154,13 +2244,36 @@ export function calculateOmniScoreProduction(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // 6. POS CALCULATION with INV-4a/4b tracking
+  // v2.4: Support both weighted-average (v2.3) and baseline+tilt (v2.4) formulas
   // ═══════════════════════════════════════════════════════════════════════════
-  const { OMEGA_F, OMEGA_O, OMEGA_R } = CONFIG.WEIGHTS;
-  const effectiveOmegaO = qsGated ? 0 : OMEGA_O;  // QS gate disables OS weight
+  let posRawValue: number;
+  let fundamentalsFloor: number | null = null;
+  let fundamentalsFloorApplied = false;
   
-  const posRawValue = OMEGA_F * qsScore +
-    effectiveOmegaO * (qsGated ? 50 : osScore) -
-    OMEGA_R * riskScore;
+  if (CONFIG.FORMULA_V24_ENABLED) {
+    // v2.4: Baseline+tilt formula (fixes ETH/blue-chip undervaluation)
+    const v24Result = calculatePOSWithBaselineTilt(qsScore, osScore, riskScore, qsGated);
+    posRawValue = v24Result.posCore;
+    fundamentalsFloor = v24Result.floor;
+    fundamentalsFloorApplied = v24Result.appliedFloor;
+    
+    if (fundamentalsFloorApplied) {
+      warnings.push({
+        code: 'V24-FLOOR',
+        severity: 'WARN',
+        message: `Fundamentals floor applied: QS=${qsScore.toFixed(1)} → floor=${fundamentalsFloor?.toFixed(1)}`,
+      });
+    }
+  } else {
+    // v2.3: Classic weighted-average formula
+    const { OMEGA_F, OMEGA_O, OMEGA_R } = CONFIG.WEIGHTS;
+    const effectiveOmegaO = qsGated ? 0 : OMEGA_O;  // QS gate disables OS weight
+    
+    posRawValue = OMEGA_F * qsScore +
+      effectiveOmegaO * (qsGated ? 50 : osScore) -
+      OMEGA_R * riskScore;
+  }
+  
   const posRawClampResult = clampScore100WithTracking(posRawValue);
   let posRaw = posRawClampResult.value;
   clampApplied.pos = posRawClampResult.clamped;
@@ -2418,10 +2531,14 @@ export function calculateOmniScoreProduction(
       smoothingApplied: smoothingTracking,
       posPlausibilityCapped,
       posBeforeCap,
+      // v2.4: Baseline+tilt formula tracking
+      formulaVersion: CONFIG.FORMULA_V24_ENABLED ? 'v2.4' : 'v2.3',
+      fundamentalsFloor,
+      fundamentalsFloorApplied,
     },
   };
   
-  logger.info(`[OmniScore v2.3.4] Completed for ${params.projectId}`, {
+  logger.info(`[OmniScore v${CONFIG.VERSION}] Completed for ${params.projectId}`, {
     requestId,
     posRaw: Math.round(posRaw * 10) / 10,
     posSmoothed: Math.round(posSmoothed * 10) / 10,
@@ -2493,11 +2610,14 @@ export function toOmniScoreSnapshot(
       engineVersion: response.audit.engineVersion,
       methodologyVersion: response.audit.methodologyVersion,
       timestamp: response.timestamp,
+      formulaVersion: (response.audit as any).formulaVersion || 'v2.3',
       invariantStatus: response.audit.invariantStatus,
       smoothingApplied: smoothing?.enabled || false,
       osCeilingApplied: response.audit.warnings?.some(w => w.code === 'OS-CAP-ADJ') || false,
       posPlausibilityCapped: response.audit.posPlausibilityCapped,
       posBeforeCap: response.audit.posBeforeCap,
+      fundamentalsFloor: (response.audit as any).fundamentalsFloor || null,
+      fundamentalsFloorApplied: (response.audit as any).fundamentalsFloorApplied || false,
     },
   };
 }

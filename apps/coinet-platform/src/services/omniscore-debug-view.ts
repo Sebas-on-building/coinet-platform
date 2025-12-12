@@ -24,6 +24,7 @@ import { getQuadrantZone } from './omniscore-v2.3';
 export interface OmniScoreDebugView {
   project: string;
   engineVersion: string;
+  formulaVersion: 'v2.3' | 'v2.4';
   timestamp: string;
   
   // Score progression
@@ -48,7 +49,14 @@ export interface OmniScoreDebugView {
       combined: number;
     };
     pos: {
-      step1_raw: number;                    // ω_F×QS + ω_O×OS - ω_R×Risk
+      // v2.4: Different calculation steps based on formula
+      formulaUsed: 'weighted-average' | 'baseline-tilt';
+      
+      step1_raw: number;                    // v2.3: ω_F×QS + ω_O×OS - ω_R×Risk
+                                             // v2.4: QS + K_OS×(OS-50) - K_RISK×(Risk-50)
+      fundamentalsFloor: number | null;     // v2.4 only
+      fundamentalsFloorApplied: boolean;    // v2.4 only
+      
       step2_plausibilityCap: number;        // After ≤97 cap
       step3_smoothed: number;               // After temporal smoothing
       step4_ersAdjusted: number;            // After -γ×ERS
@@ -192,8 +200,9 @@ export function generateDebugView(
   return {
     project: response.project,
     engineVersion: audit.engineVersion,
+    formulaVersion: audit.formulaVersion || 'v2.3',
     timestamp: response.timestamp,
-    
+
     progression: {
       qs: {
         raw: response.qualityScore.score, // Already processed
@@ -206,8 +215,8 @@ export function generateDebugView(
         final: response.opportunityScore.score,
         ceilingApplied: audit.warnings?.some((w: any) => w.code === 'OS-CAP-ADJ') || false,
         capBucket: audit.capBucket,
-        ceiling: audit.capBucket === 'mega' ? 92 : 
-                 audit.capBucket === 'large' ? 95 : 
+        ceiling: audit.capBucket === 'mega' ? 92 :
+                 audit.capBucket === 'large' ? 95 :
                  audit.capBucket === 'mid' ? 98 : 100,
       },
       risk: {
@@ -217,14 +226,19 @@ export function generateDebugView(
         combined: response.risk.score,
       },
       pos: {
+        formulaUsed: audit.formulaVersion === 'v2.4' ? 'baseline-tilt' : 'weighted-average',
+        
         step1_raw: response.pos.raw,
+        fundamentalsFloor: audit.fundamentalsFloor || null,
+        fundamentalsFloorApplied: audit.fundamentalsFloorApplied || false,
+        
         step2_plausibilityCap: audit.posBeforeCap || response.pos.raw,
-        step3_smoothed: smoothing.enabled ? 
-          response.pos.raw - (smoothing.rawDelta - smoothing.boundedDelta) : 
+        step3_smoothed: smoothing.enabled ?
+          response.pos.raw - (smoothing.rawDelta - smoothing.boundedDelta) :
           response.pos.raw,
         step4_ersAdjusted: response.pos.adjusted,
         final: response.pos.adjusted,
-        
+
         plausibilityCapped: audit.posPlausibilityCapped,
         smoothed: smoothing.enabled,
         smoothingDelta: smoothing.enabled ? smoothing.boundedDelta : null,
@@ -287,7 +301,7 @@ export function formatDebugView(debug: OmniScoreDebugView): string {
 ║  🔍 OMNISCORE DEBUG VIEW — ${debug.project.toUpperCase()}                                        ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-Engine: v${debug.engineVersion} | ${debug.timestamp}
+Engine: v${debug.engineVersion} (Formula ${debug.formulaVersion}) | ${debug.timestamp}
 Sector: ${debug.quadrant.zone} Zone (${debug.tierAnalysis.finalTier} tier)
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -311,7 +325,8 @@ Risk:
   Combined: ${debug.progression.risk.combined.toFixed(1)}/100
 
 POS (Project OmniScore):
-  Step 1 - Raw calculation:      ${debug.progression.pos.step1_raw.toFixed(1)}/100
+  Formula: ${debug.progression.pos.formulaUsed === 'baseline-tilt' ? '🆕 v2.4 Baseline+Tilt' : 'v2.3 Weighted Average'}
+  Step 1 - Raw calculation:      ${debug.progression.pos.step1_raw.toFixed(1)}/100${debug.progression.pos.fundamentalsFloorApplied ? ` ⚠️ Floor at ${debug.progression.pos.fundamentalsFloor}` : ''}
   Step 2 - Plausibility cap:     ${debug.progression.pos.step2_plausibilityCap.toFixed(1)}/100 ${debug.progression.pos.plausibilityCapped ? '⚠️ CAPPED AT 97' : ''}
   Step 3 - Temporal smoothing:   ${debug.progression.pos.step3_smoothed.toFixed(1)}/100 ${debug.progression.pos.smoothed ? `(Δ=${debug.progression.pos.smoothingDelta?.toFixed(1)})` : ''}
   Step 4 - ERS adjustment:       ${debug.progression.pos.step4_ersAdjusted.toFixed(1)}/100 ${debug.progression.pos.ersAdjustment > 0 ? `(-${debug.progression.pos.ersAdjustment.toFixed(1)})` : ''}
