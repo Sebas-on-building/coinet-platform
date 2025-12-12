@@ -19,6 +19,7 @@ import type {
   OmniScoreSnapshot,
   InvariantViolation 
 } from './omniscore-v2.3';
+import { getQuadrantZone } from './omniscore-v2.3';
 
 export interface OmniScoreDebugView {
   project: string;
@@ -294,7 +295,7 @@ Sector: ${debug.quadrant.zone} Zone (${debug.tierAnalysis.finalTier} tier)
 └─────────────────────────────────────────────────────────────────────────────┘
 
 QS (Quality Score):
-  Final: ${debug.progression.qs.final.toFixed(1)}/100 (${debug.qs >= 60 ? '✅ HIGH' : '⚠️ LOW'})
+  Final: ${debug.progression.qs.final.toFixed(1)}/100 (${debug.progression.qs.final >= 60 ? '✅ HIGH' : '⚠️ LOW'})
   ${debug.progression.qs.clamped ? '⚠️ Clamped to bounds' : '✅ No clamping needed'}
 
 OS (Opportunity Score):
@@ -319,7 +320,7 @@ POS (Project OmniScore):
 
 ${debug.progression.pos.plausibilityCapped ? `
 🚨 PLAUSIBILITY CAP HIT!
-Original POS was ${debug.audit.posBeforeCap?.toFixed(1)}, capped at 97.
+Original POS was ${debug.progression.pos.step1_raw.toFixed(1)}, capped at 97.
 This indicates either:
   - Data anomaly (check input quality)
   - Invariant violation (check audit trail)
@@ -438,7 +439,7 @@ MANDATORY RULES:
 1. 🔒 USE EXACT VALUES: POS=${snapshot.posAdjusted}, tier="${snapshot.tier}"
 2. 🚫 NEVER say "100/100" unless posAdjusted is exactly 100 (it won't be)
 3. 📊 ALWAYS show: "scores ${snapshot.posAdjusted}/100 (${snapshot.tier} tier)"
-4. 🎯 Separate quadrant (${snapshot.quadrant.zone}) from tier (${snapshot.tier})
+4. 🎯 Separate quadrant (${getQuadrantZone(snapshot.qs, snapshot.os)}) from tier (${snapshot.tier})
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -455,7 +456,7 @@ OPPORTUNITY SCORE (Market):
   Tier:  ${snapshot.osTier || 'N/A'}  ← USE THIS EXACT STRING
   Status: ${snapshot.osStatus}
 
-QUADRANT: ${snapshot.quadrant.zone} Zone
+QUADRANT: ${getQuadrantZone(snapshot.qs, snapshot.os)} Zone
   (QS=${snapshot.qs >= 60 ? '≥60 ✅' : '<60 ❌'}, OS=${snapshot.os !== null && snapshot.os >= 60 ? '≥60 ✅' : '<60 ❌'})
 
 NARRATIVE:
@@ -474,7 +475,7 @@ PRESENTATION FORMAT (MANDATORY):
 "${snapshot.symbol} scores ${snapshot.posAdjusted}/100 on OmniScore (${snapshot.tier} tier).
 Quality Score is ${snapshot.qs}/100 (${snapshot.qsTier}) — [interpret].
 Opportunity Score is ${snapshot.os !== null ? `${snapshot.os}/100 (${snapshot.osTier})` : 'GATED'} — [interpret].
-This positions ${snapshot.symbol} in the ${snapshot.quadrant.zone} Zone."
+This positions ${snapshot.symbol} in the ${getQuadrantZone(snapshot.qs, snapshot.os)} Zone."
 
 DO NOT DEVIATE FROM THIS FORMAT.
 ═══════════════════════════════════════════════════════════════════════════════
