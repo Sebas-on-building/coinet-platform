@@ -526,6 +526,10 @@ export interface AuditTrail {
   smoothingApplied: SmoothingApplied;
   posPlausibilityCapped: boolean;
   posBeforeCap: number | null;
+  // v2.4: Baseline+tilt formula tracking
+  formulaVersion: 'v2.3' | 'v2.4';
+  fundamentalsFloor: number | null;
+  fundamentalsFloorApplied: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
