@@ -1,5 +1,5 @@
 /**
- * OmniScore v2.3.4 Golden Test Cases
+ * OmniScore v2.4.0 Golden Test Cases
  * 
  * These tests define the EXPECTED behavior for major crypto assets.
  * If these fail, the engine is broken or miscalibrated.
@@ -8,6 +8,12 @@
  * - ETH showing 100/100 (impossible)
  * - SUI crashing 70→37 overnight without event
  * - Wrong tier labels (43 called "Neutral" instead of "Weak")
+ * - ETH undervalued (v2.3: 43/Weak → v2.4: 75/Strong with high QS)
+ * 
+ * v2.4 CHANGES:
+ * - New baseline+tilt formula: POS = QS + K_OS*(OS-50) - K_RISK*(Risk-50) + floor
+ * - Fundamentals floor prevents high-QS projects from dropping too low
+ * - Expected ranges adjusted for more intuitive tier alignment
  */
 
 import {
@@ -31,7 +37,7 @@ describe('OmniScore Golden Cases', () => {
   });
   
   describe('Bitcoin Golden Case', () => {
-    it('should score Bitcoin in Strong tier (65-80 range) in Target zone', () => {
+    it('should score Bitcoin in Strong-Elite tier (70-90 range) in Target zone [v2.4]', () => {
       const params: CalculateOmniScoreParams = {
         projectId: 'bitcoin',
         sector: 'L1',
@@ -66,10 +72,10 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // Bitcoin should be Strong tier, not Elite (no project is perfect)
+      // v2.4: Bitcoin should be Strong-Elite tier (baseline+tilt formula)
       expect(snapshot.tier).toMatch(/Strong|Elite/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(65);
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(80);
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(70);  // v2.4: Higher baseline
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(90);     // v2.4: Can reach Elite
       
       // Should be in Target zone (high QS + high OS)
       expect(snapshot.qs).toBeGreaterThanOrEqual(70);
@@ -87,11 +93,14 @@ describe('OmniScore Golden Cases', () => {
       
       // ECO should be high (not 25!)
       expect(result.qualityScore.breakdown.ecosystem).toBeGreaterThan(0.7);
+      
+      // v2.4: Check formula version
+      expect(snapshot.audit.formulaVersion).toBe('v2.4');
     });
   });
   
   describe('Ethereum Golden Case', () => {
-    it('should score Ethereum in Neutral-Strong tier (45-70 range) in Builder/Target zone', () => {
+    it('should score Ethereum in Neutral-Strong tier (55-80 range) in Builder/Target zone [v2.4]', () => {
       const params: CalculateOmniScoreParams = {
         projectId: 'ethereum',
         sector: 'L1',
@@ -126,10 +135,11 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // Ethereum should be in Neutral-Strong range, NOT Elite, NOT 100
-      expect(snapshot.tier).toMatch(/Neutral|Strong|Weak/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(40);
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(75);
+      // v2.4: Ethereum with high QS should be Neutral-Strong, NOT Weak
+      // v2.3 bug: could score 43 (Weak) - FIXED in v2.4
+      expect(snapshot.tier).toMatch(/Neutral|Strong/);
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(55);  // v2.4: Higher floor
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(80);     // v2.4: Can reach Strong
       
       // High QS expected
       expect(snapshot.qs).toBeGreaterThanOrEqual(70);
@@ -151,11 +161,17 @@ describe('OmniScore Golden Cases', () => {
       // If QS high but OS moderate → Builder zone
       const zone = getQuadrantZone(snapshot.qs, snapshot.os);
       expect(['TARGET', 'BUILDER']).toContain(zone);
+      
+      // v2.4: Check formula version and floor application
+      expect(snapshot.audit.formulaVersion).toBe('v2.4');
+      if (snapshot.audit.fundamentalsFloorApplied) {
+        expect(snapshot.audit.fundamentalsFloor).toBeGreaterThanOrEqual(50);
+      }
     });
   });
   
   describe('Solana Golden Case', () => {
-    it('should score Solana in Weak-Neutral tier (40-65 range)', () => {
+    it('should score Solana in Neutral tier (45-70 range) [v2.4]', () => {
       const params: CalculateOmniScoreParams = {
         projectId: 'solana',
         sector: 'L1',
@@ -188,9 +204,9 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // Solana typically in Weak-Neutral range
+      // v2.4: Solana typically in Neutral range (moderate QS gets fair treatment)
       expect(snapshot.tier).toMatch(/Weak|Neutral|Strong/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(35);
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(45);  // v2.4: Better baseline
       expect(snapshot.posAdjusted).toBeLessThanOrEqual(70);
       
       // QS should be decent (tech is good)
@@ -202,6 +218,9 @@ describe('OmniScore Golden Cases', () => {
       
       // Risk should be elevated due to outages
       expect(result.risk.eventRiskSeverity).toBeGreaterThan(0.1);
+      
+      // v2.4: Check formula version
+      expect(snapshot.audit.formulaVersion).toBe('v2.4');
     });
   });
   
