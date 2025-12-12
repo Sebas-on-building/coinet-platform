@@ -124,46 +124,67 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
     console.log('📊 ChatInterface: Charts array:', JSON.stringify(charts, null, 2));
     
     return charts.map((chart, index) => {
-      console.log(`📊 ChatInterface: Chart ${index}:`, {
-        type: chart?.type,
-        hasProjects: Array.isArray(chart?.projects),
-        projectsCount: chart?.projects?.length,
-        chart: chart,
-      });
-      
-      if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
-        console.log('📊 ChatInterface: Rendering OmniScore quadrant with projects:', chart.projects);
+      try {
+        console.log(`📊 ChatInterface: Chart ${index}:`, {
+          type: chart?.type,
+          hasProjects: Array.isArray(chart?.projects),
+          projectsCount: chart?.projects?.length,
+          chart: chart,
+        });
         
-        const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
-          name: p.ticker || p.name || "Project",
-          ticker: p.ticker,
-          qs: p.qs ?? 0,
-          os: p.os ?? null,
-          pos: p.pos ?? 0,
-          posAdj: p.posAdj ?? p.pos ?? 0,
-          confidence: p.confidence,
-          nmi: { tier: p.nmiTier },
-        }));
+        if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
+          console.log('📊 ChatInterface: Rendering OmniScore quadrant with projects:', chart.projects);
+          
+          const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
+            name: p.ticker || p.name || "Project",
+            ticker: p.ticker,
+            qs: p.qs ?? 0,
+            os: p.os ?? null,
+            pos: p.pos ?? 0,
+            posAdj: p.posAdj ?? p.pos ?? 0,
+            confidence: p.confidence,
+            nmi: { tier: p.nmiTier },
+          }));
 
-        console.log('📊 ChatInterface: Mapped projects for OmniScoreQuadrantBoard:', projects);
+          console.log('📊 ChatInterface: Mapped projects for OmniScoreQuadrantBoard:', projects);
 
+          if (projects.length === 0) {
+            console.warn('📊 ChatInterface: No valid projects to render');
+            return null;
+          }
+
+          return (
+            <div 
+              key={`omniscore-${index}`} 
+              className={cn(
+                "w-full mb-6",
+                isMobile ? "mb-4" : "mb-6"
+              )}
+              style={{ minHeight: '360px' }}
+            >
+              <OmniScoreQuadrantBoard projects={projects} title="OmniScore Quadrant" />
+            </div>
+          );
+        }
+
+        // Fallback to TradingView charts
         return (
-          <div key={`omniscore-${index}`} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
-            <OmniScoreQuadrantBoard projects={projects} title="OmniScore Quadrant" />
+          <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
+            <TradingViewChatChart
+              symbol={chart.symbol || "BTCUSD"}
+              interval={(chart.interval || "1H") as any}
+              isMobile={isMobile}
+            />
+          </div>
+        );
+      } catch (error) {
+        console.error(`📊 ChatInterface: Error rendering chart ${index}:`, error);
+        return (
+          <div key={`error-${index}`} className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <p className="text-sm text-destructive">Error rendering chart: {error instanceof Error ? error.message : 'Unknown error'}</p>
           </div>
         );
       }
-
-      // Fallback to TradingView charts
-      return (
-        <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
-          <TradingViewChatChart
-            symbol={chart.symbol || "BTCUSD"}
-            interval={(chart.interval || "1H") as any}
-            isMobile={isMobile}
-          />
-        </div>
-      );
     });
   };
 
@@ -238,6 +259,14 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
       // Convert backend response to frontend message format
       const charts = apiResponse.data.message.charts as any[] | undefined;
       console.log('📊 Charts received from backend:', charts);
+      console.log('📊 Charts type:', typeof charts);
+      console.log('📊 Charts is array:', Array.isArray(charts));
+      console.log('📊 Charts length:', charts?.length);
+      if (charts && charts.length > 0) {
+        console.log('📊 First chart:', charts[0]);
+        console.log('📊 First chart type:', charts[0]?.type);
+        console.log('📊 First chart projects:', charts[0]?.projects);
+      }
       
       const assistantMessage: Message = {
         id: apiResponse.data.message.id,
@@ -248,6 +277,8 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
         isRead: true,
         sources: apiResponse.data.message.sources,
       };
+      
+      console.log('📊 Assistant message created with charts:', assistantMessage.charts);
 
       // Mark user message as read
       setMessages(prev => prev.map(m => 
@@ -494,19 +525,19 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                     )}
                     
                      <div className={`max-w-[90%] sm:max-w-[85%] lg:max-w-[75%] ${message.type === 'user' ? 'order-first' : ''}`}>
+                       {/* Charts rendered OUTSIDE the message bubble for better visibility */}
+                       {message.charts && message.charts.length > 0 && message.type === 'assistant' && (
+                         <div className="w-full mb-4">
+                           {renderChatCharts(message.charts)}
+                         </div>
+                       )}
+                       
                        <div className={`rounded-2xl md:rounded-3xl px-4 md:px-6 py-3 md:py-4 ${
                          message.type === 'user'
                            ? 'bg-primary text-primary-foreground shadow-sm'
                            : 'bg-background/80 backdrop-blur-sm border border-border/50 text-foreground shadow-sm'
                        }`}>
-                          {/* TradingView Charts FIRST */}
-                          {message.charts && message.charts.length > 0 && (
-                            <div>
-                              {renderChatCharts(message.charts)}
-                            </div>
-                          )}
-
-                         {/* Text explanation AFTER charts */}
+                         {/* Text explanation */}
                          {message.content && (
                            <div className="prose prose-sm max-w-none">
                              <p className="whitespace-pre-wrap m-0 leading-relaxed text-sm md:text-base">{message.content}</p>
