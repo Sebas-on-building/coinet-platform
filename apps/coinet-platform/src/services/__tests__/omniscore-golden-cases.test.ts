@@ -23,7 +23,7 @@ import {
   type FeatureInput,
   type CalculateOmniScoreParams,
   type OmniScoreSnapshot,
-} from '../omniscore-v2.3';
+} from '../omniscore';
 
 describe('OmniScore Golden Cases', () => {
   

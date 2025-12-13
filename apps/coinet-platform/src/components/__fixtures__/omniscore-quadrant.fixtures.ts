@@ -1,5 +1,5 @@
 import { ProjectPoint } from "../OmniScoreQuadrantBoard";
-import { DEFAULT_OS_THRESHOLD } from "../../services/omniscore-constants";
+import { DEFAULT_OS_THRESHOLD } from "../../services/omniscore";
 
 // A) All OK: mixed sectors/caps, no gating, movement vectors for a few
 export const allOkProjects: ProjectPoint[] = [

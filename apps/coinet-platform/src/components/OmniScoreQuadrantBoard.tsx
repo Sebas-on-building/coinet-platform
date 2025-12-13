@@ -46,7 +46,7 @@ export type ProjectPoint = {
   };
 };
 
-import { DEFAULT_QS_THRESHOLD, DEFAULT_OS_THRESHOLD } from "../services/omniscore-constants";
+import { DEFAULT_QS_THRESHOLD, DEFAULT_OS_THRESHOLD } from "../services/omniscore";
 
 export interface OmniScoreQuadrantBoardProps {
   projects: ProjectPoint[];

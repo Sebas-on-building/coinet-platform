@@ -33,8 +33,12 @@ import { calculateBehavioralFinanceIntelligence, BehavioralFinanceInput } from '
 import { calculateNeuroeconomicIntelligence, formatNeuroeconomicForAI, NeuroeconomicInput } from '../../services/neuroeconomic-intelligence';
 import { fetchCachedEnterpriseMarketPrices, formatEnterpriseMarketDataForAI } from '../../services/enterprise-market-data-pipeline';
 import { calculateProjectTrustScore, formatTrustScoreForAI } from '../../services/project-research-intelligence';
-import { getProjectOmniScoreV23, formatOmniScoreForAI } from '../../services/omniscore-data-fetcher-v23';
-import { generateQuadrantVisualization, VisualizerProject } from '../../services/omniscore-visualizer';
+import { 
+  getProjectOmniScoreV23, 
+  formatOmniScoreForAI,
+  generateQuadrantVisualization,
+  type VisualizerProject 
+} from '../../services/omniscore';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';

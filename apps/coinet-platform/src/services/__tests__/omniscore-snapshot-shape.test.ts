@@ -13,7 +13,7 @@ import {
   type OmniScoreSnapshot,
   type CalculateOmniScoreParams,
   type FeatureInput,
-} from '../omniscore-v2.3';
+} from '../omniscore';
 
 describe('OmniScore Snapshot Shape', () => {
   const makeFeature = (key: string, segment: string, value: number): FeatureInput => ({
@@ -148,7 +148,7 @@ describe('OmniScore Snapshot Shape', () => {
     const snapshot = toOmniScoreSnapshot(response);
 
     // Import getQuadrantZone
-    const { getQuadrantZone } = require('../omniscore-v2.3');
+    const { getQuadrantZone } = require('../omniscore');
     const zone = getQuadrantZone(snapshot.qs, snapshot.os);
 
     expect(['TARGET', 'BUILDER', 'HYPE', 'AVOID']).toContain(zone);

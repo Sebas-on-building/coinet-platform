@@ -103,6 +103,23 @@ export default [
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-case-declarations': 'off',
+      
+      // OmniScore: Prevent direct imports from versioned files
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/omniscore-v2.*', '**/omniscore-data-fetcher-v*'],
+              message: 'Use services/omniscore/index.ts instead of versioned files. This ensures single source of truth.',
+            },
+            {
+              group: ['**/omniscore/legacy/**'],
+              message: 'Legacy OmniScore versions are for reference only. Use services/omniscore/index.ts for current engine.',
+            },
+          ],
+        },
+      ],
     },
   },
   // 3. Configuration for JavaScript files (Node.js environment)

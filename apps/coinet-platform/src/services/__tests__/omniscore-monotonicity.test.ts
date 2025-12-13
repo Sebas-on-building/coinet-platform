@@ -1,4 +1,4 @@
-import { calculatePOSWithBaselineTilt } from '../omniscore-v2.3';
+import { calculatePOSWithBaselineTilt } from '../omniscore';
 
 describe('OmniScore v2.4.1 monotonicity', () => {
   const riskFixed = 50;

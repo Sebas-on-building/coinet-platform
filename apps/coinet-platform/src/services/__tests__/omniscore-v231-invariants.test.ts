@@ -30,7 +30,7 @@ import {
   type ScoreState,
   type Segment,
   type ConfidenceLevel,
-} from '../omniscore-v2.3';
+} from '../omniscore';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROPERTY-BASED TESTS: INV-1 (Quality Bounds)

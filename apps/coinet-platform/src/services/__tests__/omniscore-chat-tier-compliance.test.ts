@@ -10,8 +10,8 @@
  * - Confuse quadrant position (Builder/Target) with global tier (Weak/Strong)
  */
 
-import { formatOmniScoreForAI } from '../omniscore-data-fetcher-v23';
-import type { OmniScoreProductionResponse } from '../omniscore-v2.3';
+import { formatOmniScoreForAI } from '../omniscore';
+import type { OmniScoreProductionResponse } from '../omniscore';
 
 describe('OmniScore Chat Tier Compliance', () => {
   
