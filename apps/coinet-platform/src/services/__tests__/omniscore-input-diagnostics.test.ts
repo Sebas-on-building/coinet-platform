@@ -10,6 +10,7 @@
  * 3. Identify biases in normalization/scaling
  */
 
+import { describe, it, expect } from 'vitest';
 import {
   calculateOmniScoreProduction,
   toOmniScoreSnapshot,

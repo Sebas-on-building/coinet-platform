@@ -6,6 +6,7 @@
  * the issue is with INPUT VALUES, not the formula itself.
  */
 
+import { describe, it, expect } from 'vitest';
 import { calculatePOSConvexCombination } from '../omniscore';
 
 describe('OmniScore v2.5.0 Formula Verification', () => {

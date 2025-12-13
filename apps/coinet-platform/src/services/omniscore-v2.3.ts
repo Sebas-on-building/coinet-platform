@@ -174,7 +174,7 @@ export interface OmniScoreSnapshot {
     engineVersion: string;           // "2.3.4" or "2.4.0"
     methodologyVersion: string;
     timestamp: string;
-    formulaVersion: 'v2.3' | 'v2.4'; // Which formula was used
+    formulaVersion: 'v2.3' | 'v2.4' | 'v2.5'; // Which formula was used
     invariantStatus: 'pass' | 'warn' | 'fail';
     smoothingApplied: boolean;
     osCeilingApplied: boolean;
@@ -526,8 +526,8 @@ export interface AuditTrail {
   smoothingApplied: SmoothingApplied;
   posPlausibilityCapped: boolean;
   posBeforeCap: number | null;
-  // v2.4: Baseline+tilt formula tracking
-  formulaVersion: 'v2.3' | 'v2.4';
+  // v2.5.0: Formula version tracking
+  formulaVersion: 'v2.3' | 'v2.4' | 'v2.5';
   fundamentalsFloor: number | null;
   fundamentalsFloorApplied: boolean;
 }
@@ -2042,41 +2042,45 @@ function calculateFundamentalsFloor(qs: number): number {
 }
 
 /**
- * v2.4: Calculate POS using baseline+tilt formula
- * Formula: POS = QS + K_OS*(OS-50) - K_RISK*(Risk-50) + floor
+ * v2.5.0: Calculate POS using convex combination formula
  * 
- * This makes:
- * - QS the baseline (how good the project *is*)
- * - OS a tilt (how much market rewards it *now*)
- * - Risk a penalty
- * - Floor ensures blue-chips don't drop too low
+ * Formula: POS = W_F*QS + W_O*OS + W_S*(100-Risk)
  * 
- * @returns {posCore: number, floor: number} - POS before smoothing/ERS
+ * Properties:
+ * - Convex combination guarantees POS is between min/max of inputs
+ * - Cannot exceed QS by more than OS/Risk contributions
+ * - ETH with QS=87, OS=43, Risk=35 → POS = 0.6*87 + 0.25*43 + 0.15*65 = 72.7
+ * - SOL with QS=60, OS=40, Risk=60 → POS = 0.6*60 + 0.25*40 + 0.15*40 = 52
+ * 
+ * This prevents the "ETH=91.6 with OS=43" bug by ensuring POS cannot drift
+ * beyond reasonable bounds.
  */
-function calculatePOSWithBaselineTilt(
+export function calculatePOSConvexCombination(
   qs: number,
   os: number | null,
   risk: number,
   qsGated: boolean
 ): { posCore: number; floor: number; appliedFloor: boolean } {
-  const { K_OS, K_RISK } = CONFIG.FORMULA_V24;
+  const { W_FUNDAMENTALS, W_OPPORTUNITY, W_SAFETY } = CONFIG.FORMULA_V25;
   
-  // Safe defaults: OS=50 (neutral) if gated, Risk=50 (neutral) if missing
-  const osSafe = qsGated ? 50 : (os ?? 50);
-  const riskSafe = risk ?? 50;
+  // Ensure weights sum to 1.0 (invariant)
+  const weightSum = W_FUNDAMENTALS + W_OPPORTUNITY + W_SAFETY;
+  if (Math.abs(weightSum - 1.0) > 0.001) {
+    throw new Error(`FORMULA_V25 weights must sum to 1.0, got ${weightSum}`);
+  }
   
-  // Center around 50 (neutral) to create symmetric tilts
-  const osDev = osSafe - 50;      // Range: [-50, +50]
-  const riskDev = riskSafe - 50;  // Range: [-50, +50]
+  // Clamp inputs to [0, 100]
+  const Q = clampScore100(qs);
+  const O = qsGated ? 50 : clampScore100(os ?? 50);  // Neutral if gated or missing
+  const R = clampScore100(risk ?? 50);               // Neutral if missing
   
-  // Calculate core POS: baseline + tilts
-  // - High OS (e.g., 100): +10 pts (0.20 * 50)
-  // - Low OS (e.g., 0): -10 pts (0.20 * -50)
-  // - High Risk (e.g., 100): -12.5 pts (0.25 * 50)
-  // - Low Risk (e.g., 0): +12.5 pts (0.25 * -50)
-  let posCore = qs + K_OS * osDev - K_RISK * riskDev;
+  // Safety = 100 - Risk (higher risk → lower safety)
+  const safety = 100 - R;
   
-  // Apply fundamentals floor
+  // Convex combination: guaranteed bounded
+  let posCore = W_FUNDAMENTALS * Q + W_OPPORTUNITY * O + W_SAFETY * safety;
+  
+  // Apply fundamentals floor (mild protection for blue-chips)
   const floor = calculateFundamentalsFloor(qs);
   const appliedFloor = posCore < floor;
   
@@ -2914,7 +2918,7 @@ function extractSources(inputs: FeatureInput[]): string[] {
 
 export {
   CONFIG as OMNISCORE_CONFIG,
-  calculatePOSConvexCombination,
+  // calculatePOSConvexCombination is already exported above with 'export function'
   detectRegime,
   detectRegimeCryptoNative,
   getTier,
