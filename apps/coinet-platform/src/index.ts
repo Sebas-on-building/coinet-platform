@@ -3984,7 +3984,7 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
     
     // Import v2.2 modules
     const { fetchProjectDataV22 } = await import('./services/omniscore-data-fetcher-v22');
-    const { calculateOmniScoreV22, formatOmniScoreV22ForAI } = await import('./services/omniscore-v2.2');
+    const { calculateOmniScoreV22, formatOmniScoreV22ForAI } = await import('./services/omniscore/legacy/v2_2/omniscore-v2.2');
     
     // Fetch all variable data with segment tags
     const dataBundle = await fetchProjectDataV22(projectId);
@@ -4069,7 +4069,7 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
         severityScore: omniScore.eventRisk.severityScore.toFixed(2),
         posAdjustment: `-${omniScore.eventRisk.posAdjustment.toFixed(1)} points`,
         tierOverride: omniScore.eventRisk.tierOverride,
-        events: omniScore.eventRisk.events.map(e => ({
+        events: omniScore.eventRisk.events.map((e: any) => ({
           type: e.type,
           severity: `${(e.severity * 100).toFixed(0)}%`,
           description: e.description,
@@ -4104,7 +4104,7 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       // ═══════════════════════════════════════════════════════════════════════
       // COUNTERFACTUAL SIMULATIONS (Constrained & Realistic)
       // ═══════════════════════════════════════════════════════════════════════
-      counterfactuals: omniScore.counterfactuals.slice(0, 3).map(cf => ({
+      counterfactuals: omniScore.counterfactuals.slice(0, 3).map((cf: any) => ({
         scenario: cf.scenario,
         qsDelta: `+${cf.qsDelta.toFixed(1)}`,
         osDelta: `+${cf.osDelta.toFixed(1)}`,
@@ -4121,7 +4121,7 @@ app.get('/api/omniscore/v2', async (req: Request, res: Response) => {
       // ═══════════════════════════════════════════════════════════════════════
       upgradeRecommendations: {
         note: 'Only controllable variables. OS is NOT contaminated into QS recommendations.',
-        highImpact: omniScore.upgradeRecommendations.highImpact.slice(0, 3).map(r => ({
+        highImpact: omniScore.upgradeRecommendations.highImpact.slice(0, 3).map((r: any) => ({
           variable: r.variable,
           currentValue: `${r.currentValue.toFixed(0)}%`,
           targetValue: `${r.targetValue.toFixed(0)}%`,

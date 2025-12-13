@@ -368,7 +368,7 @@ describe('OmniScore v2.5.0 Comprehensive Tests', () => {
         projectId: 'crypto-regime',
         qsInputs: [makeFeature('team', 'TEAM', 80)],
         osInputs: [makeFeature('market', 'MARKET', 80)],
-        cryptoMarketData: {
+        cryptoRegimeSignals: {
           btcDailyVolatility: 0.10, // High volatility
           avgFundingRate: 0.005,
           liquidationIntensity: 4.0,

@@ -32,6 +32,7 @@ export {
   getMultipleOmniScoreSnapshots,
   snapshotToProjectPoint,
   formatSnapshotForAI,
+  formatOmniScoreForAI,
 } from '../omniscore-data-fetcher-v23';
 
 // Re-export debug view
@@ -44,8 +45,14 @@ export {
 // Re-export visualizer
 export * from '../omniscore-visualizer';
 
-// Re-export constants
-export * from '../omniscore-constants';
+// Re-export constants (excluding TierLabel to avoid duplicate export)
+export {
+  DEFAULT_QS_THRESHOLD,
+  DEFAULT_OS_THRESHOLD,
+  TIER_THRESHOLDS,
+  getTierFromScore,
+} from '../omniscore-constants';
+export type { TierLabel } from '../omniscore-constants';
 
 // Version constant for consumers to check
 export { OMNISCORE_ENGINE_VERSION } from '../omniscore-v2.5';

@@ -18,7 +18,7 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { logger } from '../utils/logger';
+import { logger } from '../../../utils/logger';
 import { 
   FeatureInput, 
   Segment,
@@ -30,13 +30,13 @@ import {
   getQuadrantZone,
   OMNISCORE_CONFIG
 } from '../../omniscore-v2.5';
-import { getCachedPrice } from './enterprise-market-data-pipeline';
+import { getCachedPrice } from '../../enterprise-market-data-pipeline';
 import { 
   getTwitterIntelligence, 
   getProjectTwitterHandle,
   toOmniScoreInputs,
   TwitterProjectIntelligence
-} from './twitter-intelligence';
+} from '../../twitter-intelligence';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTOR DETECTION

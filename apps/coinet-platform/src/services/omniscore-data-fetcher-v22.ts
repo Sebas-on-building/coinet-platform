@@ -15,7 +15,7 @@
  */
 
 import { logger } from '../utils/logger';
-import { RawVariableInput, SegmentType, SectorType, MarketContext } from './omniscore-v2.2';
+import { RawVariableInput, SegmentType, SectorType, MarketContext } from './omniscore/legacy/v2_2/omniscore-v2.2';
 import { getCachedPrice } from './enterprise-market-data-pipeline';
 
 // ═══════════════════════════════════════════════════════════════════════════════
