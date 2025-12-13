@@ -10,6 +10,7 @@
  * - Confuse quadrant position (Builder/Target) with global tier (Weak/Strong)
  */
 
+import { describe, it, expect } from 'vitest';
 import { formatOmniScoreForAI } from '../omniscore';
 import type { OmniScoreProductionResponse } from '../omniscore';
 

@@ -7,6 +7,7 @@
  * This prevents breaking changes to the canonical snapshot format.
  */
 
+import { describe, it, expect } from 'vitest';
 import {
   calculateOmniScoreProduction,
   toOmniScoreSnapshot,
