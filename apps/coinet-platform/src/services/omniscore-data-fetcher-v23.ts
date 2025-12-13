@@ -991,11 +991,14 @@ export function formatSnapshotForAI(snapshot: OmniScoreSnapshot): string {
 ║  🎯 OMNISCORE: ${snapshot.symbol} (v${snapshot.audit.engineVersion})                                        ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-🚨 CRITICAL COMPLIANCE (v2.3.4):
+🚨 CRITICAL COMPLIANCE (v2.5.0):
   1. Use EXACT tier: "${snapshot.tier}" (not synonyms)
   2. Show EXACT score: ${snapshot.posAdjusted}/100
   3. NEVER say "100/100" (engine caps at 97)
   4. Separate quadrant (${quadrantZone}) from tier (${snapshot.tier})
+  5. NEVER invent/guess scores for projects NOT in this snapshot
+  6. If a project is missing, say: "OmniScore for [SYMBOL] is not available in this snapshot."
+  7. DO NOT "peg", "estimate", or "expect" scores - only use exact values from payload
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1038,10 +1041,13 @@ ${quadrantZone === 'TARGET' ? 'High quality + high opportunity = strong buy sign
   'Low quality + low opportunity = avoid'}
 
 🚫 FORBIDDEN:
-  ❌ "${snapshot.symbol} has a perfect 100/100" (impossible in v2.3.4)
+  ❌ "${snapshot.symbol} has a perfect 100/100" (impossible in v2.5.0)
   ❌ "scores 43 (Neutral tier)" when tier="Weak"
   ❌ "moderate positioning" instead of exact tier
   ❌ "around ${snapshot.qs}-ish" instead of exact number
+  ❌ "I'd peg it at..." or "I'd expect..." (NEVER guess scores)
+  ❌ Speculating about projects NOT in this snapshot
+  ❌ Using context to infer scores - ONLY use exact payload values
 
 Invariants: ${snapshot.audit.invariantStatus}
 ═══════════════════════════════════════════════════════════════════════════════

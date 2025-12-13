@@ -1,19 +1,21 @@
 /**
- * OmniScore v2.4.0 Golden Test Cases
+ * OmniScore v2.5.0 Golden Test Cases
  * 
  * These tests define the EXPECTED behavior for major crypto assets.
  * If these fail, the engine is broken or miscalibrated.
  * 
  * CRITICAL: These tests exist to catch bugs like:
- * - ETH showing 100/100 (impossible)
+ * - ETH showing 100/100 or 91.6 with OS=43 (impossible with convex combo)
  * - SUI crashing 70→37 overnight without event
  * - Wrong tier labels (43 called "Neutral" instead of "Weak")
- * - ETH undervalued (v2.3: 43/Weak → v2.4: 75/Strong with high QS)
+ * - ETH POS drifting beyond reasonable bounds (v2.5 fixes this)
  * 
- * v2.4 CHANGES:
- * - New baseline+tilt formula: POS = QS + K_OS*(OS-50) - K_RISK*(Risk-50) + floor
- * - Fundamentals floor prevents high-QS projects from dropping too low
- * - Expected ranges adjusted for more intuitive tier alignment
+ * v2.5.0 CHANGES:
+ * - Convex combination formula: POS = 0.6*QS + 0.25*OS + 0.15*(100-Risk)
+ * - Guaranteed bounded: POS cannot exceed reasonable bounds
+ * - ETH with QS=87, OS=43, Risk=35 → POS ≈ 72.7 (NOT 91.6!)
+ * - SOL with QS=60, OS=40, Risk=60 → POS ≈ 52
+ * - Mild fundamentals floor (lower than v2.4) to allow formula to work naturally
  */
 
 import {
@@ -72,10 +74,10 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // v2.4: Bitcoin should be Strong-Elite tier (baseline+tilt formula)
+      // v2.5.0: Bitcoin should be Strong-Elite tier (convex combination)
       expect(snapshot.tier).toMatch(/Strong|Elite/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(70);  // v2.4: Higher baseline
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(90);     // v2.4: Can reach Elite
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(65);  // v2.5: Convex combo baseline
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(85);     // v2.5: Bounded by formula
       
       // Should be in Target zone (high QS + high OS)
       expect(snapshot.qs).toBeGreaterThanOrEqual(70);
@@ -135,11 +137,13 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // v2.4: Ethereum with high QS should be Neutral-Strong, NOT Weak
-      // v2.3 bug: could score 43 (Weak) - FIXED in v2.4
+      // v2.5.0: Ethereum with QS=87, OS=43, Risk=35 → POS ≈ 72.7 (convex combo)
+      // CRITICAL: Must NOT be 91.6 or 100/100 - that's the bug we're fixing!
       expect(snapshot.tier).toMatch(/Neutral|Strong/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(55);  // v2.4: Higher floor
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(80);     // v2.4: Can reach Strong
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(55);  // v2.5: Floor protection
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(80);     // v2.5: Bounded by formula
+      // ETH should NEVER exceed ~80 with OS=43, even with high QS
+      expect(snapshot.posAdjusted).toBeLessThan(85);  // Hard cap for this scenario
       
       // High QS expected
       expect(snapshot.qs).toBeGreaterThanOrEqual(70);
@@ -162,8 +166,8 @@ describe('OmniScore Golden Cases', () => {
       const zone = getQuadrantZone(snapshot.qs, snapshot.os);
       expect(['TARGET', 'BUILDER']).toContain(zone);
       
-      // v2.4: Check formula version and floor application
-      expect(snapshot.audit.formulaVersion).toBe('v2.4');
+      // v2.5.0: Check formula version and floor application
+      expect(snapshot.audit.formulaVersion).toBe('v2.5');
       if (snapshot.audit.fundamentalsFloorApplied) {
         expect(snapshot.audit.fundamentalsFloor).toBeGreaterThanOrEqual(50);
       }
@@ -204,10 +208,10 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // v2.4: Solana typically in Neutral range (moderate QS gets fair treatment)
+      // v2.5.0: Solana with QS=60, OS=40, Risk=60 → POS ≈ 52 (convex combo)
       expect(snapshot.tier).toMatch(/Weak|Neutral|Strong/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(45);  // v2.4: Better baseline
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(70);
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(40);  // v2.5: Convex combo baseline
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(65);     // v2.5: Bounded by formula
       
       // QS should be decent (tech is good)
       expect(snapshot.qs).toBeGreaterThanOrEqual(60);

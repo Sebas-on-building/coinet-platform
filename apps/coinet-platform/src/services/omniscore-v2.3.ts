@@ -605,13 +605,13 @@ function computeMethodologyHash(version: string): string {
   return `sha256:${Math.abs(hash).toString(16).padStart(16, '0')}`;
 }
 
-export const OMNISCORE_ENGINE_VERSION = '2.4.1' as const;
+export const OMNISCORE_ENGINE_VERSION = '2.5.0' as const;
 
 const CONFIG = {
-  VERSION: '2.4.1' as const,
-  METHODOLOGY_VERSION: '2.4.1' as const,
+  VERSION: '2.5.0' as const,
+  METHODOLOGY_VERSION: '2.5.0' as const,
   ENGINE_NAME: 'OmniScore' as const,
-  FEATURE_SCHEMA_VERSION: '2.4.1-core40' as const,
+  FEATURE_SCHEMA_VERSION: '2.5.0-core40' as const,
   
   // Methodology provenance
   METHODOLOGY: {
@@ -730,21 +730,24 @@ const CONFIG = {
   },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // v2.4: BASELINE+TILT FORMULA (fixes ETH/blue-chip undervaluation)
-  // POS = QS + K_OS*(OS-50) - K_RISK*(Risk-50) + floor
+  // v2.5.0: CONVEX COMBINATION FORMULA (guaranteed bounded, cannot drift)
+  // POS = W_F*QS + W_O*OS + W_S*(100-Risk)
+  // Properties:
+  // - POS is always between min/max of inputs (convex combination)
+  // - Cannot exceed QS by more than OS/Risk contributions
+  // - ETH with QS=87, OS=43, Risk=35 → POS ≈ 72.7 (not 91.6!)
   // ═══════════════════════════════════════════════════════════════════════════
-  FORMULA_V24_ENABLED: true,  // Toggle between v2.3 and v2.4 formula
-  FORMULA_V24: {
-    K_OS: 0.20,    // OS tilt factor: max ±10pts impact (20% of ±50 range)
-    K_RISK: 0.25,  // Risk tilt factor: max ±12.5pts impact (25% of ±50 range)
+  FORMULA_V25: {
+    W_FUNDAMENTALS: 0.60,  // QS weight (fundamentals baseline)
+    W_OPPORTUNITY: 0.25,   // OS weight (market opportunity)
+    W_SAFETY: 0.15,        // Safety weight (100 - Risk)
+    // Invariant: W_FUNDAMENTALS + W_OPPORTUNITY + W_SAFETY = 1.0
     FUNDAMENTAL_FLOOR: {
-      QS_90_PLUS: 70,
-      // Prevents high-QS projects from being rated too low
-      QS_85_PLUS: 60,  // Elite fundamentals → at least Neutral+
-      QS_80_PLUS: 55,  // Very strong fundamentals
-      QS_75_PLUS: 50,  // Strong fundamentals
-      QS_70_PLUS: 45,  // Good fundamentals
-      QS_65_PLUS: 40,  // Decent fundamentals
+      QS_90_PLUS: 65,   // Elite fundamentals → at least Neutral+
+      QS_85_PLUS: 55,   // Very strong fundamentals
+      QS_80_PLUS: 50,   // Strong fundamentals
+      QS_75_PLUS: 45,   // Good fundamentals
+      QS_70_PLUS: 40,   // Decent fundamentals
     } as Record<string, number>,
   },
   
@@ -2025,16 +2028,16 @@ function assertEngineVersion(response: OmniScoreProductionResponse) {
  * This ensures blue-chips like ETH maintain reasonable scores even with low OS
  */
 function calculateFundamentalsFloor(qs: number): number {
-  const { FUNDAMENTAL_FLOOR } = CONFIG.FORMULA_V24;
-  
-  // Stronger protection for elite fundamentals (blue-chip floor)
-  if (qs >= 90) return FUNDAMENTAL_FLOOR.QS_90_PLUS;  // 70
-  if (qs >= 85) return FUNDAMENTAL_FLOOR.QS_85_PLUS;  // 60
-  if (qs >= 80) return FUNDAMENTAL_FLOOR.QS_80_PLUS;  // 55
-  if (qs >= 75) return FUNDAMENTAL_FLOOR.QS_75_PLUS;  // 50
-  if (qs >= 70) return FUNDAMENTAL_FLOOR.QS_70_PLUS;  // 45
-  if (qs >= 65) return FUNDAMENTAL_FLOOR.QS_65_PLUS;  // 40
-  
+  const { FUNDAMENTAL_FLOOR } = CONFIG.FORMULA_V25;
+
+  // Mild protection for elite fundamentals (blue-chip floor)
+  // v2.5.0: Lower floors than v2.4 to allow formula to work naturally
+  if (qs >= 90) return FUNDAMENTAL_FLOOR.QS_90_PLUS;  // 65
+  if (qs >= 85) return FUNDAMENTAL_FLOOR.QS_85_PLUS;  // 55
+  if (qs >= 80) return FUNDAMENTAL_FLOOR.QS_80_PLUS;  // 50
+  if (qs >= 75) return FUNDAMENTAL_FLOOR.QS_75_PLUS;  // 45
+  if (qs >= 70) return FUNDAMENTAL_FLOOR.QS_70_PLUS;  // 40
+
   return 0;  // No floor for weak fundamentals
 }
 
@@ -2264,31 +2267,19 @@ export function calculateOmniScoreProduction(
   // v2.4: Support both weighted-average (v2.3) and baseline+tilt (v2.4) formulas
   // ═══════════════════════════════════════════════════════════════════════════
   let posRawValue: number;
-  let fundamentalsFloor: number | null = null;
-  let fundamentalsFloorApplied = false;
+  // v2.5.0: Convex combination formula (always enabled, no toggle)
+  // This guarantees POS cannot drift beyond reasonable bounds
+  const v25Result = calculatePOSConvexCombination(qsScore, osScore, riskScore, qsGated);
+  posRawValue = v25Result.posCore;
+  const fundamentalsFloor = v25Result.floor;
+  const fundamentalsFloorApplied = v25Result.appliedFloor;
   
-  if (CONFIG.FORMULA_V24_ENABLED) {
-    // v2.4: Baseline+tilt formula (fixes ETH/blue-chip undervaluation)
-    const v24Result = calculatePOSWithBaselineTilt(qsScore, osScore, riskScore, qsGated);
-    posRawValue = v24Result.posCore;
-    fundamentalsFloor = v24Result.floor;
-    fundamentalsFloorApplied = v24Result.appliedFloor;
-    
-    if (fundamentalsFloorApplied) {
-      warnings.push({
-        code: 'V24-FLOOR',
-        severity: 'WARN',
-        message: `Fundamentals floor applied: QS=${qsScore.toFixed(1)} → floor=${fundamentalsFloor?.toFixed(1)}`,
-      });
-    }
-  } else {
-    // v2.3: Classic weighted-average formula
-    const { OMEGA_F, OMEGA_O, OMEGA_R } = CONFIG.WEIGHTS;
-    const effectiveOmegaO = qsGated ? 0 : OMEGA_O;  // QS gate disables OS weight
-    
-    posRawValue = OMEGA_F * qsScore +
-      effectiveOmegaO * (qsGated ? 50 : osScore) -
-      OMEGA_R * riskScore;
+  if (fundamentalsFloorApplied) {
+    warnings.push({
+      code: 'V25-FLOOR',
+      severity: 'WARN',
+      message: `Fundamentals floor applied: QS=${qsScore.toFixed(1)} → floor=${fundamentalsFloor?.toFixed(1)}`,
+    });
   }
   
   const posRawClampResult = clampScore100WithTracking(posRawValue);
@@ -2550,7 +2541,7 @@ export function calculateOmniScoreProduction(
       posPlausibilityCapped,
       posBeforeCap,
       // v2.4: Baseline+tilt formula tracking
-      formulaVersion: CONFIG.FORMULA_V24_ENABLED ? 'v2.4' : 'v2.3',
+      formulaVersion: 'v2.5',
       fundamentalsFloor,
       fundamentalsFloorApplied,
     },
@@ -2923,7 +2914,7 @@ function extractSources(inputs: FeatureInput[]): string[] {
 
 export {
   CONFIG as OMNISCORE_CONFIG,
-  calculatePOSWithBaselineTilt,
+  calculatePOSConvexCombination,
   detectRegime,
   detectRegimeCryptoNative,
   getTier,
