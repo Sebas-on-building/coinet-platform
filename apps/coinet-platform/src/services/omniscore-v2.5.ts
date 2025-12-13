@@ -1,6 +1,6 @@
 /**
  * ╔═══════════════════════════════════════════════════════════════════════════════════════════════════╗
- * ║     🏆 PROJECT OMNISCORE v2.3.2 "DIABOLICAL" — INSTITUTIONAL-GRADE DECISION SYSTEM               ║
+ * ║     🏆 OMNISCORE v2.5.0 — CONVEX COMBINATION ENGINE                                              ║
  * ║                                                                                                   ║
  * ║   OmniScore is a DECISION SYSTEM with:                                                            ║
  * ║   • Reflexivity-safe fundamentals       • Market opportunity separation                          ║

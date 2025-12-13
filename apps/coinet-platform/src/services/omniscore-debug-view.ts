@@ -18,8 +18,8 @@ import type {
   OmniScoreProductionResponse, 
   OmniScoreSnapshot,
   InvariantViolation 
-} from './omniscore-v2.3';
-import { getQuadrantZone } from './omniscore-v2.3';
+} from './omniscore-v2.5';
+import { getQuadrantZone } from './omniscore-v2.5';
 
 export interface OmniScoreDebugView {
   project: string;

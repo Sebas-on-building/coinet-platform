@@ -2,7 +2,7 @@
 // OMNISCORE VISUALIZER (ASCII / MARKDOWN)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { OmniScoreProductionResponse } from './omniscore-v2.3';
+import { OmniScoreProductionResponse } from '../../omniscore-v2.5';
 import { DEFAULT_QS_THRESHOLD, DEFAULT_OS_THRESHOLD } from './omniscore-constants';
 
 export interface VisualizerProject {

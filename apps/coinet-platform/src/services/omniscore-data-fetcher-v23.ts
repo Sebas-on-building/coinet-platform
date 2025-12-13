@@ -29,7 +29,7 @@ import {
   toOmniScoreSnapshot,
   getQuadrantZone,
   OMNISCORE_CONFIG
-} from './omniscore-v2.3';
+} from './omniscore-v2.5';
 import { getCachedPrice } from './enterprise-market-data-pipeline';
 import { 
   getTwitterIntelligence, 
