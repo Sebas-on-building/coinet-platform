@@ -43,7 +43,7 @@
     "ioredis": "^5.8.2",
     "openai": "^4.24.0",
     "rss-parser": "^3.13.0",
-    "typescript": "^5.3.3",
+    "typescript": "^5.5.0",
     "uuid": "^9.0.1",
     "zod": "^3.22.4"
   },
