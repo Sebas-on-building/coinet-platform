@@ -566,7 +566,7 @@ export interface OmniScoreMetrics {
 export interface OmniScoreProductionResponse {
   success: boolean;
   engine: 'OmniScore';
-  version: '2.3.4';
+  version: string;
   project: string;
   timestamp: string;
   
@@ -2013,6 +2013,12 @@ export interface CalculateOmniScoreParams {
 // v2.4: BASELINE+TILT FORMULA FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+function assertEngineVersion(response: OmniScoreProductionResponse) {
+  if (response.audit.engineVersion !== CONFIG.VERSION) {
+    throw new Error(`Engine mismatch: response=${response.audit.engineVersion} expected=${CONFIG.VERSION}`);
+  }
+}
+
 /**
  * v2.4: Calculate fundamentals-based floor
  * Prevents high-QS projects from being rated too low
@@ -2452,7 +2458,7 @@ export function calculateOmniScoreProduction(
   const response: OmniScoreProductionResponse = {
     success: !hasErrorsUpdated,
     engine: 'OmniScore',
-    version: '2.3.4',
+    version: CONFIG.VERSION,
     project: params.projectId,
     timestamp: now,
     
@@ -2550,6 +2556,7 @@ export function calculateOmniScoreProduction(
     },
   };
   
+  assertEngineVersion(response);
   logger.info(`[OmniScore v${CONFIG.VERSION}] Completed for ${params.projectId}`, {
     requestId,
     posRaw: Math.round(posRaw * 10) / 10,
