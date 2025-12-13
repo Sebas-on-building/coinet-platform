@@ -605,11 +605,13 @@ function computeMethodologyHash(version: string): string {
   return `sha256:${Math.abs(hash).toString(16).padStart(16, '0')}`;
 }
 
+export const OMNISCORE_ENGINE_VERSION = '2.4.1' as const;
+
 const CONFIG = {
-  VERSION: '2.4.0' as const,
-  METHODOLOGY_VERSION: '2.4.0' as const,
+  VERSION: '2.4.1' as const,
+  METHODOLOGY_VERSION: '2.4.1' as const,
   ENGINE_NAME: 'OmniScore' as const,
-  FEATURE_SCHEMA_VERSION: '2.4.0-core40' as const,
+  FEATURE_SCHEMA_VERSION: '2.4.1-core40' as const,
   
   // Methodology provenance
   METHODOLOGY: {
@@ -736,6 +738,7 @@ const CONFIG = {
     K_OS: 0.20,    // OS tilt factor: max ±10pts impact (20% of ±50 range)
     K_RISK: 0.25,  // Risk tilt factor: max ±12.5pts impact (25% of ±50 range)
     FUNDAMENTAL_FLOOR: {
+      QS_90_PLUS: 70,
       // Prevents high-QS projects from being rated too low
       QS_85_PLUS: 60,  // Elite fundamentals → at least Neutral+
       QS_80_PLUS: 55,  // Very strong fundamentals
@@ -2002,6 +2005,8 @@ export interface CalculateOmniScoreParams {
   // v2.3.4: Temporal smoothing inputs
   previousPos?: number | null;
   previousTimestamp?: string | null;
+  // v2.4.1: Version-aware smoothing reset
+  previousEngineVersion?: string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2016,6 +2021,8 @@ export interface CalculateOmniScoreParams {
 function calculateFundamentalsFloor(qs: number): number {
   const { FUNDAMENTAL_FLOOR } = CONFIG.FORMULA_V24;
   
+  // Stronger protection for elite fundamentals (blue-chip floor)
+  if (qs >= 90) return FUNDAMENTAL_FLOOR.QS_90_PLUS;  // 70
   if (qs >= 85) return FUNDAMENTAL_FLOOR.QS_85_PLUS;  // 60
   if (qs >= 80) return FUNDAMENTAL_FLOOR.QS_80_PLUS;  // 55
   if (qs >= 75) return FUNDAMENTAL_FLOOR.QS_75_PLUS;  // 50
@@ -2305,8 +2312,9 @@ export function calculateOmniScoreProduction(
   // v2.3.4: Apply temporal smoothing (prevents wild swings)
   const smoothingResult = applySmoothingToPOS(
     posRaw,
-    params.previousPos,
-    params.previousTimestamp,
+    // v2.4.1: reset smoothing when engine version changes
+    (params.previousEngineVersion && params.previousEngineVersion !== CONFIG.VERSION) ? null : params.previousPos,
+    (params.previousEngineVersion && params.previousEngineVersion !== CONFIG.VERSION) ? null : params.previousTimestamp,
     ers,
     new Date(),
     warnings
@@ -2908,6 +2916,7 @@ function extractSources(inputs: FeatureInput[]): string[] {
 
 export {
   CONFIG as OMNISCORE_CONFIG,
+  calculatePOSWithBaselineTilt,
   detectRegime,
   detectRegimeCryptoNative,
   getTier,
