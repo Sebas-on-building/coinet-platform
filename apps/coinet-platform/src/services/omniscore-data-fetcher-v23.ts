@@ -740,7 +740,7 @@ export function formatOmniScoreForAI(result: OmniScoreProductionResponse): strin
   
   let output = `
 ╔═══════════════════════════════════════════════════════════════════════════════╗
-║  🎯 OFFICIAL OMNISCORE ANALYSIS: ${result.project.toUpperCase()} (v${audit.engineVersion})                      ║
+║  🎯 OFFICIAL OMNISCORE ANALYSIS: ${result.project.toUpperCase()} (v${audit.engineVersion} - Formula: ${audit.formulaVersion})                      ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -760,10 +760,13 @@ export function formatOmniScoreForAI(result: OmniScoreProductionResponse): strin
 5. ✋ DO NOT improvise, soften, or editorialize tier labels
 6. 📋 If payload says tier="Weak", you MUST say "Weak tier" (not "moderate" or "neutral")
 
-🚨 CRITICAL v2.3.4 RULE:
+🚨 CRITICAL v2.5.0 RULE:
 7. 🛑 NEVER say "100/100" — The engine caps POS at 97 maximum
    If you see POS=100, the data is WRONG. Report as error, don't use it.
-   NO LIVE PROJECT should score 100/100. This is physically impossible in v2.3.4.
+   NO LIVE PROJECT should score 100/100. This is physically impossible in v2.5.0.
+   
+8. 📐 FORMULA: POS = 0.60×QS + 0.25×OS + 0.15×(100-Risk)
+   Example: ETH with QS=87, OS=43, Risk=35 → POS ≈ 72.7 (not 43!)
 
 8. 🕐 If smoothing applied, mention it: "Score is smoothed over time to prevent wild swings"
 
@@ -775,7 +778,7 @@ PROJECT OMNISCORE (POS):
 • Score:      ${pos.adjusted}/100
 • Tier:       ${pos.tier}  ← USE THIS EXACT STRING
 • Confidence: ${audit.confidence}
-• Band:       ${pos.confidenceBand[0].toFixed(1)}-${pos.confidenceBand[1].toFixed(1)}
+• Band:       ${pos.confidenceBand ? `${pos.confidenceBand[0].toFixed(1)}-${pos.confidenceBand[1].toFixed(1)}` : 'N/A'}
 
 QUALITY SCORE (QS) — Fundamentals:
 • Score: ${qualityScore.score}/100
@@ -791,7 +794,7 @@ OPPORTUNITY SCORE (OS) — Market:
 RISK SCORE:
 • Score: ${risk.score.toFixed(1)}/100 (higher = more risk)
 • Event Risk: ${risk.eventRiskSeverity.toFixed(2)}
-• Gamma: ${risk.adjustmentGamma}
+• Gamma: ${risk.adjustmentGamma || 'N/A'}
 
 ═══════════════════════════════════════════════════════════════════════════════
 
