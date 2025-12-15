@@ -700,7 +700,7 @@ async function getPreviousPos(projectId: string): Promise<{ pos: number | null; 
 /**
  * v2.3.4: Store current POS for future smoothing
  */
-async function storePosForSmoothing(projectId: string, pos: number, timestamp: string, engineVersion: string): Promise<void> {
+async function storePosForSmoothing(projectId: string, pos: number, timestamp: string, engineVersion: string, formulaVersion: string): Promise<void> {
   try {
     await prisma.omniScoreHistory.create({
       data: {
@@ -708,10 +708,11 @@ async function storePosForSmoothing(projectId: string, pos: number, timestamp: s
         pos,
         calculatedAt: new Date(timestamp),
         engineVersion,
+        formulaVersion,
         // Other fields can be added here if needed for full audit trail in DB
       },
     });
-    logger.debug(`[OmniScore Smoothing] Stored POS=${pos} for ${projectId} at ${timestamp} (v${engineVersion})`);
+    logger.debug(`[OmniScore Smoothing] Stored POS=${pos} for ${projectId} at ${timestamp} (v${engineVersion}, formula ${formulaVersion})`);
   } catch (error) {
     logger.error(`[OmniScore Smoothing] Failed to store POS for ${projectId}`, { error });
   }
@@ -778,7 +779,7 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
   });
   
   // v2.5.0: Store for future smoothing (with version-aware reset)
-  await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp, result.audit.engineVersion);
+  await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp, result.audit.engineVersion, result.audit.formulaVersion);
   
   return result;
 }
