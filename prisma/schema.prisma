@@ -2756,3 +2756,51 @@ model AuditLogSearch {
   @@map("audit_log_searches")
 }
 
+// =============================================================================
+// OMNISCORE STATE PERSISTENCE
+// =============================================================================
+// Stores historical OmniScore calculations for temporal smoothing.
+// Smoothing requires knowledge of previous POS to prevent wild swings.
+// This table survives restarts and deployments.
+
+model OmniScoreHistory {
+  id              String   @id @default(uuid())
+  
+  // Project identification
+  projectId       String   @db.VarChar(100)
+  
+  // Score data
+  pos             Float    // Final POS after adjustments
+  posRaw          Float?   // POS before smoothing
+  qsScore         Float?   // Quality Score
+  osScore         Float?   // Opportunity Score
+  riskScore       Float?   // Risk Score
+  
+  // Version tracking (critical for migrations)
+  engineVersion   String   @db.VarChar(20)  // e.g., "2.5.0"
+  formulaVersion  String   @db.VarChar(10)  // e.g., "v2.5"
+  
+  // Context for debugging
+  regime          String?  @db.VarChar(20)  // bull, bear, neutral, crisis, recovery
+  capBucket       String?  @db.VarChar(20)  // mega, large, mid, small, micro
+  sector          String?  @db.VarChar(30)  // DeFi, L1, L2, etc.
+  
+  // Data quality metrics
+  qsCoverage      Float?   // 0-1, percentage of valid QS inputs
+  osCoverage      Float?   // 0-1, percentage of valid OS inputs
+  degraded        Boolean  @default(false)  // Was this a degraded calculation?
+  
+  // Deduplication
+  inputsHash      String?  @db.VarChar(64)  // SHA256 of inputs for detecting identical runs
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  calculatedAt    DateTime @default(now()) @db.Timestamp(6)  // When the score was calculated
+  
+  // Indexes for efficient querying
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([projectId, engineVersion, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("omniscore_history")
+}
+

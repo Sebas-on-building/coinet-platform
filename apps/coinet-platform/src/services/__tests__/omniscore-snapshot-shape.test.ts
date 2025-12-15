@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateOmniScoreProduction,
   toOmniScoreSnapshot,
+  getQuadrantZone,
   type OmniScoreSnapshot,
   type CalculateOmniScoreParams,
   type FeatureInput,
@@ -130,7 +131,7 @@ describe('OmniScore Snapshot Shape', () => {
 
     // Audit version fields
     expect(typeof snapshot.audit.engineVersion).toBe('string');
-    expect(snapshot.audit.formulaVersion).toMatch(/^v2\.(3|4)$/);
+    expect(snapshot.audit.formulaVersion).toMatch(/^v2\.(3|4|5)$/); // Updated for v2.5
   });
 
   it('should match engine version in audit', () => {
@@ -140,7 +141,7 @@ describe('OmniScore Snapshot Shape', () => {
 
     // Version consistency check
     expect(response.version).toBe(snapshot.audit.engineVersion);
-    expect(snapshot.audit.engineVersion).toBe('2.4.1');
+    expect(snapshot.audit.engineVersion).toBe('2.5.0'); // Updated for v2.5.0
   });
 
   it('should have valid quadrant zone when using getQuadrantZone', () => {
@@ -148,8 +149,7 @@ describe('OmniScore Snapshot Shape', () => {
     const response = calculateOmniScoreProduction(params);
     const snapshot = toOmniScoreSnapshot(response);
 
-    // Import getQuadrantZone
-    const { getQuadrantZone } = require('../omniscore');
+    // getQuadrantZone is imported at the top of the file
     const zone = getQuadrantZone(snapshot.qs, snapshot.os);
 
     expect(['TARGET', 'BUILDER', 'HYPE', 'AVOID']).toContain(zone);
