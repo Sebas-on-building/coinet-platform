@@ -1,8 +1,8 @@
 /**
  * ╔═══════════════════════════════════════════════════════════════════════════════╗
- * ║     📡 OMNISCORE DATA FETCHER v2.3.1 "PRODUCTION BASELINE"                   ║
+ * ║     📡 OMNISCORE DATA FETCHER v2.5.0 "PRODUCTION"                            ║
  * ║                                                                               ║
- * ║   Collects raw variables for OmniScore v2.3.1 with:                          ║
+ * ║   Collects raw variables for OmniScore v2.5.0 (Convex Combination) with:    ║
  * ║   • Segment-tagged inputs (QS vs OS isolation)                               ║
  * ║   • Source tracking for audit trail                                          ║
  * ║   • Quality scores per variable                                              ║
@@ -677,11 +677,11 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
  * v2.3.4: Get previous POS for smoothing (from cache/DB)
  * In production, this would query a time-series DB or cache
  */
-async function getPreviousPos(projectId: string): Promise<{ pos: number | null; timestamp: string | null }> {
+async function getPreviousPos(projectId: string): Promise<{ pos: number | null; timestamp: string | null; engineVersion: string | null }> {
   // TODO: Implement actual persistence
   // For now, return null (no smoothing on first read)
-  // In production: SELECT pos, timestamp FROM omniscore_history WHERE project_id = ? ORDER BY timestamp DESC LIMIT 1
-  return { pos: null, timestamp: null };
+  // In production: SELECT pos, timestamp, engine_version FROM omniscore_history WHERE project_id = ? ORDER BY timestamp DESC LIMIT 1
+  return { pos: null, timestamp: null, engineVersion: null };
 }
 
 /**
@@ -697,7 +697,7 @@ async function storePosForSmoothing(projectId: string, pos: number, timestamp: s
 export async function getProjectOmniScoreV23(projectId: string): Promise<OmniScoreProductionResponse> {
   const bundle = await fetchProjectDataV23(projectId);
   
-  // v2.3.4: Fetch previous POS for smoothing
+  // v2.5.0: Fetch previous POS for smoothing (with version-aware reset)
   const previous = await getPreviousPos(projectId);
   
   const params: CalculateOmniScoreParams = {
@@ -711,17 +711,40 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
     botRisk: bundle.botRisk,
     anomalyScore: bundle.anomalyScore,
     multiSourceConsistency: bundle.multiSourceConsistency,
-    // v2.3.2: Twitter-derived metrics
+    // Twitter-derived metrics
     influencerConcentration: bundle.influencerConcentration,
     sentimentDispersion: bundle.sentimentDispersion,
-    // v2.3.4: Temporal smoothing
+    // v2.5.0: Temporal smoothing with version-aware reset
     previousPos: previous.pos,
     previousTimestamp: previous.timestamp,
+    previousEngineVersion: previous.engineVersion,
   };
   
   const result = calculateOmniScoreProduction(params);
   
-  // v2.3.4: Store for future smoothing
+  // Verify engine version is v2.5.0
+  if (result.audit.engineVersion !== '2.5.0') {
+    logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.5.0, got ${result.audit.engineVersion}`);
+  }
+  
+  // Verify formula version is v2.5
+  if (result.audit.formulaVersion !== 'v2.5') {
+    logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.5, got ${result.audit.formulaVersion}`);
+  }
+  
+  // Log calculation details for debugging
+  logger.debug('🎯 OmniScore v2.5.0 calculated', {
+    project: result.project,
+    posAdjusted: result.pos.adjusted,
+    posTier: result.pos.tier,
+    qsScore: result.qualityScore.score,
+    osScore: result.opportunityScore.score,
+    riskScore: result.risk.score,
+    formulaVersion: result.audit.formulaVersion,
+    engineVersion: result.audit.engineVersion,
+  });
+  
+  // v2.5.0: Store for future smoothing (with version-aware reset)
   await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp);
   
   return result;
@@ -768,7 +791,7 @@ export function formatOmniScoreForAI(result: OmniScoreProductionResponse): strin
 8. 📐 FORMULA: POS = 0.60×QS + 0.25×OS + 0.15×(100-Risk)
    Example: ETH with QS=87, OS=43, Risk=35 → POS ≈ 72.7 (not 43!)
 
-8. 🕐 If smoothing applied, mention it: "Score is smoothed over time to prevent wild swings"
+9. 🕐 If smoothing applied, mention it: "Score is smoothed over time to prevent wild swings"
 
 ╔═══════════════════════════════════════════════════════════════════════════════╗
 ║  📊 EXACT NUMBERS FROM ENGINE (USE THESE, NOT YOUR INTERPRETATIONS)          ║
