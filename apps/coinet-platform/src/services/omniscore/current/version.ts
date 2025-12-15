@@ -16,30 +16,36 @@
 /**
  * Engine version - the primary version identifier
  * Format: semver (MAJOR.MINOR.PATCH)
+ * 
+ * v2.6.0: Added reflexivity-safe scoring adjustments
+ * - Contrarian Opportunity Boost for high-QS assets in extreme fear
+ * - Low-QS OS Cap (Anti-Fartcoin Gate)
+ * - Extended fundamentals floor to QS >= 60
+ * - Quality gate for minimum QS threshold
  */
-export const ENGINE_VERSION = '2.5.0' as const;
+export const ENGINE_VERSION = '2.6.0' as const;
 
 /**
  * Formula version - identifies the mathematical formula variant
  * Format: v{MAJOR}.{MINOR}
  */
-export const FORMULA_VERSION = 'v2.5' as const;
+export const FORMULA_VERSION = 'v2.6' as const;
 
 /**
  * Methodology ID - unique identifier for the scoring methodology
  * Used for audit trails and compliance
  */
-export const METHODOLOGY_ID = 'OMNISCORE_V2.5.0_CONVEX_COMBINATION' as const;
+export const METHODOLOGY_ID = 'OMNISCORE_V2.6.0_REFLEXIVITY_SAFE' as const;
 
 /**
  * Methodology documentation URL
  */
-export const METHODOLOGY_URL = '/docs/omniscore/v2.5' as const;
+export const METHODOLOGY_URL = '/docs/omniscore/v2.6' as const;
 
 /**
  * Feature schema version - tracks input/output format changes
  */
-export const FEATURE_SCHEMA_VERSION = '2.5.0-core40' as const;
+export const FEATURE_SCHEMA_VERSION = '2.6.0-core40' as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BUILD-TIME CONSTANTS
@@ -66,10 +72,12 @@ export const BUILD_TIMESTAMP = process.env.BUILD_TIMESTAMP || new Date().toISOSt
 /**
  * Compute deterministic methodology hash
  * Used to verify methodology consistency across deployments
+ * 
+ * v2.6.0: Updated to include REFLEXIVITY_SAFE methodology identifier
  */
 export function computeMethodologyHash(version: string = ENGINE_VERSION): string {
   let hash = 0;
-  const str = `OMNISCORE_METHODOLOGY_${version}_CONVEX_COMBINATION_PRODUCTION`;
+  const str = `OMNISCORE_METHODOLOGY_${version}_REFLEXIVITY_SAFE_PRODUCTION`;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;

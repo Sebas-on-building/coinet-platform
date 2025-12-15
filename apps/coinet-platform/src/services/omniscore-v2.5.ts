@@ -492,6 +492,8 @@ export interface CryptoNativeRegimeSignals {
   defiTvlDrawdown: number;
   // Fallback to TradFi if crypto signals unavailable
   vixFallback?: number;
+  // v2.6.0: Fear & Greed Index for contrarian opportunity boost
+  fearGreedIndex?: number;
 }
 
 export interface AuditTrail {
@@ -527,9 +529,30 @@ export interface AuditTrail {
   posPlausibilityCapped: boolean;
   posBeforeCap: number | null;
   // v2.5.0: Formula version tracking
-  formulaVersion: 'v2.3' | 'v2.4' | 'v2.5';
+  formulaVersion: 'v2.3' | 'v2.4' | 'v2.5' | 'v2.6';
   fundamentalsFloor: number | null;
   fundamentalsFloorApplied: boolean;
+  // v2.6.0: Reflexivity-safe adjustments audit
+  v26Adjustments?: {
+    qualityGate: {
+      passed: boolean;
+      qsScore: number;
+      threshold: number;
+    };
+    lowQSOSCap: {
+      applied: boolean;
+      originalOS: number;
+      cappedOS: number;
+      reason: string | null;
+    };
+    contrarianBoost: {
+      applied: boolean;
+      amount: number;
+      reason: string | null;
+    };
+    fearGreedIndex: number;
+    osFinal: number;  // OS after all v2.6.0 adjustments
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -605,19 +628,20 @@ function computeMethodologyHash(version: string): string {
   return `sha256:${Math.abs(hash).toString(16).padStart(16, '0')}`;
 }
 
-export const OMNISCORE_ENGINE_VERSION = '2.5.0' as const;
+export const OMNISCORE_ENGINE_VERSION = '2.6.0' as const;
 
 const CONFIG = {
-  VERSION: '2.5.0' as const,
-  METHODOLOGY_VERSION: '2.5.0' as const,
+  VERSION: '2.6.0' as const,
+  METHODOLOGY_VERSION: '2.6.0' as const,
   ENGINE_NAME: 'OmniScore' as const,
-  FEATURE_SCHEMA_VERSION: '2.5.0-core40' as const,
+  FEATURE_SCHEMA_VERSION: '2.6.0-core40' as const,
   
   // Methodology provenance
+  // v2.6.0: Updated to reflect reflexivity-safe scoring methodology
   METHODOLOGY: {
-    ID: 'OMNISCORE_V2.3.2_DIABOLICAL',
-    URL: '/docs/omniscore/v2.3',
-    get HASH() { return computeMethodologyHash('2.3.2'); },
+    ID: 'OMNISCORE_V2.6.0_REFLEXIVITY_SAFE',
+    URL: '/docs/omniscore/v2.6',
+    get HASH() { return computeMethodologyHash('2.6.0'); },
   },
   
   // Reflexivity sentinel thresholds (now also INV-12)
@@ -742,12 +766,15 @@ const CONFIG = {
     W_OPPORTUNITY: 0.25,   // OS weight (market opportunity)
     W_SAFETY: 0.15,        // Safety weight (100 - Risk)
     // Invariant: W_FUNDAMENTALS + W_OPPORTUNITY + W_SAFETY = 1.0
+    // v2.6.0: Extended floor protection for legitimate projects
     FUNDAMENTAL_FLOOR: {
       QS_90_PLUS: 65,   // Elite fundamentals → at least Neutral+
       QS_85_PLUS: 55,   // Very strong fundamentals
       QS_80_PLUS: 50,   // Strong fundamentals
       QS_75_PLUS: 45,   // Good fundamentals
       QS_70_PLUS: 40,   // Decent fundamentals
+      QS_65_PLUS: 35,   // v2.6.0: Above average fundamentals
+      QS_60_PLUS: 30,   // v2.6.0: Average fundamentals
     } as Record<string, number>,
   },
   
@@ -1975,6 +2002,106 @@ export function applyAdversarialAdjustments(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// v2.6.0: REFLEXIVITY-SAFE SCORING ADJUSTMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * v2.6.0: Contrarian Opportunity Boost for High-QS Assets
+ * 
+ * Recognizes that "extreme fear = opportunity" for fundamentally strong projects.
+ * This is reflexivity-safe because it ONLY applies to high-QS projects (QS >= 70).
+ * 
+ * Logic:
+ * - Only applies when Fear & Greed Index < 25 (extreme fear)
+ * - Only applies to projects with QS >= 70 (strong fundamentals)
+ * - Boost scales with both fear severity and QS strength
+ * - Max boost: +30 points to OS at QS=90+, F&G=0
+ * 
+ * @param osRaw - Raw Opportunity Score before adjustment
+ * @param qs - Quality Score of the project
+ * @param fearGreedIndex - Current Fear & Greed Index (0-100)
+ * @returns Adjusted OS with audit info
+ */
+export function applyContrarianOpportunityBoost(
+  osRaw: number,
+  qs: number,
+  fearGreedIndex: number | undefined
+): { boosted: number; boostApplied: number; reason: string | null } {
+  // Default F&G to 50 (neutral) if not provided
+  const fng = fearGreedIndex ?? 50;
+  
+  // Only apply boost if:
+  // 1. Market is in Extreme Fear (F&G < 25)
+  // 2. Project has strong fundamentals (QS >= 70)
+  if (fng >= 25 || qs < 70) {
+    return { boosted: osRaw, boostApplied: 0, reason: null };
+  }
+  
+  // Tiered boost based on QS strength and fear severity
+  const fearSeverity = (25 - fng) / 25; // 0 to 1 (more fear = higher)
+  const qsStrength = Math.min((qs - 70) / 20, 1);  // 0 to 1 (QS 70-90 maps to 0-1)
+  
+  // Max boost: +30 points to OS at QS=90+, F&G=0
+  const maxBoost = 30;
+  const boost = maxBoost * fearSeverity * qsStrength;
+  
+  return {
+    boosted: Math.min(100, osRaw + boost),
+    boostApplied: Math.round(boost * 100) / 100,
+    reason: boost > 0 ? `Contrarian boost: F&G=${fng}, QS=${qs.toFixed(0)}` : null
+  };
+}
+
+/**
+ * v2.6.0: Low-QS Opportunity Cap (Anti-Fartcoin Gate)
+ * 
+ * Prevents hype-driven low-quality projects ("fartcoins") from achieving 
+ * respectable scores through pure market momentum.
+ * 
+ * Logic:
+ * - Hard caps on OS based on fundamental quality
+ * - The lower the QS, the lower the OS cap
+ * - This ensures POS cannot be inflated by hype alone
+ * 
+ * @param osRaw - Raw Opportunity Score before capping
+ * @param qs - Quality Score of the project
+ * @returns Capped OS with audit info
+ */
+export function applyLowQSOpportunityCap(
+  osRaw: number,
+  qs: number
+): { capped: number; wasCapped: boolean; originalOS: number; reason: string | null } {
+  // Hard caps on OS based on fundamental quality
+  // This prevents pure-hype projects from scoring high
+  const caps: Array<{ qsThreshold: number; osCap: number }> = [
+    { qsThreshold: 20, osCap: 30 },  // Very weak fundamentals
+    { qsThreshold: 30, osCap: 40 },  // Weak fundamentals  
+    { qsThreshold: 40, osCap: 50 },  // Below average
+    { qsThreshold: 50, osCap: 60 },  // Average
+  ];
+  
+  for (const { qsThreshold, osCap } of caps) {
+    if (qs < qsThreshold && osRaw > osCap) {
+      return {
+        capped: osCap,
+        wasCapped: true,
+        originalOS: osRaw,
+        reason: `OS capped to ${osCap} due to QS < ${qsThreshold}`
+      };
+    }
+  }
+  
+  return { capped: osRaw, wasCapped: false, originalOS: osRaw, reason: null };
+}
+
+/**
+ * v2.6.0: Minimum QS Threshold for Scoring
+ * Projects with QS below this threshold are considered "insufficient quality"
+ * and should not receive a confident score.
+ */
+export const MIN_QS_FOR_SCORING = 15;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN PRODUCTION CALCULATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2026,17 +2153,22 @@ function assertEngineVersion(response: OmniScoreProductionResponse) {
  * v2.4: Calculate fundamentals-based floor
  * Prevents high-QS projects from being rated too low
  * This ensures blue-chips like ETH maintain reasonable scores even with low OS
+ * 
+ * v2.6.0: Extended floor protection down to QS >= 60 for legitimate projects
  */
 function calculateFundamentalsFloor(qs: number): number {
   const { FUNDAMENTAL_FLOOR } = CONFIG.FORMULA_V25;
 
   // Mild protection for elite fundamentals (blue-chip floor)
   // v2.5.0: Lower floors than v2.4 to allow formula to work naturally
+  // v2.6.0: Extended to QS >= 60 for broader legitimate project protection
   if (qs >= 90) return FUNDAMENTAL_FLOOR.QS_90_PLUS;  // 65
   if (qs >= 85) return FUNDAMENTAL_FLOOR.QS_85_PLUS;  // 55
   if (qs >= 80) return FUNDAMENTAL_FLOOR.QS_80_PLUS;  // 50
   if (qs >= 75) return FUNDAMENTAL_FLOOR.QS_75_PLUS;  // 45
   if (qs >= 70) return FUNDAMENTAL_FLOOR.QS_70_PLUS;  // 40
+  if (qs >= 65) return FUNDAMENTAL_FLOOR.QS_65_PLUS;  // 35 (v2.6.0)
+  if (qs >= 60) return FUNDAMENTAL_FLOOR.QS_60_PLUS;  // 30 (v2.6.0)
 
   return 0;  // No floor for weak fundamentals
 }
@@ -2260,6 +2392,44 @@ export function calculateOmniScoreProduction(
     });
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.6.0: REFLEXIVITY-SAFE ADJUSTMENTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // v2.6.0: Check quality gate - projects with critically low QS don't get confident scores
+  const qualityGateResult = {
+    passed: qsScore >= MIN_QS_FOR_SCORING,
+    qsScore,
+    threshold: MIN_QS_FOR_SCORING,
+  };
+  
+  // v2.6.0: Apply Low-QS OS Cap (Anti-Fartcoin Gate)
+  // This prevents hype-driven low-quality projects from achieving respectable scores
+  const lowQSOSCapResult = applyLowQSOpportunityCap(osScore, qsScore);
+  let osFinal = lowQSOSCapResult.capped;
+  
+  if (lowQSOSCapResult.wasCapped) {
+    warnings.push({
+      code: 'V26-LOW-QS-CAP',
+      severity: 'WARN',
+      message: lowQSOSCapResult.reason || `OS capped for low QS`,
+    });
+  }
+  
+  // v2.6.0: Apply Contrarian Opportunity Boost for high-QS assets in extreme fear
+  // This recognizes that "extreme fear = opportunity" for fundamentally strong projects
+  const fearGreedIndex = params.marketData?.fearGreedIndex ?? params.cryptoRegimeSignals?.fearGreedIndex ?? 50;
+  const contrarianBoostResult = applyContrarianOpportunityBoost(osFinal, qsScore, fearGreedIndex);
+  osFinal = contrarianBoostResult.boosted;
+  
+  if (contrarianBoostResult.boostApplied > 0) {
+    warnings.push({
+      code: 'V26-CONTRARIAN-BOOST',
+      severity: 'WARN',
+      message: contrarianBoostResult.reason || `Contrarian boost applied`,
+    });
+  }
+  
   // Calculate Risk
   const riskScore = calculateRiskScore(
     params.qsInputs.filter(f => CONFIG.RISK_SEGMENTS.includes(f.segment)),
@@ -2269,11 +2439,13 @@ export function calculateOmniScoreProduction(
   // ═══════════════════════════════════════════════════════════════════════════
   // 6. POS CALCULATION with INV-4a/4b tracking
   // v2.4: Support both weighted-average (v2.3) and baseline+tilt (v2.4) formulas
+  // v2.6.0: Uses osFinal (after low-QS cap and contrarian boost adjustments)
   // ═══════════════════════════════════════════════════════════════════════════
   let posRawValue: number;
   // v2.5.0: Convex combination formula (always enabled, no toggle)
   // This guarantees POS cannot drift beyond reasonable bounds
-  const v25Result = calculatePOSConvexCombination(qsScore, osScore, riskScore, qsGated);
+  // v2.6.0: Use osFinal instead of osScore to incorporate reflexivity-safe adjustments
+  const v25Result = calculatePOSConvexCombination(qsScore, osFinal, riskScore, qsGated);
   posRawValue = v25Result.posCore;
   const fundamentalsFloor = v25Result.floor;
   const fundamentalsFloorApplied = v25Result.appliedFloor;
@@ -2545,9 +2717,26 @@ export function calculateOmniScoreProduction(
       posPlausibilityCapped,
       posBeforeCap,
       // v2.4: Baseline+tilt formula tracking
-      formulaVersion: 'v2.5',
+      formulaVersion: 'v2.6',
       fundamentalsFloor,
       fundamentalsFloorApplied,
+      // v2.6.0: Reflexivity-safe adjustments audit
+      v26Adjustments: {
+        qualityGate: qualityGateResult,
+        lowQSOSCap: {
+          applied: lowQSOSCapResult.wasCapped,
+          originalOS: lowQSOSCapResult.originalOS,
+          cappedOS: lowQSOSCapResult.capped,
+          reason: lowQSOSCapResult.reason,
+        },
+        contrarianBoost: {
+          applied: contrarianBoostResult.boostApplied > 0,
+          amount: contrarianBoostResult.boostApplied,
+          reason: contrarianBoostResult.reason,
+        },
+        fearGreedIndex,
+        osFinal,
+      },
     },
   };
   

@@ -465,8 +465,8 @@ describe('OmniScore v2.5.0 Comprehensive Tests', () => {
       expect(snapshot.posAdjusted).toBeLessThanOrEqual(97);
       expect(snapshot.tier).toBeDefined();
       expect(['Elite', 'Strong', 'Neutral', 'Weak', 'Critical']).toContain(snapshot.tier);
-      expect(snapshot.audit.formulaVersion).toBe('v2.5');
-      expect(snapshot.audit.engineVersion).toBe('2.5.0');
+      expect(snapshot.audit.formulaVersion).toBe('v2.6');
+      expect(snapshot.audit.engineVersion).toBe('2.6.0');
     });
     
     it('maintains consistency across multiple calculations', () => {
@@ -567,10 +567,10 @@ describe('OmniScore v2.5.0 Comprehensive Tests', () => {
   describe('Version Verification', () => {
     
     it('exports correct engine version', () => {
-      expect(OMNISCORE_ENGINE_VERSION).toBe('2.5.0');
+      expect(OMNISCORE_ENGINE_VERSION).toBe('2.6.0');
     });
     
-    it('includes v2.5 in all audit trails', () => {
+    it('includes v2.6 in all audit trails', () => {
       const params: CalculateOmniScoreParams = {
         projectId: 'version-test',
         qsInputs: [makeFeature('team', 'TEAM', 80)],
@@ -578,13 +578,13 @@ describe('OmniScore v2.5.0 Comprehensive Tests', () => {
       };
       
       const result = calculateOmniScoreProduction(params);
-      expect(result.version).toBe('2.5.0');
-      expect(result.audit.engineVersion).toBe('2.5.0');
-      expect(result.audit.formulaVersion).toBe('v2.5');
+      expect(result.version).toBe('2.6.0');
+      expect(result.audit.engineVersion).toBe('2.6.0');
+      expect(result.audit.formulaVersion).toBe('v2.6');
       
       const snapshot = toOmniScoreSnapshot(result);
-      expect(snapshot.audit.formulaVersion).toBe('v2.5');
-      expect(snapshot.audit.engineVersion).toBe('2.5.0');
+      expect(snapshot.audit.formulaVersion).toBe('v2.6');
+      expect(snapshot.audit.engineVersion).toBe('2.6.0');
     });
   });
   

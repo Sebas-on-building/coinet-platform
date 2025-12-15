@@ -99,7 +99,7 @@ describe('OmniScore Golden Cases', () => {
       expect(result.qualityScore.breakdown.ecosystem).toBeGreaterThan(0.7);
       
       // v2.5: Check formula version
-      expect(snapshot.audit.formulaVersion).toBe('v2.5');
+      expect(snapshot.audit.formulaVersion).toBe('v2.6');
     });
   });
   
@@ -168,8 +168,8 @@ describe('OmniScore Golden Cases', () => {
       const zone = getQuadrantZone(snapshot.qs, snapshot.os);
       expect(['TARGET', 'BUILDER']).toContain(zone);
       
-      // v2.5.0: Check formula version and floor application
-      expect(snapshot.audit.formulaVersion).toBe('v2.5');
+      // v2.6.0: Check formula version and floor application
+      expect(snapshot.audit.formulaVersion).toBe('v2.6');
       if (snapshot.audit.fundamentalsFloorApplied) {
         expect(snapshot.audit.fundamentalsFloor).toBeGreaterThanOrEqual(50);
       }
@@ -231,7 +231,7 @@ describe('OmniScore Golden Cases', () => {
       expect(result.risk.eventRiskSeverity).toBeGreaterThan(0.1);
       
       // v2.5: Check formula version
-      expect(snapshot.audit.formulaVersion).toBe('v2.5');
+      expect(snapshot.audit.formulaVersion).toBe('v2.6');
     });
   });
   

@@ -15,25 +15,25 @@ datasource db {
 // ============================================================================
 
 model Conversation {
-  id        String   @id @default(cuid())
-  userId    String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Conversation metadata
-  title     String?  // Auto-generated from first message
-  context   Json?    // Conversation context, preferences, active agent
-  
+  title   String? // Auto-generated from first message
+  context Json? // Conversation context, preferences, active agent
+
   // Relationships
-  messages  Message[]
-  
+  messages Message[]
+
   // Agent relationship (optional - if conversation uses a specific agent)
-  agentId   String?
-  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  
+  agentId String?
+  agent   Agent?  @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
   // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   archivedAt DateTime?
-  
+
   // Indexes for performance
   @@index([userId])
   @@index([userId, createdAt(sort: Desc)])
@@ -42,32 +42,32 @@ model Conversation {
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String @id @default(cuid())
   conversationId String
-  
+
   // Message content
-  role           MessageRole
-  content        String   @db.Text
-  
+  role    MessageRole
+  content String      @db.Text
+
   // AI enhancements
-  sources        Json?    // Array of source citations
-  charts         Json?    // Chart configurations detected
-  confidence     Float?   // AI confidence score (0-1)
-  
+  sources    Json? // Array of source citations
+  charts     Json? // Chart configurations detected
+  confidence Float? // AI confidence score (0-1)
+
   // Message metadata
-  tokens         Int?     // Token count for cost tracking
-  model          String?  // AI model used (e.g., "gpt-4", "claude-3")
-  
+  tokens Int? // Token count for cost tracking
+  model  String? // AI model used (e.g., "gpt-4", "claude-3")
+
   // User actions
   regeneratedFrom String? // If regenerated, reference to original message
-  userFeedback   MessageFeedback?
-  
+  userFeedback    MessageFeedback?
+
   // Timestamps
-  createdAt      DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   // Relationships
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   // Indexes
   @@index([conversationId, createdAt(sort: Asc)])
   @@index([conversationId])
@@ -91,40 +91,40 @@ enum MessageFeedback {
 // ============================================================================
 
 model Agent {
-  id           String   @id @default(cuid())
-  userId       String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Basic info
   name         String
-  description  String   @db.Text
-  personality  String   @db.Text
-  systemPrompt String   @db.Text
-  
+  description  String @db.Text
+  personality  String @db.Text
+  systemPrompt String @db.Text
+
   // Agent configuration
-  expertise    String[] // Array of expertise areas
-  triggers     Json     // Array of trigger configurations
-  strategies   Json     // Array of strategy configurations
-  dataSources  Json     // Array of data source configurations
-  
+  expertise   String[] // Array of expertise areas
+  triggers    Json // Array of trigger configurations
+  strategies  Json // Array of strategy configurations
+  dataSources Json // Array of data source configurations
+
   // Appearance
-  color        String   @default("#6366f1") // Hex color
-  tags         String[]
-  
+  color String   @default("#6366f1") // Hex color
+  tags  String[]
+
   // Agent status
-  enabled      Boolean  @default(true)
-  isTemplate   Boolean  @default(false) // If from template/marketplace
-  
+  enabled    Boolean @default(true)
+  isTemplate Boolean @default(false) // If from template/marketplace
+
   // Performance tracking
-  totalExecutions Int    @default(0)
-  successRate      Float @default(0.0) // 0-1
-  
+  totalExecutions Int   @default(0)
+  successRate     Float @default(0.0) // 0-1
+
   // Relationships
   conversations Conversation[]
-  
+
   // Timestamps
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Indexes
   @@index([userId])
   @@index([userId, enabled])
@@ -137,33 +137,33 @@ model Agent {
 // ============================================================================
 
 model Alert {
-  id          String   @id @default(cuid())
-  userId      String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Alert info
   name        String
-  description String?  @db.Text
+  description String?   @db.Text
   type        AlertType
-  
+
   // Trigger configuration (parsed from natural language)
-  trigger     Json     // Trigger configuration
-  actions     Json?    // Alert actions (notifications, webhooks, etc.)
-  
+  trigger Json // Trigger configuration
+  actions Json? // Alert actions (notifications, webhooks, etc.)
+
   // Alert settings
-  priority    AlertPriority @default(medium)
-  enabled     Boolean  @default(true)
-  
+  priority AlertPriority @default(medium)
+  enabled  Boolean       @default(true)
+
   // Execution tracking
   lastTriggered DateTime?
-  triggerCount   Int    @default(0)
-  
+  triggerCount  Int       @default(0)
+
   // Relationships
-  history     AlertHistory[]
-  
+  history AlertHistory[]
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Indexes
   @@index([userId])
   @@index([userId, enabled])
@@ -190,21 +190,21 @@ enum AlertPriority {
 }
 
 model AlertHistory {
-  id        String   @id @default(cuid())
-  alertId   String
-  
+  id      String @id @default(cuid())
+  alertId String
+
   // Trigger data
   triggeredAt DateTime @default(now())
-  conditions  Json     // Condition values at trigger time
-  values      Json     // Actual values when triggered
-  
+  conditions  Json // Condition values at trigger time
+  values      Json // Actual values when triggered
+
   // Result
-  executed  Boolean  @default(true)
-  error     String?  @db.Text
-  
+  executed Boolean @default(true)
+  error    String? @db.Text
+
   // Relationships
-  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
   // Indexes
   @@index([alertId, triggeredAt(sort: Desc)])
   @@index([alertId])
@@ -216,29 +216,29 @@ model AlertHistory {
 // ============================================================================
 
 model Insight {
-  id          String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Insight content
   type        InsightType
   title       String
-  description String   @db.Text
-  
+  description String      @db.Text
+
   // Quality metrics
-  confidence  Float    // 0-1 confidence score
-  severity    InsightSeverity
-  
+  confidence Float // 0-1 confidence score
+  severity   InsightSeverity
+
   // Rich metadata
-  metadata    Json     // Type-specific data (asset, price, etc.)
-  
+  metadata Json // Type-specific data (asset, price, etc.)
+
   // Related assets
-  assets      String[] // Array of related asset symbols
-  
+  assets String[] // Array of related asset symbols
+
   // Expiry
-  expiresAt   DateTime?
-  
+  expiresAt DateTime?
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   // Indexes
   @@index([type])
   @@index([severity])
@@ -268,33 +268,33 @@ enum InsightSeverity {
 // ============================================================================
 
 model UserPreferences {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  
+  id     String @id @default(cuid())
+  userId String @unique
+
   // Chat preferences
   defaultAgentId String?
-  chatStyle      String?  // "professional", "friendly", "technical"
-  
+  chatStyle      String? // "professional", "friendly", "technical"
+
   // Alert preferences
-  alertEmail     Boolean  @default(true)
-  alertPush      Boolean  @default(true)
-  alertTimezone  String   @default("UTC")
-  
+  alertEmail    Boolean @default(true)
+  alertPush     Boolean @default(true)
+  alertTimezone String  @default("UTC")
+
   // UI preferences
-  theme          String   @default("light")
-  language       String   @default("en")
-  
+  theme    String @default("light")
+  language String @default("en")
+
   // Trading preferences (for agent context)
   preferredAssets String[]
   riskTolerance   String? // "conservative", "moderate", "aggressive"
-  
+
   // Metadata
-  metadata       Json?
-  
+  metadata Json?
+
   // Timestamps
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("user_preferences")
 }
 
@@ -304,27 +304,27 @@ model UserPreferences {
 
 // Long-term memories the AI remembers about the user
 model UserMemory {
-  id        String   @id @default(cuid())
-  userId    String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Memory content
-  category  MemoryCategory
-  key       String           // e.g., "favorite_coin", "trading_style"
-  value     String   @db.Text // The actual memory content
-  
+  category MemoryCategory
+  key      String // e.g., "favorite_coin", "trading_style"
+  value    String         @db.Text // The actual memory content
+
   // Memory metadata
-  confidence Float   @default(1.0)  // How confident AI is about this memory
-  source     String?                 // Where this memory came from (conversation, explicit)
-  
+  confidence Float   @default(1.0) // How confident AI is about this memory
+  source     String? // Where this memory came from (conversation, explicit)
+
   // Memory lifecycle
   lastAccessed DateTime @default(now())
   accessCount  Int      @default(0)
-  
+
   // Timestamps
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  expiresAt    DateTime?  // Some memories can expire
-  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime? // Some memories can expire
+
   // Indexes
   @@unique([userId, category, key])
   @@index([userId])
@@ -333,36 +333,36 @@ model UserMemory {
 }
 
 enum MemoryCategory {
-  preference      // User preferences (risk tolerance, style)
-  portfolio       // Holdings and positions
-  watchlist       // Coins they're watching
-  goal            // Trading/investment goals
-  context         // General context (experience level, location)
-  interaction     // How they like to interact
-  insight         // Things AI learned about them
+  preference // User preferences (risk tolerance, style)
+  portfolio // Holdings and positions
+  watchlist // Coins they're watching
+  goal // Trading/investment goals
+  context // General context (experience level, location)
+  interaction // How they like to interact
+  insight // Things AI learned about them
 }
 
 // User's portfolio holdings
 model UserPortfolio {
-  id        String   @id @default(cuid())
-  userId    String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Asset info
-  symbol    String          // e.g., "BTC", "ETH"
-  name      String?         // Full name
-  
+  symbol String // e.g., "BTC", "ETH"
+  name   String? // Full name
+
   // Position details
-  amount    Float           // Amount held
-  avgCost   Float?          // Average cost basis
-  
+  amount  Float // Amount held
+  avgCost Float? // Average cost basis
+
   // Position metadata
-  exchange  String?         // Where held (binance, coinbase, wallet)
-  wallet    String?         // Wallet address if applicable
-  
+  exchange String? // Where held (binance, coinbase, wallet)
+  wallet   String? // Wallet address if applicable
+
   // Tracking
   addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Indexes
   @@unique([userId, symbol, exchange])
   @@index([userId])
@@ -371,69 +371,67 @@ model UserPortfolio {
 
 // User's watchlist
 model UserWatchlist {
-  id        String   @id @default(cuid())
-  userId    String
-  
+  id     String @id @default(cuid())
+  userId String
+
   // Asset info
-  symbol    String
-  name      String?
-  
+  symbol String
+  name   String?
+
   // Watch details
-  targetBuy  Float?    // Target buy price
-  targetSell Float?    // Target sell price
-  notes      String?   @db.Text
-  
+  targetBuy  Float? // Target buy price
+  targetSell Float? // Target sell price
+  notes      String? @db.Text
+
   // Alerts
   alertEnabled Boolean @default(true)
-  
+
   // Timestamps
-  addedAt    DateTime @default(now())
-  
+  addedAt DateTime @default(now())
+
   // Indexes
   @@unique([userId, symbol])
   @@index([userId])
   @@map("user_watchlist")
 }
 
-
 model OmniScoreHistory {
-  id              String   @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   // Project identification
-  projectId       String   @db.VarChar(100)
-  
+  projectId String @db.VarChar(100)
+
   // Score data
-  pos             Float    // Final POS after adjustments
-  posRaw          Float?   // POS before smoothing
-  qsScore         Float?   // Quality Score
-  osScore         Float?   // Opportunity Score
-  riskScore       Float?   // Risk Score
-  
+  pos       Float // Final POS after adjustments
+  posRaw    Float? // POS before smoothing
+  qsScore   Float? // Quality Score
+  osScore   Float? // Opportunity Score
+  riskScore Float? // Risk Score
+
   // Version tracking (critical for migrations)
-  engineVersion   String   @db.VarChar(20)  // e.g., "2.5.0"
-  formulaVersion  String   @db.VarChar(10)  // e.g., "v2.5"
-  
+  engineVersion  String @db.VarChar(20) // e.g., "2.5.0"
+  formulaVersion String @db.VarChar(10) // e.g., "v2.5"
+
   // Context for debugging
-  regime          String?  @db.VarChar(20)  // bull, bear, neutral, crisis, recovery
-  capBucket       String?  @db.VarChar(20)  // mega, large, mid, small, micro
-  sector          String?  @db.VarChar(30)  // DeFi, L1, L2, etc.
-  
+  regime    String? @db.VarChar(20) // bull, bear, neutral, crisis, recovery
+  capBucket String? @db.VarChar(20) // mega, large, mid, small, micro
+  sector    String? @db.VarChar(30) // DeFi, L1, L2, etc.
+
   // Data quality metrics
-  qsCoverage      Float?   // 0-1, percentage of valid QS inputs
-  osCoverage      Float?   // 0-1, percentage of valid OS inputs
-  degraded        Boolean  @default(false)  // Was this a degraded calculation?
-  
+  qsCoverage Float? // 0-1, percentage of valid QS inputs
+  osCoverage Float? // 0-1, percentage of valid OS inputs
+  degraded   Boolean @default(false) // Was this a degraded calculation?
+
   // Deduplication
-  inputsHash      String?  @db.VarChar(64)  // SHA256 of inputs for detecting identical runs
-  
+  inputsHash String? @db.VarChar(64) // SHA256 of inputs for detecting identical runs
+
   // Timestamps
-  createdAt       DateTime @default(now()) @db.Timestamp(6)
-  calculatedAt    DateTime @default(now()) @db.Timestamp(6)  // When the score was calculated
-  
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+  calculatedAt DateTime @default(now()) @db.Timestamp(6) // When the score was calculated
+
   // Indexes for efficient querying
   @@index([projectId, createdAt(sort: Desc)])
   @@index([projectId, engineVersion, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("omniscore_history")
 }
-
