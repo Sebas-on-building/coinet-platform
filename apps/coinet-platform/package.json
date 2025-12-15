@@ -5,20 +5,20 @@
   "main": "dist/index.js",
   "type": "commonjs",
   "prisma": {
-    "schema": "./prisma/schema.prisma"
+    "schema": "../../prisma/schema.prisma"
   },
   "scripts": {
-    "prebuild": "prisma generate --schema=./prisma/schema.prisma",
+    "prebuild": "prisma generate --schema=../../prisma/schema.prisma",
     "build": "tsc",
     "dev": "pnpm build && pnpm start",
     "dev:ts": "ts-node --transpile-only --files src/index.ts",
     "dev:quick": "pnpm build && node dist/index.js",
     "dev:watch": "ts-node-dev --respawn --transpile-only --files --ignore-watch node_modules src/index.ts",
     "start": "node dist/index.js",
-    "db:generate": "prisma generate --schema=./prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=./prisma/schema.prisma",
-    "db:migrate:deploy": "prisma migrate deploy --schema=./prisma/schema.prisma",
-    "db:studio": "prisma studio --schema=./prisma/schema.prisma",
+    "db:generate": "prisma generate --schema=../../prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=../../prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema=../../prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=../../prisma/schema.prisma",
     "db:seed": "ts-node prisma/seed.ts",
     "db:verify": "npx ts-node scripts/verify-database.ts",
     "db:backup": "npx ts-node scripts/backup-chat-history.ts",

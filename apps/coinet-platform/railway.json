@@ -2,10 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "nixpacks",
-    "buildCommand": "(DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate || echo 'Prisma generate skipped') && npm run build"
+    "buildCommand": "(DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate --schema=../../prisma/schema.prisma || echo 'Prisma generate skipped') && npm run build"
   },
   "deploy": {
-    "startCommand": "npx prisma migrate deploy --schema=./prisma/schema.prisma && npm start",
+    "startCommand": "npx prisma migrate deploy --schema=../../prisma/schema.prisma && npm start",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "on_failure",

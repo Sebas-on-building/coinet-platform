@@ -71,14 +71,13 @@ export {
 // Re-export visualizer
 export * from '../omniscore-visualizer';
 
-// Re-export constants (excluding TierLabel to avoid duplicate export)
+// Re-export constants (TierLabel comes from omniscore-v2.5 via export *)
 export {
   DEFAULT_QS_THRESHOLD,
   DEFAULT_OS_THRESHOLD,
   TIER_THRESHOLDS,
   getTierFromScore,
 } from '../omniscore-constants';
-export type { TierLabel } from '../omniscore-constants';
 
 // Legacy alias for backwards compatibility
 // Prefer using ENGINE_VERSION from './current/version'
