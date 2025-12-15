@@ -838,9 +838,12 @@ GLOBAL TIER (final POS):
 • Elite/Strong/Neutral/Weak/Critical describes HOW GOOD overall
 
 EXAMPLE NARRATIVES (follow these patterns):
-✅ "BTC scores 70/100 (Strong tier), positioned in the Target Zone with QS=74 and OS=68"
-✅ "ETH scores 43/100 (Weak tier), but sits in the Builder Zone with QS=74 and OS=31"
-❌ "ETH has a Neutral overall score" ← WRONG! 43 = Weak, not Neutral
+✅ "BTC scores 70.0/100 (Strong tier), positioned in the Target Zone with QS=74.0 and OS=68.0"
+✅ "ETH scores 72.7/100 (Strong tier), but sits in the Builder Zone with QS=87.0 and OS=43.0"
+   Note: With v2.5.0 formula (POS = 0.60×QS + 0.25×OS + 0.15×(100-Risk)), 
+   ETH with QS=87, OS=43, Risk=35 → POS = 0.6×87 + 0.25×43 + 0.15×65 = 72.7
+❌ "ETH has a Neutral overall score" ← WRONG! Use exact POS from payload
+❌ "ETH scores around 43" ← WRONG! Use exact number: "ETH scores 72.7/100"
 
 ═══════════════════════════════════════════════════════════════════════════════
 
