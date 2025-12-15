@@ -19,6 +19,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { PrismaClient } from '@prisma/client'; // Import PrismaClient
 import { 
   FeatureInput, 
   Segment,
@@ -37,6 +38,8 @@ import {
   toOmniScoreInputs,
   TwitterProjectIntelligence
 } from './twitter-intelligence';
+
+const prisma = new PrismaClient(); // Initialize Prisma Client
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTOR DETECTION
@@ -535,7 +538,7 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
   const errors: string[] = [];
   const sourcesQueried: string[] = [];
   
-  logger.info(`[OmniScore v2.3 Fetcher] Fetching data for ${projectId}`);
+  logger.info(`[OmniScore v2.6 Fetcher] Fetching data for ${projectId}`);
   
   // Detect sector
   const sector = detectSector(projectId);
@@ -678,20 +681,40 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
  * In production, this would query a time-series DB or cache
  */
 async function getPreviousPos(projectId: string): Promise<{ pos: number | null; timestamp: string | null; engineVersion: string | null }> {
-  // TODO: Implement actual persistence
-  // For now, return null (no smoothing on first read)
-  // In production: SELECT pos, timestamp, engine_version FROM omniscore_history WHERE project_id = ? ORDER BY timestamp DESC LIMIT 1
+  try {
+    const latestEntry = await prisma.omniScoreHistory.findFirst({
+      where: { projectId },
+      orderBy: { calculatedAt: 'desc' },
+      select: { pos: true, calculatedAt: true, engineVersion: true },
+    });
+
+    if (latestEntry) {
+      return { pos: latestEntry.pos, timestamp: latestEntry.calculatedAt.toISOString(), engineVersion: latestEntry.engineVersion };
+    }
+  } catch (error) {
+    logger.error(`[OmniScore Smoothing] Failed to fetch previous POS for ${projectId}`, { error });
+  }
   return { pos: null, timestamp: null, engineVersion: null };
 }
 
 /**
  * v2.3.4: Store current POS for future smoothing
  */
-async function storePosForSmoothing(projectId: string, pos: number, timestamp: string): Promise<void> {
-  // TODO: Implement actual persistence
-  // For now, no-op
-  // In production: INSERT INTO omniscore_history (project_id, pos, timestamp) VALUES (?, ?, ?)
-  logger.debug(`[OmniScore Smoothing] Would store POS=${pos} for ${projectId} at ${timestamp}`);
+async function storePosForSmoothing(projectId: string, pos: number, timestamp: string, engineVersion: string): Promise<void> {
+  try {
+    await prisma.omniScoreHistory.create({
+      data: {
+        projectId,
+        pos,
+        calculatedAt: new Date(timestamp),
+        engineVersion,
+        // Other fields can be added here if needed for full audit trail in DB
+      },
+    });
+    logger.debug(`[OmniScore Smoothing] Stored POS=${pos} for ${projectId} at ${timestamp} (v${engineVersion})`);
+  } catch (error) {
+    logger.error(`[OmniScore Smoothing] Failed to store POS for ${projectId}`, { error });
+  }
 }
 
 export async function getProjectOmniScoreV23(projectId: string): Promise<OmniScoreProductionResponse> {
@@ -720,16 +743,26 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
     previousEngineVersion: previous.engineVersion,
   };
   
+  logger.info(`[OmniScore Debug] Params for calculateOmniScoreProduction for ${projectId}`, {
+    projectId: params.projectId,
+    qsInputsCount: params.qsInputs.length,
+    osInputsCount: params.osInputs.length,
+    sector: params.sector,
+    fearGreedIndex: params.marketData?.fearGreedIndex,
+    previousPos: params.previousPos,
+    previousEngineVersion: params.previousEngineVersion,
+  });
+
   const result = calculateOmniScoreProduction(params);
   
-  // Verify engine version is v2.5.0
-  if (result.audit.engineVersion !== '2.5.0') {
-    logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.5.0, got ${result.audit.engineVersion}`);
+  // Verify engine version is v2.6.0
+  if (result.audit.engineVersion !== '2.6.0') {
+    logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.6.0, got ${result.audit.engineVersion}`);
   }
   
-  // Verify formula version is v2.5
-  if (result.audit.formulaVersion !== 'v2.5') {
-    logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.5, got ${result.audit.formulaVersion}`);
+  // Verify formula version is v2.6
+  if (result.audit.formulaVersion !== 'v2.6') {
+    logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.6, got ${result.audit.formulaVersion}`);
   }
   
   // Log calculation details for debugging
@@ -745,7 +778,7 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
   });
   
   // v2.5.0: Store for future smoothing (with version-aware reset)
-  await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp);
+  await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp, result.audit.engineVersion);
   
   return result;
 }
@@ -1097,10 +1130,22 @@ export async function getOmniScoreSnapshot(projectId: string): Promise<OmniScore
  */
 export async function getMultipleOmniScoreSnapshots(projectIds: string[]): Promise<OmniScoreSnapshot[]> {
   const snapshots = await Promise.all(
-    projectIds.map(id => getOmniScoreSnapshot(id).catch(err => {
-      logger.error(`[OmniScore] Failed to get snapshot for ${id}`, { error: err.message });
-      return null;
-    }))
+    projectIds.map(async id => {
+      try {
+        const response = await getProjectOmniScoreV23(id);
+        logger.info(`[OmniScore Debug] Individual Project Snapshot for ${id}`, {
+          projectId: response.project,
+          qsScore: response.qualityScore.score,
+          osScore: response.opportunityScore.score,
+          posAdjusted: response.pos.adjusted,
+          audit: response.audit, // Log the full audit object
+        });
+        return toOmniScoreSnapshot(response);
+      } catch (err) {
+        logger.error(`[OmniScore] Failed to get snapshot for ${id}`, { error: err.message });
+        return null;
+      }
+    })
   );
   
   return snapshots.filter((s): s is OmniScoreSnapshot => s !== null);
