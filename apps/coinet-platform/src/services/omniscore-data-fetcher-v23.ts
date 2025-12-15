@@ -19,7 +19,7 @@
  */
 
 import { logger } from '../utils/logger';
-import { PrismaClient } from '@prisma/client'; // Import PrismaClient
+import { PrismaClient } from '../../node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client'; // Import PrismaClient
 import { 
   FeatureInput, 
   Segment,
@@ -744,16 +744,6 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
     previousEngineVersion: previous.engineVersion,
   };
   
-  logger.info(`[OmniScore Debug] Params for calculateOmniScoreProduction for ${projectId}`, {
-    projectId: params.projectId,
-    qsInputsCount: params.qsInputs.length,
-    osInputsCount: params.osInputs.length,
-    sector: params.sector,
-    fearGreedIndex: params.marketData?.fearGreedIndex,
-    previousPos: params.previousPos,
-    previousEngineVersion: params.previousEngineVersion,
-  });
-
   const result = calculateOmniScoreProduction(params);
   
   // Verify engine version is v2.6.0
@@ -1131,22 +1121,10 @@ export async function getOmniScoreSnapshot(projectId: string): Promise<OmniScore
  */
 export async function getMultipleOmniScoreSnapshots(projectIds: string[]): Promise<OmniScoreSnapshot[]> {
   const snapshots = await Promise.all(
-    projectIds.map(async id => {
-      try {
-        const response = await getProjectOmniScoreV23(id);
-        logger.info(`[OmniScore Debug] Individual Project Snapshot for ${id}`, {
-          projectId: response.project,
-          qsScore: response.qualityScore.score,
-          osScore: response.opportunityScore.score,
-          posAdjusted: response.pos.adjusted,
-          audit: response.audit, // Log the full audit object
-        });
-        return toOmniScoreSnapshot(response);
-      } catch (err) {
-        logger.error(`[OmniScore] Failed to get snapshot for ${id}`, { error: err.message });
-        return null;
-      }
-    })
+    projectIds.map(id => getOmniScoreSnapshot(id).catch(err => {
+      logger.error(`[OmniScore] Failed to get snapshot for ${id}`, { error: (err as Error).message });
+      return null;
+    }))
   );
   
   return snapshots.filter((s): s is OmniScoreSnapshot => s !== null);
