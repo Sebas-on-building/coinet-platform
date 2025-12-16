@@ -1,6 +1,6 @@
 /**
  * ╔═══════════════════════════════════════════════════════════════════════════════╗
- * ║     🧪 OMNISCORE v2.6.0 PRODUCTION READINESS TESTS                           ║
+ * ║     🧪 OMNISCORE v2.7.0 PRODUCTION READINESS TESTS                           ║
  * ║                                                                               ║
  * ║   Tests that verify ALL production-ready criteria are met.                   ║
  * ║   These tests MUST pass before deployment.                                   ║
@@ -97,17 +97,17 @@ const minValidOsInputs = [
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Phase 1: Version Integrity', () => {
-  test('ENGINE_VERSION is 2.6.0', () => {
-    expect(ENGINE_VERSION).toBe('2.6.0');
+  test('ENGINE_VERSION is 2.7.0', () => {
+    expect(ENGINE_VERSION).toBe('2.7.0');
   });
   
   test('FORMULA_VERSION is v2.6', () => {
-    expect(FORMULA_VERSION).toBe('v2.6');
+    expect(FORMULA_VERSION).toBe('v2.7');
   });
   
-  test('METHODOLOGY_ID contains V2.6.0', () => {
-    expect(METHODOLOGY_ID).toContain('V2.6.0');
-    expect(METHODOLOGY_ID).toContain('REFLEXIVITY_SAFE');
+  test('METHODOLOGY_ID contains V2.7.0', () => {
+    expect(METHODOLOGY_ID).toContain('V2.7.0');
+    expect(METHODOLOGY_ID).toContain('RELIABILITY_LAYER');
   });
   
   test('METHODOLOGY_PROVENANCE has all required fields', () => {
@@ -115,12 +115,12 @@ describe('Phase 1: Version Integrity', () => {
     expect(METHODOLOGY_PROVENANCE.version).toBe(ENGINE_VERSION);
     expect(METHODOLOGY_PROVENANCE.formula).toBe(FORMULA_VERSION);
     expect(METHODOLOGY_PROVENANCE.hash).toMatch(/^sha256:[a-f0-9]+$/);
-    expect(METHODOLOGY_PROVENANCE.url).toBe('/docs/omniscore/v2.6');
+    expect(METHODOLOGY_PROVENANCE.url).toBe('/docs/omniscore/v2.7');
   });
   
   test('computeMethodologyHash is deterministic', () => {
-    const hash1 = computeMethodologyHash('2.6.0');
-    const hash2 = computeMethodologyHash('2.6.0');
+    const hash1 = computeMethodologyHash('2.7.0');
+    const hash2 = computeMethodologyHash('2.7.0');
     expect(hash1).toBe(hash2);
     
     // Different versions produce different hashes
@@ -652,10 +652,10 @@ describe('Phase 7: Observability', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// v2.6.0: REFLEXIVITY-SAFE SCORING TESTS
+// v2.7.0: REFLEXIVITY-SAFE SCORING TESTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('v2.6.0: Reflexivity-Safe Scoring', () => {
+describe('v2.7.0: Reflexivity-Safe Scoring', () => {
   describe('Contrarian Opportunity Boost', () => {
     // Import the function directly for unit testing
     let applyContrarianOpportunityBoost: typeof import('../omniscore-v2.5').applyContrarianOpportunityBoost;
@@ -800,7 +800,7 @@ describe('v2.6.0: Reflexivity-Safe Scoring', () => {
       // Read the file to verify the floor values
       const module = await import('../omniscore-v2.5');
       // Access the OMNISCORE_ENGINE_VERSION to confirm module loaded correctly
-      expect(module.OMNISCORE_ENGINE_VERSION).toBe('2.6.0');
+      expect(module.OMNISCORE_ENGINE_VERSION).toBe('2.7.0');
       // The floor values are internal but we can verify via the exported constants
     });
   });
@@ -818,10 +818,10 @@ describe('Production Ready Go/No-Go Checklist', () => {
     expect(FORMULA_VERSION).not.toContain('2.5');
   });
   
-  test('✅ Version is v2.6.0', () => {
-    expect(ENGINE_VERSION).toBe('2.6.0');
-    expect(FORMULA_VERSION).toBe('v2.6');
-    expect(METHODOLOGY_ID).toContain('V2.6.0');
+  test('✅ Version is v2.7.0', () => {
+    expect(ENGINE_VERSION).toBe('2.7.0');
+    expect(FORMULA_VERSION).toBe('v2.7');
+    expect(METHODOLOGY_ID).toContain('V2.7.0');
   });
   
   test('✅ Version mismatches throw, not warn', () => {
@@ -861,7 +861,7 @@ describe('Production Ready Go/No-Go Checklist', () => {
     expect(flags).toHaveProperty('strictValidation');
   });
   
-  test('✅ v2.6.0 functions are exported', async () => {
+  test('✅ v2.7.0 functions are exported', async () => {
     const module = await import('../omniscore-v2.5');
     expect(module.applyContrarianOpportunityBoost).toBeDefined();
     expect(module.applyLowQSOpportunityCap).toBeDefined();

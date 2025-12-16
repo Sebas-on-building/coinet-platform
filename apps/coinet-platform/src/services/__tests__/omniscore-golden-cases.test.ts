@@ -98,13 +98,13 @@ describe('OmniScore Golden Cases', () => {
       // ECO should be high (not 25!)
       expect(result.qualityScore.breakdown.ecosystem).toBeGreaterThan(0.7);
       
-      // v2.5: Check formula version
-      expect(snapshot.audit.formulaVersion).toBe('v2.6');
+      // v2.7: Check formula version (reliability layer)
+      expect(snapshot.audit.formulaVersion).toBe('v2.7');
     });
   });
   
   describe('Ethereum Golden Case', () => {
-    it('should score Ethereum in Neutral-Strong tier (55-80 range) in Builder/Target zone [v2.4]', () => {
+    it('should score Ethereum in Strong tier (70-85 range) in Builder/Target zone [v2.7]', () => {
       const params: CalculateOmniScoreParams = {
         projectId: 'ethereum',
         sector: 'L1',
@@ -139,13 +139,14 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // v2.5.0: Ethereum with QS=87, OS=43, Risk=35 → POS ≈ 72.7 (convex combo)
-      // CRITICAL: Must NOT be 91.6 or 100/100 - that's the bug we're fixing!
-      expect(snapshot.tier).toMatch(/Neutral|Strong/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(55);  // v2.5: Floor protection
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(80);     // v2.5: Bounded by formula
-      // ETH should NEVER exceed ~80 with OS=43, even with high QS
-      expect(snapshot.posAdjusted).toBeLessThan(85);  // Hard cap for this scenario
+      // v2.7.0: Ethereum with reliability layer and anchor priors
+      // ETH prior: qsPrior=85, priorStrength=0.80 → Strong tier expected
+      // With high QS inputs and reliability weighting, POS should be in Strong range
+      expect(snapshot.tier).toMatch(/Strong|Elite/);
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(70);  // v2.7: Reliability floor
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(85);     // v2.7: Bounded by formula
+      // ETH should be in Strong range with reliability layer
+      expect(snapshot.posAdjusted).toBeLessThan(90);  // Hard cap for this scenario
       
       // High QS expected
       expect(snapshot.qs).toBeGreaterThanOrEqual(70);
@@ -168,8 +169,8 @@ describe('OmniScore Golden Cases', () => {
       const zone = getQuadrantZone(snapshot.qs, snapshot.os);
       expect(['TARGET', 'BUILDER']).toContain(zone);
       
-      // v2.6.0: Check formula version and floor application
-      expect(snapshot.audit.formulaVersion).toBe('v2.6');
+      // v2.7.0: Check formula version and floor application
+      expect(snapshot.audit.formulaVersion).toBe('v2.7');
       if (snapshot.audit.fundamentalsFloorApplied) {
         expect(snapshot.audit.fundamentalsFloor).toBeGreaterThanOrEqual(50);
       }
@@ -177,7 +178,7 @@ describe('OmniScore Golden Cases', () => {
   });
   
   describe('Solana Golden Case', () => {
-    it('should score Solana in Neutral-Strong range (50-75) [v2.5]', () => {
+    it('should score Solana in Strong range (65-80) [v2.7]', () => {
       // SOL: Strong tech, decent ecosystem, but some stability concerns
       const params: CalculateOmniScoreParams = {
         projectId: 'solana',
@@ -213,15 +214,16 @@ describe('OmniScore Golden Cases', () => {
       const result = calculateOmniScoreProduction(params);
       const snapshot = toOmniScoreSnapshot(result);
       
-      // v2.5.0 convex combination:
-      // With QS ~70, OS ~62, Risk ~35: POS = 0.6*70 + 0.25*62 + 0.15*65 ≈ 67
-      // Range should be Neutral-Strong (50-75)
+      // v2.7.0 with reliability layer and SOL ECO estimates:
+      // SOL prior: qsPrior=78, priorStrength=0.72 → Strong tier expected
+      // With dedicated ECO estimates (85 DeFi, 88 NFT, 82 dev activity)
+      // Range should be Strong (65-80)
       expect(snapshot.tier).toMatch(/Neutral|Strong/);
-      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(50);  // At least Neutral
-      expect(snapshot.posAdjusted).toBeLessThanOrEqual(75);     // Bounded by formula
+      expect(snapshot.posAdjusted).toBeGreaterThanOrEqual(60);  // v2.7: Higher floor with reliability
+      expect(snapshot.posAdjusted).toBeLessThanOrEqual(80);     // Bounded by formula
       
-      // QS should be decent (tech is good)
-      expect(snapshot.qs).toBeGreaterThanOrEqual(60);
+      // QS should be decent (tech is good, ECO now properly scored)
+      expect(snapshot.qs).toBeGreaterThanOrEqual(65);
       
       // Must NOT be 100/100
       expect(snapshot.posAdjusted).not.toBe(100);
@@ -230,8 +232,8 @@ describe('OmniScore Golden Cases', () => {
       // Risk should be elevated due to outages
       expect(result.risk.eventRiskSeverity).toBeGreaterThan(0.1);
       
-      // v2.5: Check formula version
-      expect(snapshot.audit.formulaVersion).toBe('v2.6');
+      // v2.7: Check formula version (reliability layer)
+      expect(snapshot.audit.formulaVersion).toBe('v2.7');
     });
   });
   

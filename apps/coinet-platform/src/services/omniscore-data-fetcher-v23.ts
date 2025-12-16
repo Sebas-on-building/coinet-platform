@@ -323,16 +323,45 @@ function getEthereumEcoEstimates(): FeatureInput[] {
   ];
 }
 
+/**
+ * v2.7.0: Solana-specific ECO scoring
+ * SOL has a massive DeFi ecosystem (#2 by TVL), NFT infrastructure (Magic Eden, Tensor),
+ * payments (Solana Pay), and rapidly growing developer activity.
+ * Without this, SOL ECO defaults to ~50 which is unrealistically low.
+ * 
+ * REALISTIC EXPECTATION: SOL should score 65-85 with full coverage
+ */
+function getSolanaEcoEstimates(): FeatureInput[] {
+  return [
+    // #2 DeFi ecosystem by TVL: Jupiter (#1 DEX aggregator), Raydium, Marinade, Orca, Kamino
+    createFeature('eco_defi_ecosystem', 'ECO', 88, ['defillama']),
+    // Leading NFT infrastructure: Magic Eden, Tensor, highest NFT volume periods
+    createFeature('eco_nft_infrastructure', 'ECO', 90, ['estimate']),
+    // Developer activity: One of highest active dev counts, growing ecosystem
+    createFeature('eco_developer_activity', 'ECO', 85, ['estimate']),
+    // Payments: Solana Pay, USDC native, sub-second finality
+    createFeature('eco_payments_infra', 'ECO', 85, ['estimate']),
+    // Mobile: Saga phone, Solana Mobile Stack, crypto-native mobile
+    createFeature('eco_mobile_presence', 'ECO', 78, ['estimate']),
+    // Institutional: Visa USDC settlement, PayPal PYUSD, Shopify integration
+    createFeature('eco_institutional_adoption', 'ECO', 82, ['estimate']),
+  ];
+}
+
 async function fetchDefiLlamaData(projectId: string): Promise<FeatureInput[]> {
   const qsInputs: FeatureInput[] = [];
   
-  // v2.3.3: Special ECO scoring for mega-cap L1s (not just DeFi TVL based)
+  // v2.7.0: Special ECO scoring for major L1s (not just DeFi TVL based)
+  // Without this, these chains get unfairly low ECO scores
   const pid = projectId.toLowerCase();
   if (pid === 'bitcoin' || pid === 'btc') {
     return getBitcoinEcoEstimates();
   }
   if (pid === 'ethereum' || pid === 'eth') {
     return getEthereumEcoEstimates();
+  }
+  if (pid === 'solana' || pid === 'sol') {
+    return getSolanaEcoEstimates();
   }
   
   try {
@@ -746,14 +775,14 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
   
   const result = calculateOmniScoreProduction(params);
   
-  // Verify engine version is v2.6.0
-  if (result.audit.engineVersion !== '2.6.0') {
-    logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.6.0, got ${result.audit.engineVersion}`);
+  // Verify engine version is v2.7.0 (with reliability layer)
+  if (!result.audit.engineVersion.startsWith('2.7')) {
+    logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.7.x, got ${result.audit.engineVersion}`);
   }
   
-  // Verify formula version is v2.6
-  if (result.audit.formulaVersion !== 'v2.6') {
-    logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.6, got ${result.audit.formulaVersion}`);
+  // Verify formula version (v2.6 or v2.7)
+  if (!['v2.6', 'v2.7'].includes(result.audit.formulaVersion)) {
+    logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.6 or v2.7, got ${result.audit.formulaVersion}`);
   }
   
   // Log calculation details for debugging

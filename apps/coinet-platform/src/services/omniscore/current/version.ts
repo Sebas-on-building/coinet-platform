@@ -23,29 +23,29 @@
  * - Extended fundamentals floor to QS >= 60
  * - Quality gate for minimum QS threshold
  */
-export const ENGINE_VERSION = '2.6.0' as const;
+export const ENGINE_VERSION = '2.7.0' as const;
 
 /**
  * Formula version - identifies the mathematical formula variant
  * Format: v{MAJOR}.{MINOR}
  */
-export const FORMULA_VERSION = 'v2.6' as const;
+export const FORMULA_VERSION = 'v2.7' as const;
 
 /**
  * Methodology ID - unique identifier for the scoring methodology
  * Used for audit trails and compliance
  */
-export const METHODOLOGY_ID = 'OMNISCORE_V2.6.0_REFLEXIVITY_SAFE' as const;
+export const METHODOLOGY_ID = 'OMNISCORE_V2.7.0_RELIABILITY_LAYER' as const;
 
 /**
  * Methodology documentation URL
  */
-export const METHODOLOGY_URL = '/docs/omniscore/v2.6' as const;
+export const METHODOLOGY_URL = '/docs/omniscore/v2.7' as const;
 
 /**
  * Feature schema version - tracks input/output format changes
  */
-export const FEATURE_SCHEMA_VERSION = '2.6.0-core40' as const;
+export const FEATURE_SCHEMA_VERSION = '2.7.0-reliability' as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BUILD-TIME CONSTANTS

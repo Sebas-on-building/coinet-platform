@@ -86,6 +86,7 @@ describe('OmniScore v2.5.0 Formula Verification', () => {
     });
 
     it('should have correct floor thresholds', () => {
+      // v2.6.0: Extended floor protection to QS >= 60
       const testCases = [
         { qs: 95, expectedFloor: 65 },
         { qs: 90, expectedFloor: 65 },
@@ -97,7 +98,11 @@ describe('OmniScore v2.5.0 Formula Verification', () => {
         { qs: 75, expectedFloor: 45 },
         { qs: 74, expectedFloor: 40 },
         { qs: 70, expectedFloor: 40 },
-        { qs: 69, expectedFloor: 0 },
+        { qs: 69, expectedFloor: 35 },  // v2.6.0: QS_65_PLUS floor
+        { qs: 65, expectedFloor: 35 },
+        { qs: 64, expectedFloor: 30 },  // v2.6.0: QS_60_PLUS floor
+        { qs: 60, expectedFloor: 30 },
+        { qs: 59, expectedFloor: 0 },   // No floor below QS 60
         { qs: 50, expectedFloor: 0 },
       ];
 

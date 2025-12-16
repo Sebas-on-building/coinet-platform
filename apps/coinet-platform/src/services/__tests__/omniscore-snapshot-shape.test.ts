@@ -131,7 +131,7 @@ describe('OmniScore Snapshot Shape', () => {
 
     // Audit version fields
     expect(typeof snapshot.audit.engineVersion).toBe('string');
-    expect(snapshot.audit.formulaVersion).toMatch(/^v2\.(3|4|5|6)$/); // Updated for v2.6
+    expect(snapshot.audit.formulaVersion).toMatch(/^v2\.(3|4|5|6|7)$/); // Updated for v2.6
   });
 
   it('should match engine version in audit', () => {
@@ -141,7 +141,7 @@ describe('OmniScore Snapshot Shape', () => {
 
     // Version consistency check
     expect(response.version).toBe(snapshot.audit.engineVersion);
-    expect(snapshot.audit.engineVersion).toBe('2.6.0'); // Updated for v2.6.0
+    expect(snapshot.audit.engineVersion).toBe('2.7.0'); // Updated for v2.7.0
   });
 
   it('should have valid quadrant zone when using getQuadrantZone', () => {

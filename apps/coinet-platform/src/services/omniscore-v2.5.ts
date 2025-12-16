@@ -59,6 +59,16 @@
 
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  ReliabilityLayer,
+  calculateEnhancedQS,
+  calculateEnhancedOS,
+  getAnchorPrior,
+  shouldGateOutput,
+  type EnhancedScoreResult,
+  type ShrinkageResult,
+  type PenaltyAudit,
+} from './omniscore-reliability';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PRODUCTION TYPE DEFINITIONS
@@ -174,7 +184,7 @@ export interface OmniScoreSnapshot {
     engineVersion: string;           // "2.3.4" or "2.4.0"
     methodologyVersion: string;
     timestamp: string;
-    formulaVersion: 'v2.3' | 'v2.4' | 'v2.5'; // Which formula was used
+    formulaVersion: 'v2.3' | 'v2.4' | 'v2.5' | 'v2.6' | 'v2.7'; // Which formula was used
     invariantStatus: 'pass' | 'warn' | 'fail';
     smoothingApplied: boolean;
     osCeilingApplied: boolean;
@@ -529,7 +539,7 @@ export interface AuditTrail {
   posPlausibilityCapped: boolean;
   posBeforeCap: number | null;
   // v2.5.0: Formula version tracking
-  formulaVersion: 'v2.3' | 'v2.4' | 'v2.5' | 'v2.6';
+  formulaVersion: 'v2.3' | 'v2.4' | 'v2.5' | 'v2.6' | 'v2.7';
   fundamentalsFloor: number | null;
   fundamentalsFloorApplied: boolean;
   // v2.6.0: Reflexivity-safe adjustments audit
@@ -628,20 +638,20 @@ function computeMethodologyHash(version: string): string {
   return `sha256:${Math.abs(hash).toString(16).padStart(16, '0')}`;
 }
 
-export const OMNISCORE_ENGINE_VERSION = '2.6.0' as const;
+export const OMNISCORE_ENGINE_VERSION = '2.7.0' as const;
 
 const CONFIG = {
-  VERSION: '2.6.0' as const,
-  METHODOLOGY_VERSION: '2.6.0' as const,
+  VERSION: '2.7.0' as const,
+  METHODOLOGY_VERSION: '2.7.0' as const,
   ENGINE_NAME: 'OmniScore' as const,
-  FEATURE_SCHEMA_VERSION: '2.6.0-core40' as const,
+  FEATURE_SCHEMA_VERSION: '2.7.0-reliability' as const,
   
   // Methodology provenance
   // v2.6.0: Updated to reflect reflexivity-safe scoring methodology
   METHODOLOGY: {
-    ID: 'OMNISCORE_V2.6.0_REFLEXIVITY_SAFE',
-    URL: '/docs/omniscore/v2.6',
-    get HASH() { return computeMethodologyHash('2.6.0'); },
+    ID: 'OMNISCORE_V2.7.0_RELIABILITY_LAYER',
+    URL: '/docs/omniscore/v2.7',
+    get HASH() { return computeMethodologyHash('2.7.0'); },
   },
   
   // Reflexivity sentinel thresholds (now also INV-12)
@@ -2295,29 +2305,41 @@ export function calculateOmniScoreProduction(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. SCORE CALCULATION with INV-4a/4b tracking
-  // v2.3.2: Uses hierarchically weighted aggregation (not simple average!)
+  // v2.7.0: Uses RELIABILITY-WEIGHTED aggregation with anchor priors
+  // This ensures BTC/ETH don't randomly score "Weak" when data is missing
   // ═══════════════════════════════════════════════════════════════════════════
-  const qsBreakdown = calculateQSBreakdown(qsInputsWithData);
   
-  // v2.3.2: Get hierarchical weights for QS segments
+  // v2.7.0: Get hierarchical weights for QS segments
   const qsWeights: Record<string, number> = {};
   for (const seg of ['TEAM', 'TECH', 'SEC', 'GOV', 'ECO']) {
     qsWeights[seg] = getHierarchicalWeight(seg, true, sector, capBucket);
   }
   const normalizedQsWeights = normalizeHierarchicalWeights(qsWeights);
   
-  // v2.3.2: Weighted aggregation instead of simple average
-  const qsRaw = (
-    normalizedQsWeights['TEAM'] * qsBreakdown.team +
-    normalizedQsWeights['TECH'] * qsBreakdown.tech +
-    normalizedQsWeights['SEC'] * qsBreakdown.security +
-    normalizedQsWeights['GOV'] * qsBreakdown.governance +
-    normalizedQsWeights['ECO'] * qsBreakdown.ecosystem
-  ) * 100;
+  // v2.7.0: ENHANCED QS with reliability weighting and anchor priors
+  // This prevents "ETH QS = 20" when GitHub fetch fails
+  const enhancedQS = calculateEnhancedQS(
+    params.qsInputs,
+    params.projectId,
+    capBucket,
+    normalizedQsWeights
+  );
   
-  const qsClampResult = clampScore100WithTracking(qsRaw);
+  // Log if prior shrinkage was applied (important for debugging)
+  if (enhancedQS.priorApplied && enhancedQS.shrinkageResult) {
+    warnings.push({
+      code: 'V27-QS-SHRINKAGE',
+      severity: 'WARN',
+      message: `QS shrunk toward prior: ${enhancedQS.shrinkageResult.originalScore.toFixed(1)} → ${enhancedQS.shrinkageResult.shrunkScore.toFixed(1)} (${(enhancedQS.shrinkageResult.shrinkageApplied * 100).toFixed(0)}% shrinkage, prior=${enhancedQS.shrinkageResult.prior})`,
+    });
+  }
+  
+  const qsClampResult = clampScore100WithTracking(enhancedQS.score);
   const qsScore = qsClampResult.value;
   clampApplied.qs = qsClampResult.clamped;
+  
+  // Keep breakdown calculation for response (uses raw data, not reliability-adjusted)
+  const qsBreakdown = calculateQSBreakdown(qsInputsWithData);
   
   // INV-4b: Hard failure if NaN/Inf
   if (qsClampResult.isHardFailure) {
@@ -2330,38 +2352,40 @@ export function calculateOmniScoreProduction(
     warnings.push({
       code: 'INV-4a',
       severity: 'WARN',
-      message: `QS score clamped to bounds (raw: ${qsRaw.toFixed(2)})`,
+      message: `QS score clamped to bounds (raw: ${enhancedQS.score.toFixed(2)})`,
     });
   }
   
-  // Calculate OS with adversarial adjustments
-  let osRaw = calculateOSScore(osInputsWithData);
+  // v2.7.0: Get hierarchical weights for OS segments
+  const osWeights: Record<string, number> = {};
+  for (const seg of ['MARKET', 'TOKEN', 'VAL', 'ADOPT', 'COMM']) {
+    osWeights[seg] = getHierarchicalWeight(seg, false, sector, capBucket);
+  }
+  const normalizedOsWeights = normalizeHierarchicalWeights(osWeights);
   
-  // Apply adversarial resistance
-  if (params.botRisk || params.anomalyScore) {
-    const commScore = osInputsWithData
-      .filter(f => f.segment === 'COMM')
-      .reduce((sum, f) => sum + (f.raw || 0), 0) / 
-      Math.max(1, osInputsWithData.filter(f => f.segment === 'COMM').length);
-    
-    const adjustedComm = applyAdversarialAdjustments(
-      commScore,
+  // v2.7.0: ENHANCED OS with reliability weighting and explicit penalties
+  // OS gets weaker prior shrinkage (more data-driven, fast-moving)
+  const enhancedOS = calculateEnhancedOS(
+    params.osInputs,
+    params.projectId,
+    capBucket,
+    normalizedOsWeights,
       params.botRisk || 0,
       params.anomalyScore || 0
     );
     
-    // Apply COMM contribution cap
-    const commContribution = adjustedComm * 0.2;  // COMM weight
-    const cappedCommContribution = applyCommContributionCap(
-      commContribution,
-      osRaw,
-      params.multiSourceConsistency || 0.5
-    );
-    
-    osRaw = osRaw - commContribution + cappedCommContribution;
+  // Log if penalties were applied
+  if (enhancedOS.penaltyAudit && enhancedOS.penaltyAudit.penalties.length > 0) {
+    for (const penalty of enhancedOS.penaltyAudit.penalties) {
+      warnings.push({
+        code: penalty.code,
+        severity: 'WARN',
+        message: `OS penalty: ${penalty.reason} (−${penalty.delta.toFixed(1)} pts)`,
+      });
+    }
   }
   
-  const osClampResult = clampScore100WithTracking(osRaw);
+  const osClampResult = clampScore100WithTracking(enhancedOS.score);
   
   // v2.3.3: Apply OS ceiling/diminishing returns for mega-caps
   // This prevents BTC/ETH from trivially hitting OS=100 on any strong day
@@ -2379,7 +2403,7 @@ export function calculateOmniScoreProduction(
     warnings.push({
       code: 'INV-4a',
       severity: 'WARN',
-      message: `OS score clamped to bounds (raw: ${osRaw.toFixed(2)})`,
+      message: `OS score clamped to bounds (raw: ${enhancedOS.score.toFixed(2)})`,
     });
   }
   
@@ -2717,7 +2741,7 @@ export function calculateOmniScoreProduction(
       posPlausibilityCapped,
       posBeforeCap,
       // v2.4: Baseline+tilt formula tracking
-      formulaVersion: 'v2.6',
+      formulaVersion: 'v2.7',
       fundamentalsFloor,
       fundamentalsFloorApplied,
       // v2.6.0: Reflexivity-safe adjustments audit

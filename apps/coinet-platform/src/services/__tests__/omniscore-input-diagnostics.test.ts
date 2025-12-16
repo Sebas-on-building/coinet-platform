@@ -28,6 +28,14 @@ describe('OmniScore Input Diagnostics', () => {
     sources: ['test'],
   });
 
+  const makeFeatureWithNull = (key: string, segment: any): FeatureInput => ({
+    key,
+    segment,
+    raw: null as any, // Explicitly null to simulate missing data
+    timestamp: new Date().toISOString(),
+    sources: ['estimate'],
+  });
+
   describe('QS Segment Aggregation', () => {
     it('should aggregate QS segments with reasonable weights', () => {
       const params: CalculateOmniScoreParams = {
@@ -208,17 +216,26 @@ describe('OmniScore Input Diagnostics', () => {
 
   describe('Coverage and Confidence', () => {
     it('should flag low confidence when coverage is insufficient', () => {
+      // Coverage = inputs_with_data / total_inputs
+      // To get low coverage, provide many inputs but only few with data
       const params: CalculateOmniScoreParams = {
         projectId: 'test-low-coverage',
         sector: 'Unknown',
         qsInputs: [
-          // Only 2 out of 5 QS segments
+          // Only 2 out of 5 have data - coverage = 2/5 = 0.4
           makeFeature('team_score', 'TEAM', 60),
           makeFeature('tech_score', 'TECH', 70),
+          makeFeatureWithNull('sec_score', 'SEC'),
+          makeFeatureWithNull('gov_score', 'GOV'),
+          makeFeatureWithNull('eco_score', 'ECO'),
         ],
         osInputs: [
-          // Only 1 out of 5 OS segments
+          // Only 1 out of 5 has data - coverage = 1/5 = 0.2
           makeFeature('market_score', 'MARKET', 50),
+          makeFeatureWithNull('token_score', 'TOKEN'),
+          makeFeatureWithNull('val_score', 'VAL'),
+          makeFeatureWithNull('adopt_score', 'ADOPT'),
+          makeFeatureWithNull('comm_score', 'COMM'),
         ],
         eventRiskSeverity: 0,
       };

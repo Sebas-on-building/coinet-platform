@@ -545,8 +545,15 @@ export class ChatService {
               
               if (validScores.length > 0) {
                 // Generate visual quadrant map
+                // Map project IDs back to proper ticker symbols (BTC, ETH, SOL, not BITCOIN, ETHEREUM, SOLANA)
+                const projectToSymbol: Record<string, string> = {};
+                for (const coin of coinsToAnalyze) {
+                  const cgId = coin.coinGeckoId || coin.symbol.toLowerCase();
+                  projectToSymbol[cgId] = coin.symbol.toUpperCase();
+                }
+                
                 const visualizerData: VisualizerProject[] = validScores.map((s: any) => ({
-                  ticker: s.project.toUpperCase(),
+                  ticker: projectToSymbol[s.project] || s.project.toUpperCase().slice(0, 4), // Use proper symbol, fallback to truncated ID
                   qs: s.qualityScore.score,
                   os: s.opportunityScore.gated ? null : s.opportunityScore.score,
                   pos: s.pos.raw,
@@ -588,11 +595,58 @@ export class ChatService {
                   chartStored: !!(request as any)._omniscoreQuadrantChart,
                 });
                 
-                // Add individual summaries too if needed, or rely on visual chart
-                // Maybe add brief summary for top 1
-                if (validScores[0]) {
-                  contextParts.push(formatOmniScoreForAI(validScores[0] as any));
+                // 🚨 FIX: Add ALL coins' OmniScore data to AI context, not just the first one!
+                // Previously only BTC got the detailed formatOmniScoreForAI treatment, causing
+                // the AI to hallucinate scores for ETH/SOL. Now we add EVERY coin.
+                contextParts.push(`
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  🚨 MULTI-COIN OMNISCORE ANALYSIS - USE EXACT NUMBERS BELOW                  ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+⚠️ CRITICAL COMPLIANCE RULES FOR MULTI-COIN ANALYSIS:
+1. You MUST use the EXACT scores shown below for EACH coin
+2. NEVER invent, estimate, or "peg" scores - ONLY use values from this payload
+3. Each coin has its own POS, QS, OS, and tier - do NOT confuse them
+4. If a coin is not listed below, say "OmniScore not available for [SYMBOL]"
+
+════════════════════════════════════════════════════════════════════════════════
+`);
+                
+                for (const score of validScores) {
+                  const s = score as any;
+                  const ticker = projectToSymbol[s.project] || s.project.toUpperCase();
+                  const quadrant = s.qualityScore.score >= 60 && s.opportunityScore.score >= 60 ? 'TARGET' :
+                                   s.qualityScore.score >= 60 && s.opportunityScore.score < 60 ? 'BUILDER' :
+                                   s.qualityScore.score < 60 && s.opportunityScore.score >= 60 ? 'HYPE' : 'AVOID';
+                  
+                  contextParts.push(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ${ticker} - OmniScore Analysis (v${s.audit.engineVersion})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• POS (Overall Score):    ${s.pos.adjusted}/100  ← USE THIS EXACT NUMBER
+• Tier:                   ${s.pos.tier}          ← USE THIS EXACT STRING
+• Quality Score (QS):     ${s.qualityScore.score}/100 (${s.qualityScore.tier})
+• Opportunity Score (OS): ${s.opportunityScore.score}/100 (${s.opportunityScore.tier})
+• Quadrant Position:      ${quadrant} Zone
+• Risk Score:             ${s.risk.score.toFixed(1)}/100
+• NRG:                    ${s.nrg.value >= 0 ? '+' : ''}${s.nrg.value.toFixed(2)} (${s.nrg.interpretation})
+• Confidence:             ${s.audit.confidence}
+• Coverage (QS/OS):       ${(s.qualityScore.coverage * 100).toFixed(0)}% / ${(s.opportunityScore.coverage * 100).toFixed(0)}%
+
+✅ CORRECT: "${ticker} scores ${s.pos.adjusted}/100 (${s.pos.tier} tier)"
+❌ WRONG:   "${ticker} scores [any other number] (${s.pos.tier !== 'Weak' ? 'Weak' : 'Strong'} tier)"
+`);
                 }
+                
+                contextParts.push(`
+════════════════════════════════════════════════════════════════════════════════
+🚫 FORBIDDEN PATTERNS:
+❌ "ETH and SOL both score 43" - WRONG! Use the EXACT scores above
+❌ Confusing quadrant position (Builder/Target) with tier (Elite/Strong/Weak)
+❌ Saying "around X" or "approximately X" - use EXACT values
+❌ Making up scores for coins NOT listed above
+════════════════════════════════════════════════════════════════════════════════
+`);
               } else {
                 // FAIL-CLOSED: No valid scores available - tell AI not to improvise
                 contextParts.push(`
