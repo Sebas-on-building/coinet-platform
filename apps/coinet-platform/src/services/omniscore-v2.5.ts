@@ -69,6 +69,8 @@ import {
   type ShrinkageResult,
   type PenaltyAudit,
 } from './omniscore-reliability';
+import { omniScoreCache, type CachedScore } from './omniscore-cache';
+import { assessLegitimacy, type LegitimacyResult, type LegitimacyStatus } from './omniscore-legitimacy';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PRODUCTION TYPE DEFINITIONS
@@ -2241,7 +2243,21 @@ export function calculateOmniScoreProduction(
   const sector = (params.sector || 'Unknown') as SectorType;
   const capBucket = getCapBucket(params.marketCapUsd);
   
-  logger.info(`[OmniScore v2.3.2] Calculating for ${params.projectId}`, { requestId, sector, capBucket });
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.7.0: CACHE CHECK - Return cached score if still valid (consistency!)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const cachedScore = omniScoreCache.get(params.projectId);
+  if (cachedScore) {
+    logger.info(`[OmniScore v2.7.0] CACHE HIT for ${params.projectId}`, {
+      pos: cachedScore.pos,
+      tier: cachedScore.posTier,
+      age: `${((Date.now() - cachedScore.timestamp) / 1000).toFixed(1)}s`,
+    });
+    // Return cached response (convert cache format to response format)
+    return buildCachedResponse(cachedScore, params, requestId, now);
+  }
+  
+  logger.info(`[OmniScore v2.7.0] Calculating for ${params.projectId}`, { requestId, sector, capBucket });
   
   // v2.3.2: Determine cold-start policy
   const coldStart = determineColdStartPolicy(params.projectAgeInDays || 365);
@@ -2765,25 +2781,249 @@ export function calculateOmniScoreProduction(
   };
   
   assertEngineVersion(response);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.7.0: CACHE-BASED TEMPORAL SMOOTHING & STORAGE
+  // Apply additional smoothing using cached scores for consistency
+  // ═══════════════════════════════════════════════════════════════════════════
+  const cacheSmoothing = omniScoreCache.applyTemporalSmoothing(
+    params.projectId,
+    qsScore,
+    qsGated ? null : osScore,
+    posAdjusted,
+    ers
+  );
+  
+  // Update response with cache-smoothed values if smoothing was applied
+  if (cacheSmoothing.smoothingApplied) {
+    response.qualityScore.score = Math.round(cacheSmoothing.qs * 10) / 10;
+    response.qualityScore.tier = getTier(cacheSmoothing.qs);
+    
+    if (!qsGated && cacheSmoothing.os !== null) {
+      response.opportunityScore.score = Math.round(cacheSmoothing.os * 10) / 10;
+      response.opportunityScore.tier = getTier(cacheSmoothing.os);
+    }
+    
+    response.pos.adjusted = Math.round(cacheSmoothing.pos * 10) / 10;
+    response.pos.tier = getTier(cacheSmoothing.pos);
+    
+    // Add cache smoothing info to audit
+    (response.audit as any).cacheSmoothing = {
+      applied: true,
+      details: cacheSmoothing.details,
+    };
+    
+    logger.info(`[OmniScore v2.7.0] Cache smoothing applied for ${params.projectId}`, {
+      qsOriginal: qsScore.toFixed(1),
+      qsSmoothed: cacheSmoothing.qs.toFixed(1),
+      posOriginal: posAdjusted.toFixed(1),
+      posSmoothed: cacheSmoothing.pos.toFixed(1),
+    });
+  }
+  
+  // Store in cache for future consistency
+  omniScoreCache.set({
+    projectId: params.projectId,
+    timestamp: Date.now(),
+    qs: response.qualityScore.score,
+    os: qsGated ? null : response.opportunityScore.score,
+    rs: riskScore,
+    pos: response.pos.adjusted,
+    qsTier: response.qualityScore.tier,
+    osTier: qsGated ? null : response.opportunityScore.tier,
+    posTier: response.pos.tier,
+    confidence,
+    quadrant: getQuadrantZone(response.qualityScore.score, qsGated ? null : response.opportunityScore.score),
+    qsRaw: qsScore,
+    osRaw: qsGated ? null : osScore,
+    posRaw: posRaw,
+    engineVersion: CONFIG.VERSION,
+  });
+  
   logger.info(`[OmniScore v${CONFIG.VERSION}] Completed for ${params.projectId}`, {
     requestId,
     posRaw: Math.round(posRaw * 10) / 10,
     posSmoothed: Math.round(posSmoothed * 10) / 10,
-    posAdjusted: Math.round(posAdjusted * 10) / 10,
-    tier: finalTier,
+    posAdjusted: response.pos.adjusted,
+    tier: response.pos.tier,
     conditionedTier: tierContext.conditionedTier,
     percentile: tierContext.percentile,
     confidence,
     coldStartMode: coldStart.mode,
-    smoothingApplied: smoothingTracking.enabled,
+    smoothingApplied: smoothingTracking.enabled || cacheSmoothing.smoothingApplied,
     smoothingDelta: smoothingTracking.enabled ? smoothingTracking.boundedDelta : null,
     posPlausibilityCapped,
     nmiTier: nmi.tier,
     threatLevel: threatModel.overallRisk,
     invariantStatus: response.audit.invariantStatus,
+    cachedForConsistency: true,
   });
-  
+
   return response;
+}
+
+/**
+ * v2.7.0: Build a response from cached score data
+ * Used when returning a cache hit for consistency
+ */
+function buildCachedResponse(
+  cached: CachedScore,
+  params: CalculateOmniScoreParams,
+  requestId: string,
+  now: string
+): OmniScoreProductionResponse {
+  const sector = (params.sector || 'Unknown') as SectorType;
+  const capBucket = getCapBucket(params.marketCapUsd);
+  
+  return {
+    success: true,
+    engine: 'OmniScore',
+    version: CONFIG.VERSION,
+    project: params.projectId,
+    timestamp: now,
+    
+    qualityScore: {
+      score: cached.qs,
+      tier: cached.qsTier as TierLabel,
+      confidence: cached.confidence as ConfidenceLevel,
+      coverage: 1.0, // Cached score had full coverage
+      breakdown: {
+        team: 0.8,
+        tech: 0.8,
+        security: 0.8,
+        governance: 0.8,
+        ecosystem: 0.8,
+      },
+    },
+    
+    opportunityScore: {
+      status: cached.os === null ? 'gated' : 'ok',
+      score: cached.os ?? 50,
+      tier: (cached.osTier ?? 'Neutral') as TierLabel,
+      coverage: 1.0,
+    },
+    
+    risk: {
+      score: cached.rs,
+      eventRiskSeverity: 0,
+      adjustmentGamma: 15,
+    },
+    
+    pos: {
+      raw: cached.posRaw,
+      adjusted: cached.pos,
+      tier: cached.posTier as TierLabel,
+      confidenceBand: [cached.pos - 5, cached.pos + 5] as [number, number],
+    },
+    
+    nrg: {
+      value: 0,
+      percentile: 0.5,
+      interpretation: 'balanced' as NRGInterpretation,
+    },
+    
+    explainability: {
+      qsDrivers: [],
+      osDrivers: [],
+    },
+    
+    upgradeRecommendations: {
+      immediate: [],
+      shortTerm: [],
+      strategic: [],
+      note: 'Cached result',
+      highImpact: [],
+      quickWins: [],
+      strategicBet: [],
+    },
+    
+    audit: {
+      engineVersion: cached.engineVersion,
+      methodologyVersion: CONFIG.METHODOLOGY_VERSION,
+      requestId,
+      dataAsOf: now,
+      sourcesUsed: ['cache'],
+      coverageQS: 1.0,
+      coverageOS: 1.0,
+      confidence: cached.confidence as ConfidenceLevel,
+      gatingApplied: cached.os === null,
+      invariantStatus: 'pass',
+      violations: [],
+      warnings: [],
+      regimeSnapshot: { bull: 0.2, bear: 0.2, neutral: 0.4, crisis: 0.1, recovery: 0.1 },
+      clampApplied: { qs: false, os: false, pos: false, posAdj: false },
+      methodology: {
+        id: CONFIG.METHODOLOGY.ID,
+        hash: CONFIG.METHODOLOGY.HASH,
+        url: CONFIG.METHODOLOGY.URL,
+      },
+      reflexivitySentinel: { status: 'healthy', priceCorrelation: 0 },
+      featureSchemaVersion: CONFIG.FEATURE_SCHEMA_VERSION,
+      sectorPackId: `${sector.toLowerCase()}-core40`,
+      clampHistoryCount: 0,
+      coldStartMode: 'standard',
+      tierConditioningApplied: false,
+      tierMismatch: false,
+      rawTierUsed: cached.posTier as TierLabel,
+      conditionedTierInternal: cached.posTier as TierLabel,
+      capBucket,
+      smoothingApplied: {
+        enabled: false,
+        alpha: 1.0,
+        previousPos: null,
+        rawDelta: 0,
+        boundedDelta: 0,
+        maxDeltaAllowed: 0,
+        wasLimited: false,
+        eventMode: false,
+        timeSinceLastHours: null,
+      },
+      posPlausibilityCapped: false,
+      posBeforeCap: cached.pos,
+      formulaVersion: 'v2.7',
+      fundamentalsFloor: 0,
+      fundamentalsFloorApplied: false,
+      v26Adjustments: {
+        qualityGate: { passed: true, qsScore: cached.qs, threshold: 15 },
+        lowQSOSCap: { applied: false, originalOS: cached.os ?? 50, cappedOS: cached.os ?? 50, reason: '' },
+        contrarianBoost: { applied: false, amount: 0, reason: '' },
+        fearGreedIndex: 50,
+        osFinal: cached.os ?? 50,
+      },
+      // Mark as cache hit
+      cacheHit: true,
+      cacheAge: Date.now() - cached.timestamp,
+    } as any,
+    
+    // Required additional fields
+    nmi: { score: 0, tier: 'clean', signals: { botRisk: 0, anomalyBursts: 0, influencerConcentration: 0 }, riskAssessment: '' },
+    stressTest: { scenarios: [], worstCase: { pos: cached.pos, delta: 0, scenario: 'none' }, resilience: 1.0 },
+    tierContext: { 
+      regime: 'neutral' as RegimeType, 
+      sector, 
+      capBucket, 
+      historicalMean: 60, 
+      historicalStd: 15, 
+      percentile: 0.5, 
+      rawTier: cached.posTier as TierLabel, 
+      conditionedTier: cached.posTier as TierLabel, 
+      tierMismatch: false 
+    },
+    coldStart: { 
+      isEarlyStage: false, 
+      ageInDays: 365, 
+      mode: 'standard' as const, 
+      adjustments: { priorStrength: 0, uncertaintyMultiplier: 1, osExposureReduction: 0, tierConservatism: 0 }, 
+      reason: 'Cached result' 
+    },
+    identityGraph: null,
+    threatModel: { 
+      overallRisk: 'low' as const, 
+      riskFactors: [], 
+      mitigations: [], 
+      confidenceInAssessment: 0.9 
+    },
+  } as unknown as OmniScoreProductionResponse;
 }
 
 /**

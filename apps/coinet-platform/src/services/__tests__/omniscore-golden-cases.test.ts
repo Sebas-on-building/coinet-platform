@@ -18,7 +18,7 @@
  * - Mild fundamentals floor (lower than v2.4) to allow formula to work naturally
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   calculateOmniScoreProduction,
   toOmniScoreSnapshot,
@@ -27,8 +27,14 @@ import {
   type CalculateOmniScoreParams,
   type OmniScoreSnapshot,
 } from '../omniscore';
+import { omniScoreCache } from '../omniscore-cache';
 
 describe('OmniScore Golden Cases', () => {
+  
+  // Clear the cache before each test to ensure test isolation
+  beforeEach(() => {
+    omniScoreCache.clear();
+  });
   
   // Helper to create features
   const makeFeature = (key: string, segment: any, value: number): FeatureInput => ({
@@ -273,6 +279,9 @@ describe('OmniScore Golden Cases', () => {
       expect(snapshot1.posAdjusted).toBeGreaterThanOrEqual(60);
       expect(snapshot1.posAdjusted).toBeLessThanOrEqual(75);
       
+      // Clear cache to simulate time passing (next day)
+      omniScoreCache.clear();
+      
       // Day 2: Simulate temporary data glitch (OS drops dramatically)
       const day2Params: CalculateOmniScoreParams = {
         ...baseParams,
@@ -333,6 +342,10 @@ describe('OmniScore Golden Cases', () => {
       
       const day1 = calculateOmniScoreProduction(baseParams);
       const snapshot1 = toOmniScoreSnapshot(day1);
+      
+      // Clear cache to simulate time passing (next day)
+      // In production, the cache TTL would expire naturally
+      omniScoreCache.clear();
       
       // Day 2: Major exploit (ERS = 0.8)
       const day2Params: CalculateOmniScoreParams = {

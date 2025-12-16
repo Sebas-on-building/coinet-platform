@@ -26,61 +26,111 @@ export interface AnchorPrior {
 }
 
 /**
- * Anchor priors by project category
- * These are "long-run baseline expectations" that prevent absurd outcomes
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * ANCHOR PRIORS - DIABOLICAL EDITION
+ * 
+ * These are "long-run baseline expectations" for legitimate projects.
+ * Good projects SHOULD score 90+ because they ARE good.
+ * 
+ * Philosophy:
+ * - BTC/ETH are the gold standard - they should score Elite (90+) by default
+ * - SOL and top L1s should score Strong-to-Elite (85-95)
+ * - Established DeFi should score Strong (80-90)
+ * - Prior strength determines how much we trust prior vs data
+ * ═══════════════════════════════════════════════════════════════════════════════
  */
 export const ANCHOR_PRIORS: Record<string, AnchorPrior> = {
   // ═══════════════════════════════════════════════════════════════════════════
-  // MEGA-CAP MAJORS - These should almost NEVER appear weak
-  // Expected ranges: BTC (80-95), ETH (75-90), SOL (65-85)
+  // TIER 0: THE MAJORS - These ARE the standard. Score 90+ is NORMAL.
+  // BTC/ETH have 15+ years of track record, massive ecosystems, proven security
   // ═══════════════════════════════════════════════════════════════════════════
-  'bitcoin': { qsPrior: 92, osPrior: 78, priorStrength: 0.88 },  // BTC: 80-95 expected
-  'btc': { qsPrior: 92, osPrior: 78, priorStrength: 0.88 },      // Alias for tests
-  'ethereum': { qsPrior: 88, osPrior: 72, priorStrength: 0.85 }, // ETH: 75-90 expected
-  'eth': { qsPrior: 88, osPrior: 72, priorStrength: 0.85 },      // Alias for tests
-  
-  // SOL: Strong ecosystem (#2 DeFi), high dev activity
-  // Expected range: 65-85
-  'solana': { qsPrior: 82, osPrior: 68, priorStrength: 0.78 },
-  'sol': { qsPrior: 82, osPrior: 68, priorStrength: 0.78 },      // Alias for tests
+  'bitcoin': { qsPrior: 96, osPrior: 88, priorStrength: 0.92 },  // BTC: Elite baseline
+  'btc': { qsPrior: 96, osPrior: 88, priorStrength: 0.92 },      
+  'ethereum': { qsPrior: 94, osPrior: 82, priorStrength: 0.90 }, // ETH: Elite baseline
+  'eth': { qsPrior: 94, osPrior: 82, priorStrength: 0.90 },      
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // LARGE L1s - Strong baseline, expected range: 60-80
+  // TIER 1: PROVEN L1s - Strong-to-Elite (85-95)
+  // Multi-year track record, significant ecosystem, battle-tested
   // ═══════════════════════════════════════════════════════════════════════════
-  'cardano': { qsPrior: 74, osPrior: 60, priorStrength: 0.68 },
-  'avalanche': { qsPrior: 76, osPrior: 62, priorStrength: 0.68 },
-  'polygon': { qsPrior: 76, osPrior: 64, priorStrength: 0.68 },
-  'polkadot': { qsPrior: 74, osPrior: 56, priorStrength: 0.65 },
-  'cosmos': { qsPrior: 74, osPrior: 58, priorStrength: 0.65 },
-  'near': { qsPrior: 72, osPrior: 60, priorStrength: 0.60 },
+  'solana': { qsPrior: 90, osPrior: 78, priorStrength: 0.85 },   // SOL: #2 DeFi ecosystem
+  'sol': { qsPrior: 90, osPrior: 78, priorStrength: 0.85 },      
+  'bnb': { qsPrior: 88, osPrior: 75, priorStrength: 0.82 },      // BNB: Massive ecosystem
+  'cardano': { qsPrior: 85, osPrior: 68, priorStrength: 0.78 },  // ADA: Research-driven
+  'ada': { qsPrior: 85, osPrior: 68, priorStrength: 0.78 },
+  'avalanche': { qsPrior: 86, osPrior: 72, priorStrength: 0.78 },
+  'avax': { qsPrior: 86, osPrior: 72, priorStrength: 0.78 },
+  'polygon': { qsPrior: 86, osPrior: 74, priorStrength: 0.78 },
+  'matic': { qsPrior: 86, osPrior: 74, priorStrength: 0.78 },
+  'polkadot': { qsPrior: 84, osPrior: 65, priorStrength: 0.75 },
+  'dot': { qsPrior: 84, osPrior: 65, priorStrength: 0.75 },
+  'cosmos': { qsPrior: 84, osPrior: 68, priorStrength: 0.75 },
+  'atom': { qsPrior: 84, osPrior: 68, priorStrength: 0.75 },
+  'near': { qsPrior: 82, osPrior: 70, priorStrength: 0.72 },
+  'sui': { qsPrior: 80, osPrior: 72, priorStrength: 0.68 },
+  'aptos': { qsPrior: 80, osPrior: 70, priorStrength: 0.68 },
+  'apt': { qsPrior: 80, osPrior: 70, priorStrength: 0.68 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // ESTABLISHED DeFi - Strong quality, expected range: 65-85
+  // TIER 2: BLUE-CHIP DeFi - Strong (80-90)
+  // Category leaders, significant TVL, proven smart contracts
   // ═══════════════════════════════════════════════════════════════════════════
-  'chainlink': { qsPrior: 84, osPrior: 68, priorStrength: 0.75 },
-  'uniswap': { qsPrior: 82, osPrior: 65, priorStrength: 0.70 },
-  'aave': { qsPrior: 80, osPrior: 62, priorStrength: 0.70 },
-  'maker': { qsPrior: 78, osPrior: 55, priorStrength: 0.65 },
-  'curve': { qsPrior: 78, osPrior: 58, priorStrength: 0.65 },
-  'compound': { qsPrior: 76, osPrior: 52, priorStrength: 0.60 },
+  'chainlink': { qsPrior: 92, osPrior: 75, priorStrength: 0.85 }, // LINK: Oracle king
+  'link': { qsPrior: 92, osPrior: 75, priorStrength: 0.85 },
+  'uniswap': { qsPrior: 90, osPrior: 72, priorStrength: 0.82 },   // UNI: DEX leader
+  'uni': { qsPrior: 90, osPrior: 72, priorStrength: 0.82 },
+  'aave': { qsPrior: 88, osPrior: 70, priorStrength: 0.80 },      // AAVE: Lending king
+  'maker': { qsPrior: 86, osPrior: 62, priorStrength: 0.78 },     // MKR: DAI stability
+  'mkr': { qsPrior: 86, osPrior: 62, priorStrength: 0.78 },
+  'lido': { qsPrior: 86, osPrior: 72, priorStrength: 0.78 },      // LDO: Liquid staking
+  'ldo': { qsPrior: 86, osPrior: 72, priorStrength: 0.78 },
+  'curve': { qsPrior: 84, osPrior: 65, priorStrength: 0.75 },
+  'crv': { qsPrior: 84, osPrior: 65, priorStrength: 0.75 },
+  'compound': { qsPrior: 82, osPrior: 58, priorStrength: 0.72 },
+  'comp': { qsPrior: 82, osPrior: 58, priorStrength: 0.72 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // L2s - High quality, expected range: 65-80
+  // TIER 3: L2s & INFRASTRUCTURE - Strong (78-88)
+  // Scaling solutions with proven traction
   // ═══════════════════════════════════════════════════════════════════════════
-  'arbitrum': { qsPrior: 78, osPrior: 68, priorStrength: 0.68 },
-  'optimism': { qsPrior: 76, osPrior: 65, priorStrength: 0.65 },
-  'base': { qsPrior: 74, osPrior: 62, priorStrength: 0.60 },
+  'arbitrum': { qsPrior: 86, osPrior: 74, priorStrength: 0.78 },
+  'arb': { qsPrior: 86, osPrior: 74, priorStrength: 0.78 },
+  'optimism': { qsPrior: 84, osPrior: 72, priorStrength: 0.75 },
+  'op': { qsPrior: 84, osPrior: 72, priorStrength: 0.75 },
+  'base': { qsPrior: 82, osPrior: 70, priorStrength: 0.72 },      // Coinbase L2
+  'starknet': { qsPrior: 80, osPrior: 68, priorStrength: 0.68 },
+  'strk': { qsPrior: 80, osPrior: 68, priorStrength: 0.68 },
+  'zksync': { qsPrior: 78, osPrior: 65, priorStrength: 0.65 },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TIER 4: EMERGING QUALITY - Neutral-to-Strong (70-82)
+  // Promising but less proven
+  // ═══════════════════════════════════════════════════════════════════════════
+  'render': { qsPrior: 78, osPrior: 68, priorStrength: 0.65 },
+  'rndr': { qsPrior: 78, osPrior: 68, priorStrength: 0.65 },
+  'filecoin': { qsPrior: 76, osPrior: 62, priorStrength: 0.62 },
+  'fil': { qsPrior: 76, osPrior: 62, priorStrength: 0.62 },
+  'injective': { qsPrior: 76, osPrior: 68, priorStrength: 0.62 },
+  'inj': { qsPrior: 76, osPrior: 68, priorStrength: 0.62 },
+  'tia': { qsPrior: 74, osPrior: 70, priorStrength: 0.58 },
+  'celestia': { qsPrior: 74, osPrior: 70, priorStrength: 0.58 },
 };
 
 /**
  * Default priors by cap bucket (for projects not in ANCHOR_PRIORS)
+ * 
+ * Philosophy: Market cap IS a signal of legitimacy and adoption
+ * - Mega-caps ($10B+) have passed the "survive" test → Strong baseline
+ * - Large-caps ($1B+) are established → Decent baseline
+ * - Mid-caps need more scrutiny → Neutral baseline
+ * - Small/Micro need high data confidence to score high
  */
 export const DEFAULT_PRIORS_BY_CAP: Record<CapBucket, AnchorPrior> = {
-  mega: { qsPrior: 82, osPrior: 68, priorStrength: 0.60 },   // $10B+ - strong baseline
-  large: { qsPrior: 72, osPrior: 60, priorStrength: 0.50 },  // $1B+ - decent baseline
-  mid: { qsPrior: 62, osPrior: 55, priorStrength: 0.40 },    // $100M+ - neutral baseline
-  small: { qsPrior: 55, osPrior: 52, priorStrength: 0.30 },  // $10M+ - cautious baseline
-  micro: { qsPrior: 50, osPrior: 50, priorStrength: 0.20 },  // <$10M - neutral baseline
+  mega: { qsPrior: 88, osPrior: 75, priorStrength: 0.75 },   // $10B+ - Elite baseline
+  large: { qsPrior: 80, osPrior: 68, priorStrength: 0.65 },  // $1B+ - Strong baseline
+  mid: { qsPrior: 70, osPrior: 60, priorStrength: 0.50 },    // $100M+ - Neutral-Strong
+  small: { qsPrior: 60, osPrior: 55, priorStrength: 0.35 },  // $10M+ - Neutral baseline
+  micro: { qsPrior: 50, osPrior: 50, priorStrength: 0.20 },  // <$10M - Data-dependent
 };
 
 /**
