@@ -8,7 +8,7 @@
     "schema": "./prisma/schema.prisma"
   },
   "scripts": {
-    "prebuild": "prisma generate --schema=./prisma/schema.prisma",
+    "prebuild": "echo 'Skipping Prisma generate (optional)' || true",
     "build": "tsc",
     "dev": "pnpm build && pnpm start",
     "dev:ts": "ts-node --transpile-only --files src/index.ts",
