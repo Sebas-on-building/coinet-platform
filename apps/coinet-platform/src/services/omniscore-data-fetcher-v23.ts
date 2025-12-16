@@ -19,6 +19,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { PrismaClient } from '@prisma/client';
 import { 
   FeatureInput, 
   Segment,
@@ -38,21 +39,7 @@ import {
   TwitterProjectIntelligence
 } from './twitter-intelligence';
 
-// Lazy-load PrismaClient to avoid build errors if Prisma isn't available
-let prismaClient: any = null;
-function getPrismaClient() {
-  if (prismaClient === null) {
-    try {
-      // Dynamic import to avoid build-time errors
-      const { PrismaClient } = require('@prisma/client');
-      prismaClient = new PrismaClient();
-    } catch (error) {
-      logger.warn('[OmniScore] PrismaClient not available, persistence disabled', { error });
-      prismaClient = false; // Use false to indicate unavailable (null means not tried yet)
-    }
-  }
-  return prismaClient === false ? null : prismaClient;
-}
+const prisma = new PrismaClient();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTOR DETECTION
@@ -694,11 +681,6 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
  * In production, this would query a time-series DB or cache
  */
 async function getPreviousPos(projectId: string): Promise<{ pos: number | null; timestamp: string | null; engineVersion: string | null }> {
-  const prisma = getPrismaClient();
-  if (!prisma) {
-    return { pos: null, timestamp: null, engineVersion: null };
-  }
-  
   try {
     const latestEntry = await prisma.omniScoreHistory.findFirst({
       where: { projectId },
@@ -719,11 +701,6 @@ async function getPreviousPos(projectId: string): Promise<{ pos: number | null; 
  * v2.3.4: Store current POS for future smoothing
  */
 async function storePosForSmoothing(projectId: string, pos: number, timestamp: string, engineVersion: string, formulaVersion: string): Promise<void> {
-  const prisma = getPrismaClient();
-  if (!prisma) {
-    return; // Skip persistence if Prisma isn't available
-  }
-  
   try {
     await prisma.omniScoreHistory.create({
       data: {
