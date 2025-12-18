@@ -34,6 +34,11 @@ import {
   setCachedPrice,
   CachedPriceData 
 } from './redis-client';
+import { 
+  getCoinIdValidator, 
+  validateCoinIds as validateCoinIdsService,
+  CoinIdValidationResult 
+} from './coin-id-validator';
 
 // ============================================================================
 // CONFIGURATION
@@ -278,16 +283,47 @@ async function fetchFromMarketPrices(symbols: string[]): Promise<MarketPrice[]> 
 
 /**
  * Fetch from CoinGecko API
+ * 
+ * ✅ ENHANCED: Pre-validates coin IDs before API call to prevent
+ * misleading empty object responses from CoinGecko.
  */
 async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
   if (coinIds.length === 0) return [];
 
   try {
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 0: PRE-VALIDATE COIN IDs (Prevents misleading empty responses)
+    // ═══════════════════════════════════════════════════════════════════════
+    const validation = await validateCoinIdsService(coinIds);
+    
+    if (validation.invalid.length > 0) {
+      logger.warn('🚫 Invalid coin IDs filtered before CoinGecko API call', {
+        invalidIds: validation.invalid,
+        validIds: validation.valid,
+        originalCount: coinIds.length,
+        validCount: validation.valid.length,
+      });
+    }
+
+    // Use only validated coin IDs
+    const validCoinIds = validation.valid;
+    
+    if (validCoinIds.length === 0) {
+      logger.debug('No valid coin IDs after pre-validation, skipping CoinGecko call');
+      return [];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 1: RATE LIMITING
+    // ═══════════════════════════════════════════════════════════════════════
     const isPro = !!CONFIG.COINGECKO_API_KEY;
     const rateLimit = isPro ? CONFIG.RATE_LIMITS.COINGECKO_PRO : CONFIG.RATE_LIMITS.COINGECKO_FREE;
     
     await rateLimiter.waitForSlot('COINGECKO', rateLimit);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 2: API CALL (with validated IDs only)
+    // ═══════════════════════════════════════════════════════════════════════
     const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
     const headers: Record<string, string> = { 'Accept': 'application/json' };
     
@@ -295,10 +331,9 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
       headers['x-cg-pro-api-key'] = CONFIG.COINGECKO_API_KEY;
     }
 
-    // CoinGecko /simple/price endpoint
     const response = await axios.get(`${baseUrl}/simple/price`, {
       params: {
-        ids: coinIds.join(','),
+        ids: validCoinIds.join(','), // ✅ Only validated IDs
         vs_currencies: 'usd',
         include_24hr_change: true,
         include_24hr_vol: true,
@@ -309,9 +344,31 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
       timeout: CONFIG.TIMEOUTS.COINGECKO,
     });
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 3: RESPONSE VALIDATION (Defense in depth)
+    // ═══════════════════════════════════════════════════════════════════════
+    // ⚠️ Even with pre-validation, still check for empty responses
+    // (API issues, temporary delisting, etc.)
+    if (!response.data || Object.keys(response.data).length === 0) {
+      logger.warn('CoinGecko returned empty response despite valid IDs', { 
+        requestedCoinIds: validCoinIds,
+        possibleCause: 'API issue, temporary delisting, or network problem'
+      });
+      return [];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 4: PROCESS RESPONSE
+    // ═══════════════════════════════════════════════════════════════════════
     const prices: MarketPrice[] = [];
 
     for (const [id, data] of Object.entries(response.data) as [string, any][]) {
+      // Validate data structure - CoinGecko might return incomplete data
+      if (!data || typeof data !== 'object' || !data.usd) {
+        logger.warn('CoinGecko returned incomplete data for coin', { id, data });
+        continue;
+      }
+      
       const coin = symbolDetector.getCoinById(id);
       const price: MarketPrice = {
         symbol: coin?.symbol.toUpperCase() || id.toUpperCase(),
@@ -332,7 +389,14 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
       priceCache.set(price.symbol, price);
     }
 
-    logger.debug('📊 CoinGecko fetch', { requested: coinIds.length, found: prices.length, isPro });
+    logger.debug('📊 CoinGecko fetch complete', { 
+      requested: coinIds.length,
+      validated: validCoinIds.length, 
+      found: prices.length, 
+      isPro,
+      preValidated: validation.cached,
+    });
+    
     return prices;
   } catch (error: any) {
     if ((error as AxiosError).response?.status === 429) {
@@ -772,14 +836,22 @@ function formatPrice(price: number): string {
 // ============================================================================
 
 /**
- * Get system status
+ * Get system status including coin ID validator stats
  */
 export function getMarketDataStatus(): {
   rateLimits: Record<string, { callCount: number; remaining: number }>;
   cacheEnabled: boolean;
   redisEnabled: boolean;
   providers: { name: string; enabled: boolean; priority: number }[];
+  coinIdValidator: {
+    initialized: boolean;
+    coinCount: number;
+    cacheValid: boolean;
+    hitRate: number;
+  };
 } {
+  const validatorStats = getCoinIdValidator().getStats();
+  
   return {
     rateLimits: {
       MARKET_PRICES: rateLimiter.getStats('MARKET_PRICES'),
@@ -796,5 +868,11 @@ export function getMarketDataStatus(): {
       { name: 'coinmarketcap', enabled: !!CONFIG.CMC_API_KEY, priority: 3 },
       { name: 'dexscreener', enabled: true, priority: 4 },
     ],
+    coinIdValidator: {
+      initialized: validatorStats.isInitialized,
+      coinCount: validatorStats.totalCoins,
+      cacheValid: validatorStats.cacheValid,
+      hitRate: Math.round(validatorStats.hitRate * 100) / 100,
+    },
   };
 }
