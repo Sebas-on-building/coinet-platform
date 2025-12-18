@@ -19,6 +19,7 @@ import { fetchNews, getNewsServiceStatus, warmNewsCache, startNewsRefreshInterva
 import { aiService } from './services/ai-service';
 import { initializeRedis, getRedisStatus, getCacheStats, closeRedis } from './services/redis-client';
 import { logApiKeysStatus, generateApiKeysReport, getGracefulDegradation } from './services/api-keys';
+import { initializeCoinIdValidator } from './services/coin-id-validator';
 
 // Load environment variables
 dotenv.config();
@@ -4425,6 +4426,17 @@ async function startServer() {
     }
   } catch (redisError) {
     logger.warn('🔴 Redis initialization failed', { error: redisError instanceof Error ? redisError.message : 'Unknown' });
+  }
+
+  // Initialize Coin ID Validator (pre-validates CoinGecko coin IDs)
+  try {
+    logger.info('🔄 Initializing Coin ID Validator...');
+    await initializeCoinIdValidator();
+    logger.info('✅ Coin ID Validator initialized successfully');
+  } catch (validatorError) {
+    logger.warn('⚠️  Coin ID Validator initialization failed - will degrade gracefully', { 
+      error: validatorError instanceof Error ? validatorError.message : 'Unknown' 
+    });
   }
 
   try {
