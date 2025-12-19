@@ -538,6 +538,9 @@ function convertRedisPriceToMarketPrice(
     marketCap: cached.marketCap,
     high24h: cached.high24h,
     low24h: cached.low24h,
+    // ATH data - CRITICAL for accurate AI responses
+    ath: cached.ath,
+    athDate: cached.athDate,
     source: 'cache', // Mark as from Redis cache
     lastUpdated: new Date().toISOString(),
     confidence: 0.98, // High confidence - from ai-data-feeder
@@ -629,6 +632,9 @@ async function fetchWithFallback(
             marketCap: price.marketCap,
             high24h: price.high24h,
             low24h: price.low24h,
+            // ATH data - CRITICAL for accurate AI responses
+            ath: price.ath,
+            athDate: price.athDate,
           }, 60).catch(() => {}); // Fire and forget
         }
       }

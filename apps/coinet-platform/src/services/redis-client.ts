@@ -43,6 +43,14 @@ export interface CachedPriceData {
   low24h?: number;
   volume24h: number;
   marketCap: number;
+  // ATH data - CRITICAL for accurate AI responses
+  ath?: number;
+  athDate?: string;
+  athChangePercent?: number;
+  // Supply data
+  circulatingSupply?: number;
+  totalSupply?: number;
+  maxSupply?: number;
 }
 
 /**

@@ -1822,6 +1822,50 @@ export async function fetchEnterpriseMarketPrices(
     });
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Ensure ATH data is always fetched from CoinGecko when missing
+  // This is essential for accurate AI responses about all-time highs
+  // ═══════════════════════════════════════════════════════════════════════════
+  const pricesWithoutATH = finalPrices.filter(p => !p.ath || !p.athDate);
+  if (pricesWithoutATH.length > 0) {
+    logger.debug('🔍 Fetching missing ATH data for coins', { 
+      count: pricesWithoutATH.length,
+      coins: pricesWithoutATH.map(p => p.symbol)
+    });
+    
+    try {
+      // Fetch detailed data from CoinGecko for coins missing ATH
+      const athCoinIds = pricesWithoutATH
+        .map(p => p.coinGeckoId)
+        .filter((id): id is string => !!id);
+      
+      if (athCoinIds.length > 0) {
+        const cgFreeConfig = DATA_SOURCES.find(s => s.id === 'coingecko-free');
+        if (cgFreeConfig) {
+          const athData = await fetchFromCoinGecko(athCoinIds, cgFreeConfig);
+          
+          // Merge ATH data into finalPrices
+          for (const price of finalPrices) {
+            if (!price.ath && price.coinGeckoId) {
+              const cgData = athData.get(price.coinGeckoId);
+              if (cgData?.ath) {
+                price.ath = cgData.ath;
+                price.athDate = cgData.athDate;
+                logger.debug('✅ ATH data fetched for', { 
+                  symbol: price.symbol, 
+                  ath: cgData.ath,
+                  athDate: cgData.athDate 
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('⚠️ Failed to fetch ATH data fallback', { error });
+    }
+  }
+  
   // Calculate aggregate metrics
   const avgConfidence = finalPrices.length > 0
     ? finalPrices.reduce((sum, p) => sum + p.confidence, 0) / finalPrices.length
@@ -1979,6 +2023,16 @@ export function formatEnterpriseMarketDataForAI(response: AggregatedMarketRespon
 
   // Group by market cap for better organization
   const sortedPrices = [...response.prices].sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+  
+  // Debug: Log ATH data availability
+  for (const coin of sortedPrices) {
+    logger.debug('📋 Formatting coin for AI', {
+      symbol: coin.symbol,
+      hasATH: !!coin.ath,
+      ath: coin.ath,
+      athDate: coin.athDate,
+    });
+  }
   
   for (const coin of sortedPrices) {
     const direction = coin.priceChangePercent24h >= 0 ? '↑' : '↓';
