@@ -39,6 +39,11 @@ import {
   generateQuadrantVisualization,
   type VisualizerProject 
 } from '../../services/omniscore';
+import { 
+  investigateProject, 
+  formatInvestigationForAI,
+  type ProjectInvestigation 
+} from '../../services/project-investigation-service';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
@@ -699,30 +704,107 @@ ${(omniScore as any).stability.notes?.join('\n') || ''}
                   stabilityApplied: (omniScore as any).stability?.guardApplied || false,
                 });
               } else {
-                // FAIL-CLOSED: OmniScore failed - tell AI not to improvise
-                contextParts.push(`
+                // FALLBACK: OmniScore failed - trigger comprehensive investigation
+                logger.info('🔍 OmniScore unavailable, triggering comprehensive investigation', {
+                  coin: primaryCoin.symbol,
+                });
+                
+                try {
+                  const investigation = await investigateProject(
+                    primaryCoin.coinGeckoId || primaryCoin.symbol
+                  );
+                  
+                  if (investigation) {
+                    contextParts.push(formatInvestigationForAI(investigation));
+                    logger.info('✅ Project investigation completed', {
+                      project: investigation.name,
+                      symbol: investigation.symbol,
+                      dataQuality: investigation.dataQuality,
+                      sources: investigation.sources,
+                    });
+                  } else {
+                    contextParts.push(`
+⚠️ PROJECT DATA LIMITED FOR ${primaryCoin.symbol.toUpperCase()}
+Could not retrieve comprehensive data for this project.
+Basic market data may still be available above.
+DO NOT improvise scores or metrics - only use verified data provided.
+`);
+                  }
+                } catch (invError) {
+                  logger.warn('⚠️ Project investigation failed', { error: invError });
+                  contextParts.push(`
 ⚠️ OMNISCORE DATA UNAVAILABLE FOR ${primaryCoin.symbol.toUpperCase()}
 The OmniScore engine could not retrieve reliable data for this project.
-DO NOT improvise or estimate OmniScore values. Instead:
-- Inform the user that detailed OmniScore analysis is temporarily unavailable
-- Offer to provide basic market data (price, volume) if available
-- Suggest trying again in a few minutes
+DO NOT improvise or estimate OmniScore values.
 `);
-                logger.warn('⚠️ OmniScore Single-Coin: Analysis failed - fail-closed activated', {
-                  coin: primaryCoin.symbol,
-                  reason: omniScore ? 'success=false' : 'null response',
-                });
+                }
               }
             }
           } catch (error) {
-            // FAIL-CLOSED: On any error, tell AI not to improvise
-            contextParts.push(`
+            // FALLBACK: On error, try investigation before giving up
+            const primaryCoin = detectedCoins[0];
+            logger.warn('⚠️ OmniScore v2.3.2 analysis failed, trying investigation fallback', { error });
+            
+            try {
+              const investigation = await investigateProject(
+                primaryCoin?.coinGeckoId || primaryCoin?.symbol || 'bitcoin'
+              );
+              
+              if (investigation) {
+                contextParts.push(formatInvestigationForAI(investigation));
+                logger.info('✅ Fallback investigation completed', {
+                  project: investigation.name,
+                  dataQuality: investigation.dataQuality,
+                });
+              } else {
+                contextParts.push(`
+⚠️ OMNISCORE ENGINE ERROR
+The OmniScore analysis engine encountered an error and investigation fallback failed.
+DO NOT improvise or estimate any OmniScore values.
+Basic market data may still be available.
+`);
+              }
+            } catch {
+              contextParts.push(`
 ⚠️ OMNISCORE ENGINE ERROR
 The OmniScore analysis engine encountered an error.
 DO NOT improvise or estimate any OmniScore values.
 Inform the user that OmniScore analysis is temporarily unavailable.
 `);
-            logger.warn('⚠️ OmniScore v2.3.2 analysis failed - fail-closed activated', { error });
+            }
+          }
+        }
+        
+        // 15. Investigate unknown projects not in OmniScore database
+        // This provides comprehensive CoinGecko data for projects that might be new/unknown
+        const unknownCoins = detectedCoins.filter(coin => {
+          // Check if we already have market data for this coin
+          const hasMarketData = enterpriseMarketData?.prices.some(
+            p => p.symbol.toUpperCase() === coin.symbol.toUpperCase()
+          );
+          return !hasMarketData && coin.symbol.length > 0;
+        });
+        
+        if (unknownCoins.length > 0 && unknownCoins.length <= 3) {
+          logger.info('🔍 Investigating unknown projects', { 
+            unknownCoins: unknownCoins.map(c => c.symbol) 
+          });
+          
+          const investigations = await Promise.all(
+            unknownCoins.slice(0, 3).map(coin =>
+              investigateProject(coin.coinGeckoId || coin.symbol).catch(() => null)
+            )
+          );
+          
+          const validInvestigations = investigations.filter(Boolean) as ProjectInvestigation[];
+          
+          for (const inv of validInvestigations) {
+            contextParts.push(formatInvestigationForAI(inv));
+            logger.info('✅ Investigation added for unknown project', {
+              project: inv.name,
+              symbol: inv.symbol,
+              dataQuality: inv.dataQuality,
+            });
           }
         }
         
