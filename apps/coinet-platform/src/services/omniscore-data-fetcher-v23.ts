@@ -38,6 +38,14 @@ import {
   toOmniScoreInputs,
   TwitterProjectIntelligence
 } from './twitter-intelligence';
+import {
+  fetchAllRealData,
+  type AllRealData,
+  type RealGovernanceData,
+  type RealSecurityData,
+  type RealAdoptionData,
+  type RealTokenomicsData,
+} from './real-data-sources';
 
 const prisma = new PrismaClient();
 
@@ -881,7 +889,11 @@ async function fetchDefiLlamaData(projectId: string): Promise<FeatureInput[]> {
   return qsInputs;
 }
 
-function generateTeamGovernanceEstimates(projectId: string, sector: SectorType): FeatureInput[] {
+function generateTeamGovernanceEstimates(
+  projectId: string, 
+  sector: SectorType,
+  realGovernance?: RealGovernanceData
+): FeatureInput[] {
   const qsInputs: FeatureInput[] = [];
   
   // Well-known projects with higher team scores
@@ -923,7 +935,7 @@ function generateTeamGovernanceEstimates(projectId: string, sector: SectorType):
   
   const isEstablished = establishedProjects.has(projectId.toLowerCase()) || hasStrategicBacking;
   
-  // TEAM estimates (QS)
+  // TEAM estimates (QS) - Still estimated, no reliable free API for team data
   qsInputs.push(createFeature('team_experience', 'TEAM', 
     isEstablished ? 80 : 50, ['estimate']));
   qsInputs.push(createFeature('team_transparency', 'TEAM', 
@@ -931,21 +943,99 @@ function generateTeamGovernanceEstimates(projectId: string, sector: SectorType):
   qsInputs.push(createFeature('team_track_record', 'TEAM', 
     isEstablished ? 85 : 50, ['estimate']));
   
-  // GOV estimates (QS)
-  qsInputs.push(createFeature('gov_decentralization', 'GOV', 
-    sector === 'L1' || sector === 'L2' ? 70 : 55, ['estimate']));
-  qsInputs.push(createFeature('gov_voting_participation', 'GOV', 
-    isEstablished ? 60 : 40, ['estimate']));
-  qsInputs.push(createFeature('gov_upgrade_process', 'GOV', 
-    isEstablished ? 70 : 50, ['estimate']));
+  // v2.9.0: GOV - Use REAL DATA from Snapshot.org if available
+  if (realGovernance && realGovernance.hasGovernance) {
+    // Real governance data from Snapshot.org! 🎉
+    logger.info(`[OmniScore v2.9] Using REAL governance data for ${projectId} from Snapshot`, {
+      proposals: realGovernance.totalProposals,
+      votes: realGovernance.totalVotes,
+      participation: realGovernance.avgParticipation,
+    });
+    
+    // gov_decentralization: Based on number of unique voters
+    // 0-100 voters = 30-50, 100-1000 = 50-70, 1000+ = 70-90
+    const voterScore = realGovernance.uniqueVoters > 1000 ? 80 :
+                       realGovernance.uniqueVoters > 500 ? 70 :
+                       realGovernance.uniqueVoters > 100 ? 60 :
+                       realGovernance.uniqueVoters > 10 ? 50 : 40;
+    qsInputs.push(createFeature('gov_decentralization', 'GOV', voterScore, ['snapshot.org']));
+    
+    // gov_voting_participation: Real participation score from Snapshot
+    qsInputs.push(createFeature('gov_voting_participation', 'GOV', 
+      Math.min(90, Math.max(20, realGovernance.avgParticipation)), ['snapshot.org']));
+    
+    // gov_upgrade_process: Based on proposal activity
+    // Active proposals + recent activity = good process
+    const proposalScore = realGovernance.totalProposals > 50 ? 80 :
+                          realGovernance.totalProposals > 20 ? 70 :
+                          realGovernance.totalProposals > 5 ? 60 : 50;
+    const activityBonus = realGovernance.recentActivity ? 10 : 0;
+    qsInputs.push(createFeature('gov_upgrade_process', 'GOV', 
+      Math.min(90, proposalScore + activityBonus), ['snapshot.org']));
+    
+  } else {
+    // Fallback to estimates (no Snapshot space found)
+    qsInputs.push(createFeature('gov_decentralization', 'GOV', 
+      sector === 'L1' || sector === 'L2' ? 70 : 55, ['estimate']));
+    qsInputs.push(createFeature('gov_voting_participation', 'GOV', 
+      isEstablished ? 60 : 40, ['estimate']));
+    qsInputs.push(createFeature('gov_upgrade_process', 'GOV', 
+      isEstablished ? 70 : 50, ['estimate']));
+  }
   
   return qsInputs;
 }
 
-function generateSecurityEstimates(projectId: string, sector: SectorType): FeatureInput[] {
+function generateSecurityEstimates(
+  projectId: string, 
+  sector: SectorType,
+  realSecurity?: RealSecurityData
+): FeatureInput[] {
   const qsInputs: FeatureInput[] = [];
   
-  // v2.8.0: Significantly expanded list of projects with known audits
+  // v2.9.0: Use REAL SECURITY DATA from GoPlus if available
+  if (realSecurity && realSecurity.hasSecurityData) {
+    logger.info(`[OmniScore v2.9] Using REAL security data for ${projectId} from GoPlus`, {
+      securityScore: realSecurity.securityScore,
+      isOpenSource: realSecurity.isOpenSource,
+      holderCount: realSecurity.holderCount,
+      isHoneypot: realSecurity.hasHoneypot,
+    });
+    
+    // sec_audit_count: Derive from overall security score
+    // Open source + high security score = likely audited
+    const auditScore = realSecurity.isOpenSource 
+      ? Math.min(90, realSecurity.securityScore + 10)
+      : realSecurity.securityScore;
+    qsInputs.push(createFeature('sec_audit_count', 'SEC', auditScore, ['goplus']));
+    
+    // sec_bug_bounty: Derive from contract safety features
+    // Anti-whale, no blacklist, no honeypot = likely has good practices
+    let bugBountyScore = 50;
+    if (!realSecurity.hasHoneypot) bugBountyScore += 15;
+    if (!realSecurity.hasBlacklist) bugBountyScore += 10;
+    if (realSecurity.isOpenSource) bugBountyScore += 15;
+    if (!realSecurity.isMintable) bugBountyScore += 5;
+    bugBountyScore = Math.min(90, bugBountyScore);
+    qsInputs.push(createFeature('sec_bug_bounty', 'SEC', bugBountyScore, ['goplus']));
+    
+    // sec_incident_history: Use security score directly
+    // Higher security score = fewer potential vulnerabilities = fewer incidents
+    qsInputs.push(createFeature('sec_incident_history', 'SEC', 
+      realSecurity.securityScore, ['goplus']));
+    
+    // Additional security metrics from GoPlus
+    if (realSecurity.buyTax > 0 || realSecurity.sellTax > 0) {
+      // High taxes are a red flag
+      const taxPenalty = Math.min(30, (realSecurity.buyTax + realSecurity.sellTax) / 2);
+      qsInputs.push(createFeature('sec_tax_risk', 'SEC', 
+        Math.max(20, 80 - taxPenalty), ['goplus']));
+    }
+    
+    return qsInputs;
+  }
+  
+  // Fallback to estimates if no GoPlus data
   const auditedProjects = new Set([
     // L1s - All major L1s have extensive audits
     'ethereum', 'bitcoin', 'solana', 'polygon', 'avalanche', 'cosmos',
@@ -997,7 +1087,8 @@ function generateAdoptionCommunityEstimates(
   projectId: string, 
   sector: SectorType,
   marketCap: number,
-  twitterData: TwitterProjectIntelligence | null = null
+  twitterData: TwitterProjectIntelligence | null = null,
+  realAdoption?: RealAdoptionData
 ): {
   osInputs: FeatureInput[];
   botRisk: number;
@@ -1011,13 +1102,63 @@ function generateAdoptionCommunityEstimates(
   const isTopTier = marketCap > 10e9;
   const isMidTier = marketCap > 1e9;
   
-  // ADOPT estimates (OS)
-  osInputs.push(createFeature('adopt_active_addresses', 'ADOPT', 
-    isTopTier ? 85 : isMidTier ? 65 : 40, ['estimate']));
-  osInputs.push(createFeature('adopt_transaction_count', 'ADOPT', 
-    isTopTier ? 80 : isMidTier ? 60 : 35, ['estimate']));
-  osInputs.push(createFeature('adopt_developer_usage', 'ADOPT', 
-    sector === 'Infrastructure' ? 75 : isTopTier ? 70 : 45, ['estimate']));
+  // v2.9.0: Use REAL ADOPTION DATA from DeFiLlama if available
+  if (realAdoption && realAdoption.hasAdoptionData) {
+    logger.info(`[OmniScore v2.9] Using REAL adoption data for ${projectId} from DeFiLlama`, {
+      tvl: realAdoption.tvl,
+      fees24h: realAdoption.fees24h,
+      revenue24h: realAdoption.revenue24h,
+    });
+    
+    // adopt_active_addresses: Derive from TVL (higher TVL = more active users)
+    // $0 = 20, $10M = 50, $100M = 70, $1B+ = 90
+    const tvl = realAdoption.tvl || 0;
+    const tvlScore = tvl > 1e9 ? 90 :
+                     tvl > 100e6 ? 75 :
+                     tvl > 10e6 ? 60 :
+                     tvl > 1e6 ? 45 : 30;
+    osInputs.push(createFeature('adopt_active_addresses', 'ADOPT', tvlScore, ['defillama']));
+    
+    // adopt_transaction_count: Derive from fees (more fees = more tx)
+    if (realAdoption.fees24h) {
+      const feeScore = realAdoption.fees24h > 1e6 ? 90 :
+                       realAdoption.fees24h > 100e3 ? 75 :
+                       realAdoption.fees24h > 10e3 ? 60 :
+                       realAdoption.fees24h > 1e3 ? 45 : 30;
+      osInputs.push(createFeature('adopt_transaction_count', 'ADOPT', feeScore, ['defillama']));
+    } else {
+      // Fallback to TVL-based estimate
+      osInputs.push(createFeature('adopt_transaction_count', 'ADOPT', 
+        Math.max(30, tvlScore - 10), ['defillama']));
+    }
+    
+    // adopt_developer_usage: Use TVL growth as proxy
+    const tvlGrowth = realAdoption.tvlChange24h || 0;
+    const growthScore = tvlGrowth > 10 ? 80 :
+                        tvlGrowth > 5 ? 70 :
+                        tvlGrowth > 0 ? 60 :
+                        tvlGrowth > -5 ? 50 : 40;
+    osInputs.push(createFeature('adopt_developer_usage', 'ADOPT', 
+      sector === 'Infrastructure' ? Math.min(85, growthScore + 10) : growthScore, 
+      ['defillama']));
+    
+    // Bonus: Add revenue metric if available
+    if (realAdoption.revenue24h) {
+      const revenueScore = realAdoption.revenue24h > 500e3 ? 90 :
+                           realAdoption.revenue24h > 50e3 ? 75 :
+                           realAdoption.revenue24h > 5e3 ? 60 : 45;
+      osInputs.push(createFeature('adopt_protocol_revenue', 'ADOPT', revenueScore, ['defillama']));
+    }
+    
+  } else {
+    // Fallback to market cap-based estimates
+    osInputs.push(createFeature('adopt_active_addresses', 'ADOPT', 
+      isTopTier ? 85 : isMidTier ? 65 : 40, ['estimate']));
+    osInputs.push(createFeature('adopt_transaction_count', 'ADOPT', 
+      isTopTier ? 80 : isMidTier ? 60 : 35, ['estimate']));
+    osInputs.push(createFeature('adopt_developer_usage', 'ADOPT', 
+      sector === 'Infrastructure' ? 75 : isTopTier ? 70 : 45, ['estimate']));
+  }
   
   // COMM: Use Twitter data if available, otherwise estimate
   if (twitterData && twitterData.profileFound) {
@@ -1069,10 +1210,68 @@ function generateAdoptionCommunityEstimates(
   };
 }
 
-function generateTokenEstimates(projectId: string, sector: SectorType): FeatureInput[] {
+function generateTokenEstimates(
+  projectId: string, 
+  sector: SectorType,
+  realTokenomics?: RealTokenomicsData
+): FeatureInput[] {
   const osInputs: FeatureInput[] = [];
-  
-  // v2.8.0: Expanded fair distribution list
+
+  // v2.9.0: Use REAL TOKENOMICS DATA from CoinGecko if available
+  if (realTokenomics && realTokenomics.hasTokenomicsData) {
+    logger.info(`[OmniScore v2.9] Using REAL tokenomics data for ${projectId} from CoinGecko`, {
+      circulatingPercent: realTokenomics.circulatingPercent,
+      mcapToFdv: realTokenomics.marketCapToFdvRatio,
+      totalSupply: realTokenomics.totalSupply,
+    });
+    
+    // token_holder_distribution: Based on circulating supply ratio
+    // Higher circulating % = more distributed = better
+    // 0-30% = 30-40, 30-50% = 40-55, 50-70% = 55-70, 70%+ = 70-85
+    const circPercent = realTokenomics.circulatingPercent;
+    let distributionScore = circPercent > 70 ? 80 :
+                            circPercent > 50 ? 65 :
+                            circPercent > 30 ? 50 : 35;
+    
+    // Adjust based on mcap/FDV ratio (closer to 1 = better)
+    if (realTokenomics.marketCapToFdvRatio) {
+      if (realTokenomics.marketCapToFdvRatio > 0.8) distributionScore += 5;
+      else if (realTokenomics.marketCapToFdvRatio < 0.3) distributionScore -= 10;
+    }
+    distributionScore = Math.max(20, Math.min(90, distributionScore));
+    osInputs.push(createFeature('token_holder_distribution', 'TOKEN', 
+      distributionScore, ['coingecko']));
+    
+    // token_unlock_schedule: Based on circulating vs max supply
+    // If circulating is close to max, most unlocks are done
+    let unlockScore = 50;
+    if (realTokenomics.maxSupply) {
+      const unlockedPercent = (realTokenomics.circulatingSupply / realTokenomics.maxSupply) * 100;
+      unlockScore = unlockedPercent > 80 ? 85 :
+                    unlockedPercent > 60 ? 70 :
+                    unlockedPercent > 40 ? 55 : 40;
+    } else {
+      // No max supply = inflationary, moderate score
+      unlockScore = circPercent > 70 ? 65 : 50;
+    }
+    osInputs.push(createFeature('token_unlock_schedule', 'TOKEN', unlockScore, ['coingecko']));
+    
+    // token_utility_breadth: Still sector-based, but boost if data is good
+    let utilityScore = sector === 'DeFi' || sector === 'L1' ? 75 : 
+                       sector === 'L2' ? 70 :
+                       sector === 'Infrastructure' ? 70 : 
+                       sector === 'Gaming' ? 65 :
+                       sector === 'Meme' ? 20 : 55;
+    // Boost if FDV is reasonable (not over-inflated)
+    if (realTokenomics.marketCapToFdvRatio && realTokenomics.marketCapToFdvRatio > 0.5) {
+      utilityScore = Math.min(85, utilityScore + 5);
+    }
+    osInputs.push(createFeature('token_utility_breadth', 'TOKEN', utilityScore, ['coingecko']));
+    
+    return osInputs;
+  }
+
+  // Fallback to estimates
   const hasFairDistribution = new Set([
     // Major L1s with established distribution
     'bitcoin', 'ethereum', 'solana', 'polygon', 'avalanche', 'cosmos',
@@ -1088,20 +1287,20 @@ function generateTokenEstimates(projectId: string, sector: SectorType): FeatureI
     // Binance-backed with public token sales
     'aster', 'astr', 'astar',
   ]).has(projectId.toLowerCase());
-  
+
   // v2.8.0: Check for exchange backing - usually better tokenomics
   const backingInfo = getProjectBacking(projectId);
   const hasGoodBacking = backingInfo.tier === 'tier1' || backingInfo.tier === 'tier2';
-  
-  osInputs.push(createFeature('token_holder_distribution', 'TOKEN', 
+
+  osInputs.push(createFeature('token_holder_distribution', 'TOKEN',
     hasFairDistribution ? 75 : hasGoodBacking ? 65 : sector === 'Meme' ? 30 : 50, ['estimate']));
-  osInputs.push(createFeature('token_unlock_schedule', 'TOKEN', 
+  osInputs.push(createFeature('token_unlock_schedule', 'TOKEN',
     hasFairDistribution ? 80 : hasGoodBacking ? 70 : 50, ['estimate']));
-  osInputs.push(createFeature('token_utility_breadth', 'TOKEN', 
-    sector === 'DeFi' || sector === 'L1' ? 75 : sector === 'L2' ? 70 : 
-    sector === 'Infrastructure' ? 70 : sector === 'Gaming' ? 65 : 
+  osInputs.push(createFeature('token_utility_breadth', 'TOKEN',
+    sector === 'DeFi' || sector === 'L1' ? 75 : sector === 'L2' ? 70 :
+    sector === 'Infrastructure' ? 70 : sector === 'Gaming' ? 65 :
     sector === 'Meme' ? 20 : 55, ['estimate']));
-  
+
   return osInputs;
 }
 
@@ -1206,12 +1405,47 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
     errors.push(`CoinGecko Community: ${error.message}`);
   }
   
-  // Generate estimates for missing data
-  const teamGovInputs = generateTeamGovernanceEstimates(projectId, sector);
-  const securityInputs = generateSecurityEstimates(projectId, sector);
-  // Pass Twitter data to adoption/community function
-  const adoptionResult = generateAdoptionCommunityEstimates(projectId, sector, marketResult.marketCap, twitterResult);
-  const tokenInputs = generateTokenEstimates(projectId, sector);
+  // v2.9.0: Fetch REAL DATA from external sources (Snapshot, GoPlus, DeFiLlama, CoinGecko)
+  // This replaces estimates with actual verified data when available
+  let realData: AllRealData | null = null;
+  try {
+    realData = await fetchAllRealData(projectId);
+    
+    // Track which real data sources were used
+    if (realData.governance.hasGovernance) {
+      sourcesQueried.push('snapshot.org');
+      logger.info(`[OmniScore v2.9] 🏛️ Real governance data from Snapshot for ${projectId}`);
+    }
+    if (realData.security.hasSecurityData) {
+      sourcesQueried.push('goplus');
+      logger.info(`[OmniScore v2.9] 🔒 Real security data from GoPlus for ${projectId}`);
+    }
+    if (realData.adoption.hasAdoptionData) {
+      sourcesQueried.push('defillama-extended');
+      logger.info(`[OmniScore v2.9] 📊 Real adoption data from DeFiLlama for ${projectId}`);
+    }
+    if (realData.tokenomics.hasTokenomicsData) {
+      sourcesQueried.push('coingecko-tokenomics');
+      logger.info(`[OmniScore v2.9] 💰 Real tokenomics data from CoinGecko for ${projectId}`);
+    }
+  } catch (e) {
+    const error = e as Error;
+    errors.push(`RealData: ${error.message}`);
+    logger.warn(`[OmniScore v2.9] Failed to fetch real data for ${projectId}`, { error: error.message });
+  }
+  
+  // Generate data with REAL DATA when available, fall back to estimates
+  const teamGovInputs = generateTeamGovernanceEstimates(projectId, sector, realData?.governance);
+  const securityInputs = generateSecurityEstimates(projectId, sector, realData?.security);
+  // Pass Twitter data AND real adoption data to adoption/community function
+  const adoptionResult = generateAdoptionCommunityEstimates(
+    projectId, 
+    sector, 
+    marketResult.marketCap, 
+    twitterResult,
+    realData?.adoption
+  );
+  const tokenInputs = generateTokenEstimates(projectId, sector, realData?.tokenomics);
   const legalMacroInputs = generateLegalMacroEstimates();
   
   // v2.8.0: Add backing-based quality signals
