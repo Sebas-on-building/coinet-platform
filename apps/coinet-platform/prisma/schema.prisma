@@ -435,3 +435,112 @@ model OmniScoreHistory {
   @@index([createdAt(sort: Desc)])
   @@map("omniscore_history")
 }
+
+// ============================================================================
+// PROJECT KNOWLEDGE BASE - Self-Improving Research System
+// ============================================================================
+
+model ProjectKnowledge {
+  id        String   @id @default(cuid())
+  projectId String   @unique @db.VarChar(100) // e.g., "uniswap", "bitcoin"
+  
+  // Basic identification
+  name          String?  @db.VarChar(200)
+  symbol        String?  @db.VarChar(20)
+  ticker        String?  @db.VarChar(20)
+  aliases       String[] // Alternative names/tickers
+  
+  // Project details (AI-researched)
+  description   String?  @db.Text
+  category      String?  @db.VarChar(50) // L1, L2, DeFi, Infrastructure, etc.
+  website       String?  @db.VarChar(500)
+  whitepaper    String?  @db.VarChar(500)
+  
+  // Team information (web-researched)
+  teamInfo      Json?    // { founders: [], advisors: [], backers: [] }
+  foundedDate   DateTime?
+  headquarters  String?  @db.VarChar(200)
+  
+  // Partnerships & Backing (critical for scoring)
+  partnerships  Json?    // { exchanges: [], vcs: [], strategic: [] }
+  backers       Json?    // { tier1: [], tier2: [], tier3: [] }
+  
+  // Security & Audits (web-researched)
+  audits        Json?    // { auditor: string, date: string, url: string }[]
+  securityScore Int?     // 0-100
+  bugBounty     Boolean? @default(false)
+  bugBountyUrl  String?  @db.VarChar(500)
+  
+  // Governance (web-researched)
+  governanceType String?  @db.VarChar(50) // DAO, Multisig, Foundation, etc.
+  governanceUrl  String?  @db.VarChar(500)
+  votingPlatform String?  @db.VarChar(100) // Snapshot, Tally, etc.
+  
+  // Social presence (web-researched)
+  socialLinks   Json?    // { twitter: url, discord: url, telegram: url, github: url }
+  
+  // Technical info (web-researched)
+  blockchain    String?  @db.VarChar(100) // Which chain it's built on
+  contractAddresses Json? // { ethereum: address, bsc: address, etc. }
+  codeRepository String? @db.VarChar(500)
+  isOpenSource  Boolean? @default(false)
+  
+  // Research metadata
+  researchDepth     Int      @default(1)  // How many times researched (increases each update)
+  lastResearchType  String?  @db.VarChar(50) // "initial", "update", "deep_dive"
+  dataQuality       Float?   // 0-1, confidence in the data
+  sourcesUsed       String[] // URLs/sources used in research
+  
+  // Verification status
+  verified          Boolean  @default(false) // Manually verified by team
+  verifiedBy        String?  @db.VarChar(100)
+  verifiedAt        DateTime?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastResearchedAt  DateTime @default(now())
+  
+  // Research history
+  researchLogs      ProjectResearchLog[]
+  
+  @@index([projectId])
+  @@index([category])
+  @@index([lastResearchedAt(sort: Desc)])
+  @@index([researchDepth])
+  @@map("project_knowledge")
+}
+
+model ProjectResearchLog {
+  id        String   @id @default(cuid())
+  projectId String   @db.VarChar(100)
+  
+  // What was researched
+  researchType  String   @db.VarChar(50) // "team", "audits", "partnerships", "governance", "full"
+  query         String?  @db.Text        // The search query used
+  
+  // What was found
+  findings      Json                      // Raw data discovered
+  sourcesUsed   String[]                  // URLs of sources
+  confidence    Float?                    // 0-1, confidence in findings
+  
+  // What changed
+  fieldsUpdated String[]                  // Which fields were updated
+  dataAdded     Boolean  @default(false)  // Did we add new data?
+  dataRefined   Boolean  @default(false)  // Did we refine existing data?
+  
+  // Context
+  triggeredBy   String?  @db.VarChar(50)  // "user_query", "scheduled", "manual"
+  userId        String?  @db.VarChar(100) // If triggered by user
+  
+  // Timestamps
+  createdAt     DateTime @default(now())
+  
+  // Relationships
+  project       ProjectKnowledge @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+  
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([researchType])
+  @@index([createdAt(sort: Desc)])
+  @@map("project_research_logs")
+}

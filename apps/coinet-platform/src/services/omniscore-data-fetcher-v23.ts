@@ -46,6 +46,11 @@ import {
   type RealAdoptionData,
   type RealTokenomicsData,
 } from './real-data-sources';
+import {
+  getProjectKnowledge,
+  researchAndSaveProject,
+  type ResearchFindings,
+} from './project-web-researcher';
 
 const prisma = new PrismaClient();
 
@@ -892,13 +897,56 @@ async function fetchDefiLlamaData(projectId: string): Promise<FeatureInput[]> {
 function generateTeamGovernanceEstimates(
   projectId: string, 
   sector: SectorType,
-  realGovernance?: RealGovernanceData
+  realGovernance?: RealGovernanceData,
+  knowledgeBase?: any
 ): FeatureInput[] {
   const qsInputs: FeatureInput[] = [];
   
-  // Well-known projects with higher team scores
-  // v2.8.0: Significantly expanded to include more established projects
-  const establishedProjects = new Set([
+  // v2.10.0: Check knowledge base for researched team data FIRST
+  if (knowledgeBase?.teamInfo) {
+    logger.info(`[OmniScore v2.10] Using RESEARCHED team data for ${projectId} from knowledge base`);
+    
+    const teamInfo = knowledgeBase.teamInfo;
+    
+    // team_experience: Based on founder backgrounds and team size
+    let experienceScore = 50;
+    if (teamInfo.founders && teamInfo.founders.length > 0) {
+      experienceScore = 60;
+      // Check if founders have notable backgrounds
+      const hasExperience = teamInfo.founders.some((f: any) => 
+        f.background && (
+          f.background.toLowerCase().includes('google') ||
+          f.background.toLowerCase().includes('facebook') ||
+          f.background.toLowerCase().includes('amazon') ||
+          f.background.toLowerCase().includes('phd') ||
+          f.background.toLowerCase().includes('stanford') ||
+          f.background.toLowerCase().includes('mit')
+        )
+      );
+      if (hasExperience) experienceScore = 80;
+    }
+    qsInputs.push(createFeature('team_experience', 'TEAM', experienceScore, ['knowledge-base']));
+    
+    // team_transparency: Based on whether team is public
+    const hasPublicTeam = teamInfo.founders && teamInfo.founders.length > 0;
+    const transparencyScore = hasPublicTeam ? 75 : 40;
+    qsInputs.push(createFeature('team_transparency', 'TEAM', transparencyScore, ['knowledge-base']));
+    
+    // team_track_record: Based on advisors and backers
+    let trackRecordScore = 50;
+    if (knowledgeBase.backers?.tier1 && knowledgeBase.backers.tier1.length > 0) {
+      trackRecordScore = 85;
+    } else if (knowledgeBase.backers?.tier2 && knowledgeBase.backers.tier2.length > 0) {
+      trackRecordScore = 70;
+    }
+    qsInputs.push(createFeature('team_track_record', 'TEAM', trackRecordScore, ['knowledge-base']));
+    
+    // Continue to governance section...
+  } else {
+    // Fall back to hardcoded lists if no knowledge base data
+    // Well-known projects with higher team scores
+    // v2.8.0: Significantly expanded to include more established projects
+    const establishedProjects = new Set([
     // Major L1s
     'bitcoin', 'ethereum', 'solana', 'polygon', 'avalanche', 'cosmos',
     'near', 'polkadot', 'cardano', 'bnb', 'binance', 'xrp', 'ripple', 'ton',
@@ -935,13 +983,14 @@ function generateTeamGovernanceEstimates(
   
   const isEstablished = establishedProjects.has(projectId.toLowerCase()) || hasStrategicBacking;
   
-  // TEAM estimates (QS) - Still estimated, no reliable free API for team data
-  qsInputs.push(createFeature('team_experience', 'TEAM', 
-    isEstablished ? 80 : 50, ['estimate']));
-  qsInputs.push(createFeature('team_transparency', 'TEAM', 
-    isEstablished ? 75 : 45, ['estimate']));
-  qsInputs.push(createFeature('team_track_record', 'TEAM', 
-    isEstablished ? 85 : 50, ['estimate']));
+    // TEAM estimates (QS) - Fall back to estimates if no knowledge base
+    qsInputs.push(createFeature('team_experience', 'TEAM', 
+      isEstablished ? 80 : 50, ['estimate']));
+    qsInputs.push(createFeature('team_transparency', 'TEAM', 
+      isEstablished ? 75 : 45, ['estimate']));
+    qsInputs.push(createFeature('team_track_record', 'TEAM', 
+      isEstablished ? 85 : 50, ['estimate']));
+  } // End knowledge base check for team
   
   // v2.9.0: GOV - Use REAL DATA from Snapshot.org if available
   if (realGovernance && realGovernance.hasGovernance) {
@@ -989,9 +1038,32 @@ function generateTeamGovernanceEstimates(
 function generateSecurityEstimates(
   projectId: string, 
   sector: SectorType,
-  realSecurity?: RealSecurityData
+  realSecurity?: RealSecurityData,
+  knowledgeBase?: any
 ): FeatureInput[] {
   const qsInputs: FeatureInput[] = [];
+  
+  // v2.10.0: Check knowledge base for researched security data FIRST
+  if (knowledgeBase?.audits && knowledgeBase.audits.length > 0) {
+    logger.info(`[OmniScore v2.10] Using RESEARCHED security data for ${projectId} from knowledge base`);
+    
+    // sec_audit_count: Based on number of audits found
+    const auditCount = knowledgeBase.audits.length;
+    const auditScore = auditCount >= 3 ? 90 :
+                       auditCount >= 2 ? 80 :
+                       auditCount >= 1 ? 70 : 50;
+    qsInputs.push(createFeature('sec_audit_count', 'SEC', auditScore, ['knowledge-base']));
+    
+    // sec_bug_bounty: Based on bug bounty program
+    const hasBugBounty = knowledgeBase.bugBounty?.exists || false;
+    const bugBountyScore = hasBugBounty ? 80 : 50;
+    qsInputs.push(createFeature('sec_bug_bounty', 'SEC', bugBountyScore, ['knowledge-base']));
+    
+    // sec_incident_history: Assume good unless evidence of issues
+    qsInputs.push(createFeature('sec_incident_history', 'SEC', 80, ['knowledge-base']));
+    
+    return qsInputs;
+  }
   
   // v2.9.0: Use REAL SECURITY DATA from GoPlus if available
   if (realSecurity && realSecurity.hasSecurityData) {
@@ -1434,9 +1506,33 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
     logger.warn(`[OmniScore v2.9] Failed to fetch real data for ${projectId}`, { error: error.message });
   }
   
+  // v2.10.0: Check KNOWLEDGE BASE for AI-researched data
+  // This data was collected from previous user queries and web research
+  let knowledgeBaseData: any = null;
+  try {
+    knowledgeBaseData = await getProjectKnowledge(projectId);
+    
+    if (knowledgeBaseData) {
+      sourcesQueried.push('knowledge-base');
+      logger.info(`[OmniScore v2.10] 🧠 Using knowledge base data for ${projectId}`, {
+        researchDepth: knowledgeBaseData.researchDepth,
+        lastResearched: knowledgeBaseData.lastResearchedAt,
+        dataQuality: knowledgeBaseData.dataQuality,
+      });
+    } else {
+      // No knowledge yet - mark for potential research
+      logger.info(`[OmniScore v2.10] 📝 No knowledge base entry for ${projectId} - will research if needed`);
+    }
+  } catch (e) {
+    const error = e as Error;
+    errors.push(`KnowledgeBase: ${error.message}`);
+    logger.warn(`[OmniScore v2.10] Failed to fetch knowledge base for ${projectId}`, { error: error.message });
+  }
+  
   // Generate data with REAL DATA when available, fall back to estimates
-  const teamGovInputs = generateTeamGovernanceEstimates(projectId, sector, realData?.governance);
-  const securityInputs = generateSecurityEstimates(projectId, sector, realData?.security);
+  // v2.10.0: Now also uses knowledge base data (AI-researched)
+  const teamGovInputs = generateTeamGovernanceEstimates(projectId, sector, realData?.governance, knowledgeBaseData);
+  const securityInputs = generateSecurityEstimates(projectId, sector, realData?.security, knowledgeBaseData);
   // Pass Twitter data AND real adoption data to adoption/community function
   const adoptionResult = generateAdoptionCommunityEstimates(
     projectId, 
