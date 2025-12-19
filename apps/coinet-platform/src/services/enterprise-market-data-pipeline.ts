@@ -1985,6 +1985,24 @@ export function formatEnterpriseMarketDataForAI(response: AggregatedMarketRespon
     context += `${verificationStatus} ${coin.symbol}: $${formatPrice(coin.price)} (${direction}${changeStr} 24h)`;
     context += ` | Vol: $${formatLargeNumber(coin.volume24h)} | MCap: $${formatLargeNumber(coin.marketCap)}`;
     context += ` | Conf: ${(coin.confidence * 100).toFixed(0)}%`;
+    
+    // Add ATH data if available (CRITICAL for accurate AI responses)
+    if (coin.ath && coin.athDate) {
+      const athDate = new Date(coin.athDate);
+      const athDateStr = athDate.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+      const athChangePercent = ((coin.price - coin.ath) / coin.ath * 100).toFixed(1);
+      context += `\n   📈 ATH: $${formatPrice(coin.ath)} on ${athDateStr} (${athChangePercent}% from ATH)`;
+    }
+    
+    // Add 24h range if available
+    if (coin.high24h && coin.low24h) {
+      context += `\n   📊 24h Range: $${formatPrice(coin.low24h)} - $${formatPrice(coin.high24h)}`;
+    }
+    
     context += '\n';
     
     // Add discrepancy warnings if present

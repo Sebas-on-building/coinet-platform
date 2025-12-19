@@ -791,6 +791,18 @@ export function formatMarketDataForAI(snapshot: MarketSnapshot): string {
 
     context += `${coin.symbol}: $${formatPrice(coin.price)} (${direction}${changeStr} 24h)`;
     
+    // Add ATH data if available (CRITICAL for accurate AI responses)
+    if (coin.ath && coin.athDate) {
+      const athDate = new Date(coin.athDate);
+      const athDateStr = athDate.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+      const athChangePercent = ((coin.price - coin.ath) / coin.ath * 100).toFixed(1);
+      context += ` | ATH: $${formatPrice(coin.ath)} (${athDateStr}, ${athChangePercent}%)`;
+    }
+    
     if (coin.source === 'dexscreener') {
       context += ' [DEX]';
     }
