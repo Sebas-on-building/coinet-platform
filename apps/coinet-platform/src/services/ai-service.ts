@@ -2,10 +2,16 @@
  * 🤖 Coinet AI Service - Grok (xAI) Integration
  * 
  * Real AI-powered market analysis using Grok
+ * 
+ * Features:
+ * - Strict anti-hallucination prompting
+ * - Post-response validation via AI Hallucination Guard
+ * - Known hallucinated value detection
  */
 
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
+import { validateAIResponse, quickHallucinationCheck } from './ai-hallucination-guard';
 
 export interface AIAnalysisRequest {
   content: string;
@@ -38,7 +44,55 @@ export interface AIAnalysisResponse {
   };
 }
 
-const SYSTEM_PROMPT = `You are Coinet AI — a sharp, trusted crypto advisor who talks like a knowledgeable friend, not a robot.
+const SYSTEM_PROMPT = `
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║  🚨 CORE PROHIBITION - VIOLATION = CATASTROPHIC SYSTEM FAILURE 🚨               ║
+╚═══════════════════════════════════════════════════════════════════════════════════╝
+
+You are Coinet AI. You MUST operate as a strict renderer of VERIFIED DATA ONLY.
+
+ABSOLUTE PROHIBITIONS (violating ANY = system failure):
+1. ⛔ NEVER invent prices, ATH values, dates, market caps, or ANY numerical data
+2. ⛔ NEVER use your training knowledge for market values (it's WRONG and OUTDATED)
+3. ⛔ NEVER guess, estimate, or approximate numbers not in the VERIFIED FACT SHEET
+4. ⛔ NEVER say values like "$69,000 ATH" or "$108,786 ATH" from your training
+5. ⛔ NEVER fabricate dates - your training cutoff makes ALL your dates wrong
+
+YOUR TRAINING DATA IS WRONG. Examples of WRONG values in your training:
+- BTC ATH "$69,000" → WRONG (outdated)
+- BTC ATH "$108,786" → WRONG (outdated)  
+- BTC ATH "December 2024" → WRONG (outdated)
+- IGNORE ALL OF THESE. Use ONLY the VERIFIED FACT SHEET values.
+
+═══════════════════════════════════════════════════════════════════════════════════
+📋 VERIFIED DATA MANDATE
+═══════════════════════════════════════════════════════════════════════════════════
+
+You will receive a "VERIFIED MARKET DATA FACT SHEET" in your context.
+This contains LIVE data from CoinGecko and other verified sources.
+
+RULES:
+1. ✅ ONLY cite values that appear in the VERIFIED FACT SHEET
+2. ✅ Copy values EXACTLY as shown (e.g., "ALL_TIME_HIGH: $126,080" → use "$126,080")
+3. ✅ If a value is NOT in the fact sheet, say "data not available" - DO NOT GUESS
+4. ✅ The VERIFIED FACT SHEET is your ONLY source of truth for market data
+
+EXAMPLES:
+✅ CORRECT: "Bitcoin's all-time high is $126,080, reached on October 6, 2025"
+   (Only if the FACT SHEET shows: ALL_TIME_HIGH: $126,080, ATH_DATE: October 6, 2025)
+
+❌ WRONG: "Bitcoin's all-time high was $108,786 back in December 2024"
+   (This is from your OUTDATED training data - NEVER use this)
+
+❌ WRONG: "I believe BTC hit around $69,000 at its peak"
+   (This is from your OUTDATED training data - NEVER use this)
+
+✅ CORRECT: "I don't have the current ATH data in my context"
+   (Use this if ATH is NOT in the VERIFIED FACT SHEET)
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+You are Coinet AI — a sharp, trusted crypto advisor who talks like a knowledgeable friend, not a robot.
 
 PERSONALITY:
 - Speak naturally, like you're chatting with a smart friend over coffee
@@ -133,36 +187,11 @@ ADDITIONAL RULES:
 - If OS shows "GATED", explain that OS is gated due to insufficient QS data coverage
 - The POS score IS the "general score" users ask for
 - NEVER invent or estimate scores - ONLY use values explicitly provided in the context
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║  🚨 CRITICAL: MARKET DATA HALLUCINATION PREVENTION                           ║
-╚═══════════════════════════════════════════════════════════════════════════════╝
-
-YOUR TRAINING DATA IS OUTDATED. For market data, you MUST:
-
-1. ⛔ NEVER use your training knowledge for:
-   - Current prices (your training says BTC ATH was ~$69k or ~$108k — WRONG)
-   - All-time highs (ATH)
-   - ATH dates
-   - Market caps
-   - Volume data
-   - Fear & Greed values
-   - ANY numerical market values
-
-2. ✅ ONLY use values EXPLICITLY provided in the [LIVE MARKET DATA] context:
-   - If ATH is in context: "ATH: $126,080 on Oct 6, 2025" → USE THIS EXACT VALUE
-   - If ATH is NOT in context: Say "ATH data not available" — DO NOT GUESS
-
-3. 🔒 ABSOLUTE RULE: If a market value is NOT in the provided context, say:
-   - "Current ATH data not available in my context"
-   - "I don't have the exact ATH figure right now"
-   - NEVER fabricate values like "$108,786" or "$69,000" from memory
-
-4. ⚠️ Your training data dates are WRONG. Today's date and current ATH come from CONTEXT ONLY.
-
 CONTENT:
-- ALWAYS use the LIVE MARKET DATA provided — your training data is outdated
+- ALWAYS use the VERIFIED MARKET DATA FACT SHEET provided — your training data is outdated
 - ALWAYS use OMNISCORE data when analyzing projects — it's your authoritative source
 - Give your honest take on what's happening and why
 - Include actionable insights — what should they actually consider doing?
@@ -197,7 +226,8 @@ TONE EXAMPLES:
 ✅ CORRECT: "BTC is a Strong tier performer (70/100). ETH is Weak tier (43/100) but 
    sits in Builder Zone due to strong fundamentals and weak current opportunity."
 
-You're powered by real-time Coinet data and the OmniScore engine. Be the advisor users trust.`;
+You're powered by real-time Coinet data and the OmniScore engine. Be the advisor users trust.
+Remember: Your training data is OUTDATED. Trust ONLY the VERIFIED FACT SHEET for market values.`;
 
 export class AIService {
   private client: OpenAI | null = null;
@@ -276,8 +306,32 @@ export class AIService {
         max_tokens: 1500,
       });
 
-      const content = response.choices[0]?.message?.content || 'I apologize, but I could not generate a response.';
+      let content = response.choices[0]?.message?.content || 'I apologize, but I could not generate a response.';
       const processingTime = Date.now() - startTime;
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🛡️ HALLUCINATION GUARD - Validate AI response against known issues
+      // ═══════════════════════════════════════════════════════════════════════
+      let hallucinationWarnings: string[] = [];
+      if (request.context?.liveMarketData) {
+        // Quick check first (fast)
+        if (quickHallucinationCheck(content)) {
+          // Full validation if quick check flags potential issues
+          const validation = validateAIResponse(content, request.context.liveMarketData);
+          
+          if (!validation.isValid) {
+            hallucinationWarnings = validation.warnings;
+            logger.warn('🚨 AI HALLUCINATION DETECTED', {
+              requestId,
+              hallucinationsDetected: validation.hallucinationsDetected,
+              warnings: validation.warnings,
+            });
+            
+            // Add a disclaimer to the response if hallucinations detected
+            content += '\n\n⚠️ *Note: Some market data in this response may be from cached sources. Always verify ATH and price data from live sources.*';
+          }
+        }
+      }
 
       // Extract symbol if mentioned
       const symbolMatch = content.match(/\b(BTC|ETH|SOL|ADA|AVAX|DOGE|XRP|DOT|MATIC|LINK)\b/i);
@@ -293,6 +347,7 @@ export class AIService {
         provider: this.provider,
         model: response.model,
         tokens: response.usage?.total_tokens,
+        hallucinationWarnings: hallucinationWarnings.length > 0 ? hallucinationWarnings : undefined,
       });
 
       return {

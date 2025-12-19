@@ -1944,6 +1944,9 @@ export async function fetchDefaultEnterpriseMarketData(): Promise<AggregatedMark
 
 /**
  * Format enterprise market data for AI context
+ * 
+ * CRITICAL: This creates a VERIFIED FACT SHEET that the AI MUST use.
+ * The format is designed to be impossible to misinterpret or hallucinate from.
  */
 export function formatEnterpriseMarketDataForAI(response: AggregatedMarketResponse): string {
   const now = new Date();
@@ -1959,15 +1962,18 @@ export function formatEnterpriseMarketDataForAI(response: AggregatedMarketRespon
     timeZoneName: 'short',
   });
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VERIFIED FACT SHEET - AI MUST USE ONLY THESE VALUES
+  // ═══════════════════════════════════════════════════════════════════════════
   let context = `
-╔═══════════════════════════════════════════════════════════════════════════╗
-║         🏛️ ENTERPRISE MARKET DATA - DIVINE PERFECTION                     ║
-║         ${dateStr}, ${timeStr}                        ║
-╚═══════════════════════════════════════════════════════════════════════════╝
-
-📊 MARKET REGIME: ${response.regime.toUpperCase()}
-📈 AVG CONFIDENCE: ${(response.metrics.avgConfidence * 100).toFixed(1)}%
-🔍 DATA QUALITY: ${(response.metrics.avgDataQuality * 100).toFixed(1)}%
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║  📋 VERIFIED MARKET DATA FACT SHEET                                               ║
+║  Generated: ${dateStr}, ${timeStr}                                   ║
+║  Source: CoinGecko + Multi-Source Cross-Verification                              ║
+╠═══════════════════════════════════════════════════════════════════════════════════╣
+║  ⚠️ MANDATORY: Use ONLY these values. Do NOT use training data for prices/ATH.  ║
+║  ⚠️ If a value is not listed below, say "data not available" - DO NOT GUESS.    ║
+╚═══════════════════════════════════════════════════════════════════════════════════╝
 
 `;
 
@@ -1980,51 +1986,70 @@ export function formatEnterpriseMarketDataForAI(response: AggregatedMarketRespon
       ? `+${coin.priceChangePercent24h.toFixed(2)}%`
       : `${coin.priceChangePercent24h.toFixed(2)}%`;
     
-    const verificationStatus = coin.crossVerified ? '✓' : coin.discrepancyFlags.length > 0 ? '⚠' : '○';
+    // Create a structured fact block for each coin
+    context += `┌─────────────────────────────────────────────────────────────────────────────┐\n`;
+    context += `│ ${coin.symbol} (${coin.name || coin.symbol})                                              \n`;
+    context += `├─────────────────────────────────────────────────────────────────────────────┤\n`;
+    context += `│ CURRENT_PRICE:     $${formatPrice(coin.price)}                              \n`;
+    context += `│ CHANGE_24H:        ${direction} ${changeStr}                                 \n`;
+    context += `│ MARKET_CAP:        $${formatLargeNumber(coin.marketCap)}                    \n`;
+    context += `│ VOLUME_24H:        $${formatLargeNumber(coin.volume24h)}                    \n`;
     
-    context += `${verificationStatus} ${coin.symbol}: $${formatPrice(coin.price)} (${direction}${changeStr} 24h)`;
-    context += ` | Vol: $${formatLargeNumber(coin.volume24h)} | MCap: $${formatLargeNumber(coin.marketCap)}`;
-    context += ` | Conf: ${(coin.confidence * 100).toFixed(0)}%`;
-    
-    // Add ATH data if available (CRITICAL for accurate AI responses)
+    // ATH data - CRITICAL for accuracy
     if (coin.ath && coin.athDate) {
       const athDate = new Date(coin.athDate);
       const athDateStr = athDate.toLocaleDateString('en-US', { 
-        month: 'short', 
+        month: 'long', 
         day: 'numeric', 
         year: 'numeric' 
       });
       const athChangePercent = ((coin.price - coin.ath) / coin.ath * 100).toFixed(1);
-      context += `\n   📈 ATH: $${formatPrice(coin.ath)} on ${athDateStr} (${athChangePercent}% from ATH)`;
+      context += `│ ALL_TIME_HIGH:     $${formatPrice(coin.ath)}                              \n`;
+      context += `│ ATH_DATE:          ${athDateStr}                                          \n`;
+      context += `│ DISTANCE_FROM_ATH: ${athChangePercent}%                                   \n`;
+    } else {
+      context += `│ ALL_TIME_HIGH:     [DATA NOT AVAILABLE - DO NOT GUESS]                    \n`;
     }
     
-    // Add 24h range if available
+    // 24h range
     if (coin.high24h && coin.low24h) {
-      context += `\n   📊 24h Range: $${formatPrice(coin.low24h)} - $${formatPrice(coin.high24h)}`;
+      context += `│ HIGH_24H:          $${formatPrice(coin.high24h)}                          \n`;
+      context += `│ LOW_24H:           $${formatPrice(coin.low24h)}                           \n`;
     }
     
-    context += '\n';
-    
-    // Add discrepancy warnings if present
-    if (coin.discrepancyFlags.length > 0) {
-      for (const flag of coin.discrepancyFlags.slice(0, 2)) {
-        context += `   ⚠️ ${flag}\n`;
-      }
+    // Supply data
+    if (coin.circulatingSupply) {
+      context += `│ CIRCULATING:       ${formatLargeNumber(coin.circulatingSupply)}           \n`;
     }
+    
+    context += `│ DATA_CONFIDENCE:   ${(coin.confidence * 100).toFixed(0)}%                   \n`;
+    context += `│ CROSS_VERIFIED:    ${coin.crossVerified ? 'YES' : 'NO'}                     \n`;
+    context += `└─────────────────────────────────────────────────────────────────────────────┘\n\n`;
   }
   
+  // Market summary
+  context += `═══════════════════════════════════════════════════════════════════════════════════\n`;
+  context += `MARKET_REGIME: ${response.regime.toUpperCase()}\n`;
+  context += `AVG_CONFIDENCE: ${(response.metrics.avgConfidence * 100).toFixed(1)}%\n`;
+  context += `DATA_QUALITY: ${(response.metrics.avgDataQuality * 100).toFixed(1)}%\n`;
+  context += `SOURCES: ${response.metrics.sourcesQueried.join(', ')}\n`;
+  context += `FETCH_TIME: ${response.metrics.fetchTimeMs}ms\n`;
+  context += `═══════════════════════════════════════════════════════════════════════════════════\n`;
+  
   if (response.missingSymbols.length > 0) {
-    context += `\n❌ NOT FOUND: ${response.missingSymbols.join(', ')}\n`;
+    context += `\n⛔ COINS WITH NO DATA (DO NOT GUESS PRICES): ${response.missingSymbols.join(', ')}\n`;
   }
   
   if (response.warnings.length > 0) {
-    context += '\n--- WARNINGS ---\n';
+    context += '\n⚠️ DATA WARNINGS:\n';
     for (const warning of response.warnings) {
-      context += `${warning}\n`;
+      context += `  - ${warning}\n`;
     }
   }
   
-  context += `\n[Sources: ${response.metrics.sourcesQueried.join(', ')} | Fetch: ${response.metrics.fetchTimeMs}ms | Cross-Verified: ${response.metrics.crossVerificationPassed}/${response.prices.length}]\n`;
+  // Final reminder
+  context += `\n🔒 REMINDER: All values above are VERIFIED from live APIs. Use these EXACT values.\n`;
+  context += `🔒 Your training data contains OUTDATED prices/ATH. IGNORE your training knowledge.\n`;
   
   return context;
 }
