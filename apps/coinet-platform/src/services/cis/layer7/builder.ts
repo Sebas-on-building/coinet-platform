@@ -7,6 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { ExplanationObjectSchema } from './types'; // Explicitly import schema
 import type {
   ExplanationObject,
   GatedOutput,
@@ -47,7 +48,7 @@ export interface PipelineResults {
     metricName: string;
     reconciledValue: number;
     normalizedValue: number;
-    unit: string;
+    unit: 'SCORE_0_100' | 'USD' | 'PERCENT' | 'COUNT' | 'RATIO' | 'TX_PER_DAY' | 'TX_PER_SECOND' | 'USERS_PER_DAY' | 'SECONDS' | 'DAYS' | 'HOURS' | 'SCORE_0_1' | 'RAW_SCORE' | 'BOOLEAN' | 'ORDINAL' | 'HASH' | 'BTC' | 'ETH' | 'TOKENS' | 'BASIS_POINTS';
     sourceId: string;
     corroboratingSources: string[];
     timestamp: string;
@@ -59,7 +60,7 @@ export interface PipelineResults {
   /** Validation results from Layer 4 */
   validation: Array<{
     metricId: string;
-    status: 'PASS' | 'WARN' | 'FAIL' | 'GATED';
+    status: 'pass' | 'warn' | 'fail' | 'gated';
     qualityFlags: string[];
     ageSeconds: number;
   }>;
@@ -156,7 +157,7 @@ function buildClaim(
   reconciliation: PipelineResults['reconciliation'][0],
   validation: PipelineResults['validation'][0] | undefined,
   feature: PipelineResults['features'][string] | undefined,
-  index: number
+  index: number,
 ): Claim {
   const direction = feature?.direction ?? 'neutral';
   const scoreCategory = feature?.scoreCategory ?? 'META';
@@ -183,7 +184,7 @@ function buildClaim(
     data_age_seconds: validation?.ageSeconds ?? 0,
     direction,
     score_category: scoreCategory,
-    validation_status: validation?.status === 'GATED' ? 'FAIL' : (validation?.status ?? 'PASS'),
+    validation_status: validation?.status === 'gated' ? 'FAIL' : (validation?.status === 'fail' ? 'FAIL' : (validation?.status === 'warn' ? 'WARN' : 'PASS')),
     quality_flags: validation?.qualityFlags ?? [],
     assertion_template: assertion,
     reliability: reconciliation.reliability,
@@ -199,7 +200,7 @@ function buildClaim(
  */
 function buildDrivers(
   claims: Claim[],
-  features: PipelineResults['features']
+  features: PipelineResults['features'],
 ): { positive: Driver[]; negative: Driver[] } {
   const positive: Driver[] = [];
   const negative: Driver[] = [];
@@ -268,21 +269,21 @@ function buildDrivers(
  * Build warnings from validation and anomaly results
  */
 function buildWarnings(
-  results: PipelineResults
+  results: PipelineResults,
 ): Warning[] {
   const warnings: Warning[] = [];
   let warningIndex = 0;
   
   // Add validation warnings
   for (const val of results.validation) {
-    if (val.status === 'WARN' || val.status === 'FAIL') {
+    if (val.status === 'warn' || val.status === 'fail' || val.status === 'gated') {
       warnings.push({
         warning_id: `warning_${warningIndex++}`,
         type: val.qualityFlags.includes('stale') ? 'STALE' : 'DATA_QUALITY',
-        severity: val.status === 'FAIL' ? 'HIGH' : 'MEDIUM',
-        message: `${val.metricId}: Validation ${val.status.toLowerCase()} - ${val.qualityFlags.join(', ')}`,
+        severity: val.status === 'fail' || val.status === 'gated' ? 'HIGH' : 'MEDIUM',
+        message: `${val.metricId}: Validation ${val.status} - ${val.qualityFlags.join(', ')}`,
         affected_metrics: [val.metricId],
-        narrative_treatment: val.status === 'FAIL' ? 'PROMINENT_CAUTION' : 'CONTEXTUAL_NOTE',
+        narrative_treatment: val.status === 'fail' || val.status === 'gated' ? 'PROMINENT_CAUTION' : 'CONTEXTUAL_NOTE',
         source_layer: 'LAYER_4',
       });
     }
@@ -372,7 +373,7 @@ function buildWarnings(
  */
 function buildNarrativeGuidance(
   results: PipelineResults,
-  warnings: Warning[]
+  warnings: Warning[],
 ): ExplanationObject['narrative_guidance'] {
   const requiredPoints: string[] = [];
   const recommendedPoints: string[] = [];
@@ -441,7 +442,7 @@ function buildNarrativeGuidance(
  */
 export function buildExplanationObject(
   results: PipelineResults,
-  pipelineExecutionId: string
+  pipelineExecutionId: string,
 ): ExplanationObject | GatedOutput {
   const now = new Date().toISOString();
   

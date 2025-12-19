@@ -174,11 +174,11 @@ describe('Schema Validation', () => {
 describe('Hard Rules (Invariants)', () => {
   const validSnapshot = bitcoinSnapshot as ValidatedOmniScoreSnapshot;
 
-  describe('RULE: confidence < 40% → posFinal = null', () => {
-    it('should reject posFinal != null when confidence < 40', () => {
+  describe('RULE: confidence < 35% → posFinal = null', () => {
+    it('should reject posFinal != null when confidence < 35', () => {
       const invalid = {
         ...validSnapshot,
-        confidence: 35,
+        confidence: 30,
         confidenceLevel: 'insufficient' as const,
         posFinal: 75, // Should be null!
       };
@@ -186,10 +186,10 @@ describe('Hard Rules (Invariants)', () => {
       expect(result).toBeNull();
     });
 
-    it('should accept posFinal = null when confidence < 40', () => {
+    it('should accept posFinal = null when confidence < 35', () => {
       const valid = {
         ...validSnapshot,
-        confidence: 35,
+        confidence: 30,
         confidenceLevel: 'insufficient' as const,
         posFinal: null,
         posTier: null,

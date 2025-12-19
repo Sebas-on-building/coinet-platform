@@ -34,6 +34,8 @@ import { MarketDataService } from '../services/market-data-service';
 import { SocialDataService } from '../services/social-data-service';
 import { NewsDataService } from '../services/news-data-service';
 import { OnChainDataService } from '../services/onchain-data-service';
+import { SentimentDataService, SentimentContext } from '../services/sentiment-data-service';
+import { TechnicalIndicatorsService, TechnicalAnalysis } from '../services/technical-indicators-service';
 import { v4 as uuidv4 } from 'uuid';
 
 export class InputProcessor {
@@ -41,6 +43,8 @@ export class InputProcessor {
   private socialDataService: SocialDataService;
   private newsDataService: NewsDataService;
   private onChainDataService: OnChainDataService;
+  private sentimentDataService: SentimentDataService;
+  private technicalIndicatorsService: TechnicalIndicatorsService;
 
   // Known crypto symbols and aliases for detection
   private static readonly CRYPTO_SYMBOLS = new Map<string, string>([
@@ -72,8 +76,10 @@ export class InputProcessor {
     this.socialDataService = new SocialDataService();
     this.newsDataService = new NewsDataService();
     this.onChainDataService = new OnChainDataService();
+    this.sentimentDataService = new SentimentDataService();
+    this.technicalIndicatorsService = new TechnicalIndicatorsService();
 
-    logger.info('🧠 InputProcessor initialized with divine intelligence');
+    logger.info('🧠 InputProcessor initialized with divine intelligence (including Fear & Greed + Technical Analysis)');
   }
 
   /**
@@ -280,7 +286,7 @@ export class InputProcessor {
   /**
    * 🔄 CONTEXT DATA ENRICHMENT
    * 
-   * Fetches and enriches with market, social, news, and on-chain data
+   * Fetches and enriches with market, social, news, on-chain, sentiment, and technical data
    */
   private async enrichWithContextData(
     symbol: string, 
@@ -292,23 +298,40 @@ export class InputProcessor {
     socialData?: SocialContext;
     newsData?: NewsContext;
     onChainData?: OnChainContext;
+    sentimentData?: SentimentContext;
+    technicalData?: TechnicalAnalysis;
   }> {
     try {
-      logger.info(`🔄 Enriching data for ${symbol}...`);
+      logger.info(`🔄 Enriching data for ${symbol} (including Fear & Greed + Technicals)...`);
 
-      // Fetch data in parallel for speed
-      const [marketData, socialData, newsData, onChainData] = await Promise.allSettled([
+      // Fetch ALL data in parallel for speed
+      const [marketData, socialData, newsData, onChainData, sentimentData, technicalData] = await Promise.allSettled([
         this.marketDataService.getMarketData(symbol),
         this.socialDataService.getSocialData(symbol),
         this.newsDataService.getNewsData(symbol),
-        this.onChainDataService.getOnChainData(symbol)
+        this.onChainDataService.getOnChainData(symbol),
+        this.sentimentDataService.getSentimentData(),
+        this.technicalIndicatorsService.getTechnicalAnalysis(symbol)
       ]);
+
+      // Log what we got
+      const dataStatus = {
+        market: marketData.status === 'fulfilled' && marketData.value.currentPrice > 0,
+        social: socialData.status === 'fulfilled',
+        news: newsData.status === 'fulfilled',
+        onChain: onChainData.status === 'fulfilled',
+        sentiment: sentimentData.status === 'fulfilled',
+        technical: technicalData.status === 'fulfilled',
+      };
+      logger.info(`📊 Data enrichment results for ${symbol}:`, dataStatus);
 
       return {
         marketData: marketData.status === 'fulfilled' ? marketData.value : undefined,
         socialData: socialData.status === 'fulfilled' ? socialData.value : undefined,
         newsData: newsData.status === 'fulfilled' ? newsData.value : undefined,
-        onChainData: onChainData.status === 'fulfilled' ? onChainData.value : undefined
+        onChainData: onChainData.status === 'fulfilled' ? onChainData.value : undefined,
+        sentimentData: sentimentData.status === 'fulfilled' ? sentimentData.value : undefined,
+        technicalData: technicalData.status === 'fulfilled' ? technicalData.value : undefined,
       };
 
     } catch (error) {

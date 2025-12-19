@@ -245,9 +245,10 @@ describe('Scoring - Fixed Weights', () => {
   });
   
   it('should use correct fixed weights in formula', () => {
-    expect(POS_WEIGHTS.QS).toBe(0.50);
-    expect(POS_WEIGHTS.OS).toBe(0.30);
-    expect(POS_WEIGHTS.SAFETY).toBe(0.20);
+    // Official formula: POS = 0.60×QS + 0.25×OS + 0.15×(100-Risk)
+    expect(POS_WEIGHTS.QS).toBe(0.60);
+    expect(POS_WEIGHTS.OS).toBe(0.25);
+    expect(POS_WEIGHTS.SAFETY).toBe(0.15);
   });
 });
 
@@ -259,33 +260,33 @@ describe('Scoring - POS Formula', () => {
   it('should calculate POS correctly with all components', () => {
     const pos = calculatePOS(80, 60, 40);
     
-    // posRaw = 0.5*80 + 0.3*60 + 0.2*(100-40)
-    //        = 40 + 18 + 12 = 70
-    expect(pos.posRaw).toBeCloseTo(70, 1);
+    // Official formula: POS = 0.60×QS + 0.25×OS + 0.15×(100-Risk)
+    // posRaw = 0.60×80 + 0.25×60 + 0.15×(100-40)
+    //        = 48 + 15 + 9 = 72
+    expect(pos.posRaw).toBeCloseTo(72, 1);
   });
   
   it('should renormalize when OS is gated', () => {
     const pos = calculatePOS(80, null, 40);
     
-    // Without OS: renormalize QS and Safety
-    // qsWeight = 0.5 / (0.5 + 0.2) = 0.714
-    // safetyWeight = 0.2 / (0.5 + 0.2) = 0.286
-    // posRaw = 0.714*80 + 0.286*60 = 57.14 + 17.14 = 74.28
-    expect(pos.posRaw).toBeCloseTo(74.3, 0);
+    // Without OS: use OS-gated weights (0.80 QS + 0.20 Safety)
+    // posRaw = 0.80×80 + 0.20×(100-40)
+    //        = 64 + 12 = 76
+    expect(pos.posRaw).toBeCloseTo(76, 0);
     expect(pos.os).toBe(null);
   });
   
   it('should handle edge case: all components at 100', () => {
     const pos = calculatePOS(100, 100, 0); // risk=0 means safety=100
     
-    // posRaw = 0.5*100 + 0.3*100 + 0.2*100 = 100
+    // posRaw = 0.60×100 + 0.25×100 + 0.15×100 = 60 + 25 + 15 = 100
     expect(pos.posRaw).toBe(100);
   });
   
   it('should handle edge case: all components at 0', () => {
     const pos = calculatePOS(0, 0, 100); // risk=100 means safety=0
     
-    // posRaw = 0.5*0 + 0.3*0 + 0.2*0 = 0
+    // posRaw = 0.60×0 + 0.25×0 + 0.15×0 = 0
     expect(pos.posRaw).toBe(0);
   });
   
@@ -293,7 +294,7 @@ describe('Scoring - POS Formula', () => {
     const highQS = calculatePOS(100, 0, 50);
     const highOS = calculatePOS(0, 100, 50);
     
-    // QS weight (0.5) > OS weight (0.3), so highQS should be higher
+    // QS weight (0.60) > OS weight (0.25), so highQS should be higher
     expect(highQS.posRaw).toBeGreaterThan(highOS.posRaw);
   });
 });

@@ -20,7 +20,7 @@ import {
   getSectorFromCategory,
   CATEGORY_METRIC_PRIORITIES,
 } from './taxonomy';
-import { FSS_REGISTRY, isMetricApplicableToSector } from '../layer2/fss-registry';
+import { FSS_REGISTRY, isMetricApplicableToSector, validateMetricApplication } from '../layer2/fss-registry';
 import type { Sector } from '../layer2/fss-types';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -32,7 +32,7 @@ import type { Sector } from '../layer2/fss-types';
  */
 export function getMetricRelevance(
   metricId: string,
-  category: AssetCategory
+  category: AssetCategory,
 ): MetricRelevance {
   const priorities = getMetricPriorities(category);
   
@@ -107,33 +107,43 @@ function getWeightModifier(relevance: MetricRelevance): number {
 export function filterMetricsByContext(
   entityId: string,
   availableMetricIds: string[],
-  classification?: AssetClassification
+  classification?: AssetClassification,
 ): ContextualFilterResult {
   const now = new Date().toISOString();
   
   // Classify asset if not provided
   const assetClassification = classification ?? classifyAsset(entityId);
   const category = assetClassification.primary_category;
-  
+  const sector = assetClassification.sector_group; // Get sector for FSS check
+
   const applicableMetrics: ContextualFilterResult['applicable_metrics'] = [];
   const excludedMetrics: ContextualFilterResult['excluded_metrics'] = [];
   const priorityMetrics: string[] = [];
   
   // Process each available metric
   for (const metricId of availableMetricIds) {
-    const relevance = getMetricRelevance(metricId, category);
+    // First, check against FSS directly using the asset's sector
+    const fssValidation = validateMetricApplication(metricId, sector as Sector);
+    console.log(`[filterMetricsByContext] Metric: ${metricId}, Sector: ${sector}, FSS Validation: ${JSON.stringify(fssValidation)}`);
+
+    let relevance: MetricRelevance; // Initialize relevance
+    let reason = '';
+
+    if (!fssValidation.valid) {
+      relevance = fssValidation.error.includes('FORBIDDEN') ? 'FORBIDDEN' : 'NOT_APPLICABLE';
+      reason = fssValidation.error; // Use the detailed error message from FSS validation
+    } else {
+      // If FSS says it's valid for the sector, then check priorities
+      relevance = getMetricRelevance(metricId, category);
+    }
+    console.log(`[filterMetricsByContext] Metric: ${metricId}, Category: ${category}, Relevance: ${relevance}`);
+
     const weightModifier = getWeightModifier(relevance);
     
-    if (relevance === 'FORBIDDEN') {
+    if (relevance === 'FORBIDDEN' || relevance === 'NOT_APPLICABLE') {
       excludedMetrics.push({
         metric_id: metricId,
-        reason: `SEMANTIC ERROR: ${metricId} is forbidden for ${category} assets`,
-        would_be_relevance: relevance,
-      });
-    } else if (relevance === 'NOT_APPLICABLE') {
-      excludedMetrics.push({
-        metric_id: metricId,
-        reason: `${metricId} is not applicable to ${category} assets`,
+        reason: reason || `${metricId} is ${relevance.toLowerCase()} for ${category} assets`,
         would_be_relevance: relevance,
       });
     } else {
@@ -201,7 +211,7 @@ export function filterMetricsByContext(
  * - NOT TVL, NOT ecosystem depth
  */
 export function getPaymentTokenMetrics(
-  availableMetricIds: string[]
+  availableMetricIds: string[],
 ): {
   applicable: string[];
   excluded: string[];
@@ -213,7 +223,7 @@ export function getPaymentTokenMetrics(
     'os_volume_quality_v1',     // Real volume
     'os_momentum_v1',
     'risk_concentration_v1',
-    'risk_data_integrity_v1',
+    'risk_dat-integrity_v1',
   ];
   
   const paymentExcluded = [
@@ -237,7 +247,7 @@ export function getPaymentTokenMetrics(
  * Get meme coin specific metrics
  */
 export function getMemeCoinMetrics(
-  availableMetricIds: string[]
+  availableMetricIds: string[],
 ): {
   applicable: string[];
   excluded: string[];
@@ -277,7 +287,7 @@ export function getMemeCoinMetrics(
  * Get stablecoin specific metrics
  */
 export function getStablecoinMetrics(
-  availableMetricIds: string[]
+  availableMetricIds: string[],
 ): {
   applicable: string[];
   excluded: string[];
@@ -288,7 +298,7 @@ export function getStablecoinMetrics(
     'qs_adoption_v1',           // Usage
     'os_liquidity_depth_v1',
     'risk_concentration_v1',
-    'risk_data_integrity_v1',
+    'risk_dat-integrity_v1',
   ];
   
   const stableExcluded = [
@@ -325,7 +335,7 @@ export function getStablecoinMetrics(
 export function prepareForInterpretation(
   entityId: string,
   rawMetrics: Record<string, { value: number; timestamp: string }>,
-  classification?: AssetClassification
+  classification?: AssetClassification,
 ): {
   filteredMetrics: Record<string, {
     value: number;

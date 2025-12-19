@@ -59,11 +59,67 @@ export interface ProcessedInput {
   socialData?: SocialContext;
   newsData?: NewsContext;
   onChainData?: OnChainContext;
+  sentimentData?: SentimentContext;
+  technicalData?: TechnicalAnalysis;
   
   // Processing metadata
   processedAt: Date;
   dataFreshness: number; // 0-1 how fresh the data is
   completeness: number;  // 0-1 how complete the data is
+}
+
+// Sentiment data from Fear & Greed Index and other sources
+export interface SentimentContext {
+  fearGreed: {
+    value: number;                    // 0-100
+    classification: string;           // "Extreme Fear" | "Fear" | "Neutral" | "Greed" | "Extreme Greed"
+    timestamp: Date;
+    previousValue?: number;
+    previousClassification?: string;
+    trend: 'improving' | 'worsening' | 'stable';
+  };
+  overallSentiment: 'extreme_fear' | 'fear' | 'neutral' | 'greed' | 'extreme_greed';
+  sentimentScore: number;           // -100 to +100
+  summary: string;
+  lastUpdated: Date;
+  dataSource: string;
+}
+
+// Technical analysis data
+export interface TechnicalAnalysis {
+  symbol: string;
+  rsi14: number;
+  rsiSignal: 'oversold' | 'neutral' | 'overbought';
+  rsiDescription: string;
+  macd: {
+    value: number;
+    signal: number;
+    histogram: number;
+    trend: 'bullish' | 'bearish' | 'neutral';
+  };
+  movingAverages: {
+    sma20: number;
+    sma50: number;
+    sma200: number;
+    currentPrice: number;
+    priceVsSMA20: number;
+    priceVsSMA50: number;
+    priceVsSMA200: number;
+    goldenCross: boolean;
+    deathCross: boolean;
+  };
+  trend: {
+    direction: 'bullish' | 'bearish' | 'neutral';
+    strength: number;
+    description: string;
+  };
+  levels: {
+    support: number[];
+    resistance: number[];
+  };
+  overallSignal: 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
+  confidence: number;
+  lastUpdated: Date;
 }
 
 // =============================================================================
@@ -78,20 +134,35 @@ export interface MarketDataContext {
   volume24h: number;
   marketCap: number;
   dominance?: number;
+  // Price range
+  high24h?: number;
+  low24h?: number;
+  // All-time high data
+  ath?: number;
+  athDate?: Date;
+  athChangePercent?: number;
+  // Supply data
+  circulatingSupply?: number;
+  totalSupply?: number;
+  maxSupply?: number | null;
+  // Technical indicators
   technicalIndicators: {
     rsi?: number;
     macd?: { value: number; signal: number; histogram: number };
     movingAverages?: { ma20: number; ma50: number; ma200: number };
     support?: number;
     resistance?: number;
+    rangePosition?: number; // 0-100 position in 24h range
   };
   volatility: number;
   lastUpdated: Date;
+  // Data source tracking
+  dataSource?: string;
 }
 
 export interface SocialContext {
   sentiment: {
-    score: number;      // -100 to +100
+    score: number;      // -100 to +100 (0 = unavailable)
     trend: 'improving' | 'stable' | 'declining';
     volume: number;     // Number of mentions
     authenticity: number; // 0-1 how authentic the sentiment is
@@ -105,6 +176,9 @@ export interface SocialContext {
   }>;
   trendingTopics: string[];
   lastUpdated: Date;
+  // Data source tracking
+  dataSource?: string;
+  unavailableReason?: string;
 }
 
 export interface NewsContext {
@@ -120,6 +194,9 @@ export interface NewsContext {
   }>;
   dominantNarrative: string;
   lastUpdated: Date;
+  // Data source tracking
+  dataSource?: string;
+  unavailableReason?: string;
 }
 
 export interface OnChainContext {
@@ -136,6 +213,9 @@ export interface OnChainContext {
     staking: number;
   };
   lastUpdated: Date;
+  // Data source tracking
+  dataSource?: string;
+  unavailableReason?: string;
 }
 
 // =============================================================================

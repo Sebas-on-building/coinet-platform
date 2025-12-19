@@ -1,691 +1,414 @@
 /**
  * ╔═══════════════════════════════════════════════════════════════════════════════╗
- * ║     🏛️ CIS LAYER 4 - VALIDATION ENGINE                                       ║
+ * ║     🏛️ CIS LAYER 4 - VALIDATION & ANOMALY DETECTION                           ║
  * ║                                                                               ║
  * ║   THE FAIL-CLOSED MECHANISM                                                   ║
  * ║                                                                               ║
- * ║   "Poor data quality must never be interpreted as genuine financial          ║
- * ║    strength, but instead must reduce the confidence or gate the final        ║
- * ║    output."                                                                  ║
+ * ║   "Layer 4 acts as the final quality control barrier before interpretation.  ║
+ * ║    It enforces the 'fail-closed' rule, ensuring that any anomaly,           ║
+ * ║    inconsistency, or violation of semantic rules is either corrected,        ║
+ * * ║    flagged, or gated, preventing bad data from being 'interpreted.'"         ║
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
 import type {
   ValidationRule,
-  RuleCheckResult,
   MetricValidationResult,
   EntityValidationSummary,
-  ValidationFlag,
-  GatingImpact,
   AnomalySignal,
-  AnomalyType,
-  CrossMetricCheckResult,
+  CrossMetricCheck,
+  ChangeMetricsInput,
+  MetricValueMap,
+  GatingImpact,
+  AssetCategory,
 } from './types';
 import {
-  ALL_VALIDATION_RULES,
+  STRUCTURAL_RULES,
+  SEMANTIC_BOUND_RULES,
+  STALENESS_RULES,
   CROSS_METRIC_CHECKS,
-  getRulesForMetric,
+  BEHAVIORAL_ANOMALY_RULES,
 } from './rules';
+import { z } from 'zod';
+
+const NOW = new Date().toISOString(); // Define NOW for this module
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// STRUCTURAL VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Perform structural validation on a raw value
- */
-export function validateStructural(
-  metricId: string,
-  value: unknown,
-  timestamp: string | null
-): RuleCheckResult[] {
-  const results: RuleCheckResult[] = [];
-  const now = Date.now();
-  
-  // STRUCT_001: Finite value check
-  if (typeof value === 'number') {
-    const isFiniteValue = Number.isFinite(value);
-    results.push({
-      rule_id: 'STRUCT_001',
-      passed: isFiniteValue,
-      flag: isFiniteValue ? 'PASS' : 'FAIL',
-      impact: isFiniteValue ? 'NONE' : 'METRIC_EXCLUDE',
-      message: isFiniteValue 
-        ? 'Value is finite' 
-        : `Value is not finite: ${value}`,
-      actual_values: { value },
-      expected: { finite: true },
-    });
-  }
-  
-  // STRUCT_002: Null/Undefined check
-  const isNotNull = value !== null && value !== undefined;
-  results.push({
-    rule_id: 'STRUCT_002',
-    passed: isNotNull,
-    flag: isNotNull ? 'PASS' : 'FAIL',
-    impact: isNotNull ? 'NONE' : 'METRIC_EXCLUDE',
-    message: isNotNull 
-      ? 'Value is not null/undefined' 
-      : 'Value is null or undefined',
-    actual_values: { value: value ?? null },
-    expected: { not_null: true },
-  });
-  
-  // STRUCT_003: Numeric type check
-  const isNumeric = typeof value === 'number';
-  results.push({
-    rule_id: 'STRUCT_003',
-    passed: isNumeric,
-    flag: isNumeric ? 'PASS' : 'FAIL',
-    impact: isNumeric ? 'NONE' : 'METRIC_EXCLUDE',
-    message: isNumeric 
-      ? 'Value is numeric' 
-      : `Value is not numeric: ${typeof value}`,
-    actual_values: { type: typeof value },
-    expected: { type: 'number' },
-  });
-  
-  // STRUCT_004: Timestamp recency
-  if (timestamp) {
-    const observedTime = new Date(timestamp).getTime();
-    const isFuture = observedTime > now;
-    results.push({
-      rule_id: 'STRUCT_004',
-      passed: !isFuture,
-      flag: isFuture ? 'FAIL' : 'PASS',
-      impact: isFuture ? 'METRIC_EXCLUDE' : 'NONE',
-      message: isFuture 
-        ? `Timestamp is in the future: ${timestamp}` 
-        : 'Timestamp is valid',
-      actual_values: { timestamp },
-      expected: { in_past: true },
-    });
-  }
-  
-  return results;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SEMANTIC BOUND VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface SemanticBoundCheck {
-  metricPattern: string;
-  min?: number | null;
-  max?: number | null;
-  ruleId: string;
-  failFlag: ValidationFlag;
-  failImpact: GatingImpact;
-}
-
-const SEMANTIC_BOUNDS: SemanticBoundCheck[] = [
-  { metricPattern: 'market_cap', min: 1000, max: 1e15, ruleId: 'SEM_001', failFlag: 'FAIL', failImpact: 'GATED' },
-  { metricPattern: 'price', min: 0.000000001, max: null, ruleId: 'SEM_003', failFlag: 'FAIL', failImpact: 'GATED' },
-  { metricPattern: 'supply', min: 0, max: null, ruleId: 'SEM_004', failFlag: 'FAIL', failImpact: 'GATED' },
-  { metricPattern: 'volume', min: 0, max: null, ruleId: 'SEM_006', failFlag: 'FAIL', failImpact: 'METRIC_EXCLUDE' },
-  { metricPattern: 'tvl', min: 0, max: null, ruleId: 'SEM_007', failFlag: 'FAIL', failImpact: 'METRIC_EXCLUDE' },
-  { metricPattern: 'percent', min: 0, max: 100, ruleId: 'SEM_008', failFlag: 'FAIL', failImpact: 'METRIC_EXCLUDE' },
-  { metricPattern: 'score', min: 0, max: 100, ruleId: 'SEM_009', failFlag: 'FAIL', failImpact: 'GATED' },
-];
-
-/**
- * Validate semantic bounds for a metric
- */
-export function validateSemanticBounds(
-  metricId: string,
-  value: number
-): RuleCheckResult[] {
-  const results: RuleCheckResult[] = [];
-  
-  for (const bound of SEMANTIC_BOUNDS) {
-    if (!metricId.toLowerCase().includes(bound.metricPattern)) continue;
-    
-    let passed = true;
-    let message = 'Value within bounds';
-    
-    if (bound.min !== null && bound.min !== undefined && value < bound.min) {
-      passed = false;
-      message = `Value ${value} is below minimum ${bound.min}`;
-    }
-    
-    if (bound.max !== null && bound.max !== undefined && value > bound.max) {
-      passed = false;
-      message = `Value ${value} exceeds maximum ${bound.max}`;
-    }
-    
-    results.push({
-      rule_id: bound.ruleId,
-      passed,
-      flag: passed ? 'PASS' : bound.failFlag,
-      impact: passed ? 'NONE' : bound.failImpact,
-      message,
-      actual_values: { value },
-      expected: { min: bound.min, max: bound.max },
-    });
-  }
-  
-  return results;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CROSS-METRIC CONSISTENCY CHECKS
+// METRIC-LEVEL VALIDATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Check market cap = price × supply consistency
+ * Validate structural integrity of a single metric
  */
-export function checkMarketCapConsistency(
-  marketCap: number,
-  price: number,
-  supply: number,
-  tolerancePercent: number = 2
-): CrossMetricCheckResult {
-  const expectedMC = price * supply;
-  const actualMC = marketCap;
-  
-  // Use log comparison for percentage deviation
-  const logActual = Math.log(actualMC);
-  const logExpected = Math.log(expectedMC);
-  const deviation = Math.abs(logActual - logExpected);
-  const deviationPercent = (Math.exp(deviation) - 1) * 100;
-  
-  const passed = deviationPercent <= tolerancePercent;
-  
-  return {
-    check_id: 'CROSS_001',
-    passed,
-    values: { market_cap: marketCap, price, supply },
-    computed_value: actualMC,
-    expected_value: expectedMC,
-    deviation_percent: deviationPercent,
-    tolerance_percent: tolerancePercent,
-    message: passed 
-      ? `Market cap consistent: ${deviationPercent.toFixed(2)}% deviation` 
-      : `Market cap inconsistent: ${deviationPercent.toFixed(2)}% deviation (max ${tolerancePercent}%)`,
-  };
-}
+function validateStructural(metricId: string, value: unknown): MetricValidationResult {
+  let status: MetricValidationResult['status'] = 'pass';
+  const flags: string[] = [];
+  const warnings: string[] = [];
+  const errors: string[] = [];
 
-/**
- * Check circulating supply ≤ total supply
- */
-export function checkSupplyConsistency(
-  circulatingSupply: number,
-  totalSupply: number
-): CrossMetricCheckResult {
-  const passed = circulatingSupply <= totalSupply;
-  
-  return {
-    check_id: 'CROSS_002',
-    passed,
-    values: { circulating_supply: circulatingSupply, total_supply: totalSupply },
-    computed_value: circulatingSupply,
-    expected_value: totalSupply,
-    deviation_percent: passed ? 0 : ((circulatingSupply - totalSupply) / totalSupply) * 100,
-    tolerance_percent: 0,
-    message: passed 
-      ? 'Circulating supply ≤ total supply' 
-      : `Circulating supply (${circulatingSupply}) exceeds total supply (${totalSupply})`,
-  };
-}
-
-/**
- * Check volume/market cap ratio sanity
- */
-export function checkVolumeMCRatio(
-  volume24h: number,
-  marketCap: number,
-  maxRatio: number = 10
-): CrossMetricCheckResult {
-  const ratio = marketCap > 0 ? volume24h / marketCap : 0;
-  const passed = ratio <= maxRatio;
-  
-  return {
-    check_id: 'CROSS_004',
-    passed,
-    values: { volume_24h: volume24h, market_cap: marketCap },
-    computed_value: ratio,
-    expected_value: maxRatio,
-    deviation_percent: passed ? 0 : ((ratio - maxRatio) / maxRatio) * 100,
-    tolerance_percent: 0,
-    message: passed 
-      ? `Volume/MC ratio ${ratio.toFixed(2)} is reasonable` 
-      : `Volume/MC ratio ${ratio.toFixed(2)} exceeds maximum ${maxRatio} (${ratio * 100}% daily turnover)`,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BEHAVIORAL ANOMALY DETECTION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Detect volume-liquidity mismatch (wash trading signal)
- * 
- * "Volume spike > 400% AND liquidity depth change < 10% indicates manipulation"
- */
-export function detectVolumeLiquidityMismatch(
-  volumeChangePercent: number,
-  liquidityChangePercent: number
-): AnomalySignal | null {
-  const volumeThreshold = 400;
-  const liquidityThreshold = 10;
-  
-  if (volumeChangePercent > volumeThreshold && liquidityChangePercent < liquidityThreshold) {
-    const severity = Math.min(1, volumeChangePercent / 1000); // Scale by volume spike
-    
-    return {
-      type: 'VOLUME_LIQUIDITY_MISMATCH',
-      severity,
-      confidence: 0.85,
-      description: `Volume spiked ${volumeChangePercent.toFixed(0)}% but liquidity only changed ${liquidityChangePercent.toFixed(1)}%. This pattern suggests artificial volume inflation.`,
-      evidence: {
-        volume_change_percent: volumeChangePercent,
-        liquidity_change_percent: liquidityChangePercent,
-        threshold_volume: volumeThreshold,
-        threshold_liquidity: liquidityThreshold,
-      },
-      action: severity > 0.7 ? 'GATE' : 'FLAG',
-      detected_at: new Date().toISOString(),
-    };
-  }
-  
-  return null;
-}
-
-/**
- * Detect wash trading based on volume vs unique traders
- * 
- * "High volume with low unique trader count suggests wash trading"
- */
-export function detectWashTrading(
-  volume24h: number,
-  uniqueTraders: number
-): AnomalySignal | null {
-  const volumeThreshold = 10_000_000; // $10M
-  const traderThreshold = 100;
-  
-  if (volume24h > volumeThreshold && uniqueTraders < traderThreshold) {
-    const volumePerTrader = volume24h / Math.max(1, uniqueTraders);
-    const severity = Math.min(1, Math.log10(volumePerTrader / 10000) / 3);
-    
-    return {
-      type: 'WASH_TRADING',
-      severity,
-      confidence: 0.75,
-      description: `$${(volume24h / 1e6).toFixed(1)}M volume with only ${uniqueTraders} unique traders. Average volume per trader: $${(volumePerTrader / 1000).toFixed(0)}K`,
-      evidence: {
-        volume_24h: volume24h,
-        unique_traders: uniqueTraders,
-        volume_per_trader: volumePerTrader,
-      },
-      action: severity > 0.6 ? 'FLAG' : 'MONITOR',
-      detected_at: new Date().toISOString(),
-    };
-  }
-  
-  return null;
-}
-
-/**
- * Detect social-fundamental divergence
- * 
- * "Social hype without fundamental improvement signals speculation"
- */
-export function detectSocialFundamentalDivergence(
-  socialChangePercent: number,
-  fundamentalChangePercent: number
-): AnomalySignal | null {
-  const socialThreshold = 200; // 200% social spike
-  const fundamentalThreshold = 5; // <5% fundamental change
-  
-  if (socialChangePercent > socialThreshold && fundamentalChangePercent < fundamentalThreshold) {
-    const severity = Math.min(1, socialChangePercent / 500);
-    
-    return {
-      type: 'SOCIAL_FUNDAMENTAL_DIVERGENCE',
-      severity,
-      confidence: 0.65,
-      description: `Social metrics spiked ${socialChangePercent.toFixed(0)}% while fundamentals changed only ${fundamentalChangePercent.toFixed(1)}%. This divergence suggests speculative reflexivity.`,
-      evidence: {
-        social_change_percent: socialChangePercent,
-        fundamental_change_percent: fundamentalChangePercent,
-      },
-      action: 'MONITOR',
-      detected_at: new Date().toISOString(),
-    };
-  }
-  
-  return null;
-}
-
-/**
- * Detect concentration spike
- * 
- * "Sudden concentration increase > 10% suggests accumulation/manipulation"
- */
-export function detectConcentrationSpike(
-  concentrationChangePercent: number
-): AnomalySignal | null {
-  const threshold = 10;
-  
-  if (Math.abs(concentrationChangePercent) > threshold) {
-    const severity = Math.min(1, Math.abs(concentrationChangePercent) / 30);
-    
-    return {
-      type: 'CONCENTRATION_SPIKE',
-      severity,
-      confidence: 0.70,
-      description: `Top holder concentration changed by ${concentrationChangePercent.toFixed(1)}% in 24h. ${concentrationChangePercent > 0 ? 'Potential accumulation.' : 'Potential distribution.'}`,
-      evidence: {
-        concentration_change_percent: concentrationChangePercent,
-        threshold,
-      },
-      action: severity > 0.5 ? 'FLAG' : 'MONITOR',
-      detected_at: new Date().toISOString(),
-    };
-  }
-  
-  return null;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// STALENESS VALIDATION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Validate data freshness
- */
-export function validateStaleness(
-  metricId: string,
-  timestamp: string,
-  now: Date = new Date()
-): RuleCheckResult {
-  const observedTime = new Date(timestamp).getTime();
-  const ageSeconds = (now.getTime() - observedTime) / 1000;
-  
-  // Determine threshold based on metric importance
-  const isHighImpact = ['price', 'market_cap', 'volume'].some(p => metricId.includes(p));
-  const isCritical = metricId.includes('price');
-  
-  let threshold: number;
-  let ruleId: string;
-  let failFlag: ValidationFlag;
-  let failImpact: GatingImpact;
-  
-  if (isCritical) {
-    threshold = 60; // 1 minute
-    ruleId = 'STALE_002';
-    failFlag = 'STALE';
-    failImpact = 'CONFIDENCE_REDUCE';
-  } else if (isHighImpact) {
-    threshold = 600; // 10 minutes
-    ruleId = 'STALE_001';
-    failFlag = 'STALE';
-    failImpact = 'WARN';
-  } else {
-    threshold = 3600; // 1 hour
-    ruleId = 'STALE_003';
-    failFlag = 'STALE';
-    failImpact = 'WARN';
-  }
-  
-  // Expired data (>24h) is always excluded
-  if (ageSeconds > 86400) {
-    return {
-      rule_id: 'STALE_004',
-      passed: false,
-      flag: 'FAIL',
-      impact: 'METRIC_EXCLUDE',
-      message: `Data expired: ${(ageSeconds / 3600).toFixed(1)} hours old (max 24h)`,
-      actual_values: { age_seconds: ageSeconds },
-      expected: { max_age_seconds: 86400 },
-    };
-  }
-  
-  const passed = ageSeconds <= threshold;
-  
-  return {
-    rule_id: ruleId,
-    passed,
-    flag: passed ? 'PASS' : failFlag,
-    impact: passed ? 'NONE' : failImpact,
-    message: passed 
-      ? `Data is fresh: ${ageSeconds.toFixed(0)}s old` 
-      : `Data is stale: ${ageSeconds.toFixed(0)}s old (threshold: ${threshold}s)`,
-    actual_values: { age_seconds: ageSeconds },
-    expected: { max_age_seconds: threshold },
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN VALIDATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Validate a single metric
- */
-export function validateMetric(
-  metricId: string,
-  value: unknown,
-  timestamp: string | null,
-  entityId: string
-): MetricValidationResult {
-  const now = new Date();
-  const ruleChecks: RuleCheckResult[] = [];
-  
-  // 1. Structural validation
-  const structuralResults = validateStructural(metricId, value, timestamp);
-  ruleChecks.push(...structuralResults);
-  
-  // If structural fails, don't proceed with semantic checks
-  const structuralFailed = structuralResults.some(r => r.flag === 'FAIL');
-  
-  if (!structuralFailed && typeof value === 'number') {
-    // 2. Semantic bounds validation
-    const boundsResults = validateSemanticBounds(metricId, value);
-    ruleChecks.push(...boundsResults);
-    
-    // 3. Staleness validation
-    if (timestamp) {
-      const stalenessResult = validateStaleness(metricId, timestamp, now);
-      ruleChecks.push(stalenessResult);
+  for (const rule of STRUCTURAL_RULES) {
+    if (rule.applies_to.includes(metricId) || rule.applies_to.includes('*')) {
+      const conditionMet = eval(rule.condition.replace(/value/g, 'value')); // Direct eval for simplicity in sandbox, use a safer method in prod
+      if (!conditionMet) {
+        status = rule.resulting_flag === 'FAIL' ? 'fail' : 'warn';
+        errors.push(rule.description);
+        flags.push(rule.rule_id);
+      }
     }
   }
-  
-  // Aggregate results
-  const failedRules = ruleChecks.filter(r => !r.passed && r.flag === 'FAIL').map(r => r.rule_id);
-  const warningRules = ruleChecks.filter(r => !r.passed && (r.flag === 'WARN' || r.flag === 'STALE')).map(r => r.rule_id);
-  const suspiciousRules = ruleChecks.filter(r => r.flag === 'SUSPICIOUS').map(r => r.rule_id);
-  
-  // Determine worst flag
-  let worstFlag: ValidationFlag = 'PASS';
-  if (ruleChecks.some(r => r.flag === 'FAIL')) worstFlag = 'FAIL';
-  else if (ruleChecks.some(r => r.flag === 'SUSPICIOUS')) worstFlag = 'SUSPICIOUS';
-  else if (ruleChecks.some(r => r.flag === 'STALE')) worstFlag = 'STALE';
-  else if (ruleChecks.some(r => r.flag === 'WARN')) worstFlag = 'WARN';
-  
-  // Determine worst impact
-  const impactPriority: GatingImpact[] = [
-    'GATED', 'CATEGORY_GATE', 'METRIC_EXCLUDE', 'SCORE_CAP', 
-    'CONFIDENCE_REDUCE', 'WARN', 'NONE'
-  ];
-  let worstImpact: GatingImpact = 'NONE';
-  for (const impact of impactPriority) {
-    if (ruleChecks.some(r => r.impact === impact)) {
-      worstImpact = impact;
-      break;
-    }
-  }
-  
-  // Calculate confidence multiplier
-  let confidenceMultiplier = 1.0;
-  for (const check of ruleChecks) {
-    if (check.impact === 'CONFIDENCE_REDUCE') confidenceMultiplier *= 0.9;
-    if (check.flag === 'STALE') confidenceMultiplier *= 0.95;
-    if (check.flag === 'WARN') confidenceMultiplier *= 0.98;
-    if (check.flag === 'SUSPICIOUS') confidenceMultiplier *= 0.8;
-  }
-  
-  // Determine status
-  let status: MetricValidationResult['status'] = 'VALID';
-  if (worstFlag === 'FAIL' || worstImpact === 'GATED') status = 'GATED';
-  else if (worstFlag === 'SUSPICIOUS') status = 'SUSPICIOUS';
-  else if (worstImpact === 'METRIC_EXCLUDE') status = 'INVALID';
-  else if (worstFlag === 'WARN' || worstFlag === 'STALE') status = 'WARNING';
-  
-  // Determine score cap
-  let scoreCap: number | null = null;
-  if (worstImpact === 'SCORE_CAP' || worstFlag === 'SUSPICIOUS') {
-    scoreCap = 70; // Cap suspicious metrics
-  }
-  
+
   return {
     metric_id: metricId,
-    entity_id: entityId,
     status,
-    rule_checks: ruleChecks,
-    failed_rules: failedRules,
-    warning_rules: warningRules,
-    worst_flag: worstFlag,
-    worst_impact: worstImpact,
-    confidence_multiplier: Math.max(0, Math.min(1, confidenceMultiplier)),
-    score_cap: scoreCap,
-    exclude_from_scoring: status === 'INVALID' || status === 'GATED',
-    gate_final_score: worstImpact === 'GATED',
-    validated_at: now.toISOString(),
+    flags,
+    warnings,
+    errors,
+    gating_impact: 'NONE',
+    confidence_multiplier: 1.0, // Always return a number
   };
 }
 
 /**
- * Validate all metrics for an entity and produce summary
+ * Validate semantic bounds of a single metric
+ */
+function validateSemanticBounds(metricId: string, value: number): MetricValidationResult {
+  let status: MetricValidationResult['status'] = 'pass';
+  const flags: string[] = [];
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  for (const rule of SEMANTIC_BOUND_RULES) {
+    if (rule.applies_to.includes(metricId) || rule.applies_to.includes('*')) {
+      const conditionMet = eval(rule.condition.replace(/value/g, 'value')); // Direct eval for simplicity in sandbox
+      if (!conditionMet) {
+        status = rule.resulting_flag === 'FAIL' ? 'fail' : 'warn';
+        errors.push(rule.description);
+        flags.push(rule.rule_id);
+        if (rule.gating_impact === 'GATED') {
+          return {
+            metric_id: metricId,
+            status: 'gated',
+            flags: [rule.rule_id, ...flags],
+            warnings: [],
+            errors: [rule.description, ...errors],
+            gating_impact: 'GATED',
+            confidence_multiplier: 0, // Always return a number
+          };
+        }
+      }
+    }
+  }
+
+  return {
+    metric_id: metricId,
+    status,
+    flags,
+    warnings,
+    errors,
+    gating_impact: 'NONE',
+    confidence_multiplier: 1.0, // Always return a number
+  };
+}
+
+/**
+ * Validate staleness of a single metric
+ */
+function validateStaleness(metricId: string, timestamp: string | null): MetricValidationResult {
+  let status: MetricValidationResult['status'] = 'pass';
+  const flags: string[] = [];
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let confidenceMultiplier = 1.0;
+
+  if (!timestamp) {
+    return {
+      metric_id: metricId,
+      status: 'fail',
+      flags: ['STALE_NO_TIMESTAMP'],
+      warnings: ['No timestamp provided'],
+      errors: ['No timestamp provided'],
+      gating_impact: 'GATED',
+      confidence_multiplier: 0, // Always return a number
+    };
+  }
+
+  const now = new Date();
+  const observedAt = new Date(timestamp);
+  const ageSeconds = (now.getTime() - observedAt.getTime()) / 1000;
+
+  for (const rule of STALENESS_RULES) {
+    if (rule.applies_to.includes(metricId) || rule.applies_to.includes('*')) {
+      const conditionMet = eval(rule.condition.replace(/age_seconds/g, 'ageSeconds')); // Direct eval for simplicity in sandbox
+      if (!conditionMet) {
+        status = rule.resulting_flag === 'FAIL' ? 'fail' : 'warn';
+        errors.push(rule.description);
+        flags.push(rule.rule_id);
+        confidenceMultiplier *= rule.confidence_impact;
+        if (rule.gating_impact === 'GATED') {
+          return {
+            metric_id: metricId,
+            status: 'gated',
+            flags: [rule.rule_id, ...flags],
+            warnings: [],
+            errors: [rule.description, ...errors],
+            gating_impact: 'GATED',
+            confidence_multiplier: 0, // Always return a number
+          };
+        }
+      }
+    }
+  }
+
+  return {
+    metric_id: metricId,
+    status,
+    flags,
+    warnings,
+    errors,
+    gating_impact: 'NONE',
+    confidence_multiplier: confidenceMultiplier,
+  };
+}
+
+/**
+ * Comprehensive validation for a single metric
+ */
+export function validateMetric(metricId: string, value: unknown, timestamp: string | null, entityId: string): MetricValidationResult {
+  const structuralResult = validateStructural(metricId, value);
+  // console.log(`[validateMetric] ${metricId} - Structural Confidence: ${structuralResult.confidence_multiplier}`);
+  if (!structuralResult.success) return structuralResult; // Fail fast on structural errors
+
+  const semanticResult = validateSemanticBounds(metricId, value as number); // Assume number after structural validation
+  // console.log(`[validateMetric] ${metricId} - Semantic Confidence: ${semanticResult.confidence_multiplier}`);
+  if (semanticResult.gating_impact === 'GATED') return semanticResult; // Fail fast on semantic gating
+
+  const stalenessResult = validateStaleness(metricId, timestamp);
+  // console.log(`[validateMetric] ${metricId} - Staleness Confidence: ${stalenessResult.confidence_multiplier}`);
+  if (stalenessResult.gating_impact === 'GATED') return stalenessResult; // Fail fast on staleness gating
+
+  // Aggregate results
+  const status = [structuralResult.status, semanticResult.status, stalenessResult.status].includes('fail') ? 'fail'
+    : [structuralResult.status, semanticResult.status, stalenessResult.status].includes('warn') ? 'warn'
+      : 'pass';
+
+  const flags = [...structuralResult.flags, ...semanticResult.flags, ...stalenessResult.flags];
+  const warnings = [...structuralResult.warnings, ...semanticResult.warnings, ...stalenessResult.warnings];
+  const errors = [...structuralResult.errors, ...semanticResult.errors, ...stalenessResult.errors];
+  const confidenceMultiplier = (structuralResult.confidence_multiplier)
+    * (semanticResult.confidence_multiplier)
+    * (stalenessResult.confidence_multiplier);
+
+  // console.log(`[validateMetric] ${metricId} - Final Confidence: ${confidenceMultiplier}`);
+  return {
+    metric_id: metricId,
+    status,
+    flags,
+    warnings,
+    errors,
+    gating_impact: 'NONE',
+    confidence_multiplier: confidenceMultiplier,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANOMALY DETECTION FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function detectVolumeLiquidityMismatch(volumeChangePercent: number, liquidityChangePercent: number): AnomalySignal | null {
+  if (volumeChangePercent > 400 && liquidityChangePercent < 10) {
+    return {
+      type: 'VOLUME_LIQUIDITY_MISMATCH',
+      severity: 8, // Increased severity
+      description: `Volume spike (${volumeChangePercent.toFixed(0)}%) with disproportionately low liquidity change (${liquidityChangePercent.toFixed(0)}%)`,
+      evidence: { volumeChangePercent, liquidityChangePercent },
+      action: 'FLAG',
+    };
+  }
+  return null;
+}
+
+export function detectWashTrading(
+  volumeChangePercent: number,
+  uniqueTraderCountChangePercent: number,
+  totalTransactions: number,
+  totalVolume: number,
+): AnomalySignal | null {
+  // Heuristic 1: High volume spike AND low unique traders
+  if (volumeChangePercent > 300 && uniqueTraderCountChangePercent < 10) {
+    return {
+      type: 'WASH_TRADING',
+      severity: 9, // Critical severity
+      description: `Potential wash trading: Volume spike (${volumeChangePercent.toFixed(0)}%) with low unique trader growth (${uniqueTraderCountChangePercent.toFixed(0)}%)`,
+      evidence: { volumeChangePercent, uniqueTraderCountChangePercent, totalTransactions, totalVolume },
+      action: 'FLAG',
+    };
+  }
+  
+  // Heuristic 2: High volume without sufficient transactions
+  if (totalVolume > 1e6 && totalTransactions < 100 && volumeChangePercent > 100) {
+    return {
+      type: 'WASH_TRADING',
+      severity: 8, // High severity
+      description: `Suspicious activity: High volume ($${totalVolume.toPrecision(2)}) with unusually low transaction count (${totalTransactions}) during a volume spike (${volumeChangePercent.toFixed(0)}%)`,
+      evidence: { volumeChangePercent, uniqueTraderCountChangePercent, totalTransactions, totalVolume },
+      action: 'FLAG',
+    };
+  }
+  
+  return null;
+}
+
+export function detectSocialFundamentalDivergence(
+  socialChangePercent: number,
+  fundamentalChangePercent: number,
+): AnomalySignal | null {
+  // Detect significant social hype without corresponding fundamental growth
+  if (socialChangePercent > 200 && fundamentalChangePercent < 10) {
+    return {
+      type: 'SOCIAL_FUNDAMENTAL_DIVERGENCE',
+      severity: 7, // High severity
+      description: `Social hype divergence: Social metrics up (${socialChangePercent.toFixed(0)}%) without fundamental growth (${fundamentalChangePercent.toFixed(0)}%)`,
+      evidence: { socialChangePercent, fundamentalChangePercent },
+      action: 'FLAG',
+    };
+  }
+  
+  // Additional heuristic: Negative fundamental change with positive social
+  if (socialChangePercent > 50 && fundamentalChangePercent < -10) {
+    return {
+      type: 'SOCIAL_FUNDAMENTAL_DIVERGENCE',
+      severity: 8, // Critical severity
+      description: `Critical divergence: Strong social sentiment (${socialChangePercent.toFixed(0)}%) despite declining fundamentals (${fundamentalChangePercent.toFixed(0)}%)`,
+      evidence: { socialChangePercent, fundamentalChangePercent },
+      action: 'FLAG',
+    };
+  }
+  
+  return null;
+}
+
+export function detectConcentrationSpike(
+  concentrationChangePercent: number,
+  currentConcentration: number,
+): AnomalySignal | null {
+  if (concentrationChangePercent > 50 && currentConcentration > 0.70) { // 50% increase in concentration, >70% held by top addresses
+    return {
+      type: 'CONCENTRATION_RISK',
+      severity: 9,
+      description: `Concentration risk: Significant increase in top-holder concentration (${concentrationChangePercent.toFixed(0)}%) with high overall concentration (${(currentConcentration * 100).toFixed(0)}%)`,
+      evidence: { concentrationChangePercent, currentConcentration },
+      action: 'FLAG',
+    };
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTITY-LEVEL VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validate all metrics for an entity and aggregate results
  */
 export function validateEntity(
   entityId: string,
-  metrics: Record<string, { value: unknown; timestamp: string | null }>,
-  changeMetrics?: {
-    volumeChangePercent?: number;
-    liquidityChangePercent?: number;
-    uniqueTraders?: number;
-    socialChangePercent?: number;
-    fundamentalChangePercent?: number;
-    concentrationChangePercent?: number;
-  }
+  metrics: MetricValueMap,
+  changeMetrics?: ChangeMetricsInput,
+  assetCategory?: AssetCategory,
 ): EntityValidationSummary {
-  const metricResults: MetricValidationResult[] = [];
-  const anomalySignals: AnomalySignal[] = [];
-  
-  // Validate each metric
-  for (const [metricId, data] of Object.entries(metrics)) {
-    const result = validateMetric(metricId, data.value, data.timestamp, entityId);
-    metricResults.push(result);
+  const validationResults: MetricValidationResult[] = [];
+  let overallStatus: EntityValidationSummary['overall_status'] = 'pass';
+  const overallFlags: string[] = [];
+  const overallWarnings: string[] = [];
+  const overallErrors: string[] = [];
+  let confidenceMultiplier: number = 1.0; // Initialize as 1.0
+  let scoreCap = 100;
+  const anomalySignals: AnomalySignal[] = []; // Initialize as empty array
+
+  for (const metricId of Object.keys(metrics)) {
+    const metric = metrics[metricId];
+    const result = validateMetric(metricId, metric.value, metric.timestamp ?? null, entityId);
+    validationResults.push(result);
+
+    if (result.status === 'fail' || result.status === 'gated') {
+      overallStatus = 'fail';
+    } else if (result.status === 'warn' && overallStatus === 'pass') {
+      overallStatus = 'warn';
+    }
+
+    overallFlags.push(...result.flags);
+    overallWarnings.push(...result.warnings);
+    overallErrors.push(...result.errors);
+    confidenceMultiplier *= (result.confidence_multiplier); // This should now be a number
+    
+    // Apply gating impact from metric validation
+    if (result.gating_impact === 'GATED') {
+      confidenceMultiplier = 0; // Hard gate
+      scoreCap = 0;
+    } else if (result.gating_impact === 'SCORE_CAP') {
+      scoreCap = Math.min(scoreCap, 70); // Cap score to 70
+    }
   }
-  
-  // Run anomaly detection if change metrics provided
+
+  // Run anomaly detection
   if (changeMetrics) {
-    const { 
-      volumeChangePercent, 
-      liquidityChangePercent, 
-      uniqueTraders,
-      socialChangePercent,
-      fundamentalChangePercent,
-      concentrationChangePercent,
-    } = changeMetrics;
-    
-    // Volume-liquidity mismatch
-    if (volumeChangePercent !== undefined && liquidityChangePercent !== undefined) {
-      const signal = detectVolumeLiquidityMismatch(volumeChangePercent, liquidityChangePercent);
-      if (signal) anomalySignals.push(signal);
-    }
-    
-    // Wash trading
-    if (metrics['volume_24h'] && uniqueTraders !== undefined) {
-      const volume = metrics['volume_24h'].value as number;
-      const signal = detectWashTrading(volume, uniqueTraders);
-      if (signal) anomalySignals.push(signal);
-    }
-    
-    // Social-fundamental divergence
-    if (socialChangePercent !== undefined && fundamentalChangePercent !== undefined) {
-      const signal = detectSocialFundamentalDivergence(socialChangePercent, fundamentalChangePercent);
-      if (signal) anomalySignals.push(signal);
-    }
-    
-    // Concentration spike
-    if (concentrationChangePercent !== undefined) {
-      const signal = detectConcentrationSpike(concentrationChangePercent);
-      if (signal) anomalySignals.push(signal);
-    }
+    const volumeLiquidityAnomaly = detectVolumeLiquidityMismatch(
+      changeMetrics.volumeChangePercent ?? 0,
+      changeMetrics.liquidityChangePercent ?? 0,
+    );
+    if (volumeLiquidityAnomaly) anomalySignals.push(volumeLiquidityAnomaly);
+
+    const washTradingAnomaly = detectWashTrading(
+      changeMetrics.volumeChangePercent ?? 0,
+      changeMetrics.uniqueTraderCountChangePercent ?? 0,
+      metrics.total_transactions?.value as number ?? 0,
+      metrics.volume_24h?.value as number ?? 0,
+    );
+    if (washTradingAnomaly) anomalySignals.push(washTradingAnomaly);
+
+    const socialFundamentalAnomaly = detectSocialFundamentalDivergence(
+      changeMetrics.socialChangePercent ?? 0,
+      changeMetrics.fundamentalChangePercent ?? 0,
+    );
+    if (socialFundamentalAnomaly) anomalySignals.push(socialFundamentalAnomaly);
+
+    const concentrationAnomaly = detectConcentrationSpike(
+      changeMetrics.concentrationChangePercent ?? 0,
+      metrics.top_10_concentration?.value as number ?? 0,
+    );
+    if (concentrationAnomaly) anomalySignals.push(concentrationAnomaly);
   }
-  
-  // Aggregate results
-  const validCount = metricResults.filter(r => r.status === 'VALID').length;
-  const warningCount = metricResults.filter(r => r.status === 'WARNING').length;
-  const suspiciousCount = metricResults.filter(r => r.status === 'SUSPICIOUS').length;
-  const invalidCount = metricResults.filter(r => r.status === 'INVALID').length;
-  const gatedCount = metricResults.filter(r => r.status === 'GATED').length;
-  
-  // Overall confidence
-  const confidenceMultiplier = metricResults.reduce(
-    (acc, r) => acc * r.confidence_multiplier, 
-    1.0
-  );
-  
-  // Apply anomaly penalties
-  let anomalyPenalty = 1.0;
-  for (const signal of anomalySignals) {
-    if (signal.action === 'GATE') anomalyPenalty *= 0.5;
-    else if (signal.action === 'FLAG') anomalyPenalty *= 0.8;
-    else anomalyPenalty *= 0.95;
+
+  // Determine overall confidence multiplier
+  let overallAnomalyImpact: GatingImpact = 'NONE';
+
+  const hasGateAnomaly = anomalySignals.some(s => s.action === 'GATE');
+  const hasFlagAnomaly = anomalySignals.some(s => s.action === 'FLAG');
+  const hasMonitorAnomaly = anomalySignals.some(s => s.action === 'MONITOR');
+
+  if (hasGateAnomaly) {
+    overallAnomalyImpact = 'GATED';
+    confidenceMultiplier = 0; // Hard gate
+    scoreCap = 0;
+  } else if (hasFlagAnomaly) {
+    overallAnomalyImpact = 'SCORE_CAP';
+    confidenceMultiplier *= 0.5; // Reduce confidence for serious flags
+    scoreCap = Math.min(scoreCap, 70); // Cap score to 70
+  } else if (hasMonitorAnomaly) {
+    overallAnomalyImpact = 'WARN';
+    confidenceMultiplier *= 0.8; // Minor confidence reduction
   }
-  
-  // Score cap (minimum of all caps)
-  const caps = metricResults
-    .filter(r => r.score_cap !== null)
-    .map(r => r.score_cap!);
-  const scoreCap = caps.length > 0 ? Math.min(...caps) : null;
-  
-  // Can score?
-  const hasGatingFailure = metricResults.some(r => r.gate_final_score);
-  const hasAnomalyGate = anomalySignals.some(s => s.action === 'GATE');
-  const canScore = !hasGatingFailure && !hasAnomalyGate;
-  
-  // Determine status
-  let status: EntityValidationSummary['status'] = 'HEALTHY';
-  if (!canScore) status = 'GATED';
-  else if (suspiciousCount > 0 || anomalySignals.some(s => s.action === 'FLAG')) status = 'SUSPICIOUS';
-  else if (warningCount > validCount || invalidCount > 0) status = 'DEGRADED';
-  
-  // Gating reason
-  let gatingReason: string | null = null;
-  if (!canScore) {
-    if (hasGatingFailure) {
-      const gatingRule = metricResults.find(r => r.gate_final_score);
-      gatingReason = `Metric ${gatingRule?.metric_id} failed validation: ${gatingRule?.failed_rules.join(', ')}`;
-    } else if (hasAnomalyGate) {
-      const gatingAnomaly = anomalySignals.find(s => s.action === 'GATE');
-      gatingReason = `Anomaly detected: ${gatingAnomaly?.type} - ${gatingAnomaly?.description}`;
-    }
-  }
-  
+
   return {
     entity_id: entityId,
-    status,
-    total_metrics: metricResults.length,
-    metrics_by_status: {
-      valid: validCount,
-      warning: warningCount,
-      suspicious: suspiciousCount,
-      invalid: invalidCount,
-      gated: gatedCount,
-    },
-    metric_results: metricResults,
-    confidence_multiplier: Math.max(0, Math.min(1, confidenceMultiplier * anomalyPenalty)),
+    overall_status: overallStatus,
+    overall_flags: overallFlags,
+    overall_warnings: overallWarnings,
+    overall_errors: overallErrors,
+    confidence_multiplier: confidenceMultiplier,
     score_cap: scoreCap,
-    excluded_metrics: metricResults
-      .filter(r => r.exclude_from_scoring)
-      .map(r => r.metric_id),
-    can_score: canScore,
-    gating_reason: gatingReason,
-    anomaly_signals: anomalySignals,
+    anomalySignals: anomalySignals,
+    gatingImpact: overallAnomalyImpact,
+    timestamp: NOW,
   };
 }

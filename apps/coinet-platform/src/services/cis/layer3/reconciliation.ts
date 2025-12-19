@@ -7,6 +7,9 @@
  * ║   "The policy strictly prohibits blind averaging. Instead, high-impact       ║
  * ║    metrics are computed using a Weighted Trimmed Mean approach,              ║
  * ║    incorporating dynamic source trust weights."                              ║
+ * ║                                                                               ║
+ * ║   This layer ensures the system will NOT confidently output an analysis      ║
+ * ║   based on one compromised or outlier feed.                                  ║
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
@@ -92,7 +95,7 @@ function calculateStatistics(values: number[]): {
  */
 function calculateWTM(
   reports: SourceReport[],
-  alpha: number
+  alpha: number,
 ): {
   wtm: number;
   included: SourceReport[];
@@ -129,7 +132,10 @@ function calculateWTM(
   
   // If all trimmed (shouldn't happen with reasonable alpha), use all
   if (included.length === 0) {
-    return { wtm: sorted[Math.floor(n / 2)].value, included: sorted, trimmed: [] };
+    // Fallback to median of original reports if all are trimmed
+    const originalValues = reports.map(r => r.value).sort((a, b) => a - b);
+    const median = originalValues.length > 0 ? originalValues[Math.floor(originalValues.length / 2)] : 0;
+    return { wtm: median, included: reports, trimmed: [] };
   }
   
   // Calculate weighted mean using trust scores
@@ -142,7 +148,7 @@ function calculateWTM(
     totalWeight += weight;
   }
   
-  const wtm = totalWeight > 0 ? weightedSum / totalWeight : included[0].value;
+  const wtm = totalWeight > 0 ? weightedSum / totalWeight : included[0].value; // Fallback to first included if totalWeight is 0
   
   return { wtm, included, trimmed };
 }
@@ -181,7 +187,7 @@ function calculateAgreementScore(spread: number, wtm: number): number {
  */
 function determineDisputeStatus(
   agreementScore: number,
-  threshold: number
+  threshold: number,
 ): DisputeStatus {
   if (agreementScore >= threshold) {
     return 'AGREED';
@@ -200,7 +206,7 @@ function determineDisputeStatus(
 function calculateConfidenceMultiplier(
   agreementScore: number,
   sourceCount: number,
-  disputeStatus: DisputeStatus
+  disputeStatus: DisputeStatus,
 ): number {
   // Base confidence from agreement
   let confidence = agreementScore;
@@ -222,6 +228,9 @@ function calculateConfidenceMultiplier(
       break;
     case 'SEVERE_DISPUTE':
       confidence *= 0.50;
+      break;
+    case 'INSUFFICIENT_SOURCES':
+      confidence *= 0.1; // Heavy penalty
       break;
   }
   
@@ -245,7 +254,7 @@ export function reconcileMetric(
   metricId: string,
   entityId: string,
   reports: SourceReport[],
-  config?: Partial<ReconciliationConfig>
+  config?: Partial<ReconciliationConfig>,
 ): ReconciliationResult {
   const now = new Date().toISOString();
   
@@ -261,10 +270,10 @@ export function reconcileMetric(
     ...defaultConfig,
     ...config,
   };
-  
-  // Handle edge cases
-  if (reports.length === 0) {
-    return createEmptyResult(metricId, entityId, now);
+
+  // Handle insufficient sources - THIS MUST BE FIRST
+  if (reports.length < finalConfig.min_sources) {
+    return createEmptyResult(metricId, entityId, now, 'INSUFFICIENT_SOURCES'); // Pass dispute status
   }
   
   // Filter out stale reports
@@ -299,7 +308,7 @@ export function reconcileMetric(
   const confidenceMultiplier = calculateConfidenceMultiplier(
     agreementScore,
     freshReports.length,
-    disputeStatus
+    disputeStatus,
   );
   
   // Determine if should be excluded from scoring
@@ -338,6 +347,7 @@ export function reconcileMetric(
     exclude_from_scoring: excludeFromScoring,
     reconciled_at: now,
     audit_trail: auditTrail,
+    trimmed_reports: trimmed, // Ensure trimmed_reports is always populated
   };
 }
 
@@ -350,7 +360,7 @@ export function reconcileMetric(
  */
 function filterStaleReports(
   reports: SourceReport[],
-  thresholdSeconds: number
+  thresholdSeconds: number,
 ): SourceReport[] {
   const now = Date.now();
   
@@ -367,13 +377,14 @@ function filterStaleReports(
 function createEmptyResult(
   metricId: string,
   entityId: string,
-  timestamp: string
+  timestamp: string,
+  disputeStatus: DisputeStatus = 'INSUFFICIENT_SOURCES', // Added disputeStatus param
 ): ReconciliationResult {
   return {
     metric_id: metricId,
     entity_id: entityId,
     reconciled_value: 0,
-    method: 'SINGLE_SOURCE',
+    method: 'NONE',
     source_count: 0,
     sources_after_trim: 0,
     trim_percentage: 0,
@@ -388,11 +399,12 @@ function createEmptyResult(
     },
     agreement_score: 0,
     agreement_threshold: 0.98,
-    dispute_status: 'SEVERE_DISPUTE',
+    dispute_status: disputeStatus,
     confidence_multiplier: 0,
     exclude_from_scoring: true,
     reconciled_at: timestamp,
     audit_trail: [],
+    trimmed_reports: [],
   };
 }
 
@@ -403,11 +415,11 @@ function createStaleResult(
   metricId: string,
   entityId: string,
   reports: SourceReport[],
-  timestamp: string
+  timestamp: string,
 ): ReconciliationResult {
   // Use median of stale values as fallback
   const values = reports.map(r => r.value).sort((a, b) => a - b);
-  const median = values[Math.floor(values.length / 2)];
+  const median = values.length > 0 ? values[Math.floor(values.length / 2)] : 0; // Handle empty array
   
   return {
     metric_id: metricId,
@@ -432,6 +444,7 @@ function createStaleResult(
       included_in_wtm: false,
       trim_reason: 'STALE',
     })),
+    trimmed_reports: [],
   };
 }
 
@@ -444,7 +457,7 @@ function createStaleResult(
  */
 export function reconcileEntityMetrics(
   entityId: string,
-  metricReports: Record<string, SourceReport[]>
+  metricReports: Record<string, SourceReport[]>,
 ): Record<string, ReconciliationResult> {
   const results: Record<string, ReconciliationResult> = {};
   
@@ -471,15 +484,21 @@ export function getSourceTrust(provider: SourceProvider): number {
  */
 export function createSourceReport(
   provider: SourceProvider,
+  metricId: string, // Added metricId for full traceability
+  entityId: string, // Added entityId for full traceability
   value: number,
   timestamp?: string,
-  warnings?: string[]
+  confidenceScore?: number, // Renamed to confidenceScore for clarity
+  warnings?: string[],
 ): SourceReport {
   return {
     provider,
+    metric_id: metricId, // Added metric_id
+    entity_id: entityId, // Added entity_id
     value,
     timestamp: timestamp ?? new Date().toISOString(),
-    trust_score: getSourceTrust(provider),
+    trust_score: getSourceTrust(provider), // Dynamic trust score
+    confidence_score: confidenceScore ?? DEFAULT_SOURCE_TRUST[provider] ?? 0.70, // Explicit confidence score
     latency_ms: 0,
     warnings: warnings ?? [],
   };
@@ -493,7 +512,7 @@ export function createSourceReport(
  * Analyze disputes across multiple reconciliation results
  */
 export function analyzeDisputes(
-  results: ReconciliationResult[]
+  results: ReconciliationResult[],
 ): {
   total: number;
   agreed: number;
@@ -521,6 +540,9 @@ export function analyzeDisputes(
         break;
       case 'SEVERE_DISPUTE':
         severe++;
+        break;
+      case 'INSUFFICIENT_SOURCES': // Handle this case for dispute analysis
+        gatedMetrics.push(result.metric_id);
         break;
     }
     

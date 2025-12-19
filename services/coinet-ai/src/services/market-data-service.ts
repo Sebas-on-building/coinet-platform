@@ -1,8 +1,8 @@
 /**
  * 📊 MARKET DATA SERVICE
  * 
- * Fetches and normalizes market data from multiple sources for Coinet AI analysis.
- * Integrates with existing market data infrastructure while providing a clean interface.
+ * Fetches REAL market data from CoinGecko API for Coinet AI analysis.
+ * No more mock data - this uses live API calls with proper caching.
  */
 
 import { logger } from '../utils/logger';
@@ -10,34 +10,71 @@ import { MarketDataContext } from '../types/coinet-brief';
 import axios from 'axios';
 import NodeCache from 'node-cache';
 
+// Symbol to CoinGecko ID mapping
+const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
+  'BTC': 'bitcoin',
+  'ETH': 'ethereum',
+  'SOL': 'solana',
+  'BNB': 'binancecoin',
+  'XRP': 'ripple',
+  'ADA': 'cardano',
+  'DOGE': 'dogecoin',
+  'DOT': 'polkadot',
+  'MATIC': 'polygon',
+  'LINK': 'chainlink',
+  'AVAX': 'avalanche-2',
+  'SHIB': 'shiba-inu',
+  'LTC': 'litecoin',
+  'TRX': 'tron',
+  'ATOM': 'cosmos',
+  'UNI': 'uniswap',
+  'NEAR': 'near',
+  'APT': 'aptos',
+  'ARB': 'arbitrum',
+  'OP': 'optimism',
+  'SUI': 'sui',
+  'PEPE': 'pepe',
+  'WIF': 'dogwifcoin',
+  'BONK': 'bonk',
+  'RENDER': 'render-token',
+  'FET': 'fetch-ai',
+  'INJ': 'injective-protocol',
+  'TIA': 'celestia',
+  'SEI': 'sei-network',
+  'BITCOIN': 'bitcoin',
+  'ETHEREUM': 'ethereum',
+  'SOLANA': 'solana',
+};
+
 export class MarketDataService {
   private cache: NodeCache;
   private readonly CACHE_TTL = 60; // 1 minute cache
+  private readonly COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
 
   constructor() {
     this.cache = new NodeCache({ stdTTL: this.CACHE_TTL });
-    logger.info('📊 MarketDataService initialized');
+    logger.info('📊 MarketDataService initialized (using CoinGecko API)');
   }
 
   /**
    * Get comprehensive market data for a symbol
    */
   async getMarketData(symbol: string): Promise<MarketDataContext> {
-    const cacheKey = `market_${symbol}`;
+    const normalizedSymbol = symbol.toUpperCase();
+    const cacheKey = `market_${normalizedSymbol}`;
     
     // Check cache first
     const cached = this.cache.get<MarketDataContext>(cacheKey);
     if (cached) {
-      logger.info(`📊 Returning cached market data for ${symbol}`);
+      logger.info(`📊 Returning cached market data for ${normalizedSymbol}`);
       return cached;
     }
 
     try {
-      logger.info(`📊 Fetching fresh market data for ${symbol}`);
+      logger.info(`📊 Fetching LIVE market data for ${normalizedSymbol} from CoinGecko`);
 
-      // For now, integrate with our existing market data service
-      // TODO: Replace with actual integration to services/market-data-service
-      const marketData = await this.fetchMarketDataFromService(symbol);
+      // Fetch real data from CoinGecko
+      const marketData = await this.fetchFromCoinGecko(normalizedSymbol);
       
       // Cache the result
       this.cache.set(cacheKey, marketData);
@@ -45,110 +82,106 @@ export class MarketDataService {
       return marketData;
 
     } catch (error) {
-      logger.error(`❌ Failed to fetch market data for ${symbol}:`, error);
+      logger.error(`❌ Failed to fetch market data for ${normalizedSymbol}:`, error);
       
-      // Return minimal fallback data
-      return this.getFallbackMarketData(symbol);
+      // Return minimal fallback data (NOT mock data - just zeros to indicate failure)
+      return this.getFallbackMarketData(normalizedSymbol);
     }
   }
 
   /**
-   * Fetch from our existing market data service
+   * Fetch real data from CoinGecko API
    */
-  private async fetchMarketDataFromService(symbol: string): Promise<MarketDataContext> {
+  private async fetchFromCoinGecko(symbol: string): Promise<MarketDataContext> {
+    const coinId = this.getCoinGeckoId(symbol);
+    
+    // Fetch detailed coin data including ATH
+    const coinUrl = `${this.COINGECKO_BASE_URL}/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false`;
+    
     try {
-      // Try to connect to our existing market data service
-      const response = await axios.get(`http://market-data-service:8080/api/v1/quote/${symbol}`, {
-        timeout: 5000
+      const response = await axios.get(coinUrl, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json',
+        }
       });
 
       const data = response.data;
-      
-      return {
-        symbol: symbol,
-        currentPrice: data.price || 0,
-        priceChange24h: data.priceChange24h || 0,
-        priceChangePercent24h: data.priceChangePercent24h || 0,
-        volume24h: data.volume24h || 0,
-        marketCap: data.marketCap || 0,
-        dominance: data.dominance,
+      const marketData = data.market_data;
+
+      if (!marketData) {
+        throw new Error(`No market data returned for ${coinId}`);
+      }
+
+      // Calculate basic technical indicators from price data
+      const currentPrice = marketData.current_price?.usd || 0;
+      const priceChange24h = marketData.price_change_24h || 0;
+      const priceChangePercent = marketData.price_change_percentage_24h || 0;
+      const high24h = marketData.high_24h?.usd || currentPrice * 1.02;
+      const low24h = marketData.low_24h?.usd || currentPrice * 0.98;
+      const ath = marketData.ath?.usd || currentPrice;
+      const athDate = marketData.ath_date?.usd;
+      const athChangePercent = marketData.ath_change_percentage?.usd || 0;
+
+      const result: MarketDataContext = {
+        symbol,
+        currentPrice,
+        priceChange24h,
+        priceChangePercent24h: priceChangePercent,
+        volume24h: marketData.total_volume?.usd || 0,
+        marketCap: marketData.market_cap?.usd || 0,
+        dominance: marketData.market_cap_percentage?.usd,
+        high24h,
+        low24h,
+        ath,
+        athDate: athDate ? new Date(athDate) : undefined,
+        athChangePercent,
+        circulatingSupply: marketData.circulating_supply,
+        totalSupply: marketData.total_supply,
+        maxSupply: marketData.max_supply,
         technicalIndicators: {
-          rsi: data.technicalIndicators?.rsi,
-          macd: data.technicalIndicators?.macd,
-          movingAverages: data.technicalIndicators?.movingAverages,
-          support: data.technicalIndicators?.support,
-          resistance: data.technicalIndicators?.resistance
+          // Basic support/resistance based on 24h range
+          support: low24h,
+          resistance: high24h,
+          // Price position in 24h range (0-100)
+          rangePosition: high24h !== low24h 
+            ? ((currentPrice - low24h) / (high24h - low24h)) * 100 
+            : 50,
         },
-        volatility: data.volatility || 0,
-        lastUpdated: new Date()
+        volatility: Math.abs(priceChangePercent) / 100,
+        lastUpdated: new Date(),
+        dataSource: 'coingecko',
       };
 
-    } catch (error) {
-      logger.warn(`⚠️ Market data service unavailable, using fallback for ${symbol}`);
-      return this.getMockMarketData(symbol);
+      logger.info(`✅ Fetched real data for ${symbol}: $${currentPrice.toLocaleString()} (${priceChangePercent.toFixed(2)}%)`);
+      
+      return result;
+
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        logger.warn('⚠️ CoinGecko rate limit hit, waiting before retry...');
+        // Wait 60 seconds and retry once
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        return this.fetchFromCoinGecko(symbol);
+      }
+      throw error;
     }
   }
 
   /**
-   * Mock market data for development/testing
+   * Get CoinGecko ID from symbol
    */
-  private getMockMarketData(symbol: string): MarketDataContext {
-    const mockData: Record<string, Partial<MarketDataContext>> = {
-      'BTC': {
-        currentPrice: 43250.75,
-        priceChange24h: 1125.30,
-        priceChangePercent24h: 2.67,
-        volume24h: 18500000000,
-        marketCap: 850000000000,
-        dominance: 52.3,
-        volatility: 0.045
-      },
-      'ETH': {
-        currentPrice: 2450.80,
-        priceChange24h: -45.20,
-        priceChangePercent24h: -1.81,
-        volume24h: 12000000000,
-        marketCap: 295000000000,
-        dominance: 18.7,
-        volatility: 0.055
-      },
-      'SOL': {
-        currentPrice: 98.45,
-        priceChange24h: 5.67,
-        priceChangePercent24h: 6.11,
-        volume24h: 2100000000,
-        marketCap: 42000000000,
-        dominance: 1.8,
-        volatility: 0.085
-      }
-    };
-
-    const base = mockData[symbol] || mockData['BTC'];
-    
-    return {
-      symbol,
-      currentPrice: base.currentPrice || 0,
-      priceChange24h: base.priceChange24h || 0,
-      priceChangePercent24h: base.priceChangePercent24h || 0,
-      volume24h: base.volume24h || 0,
-      marketCap: base.marketCap || 0,
-      dominance: base.dominance,
-      technicalIndicators: {
-        rsi: 58.5,
-        macd: { value: 125.3, signal: 118.7, histogram: 6.6 },
-        movingAverages: { ma20: 42100, ma50: 41500, ma200: 39800 },
-        support: base.currentPrice ? base.currentPrice * 0.95 : 41000,
-        resistance: base.currentPrice ? base.currentPrice * 1.05 : 45000
-      },
-      volatility: base.volatility || 0.05,
-      lastUpdated: new Date()
-    };
+  private getCoinGeckoId(symbol: string): string {
+    const normalized = symbol.toUpperCase();
+    return SYMBOL_TO_COINGECKO_ID[normalized] || symbol.toLowerCase();
   }
 
   /**
    * Fallback data when all sources fail
+   * Returns zeros to indicate data unavailability (NOT fake data)
    */
   private getFallbackMarketData(symbol: string): MarketDataContext {
+    logger.warn(`⚠️ Returning fallback (empty) data for ${symbol} - API unavailable`);
     return {
       symbol,
       currentPrice: 0,
@@ -158,8 +191,52 @@ export class MarketDataService {
       marketCap: 0,
       technicalIndicators: {},
       volatility: 0,
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
+      dataSource: 'unavailable',
     };
+  }
+
+  /**
+   * Fetch global market data (total market cap, BTC dominance, fear/greed)
+   */
+  async getGlobalMarketData(): Promise<{
+    totalMarketCap: number;
+    totalVolume24h: number;
+    btcDominance: number;
+    ethDominance: number;
+    marketCapChange24h: number;
+  }> {
+    const cacheKey = 'global_market';
+    const cached = this.cache.get<any>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const response = await axios.get(`${this.COINGECKO_BASE_URL}/global`, {
+        timeout: 10000,
+      });
+
+      const data = response.data.data;
+      const result = {
+        totalMarketCap: data.total_market_cap?.usd || 0,
+        totalVolume24h: data.total_volume?.usd || 0,
+        btcDominance: data.market_cap_percentage?.btc || 0,
+        ethDominance: data.market_cap_percentage?.eth || 0,
+        marketCapChange24h: data.market_cap_change_percentage_24h_usd || 0,
+      };
+
+      this.cache.set(cacheKey, result);
+      return result;
+
+    } catch (error) {
+      logger.error('Failed to fetch global market data:', error);
+      return {
+        totalMarketCap: 0,
+        totalVolume24h: 0,
+        btcDominance: 0,
+        ethDominance: 0,
+        marketCapChange24h: 0,
+      };
+    }
   }
 
   /**
@@ -167,7 +244,7 @@ export class MarketDataService {
    */
   clearCache(symbol?: string): void {
     if (symbol) {
-      this.cache.del(`market_${symbol}`);
+      this.cache.del(`market_${symbol.toUpperCase()}`);
     } else {
       this.cache.flushAll();
     }

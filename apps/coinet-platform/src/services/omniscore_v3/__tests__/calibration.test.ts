@@ -390,10 +390,12 @@ describe('Calibration - Anchor Priors', () => {
   
   describe('Prior deviation check', () => {
     it('should not flag deviation within range', () => {
+      // Bitcoin priors: qsPrior=95, osPrior=85, riskPrior=12
+      // maxDeviation default is 15
       const result = checkPriorDeviation('bitcoin', {
-        qs: 92,  // Close to prior 95
-        os: 68,  // Close to prior 70
-        risk: 18, // Close to prior 15
+        qs: 92,  // Delta 3 from prior 95 (within 15) ✓
+        os: 80,  // Delta 5 from prior 85 (within 15) ✓
+        risk: 18, // Delta 6 from prior 12 (within 15) ✓
         pos: 80,
       });
       

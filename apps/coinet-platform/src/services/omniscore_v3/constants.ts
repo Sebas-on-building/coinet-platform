@@ -117,8 +117,8 @@ export const CONFIDENCE_FORMULA_WEIGHTS = {
 export const CONFIDENCE_THRESHOLDS = {
   high: 0.80,       // >= 80% = high confidence
   medium: 0.65,     // >= 65% = medium confidence
-  low: 0.50,        // >= 50% = low confidence
-  insufficient: 0,  // < 50% = GATED
+  low: 0.35,        // >= 35% = low confidence (production threshold)
+  insufficient: 0,  // < 35% = GATED
 } as const;
 
 /**
@@ -236,10 +236,37 @@ export const OS_SEGMENT_WEIGHTS = {
   COMM: 0.15,
 } as const;
 
+/**
+ * Risk Segment Weights (expanded crypto-specific model)
+ * 
+ * Total weight = 1.00
+ * 
+ * These segments capture the full spectrum of crypto risks:
+ * - LEGAL (10%): Regulatory and legal exposure
+ * - MACRO (10%): Systemic/market-wide risks
+ * - CENTRAL (20%): Decentralization - crucial for L1s like SOL vs BTC
+ * - STABILITY (15%): Network uptime/reliability
+ * - CONC (15%): Supply concentration (whale risk)
+ * - UNLOCK (10%): Token unlock/vesting schedules
+ * - LIQUIDITY (10%): Trading liquidity depth
+ * - CONTRACT (10%): Smart contract risk (audits, complexity)
+ */
 export const RISK_SEGMENT_WEIGHTS = {
-  LEGAL: 0.50,
-  MACRO: 0.50,
+  LEGAL: 0.10,      // Regulatory exposure
+  MACRO: 0.10,      // Systemic market risks
+  CENTRAL: 0.20,    // Centralization risk (important differentiator)
+  STABILITY: 0.15,  // Network reliability
+  CONC: 0.15,       // Supply concentration
+  UNLOCK: 0.10,     // Unlock schedule risk
+  LIQUIDITY: 0.10,  // Liquidity fragility
+  CONTRACT: 0.10,   // Smart contract risk
 } as const;
+
+// Compile-time assertion: Risk weights must sum to 1
+const _riskWeightSum = Object.values(RISK_SEGMENT_WEIGHTS).reduce((a, b) => a + b, 0);
+if (Math.abs(_riskWeightSum - 1) > 0.001) {
+  throw new Error(`INVARIANT VIOLATION: Risk weights must sum to 1, got ${_riskWeightSum}`);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SCORE BOUNDS

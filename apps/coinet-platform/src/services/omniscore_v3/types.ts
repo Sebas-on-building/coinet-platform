@@ -53,8 +53,27 @@ export type QSSegment = 'TEAM' | 'TECH' | 'SEC' | 'GOV' | 'ECO';
 /** OS Segments (opportunity, fast-moving) */
 export type OSSegment = 'MARKET' | 'TOKEN' | 'VAL' | 'ADOPT' | 'COMM';
 
-/** Risk Segments */
-export type RiskSegment = 'LEGAL' | 'MACRO';
+/** 
+ * Risk Segments (expanded for crypto-specific risks)
+ * 
+ * LEGAL      - Regulatory and legal risks
+ * MACRO      - Macroeconomic/systemic risks
+ * CENTRAL    - Centralization/decentralization risk (validators, governance)
+ * STABILITY  - Network stability risk (outages, congestion)
+ * CONC       - Concentration risk (whale holdings, top holder %)
+ * UNLOCK     - Unlock/vesting schedule risk
+ * LIQUIDITY  - Liquidity fragility risk (thin books, slippage)
+ * CONTRACT   - Smart contract risk (if applicable)
+ */
+export type RiskSegment = 
+  | 'LEGAL' 
+  | 'MACRO' 
+  | 'CENTRAL' 
+  | 'STABILITY' 
+  | 'CONC' 
+  | 'UNLOCK' 
+  | 'LIQUIDITY' 
+  | 'CONTRACT';
 
 /** All segments */
 export type Segment = QSSegment | OSSegment | RiskSegment;
@@ -456,6 +475,22 @@ export interface OmniScoreSnapshot {
   /** Risk Score (0-100) - higher = more risk */
   risk: number;
   riskTier: TierLabel;
+  
+  /** 
+   * Risk breakdown by segment (for transparency)
+   * Shows contribution from each risk category
+   */
+  riskBreakdown?: {
+    /** Top risk contributors */
+    topRisks: Array<{
+      segment: RiskSegment;
+      score: number;
+      weight: number;
+      contribution: number;
+    }>;
+    /** Coverage warnings for risk data */
+    coverageWarnings: string[];
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PROJECT OMNISCORE (the combined score)

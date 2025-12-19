@@ -41,7 +41,9 @@ export function checkConfidence(input: ConfidenceInput): ConfidenceResult {
   // Group data points by segment
   const bySegment = new Map<Segment, string[]>();
   for (const dp of dataPoints) {
-    if (dp.value === null) continue;
+    // Support both legacy (value) and canonical (raw) formats
+    const rawValue = (dp as any).raw ?? (dp as any).value;
+    if (rawValue === null || rawValue === undefined) continue;
     const keys = bySegment.get(dp.segment) || [];
     keys.push(dp.key);
     bySegment.set(dp.segment, keys);
@@ -65,8 +67,8 @@ export function checkConfidence(input: ConfidenceInput): ConfidenceResult {
   }
   const coverageOS = osTotalCoverage / osSegments.length;
   
-  // Calculate Risk coverage
-  const riskSegments: Segment[] = ['LEGAL', 'MACRO'];
+  // Calculate Risk coverage (all 8 segments)
+  const riskSegments: Segment[] = ['LEGAL', 'MACRO', 'CENTRAL', 'STABILITY', 'CONC', 'UNLOCK', 'LIQUIDITY', 'CONTRACT'];
   let riskTotalCoverage = 0;
   for (const seg of riskSegments) {
     const keys = bySegment.get(seg) || [];
@@ -74,11 +76,11 @@ export function checkConfidence(input: ConfidenceInput): ConfidenceResult {
   }
   const coverageRisk = riskTotalCoverage / riskSegments.length;
   
-  // Overall coverage (weighted)
+  // Overall coverage (weighted, 0-1 scale)
   const overallCoverage = coverageQS * 0.5 + coverageOS * 0.35 + coverageRisk * 0.15;
   
-  // Determine confidence level
-  const level = getConfidenceLevel(overallCoverage);
+  // Determine confidence level (getConfidenceLevel expects 0-100 scale)
+  const level = getConfidenceLevel(overallCoverage * 100);
   
   // Check for missing required data
   const missingRequired: string[] = [];

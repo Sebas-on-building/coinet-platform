@@ -42,6 +42,7 @@ export type SourceProvider =
   | 'github'
   | 'chain_rpc'
   | 'manual'
+  | 'aggregated' // Added for reconciliation results
   | string; // Allow custom providers
 
 /**
@@ -113,6 +114,12 @@ export interface SourceReport {
   /** Source provider */
   provider: SourceProvider;
   
+  /** Metric ID for this report */
+  metric_id: string; // Added metric_id
+  
+  /** Entity ID for this report */
+  entity_id: string; // Added entity_id
+  
   /** Reported raw value */
   value: number;
   
@@ -121,6 +128,9 @@ export interface SourceReport {
   
   /** Source's current trust score */
   trust_score: number;
+  
+  /** Explicit confidence score provided by source */
+  confidence_score: number; // Added explicit confidence score
   
   /** Latency from source (ms) */
   latency_ms: number;
@@ -136,7 +146,8 @@ export type ReconciliationMethod =
   | 'WTM'              // Weighted Trimmed Mean (default)
   | 'MEDIAN'           // Simple median (fallback)
   | 'SINGLE_SOURCE'    // Only one source available
-  | 'MANUAL_OVERRIDE'; // Human override
+  | 'MANUAL_OVERRIDE'
+  | 'NONE';            // No sources or insufficient sources
 
 /**
  * Dispute status
@@ -145,7 +156,8 @@ export type DisputeStatus =
   | 'AGREED'           // Sources agree (Agreement Score ≥ threshold)
   | 'MINOR_DISPUTE'    // Small disagreement (0.95 ≤ AS < threshold)
   | 'DISPUTED'         // Significant disagreement (AS < 0.95)
-  | 'SEVERE_DISPUTE';  // Extreme disagreement (AS < 0.90)
+  | 'SEVERE_DISPUTE'   // Extreme disagreement (AS < 0.90)
+  | 'INSUFFICIENT_SOURCES'; // Not enough sources to reconcile
 
 /**
  * Reconciliation result for a single metric
@@ -161,7 +173,7 @@ export const ReconciliationResultSchema = z.object({
   reconciled_value: z.number(),
   
   /** Method used for reconciliation */
-  method: z.enum(['WTM', 'MEDIAN', 'SINGLE_SOURCE', 'MANUAL_OVERRIDE']),
+  method: z.enum(['WTM', 'MEDIAN', 'SINGLE_SOURCE', 'MANUAL_OVERRIDE', 'NONE']),
   
   /** Number of sources that reported */
   source_count: z.number().int().min(0),
@@ -190,7 +202,7 @@ export const ReconciliationResultSchema = z.object({
   agreement_threshold: z.number().min(0).max(1),
   
   /** Dispute status */
-  dispute_status: z.enum(['AGREED', 'MINOR_DISPUTE', 'DISPUTED', 'SEVERE_DISPUTE']),
+  dispute_status: z.enum(['AGREED', 'MINOR_DISPUTE', 'DISPUTED', 'SEVERE_DISPUTE', 'INSUFFICIENT_SOURCES']),
   
   /** Confidence multiplier based on reconciliation quality */
   confidence_multiplier: z.number().min(0).max(1),
@@ -210,6 +222,22 @@ export const ReconciliationResultSchema = z.object({
     included_in_wtm: z.boolean(),
     trim_reason: z.string().nullable(),
   })),
+  
+  /** Reports that were trimmed */
+  trimmed_reports: z.array(z.object({
+    report: z.object({
+      provider: z.string(),
+      metric_id: z.string(),
+      entity_id: z.string(),
+      value: z.number(),
+      timestamp: z.string(),
+      trust_score: z.number(),
+      confidence_score: z.number(),
+      latency_ms: z.number(),
+      warnings: z.array(z.string()),
+    }),
+    reason: z.string(),
+  })).optional(), // Made optional
 });
 
 export type ReconciliationResult = z.infer<typeof ReconciliationResultSchema>;
@@ -287,6 +315,11 @@ export const RECONCILIATION_CONFIGS: Record<string, ReconciliationConfig> = {
   },
 };
 
+/**
+ * Default reconciliation config for metrics not explicitly defined
+ */
+export const DEFAULT_RECONCILIATION_CONFIG: ReconciliationConfig = RECONCILIATION_CONFIGS.general;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SOURCE TRUST DEFAULTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -308,4 +341,5 @@ export const DEFAULT_SOURCE_TRUST: Record<SourceProvider, number> = {
   github: 0.95,         // Direct source
   chain_rpc: 0.98,      // Direct blockchain
   manual: 0.70,         // Human input
+  aggregated: 1.00,     // Internal reconciliation result
 };

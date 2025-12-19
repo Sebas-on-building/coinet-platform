@@ -74,7 +74,8 @@ export {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export {
-  calculateOmniScore as calculateOmniScoreLegacy,
+  calculateOmniScore,
+  calculateOmniScore as calculateOmniScoreLegacy,  // Alias for deprecation path
   createSmoothingState,
   type CalculationContext,
 } from './engine';
@@ -455,8 +456,7 @@ export {
   CREATE_TABLE_SQL,
   DROP_TABLE_SQL,
   
-  // Smoothing (EMA)
-  SMOOTHING_CONFIG,
+  // Smoothing (EMA) - Note: SMOOTHING_CONFIG already exported from ./constants
   type SmoothingInput,
   type SmoothingResult as EMASmoothingResult,
   type BatchSmoothingInput,
@@ -495,8 +495,8 @@ export {
   type LegitimacyRuleResult,
   type LegitimacyResult as LegitimacyGateResult,
   
-  // Thresholds
-  LEGITIMACY_THRESHOLDS,
+  // Note: LEGITIMACY_THRESHOLDS already exported from ./constants
+  // Note: getLegitimacySummary already exported from ./gates/legitimacy
   
   // Decision tree
   determineLegitimacy,
@@ -506,7 +506,6 @@ export {
   canShowToAllocator,
   canShowToTrader,
   canAppearInRankings,
-  getLegitimacySummary,
 } from './gates/legitimacy-v2';
 
 // ═══════════════════════════════════════════════════════════════════════════════

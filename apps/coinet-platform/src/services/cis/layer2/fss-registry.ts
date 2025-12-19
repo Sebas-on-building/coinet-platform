@@ -241,7 +241,6 @@ const QS_SPECIFICATIONS: Record<string, FeatureSpecificationSheet> = {
     expected_unit: 'SCORE_0_100',
     base_weight: 0.15,
     
-    // Dev activity is meaningful for protocol tokens, not for:
     allowed_sectors: ['L1', 'L2', 'DeFi', 'Infrastructure', 'Gaming', 'Privacy'],
     forbidden_sectors: ['Payment', 'Exchange', 'Memecoin', 'Stablecoin'],
     
@@ -341,6 +340,7 @@ const QS_SPECIFICATIONS: Record<string, FeatureSpecificationSheet> = {
         rpn: 31,
         compensation: ['exclude_metric'],
         mitigation_steps: ['Verify asset is a platform/protocol, not a utility token'],
+        example: 'Solana ecosystem depth is a key metric. For a simple utility token, it is not relevant.',
       },
     ],
     
@@ -435,7 +435,6 @@ const OS_SPECIFICATIONS: Record<string, FeatureSpecificationSheet> = {
     expected_unit: 'USD',
     base_weight: 0.20,
     
-    // Liquidity is universal
     allowed_sectors: ['L1', 'L2', 'DeFi', 'Payment', 'Exchange', 'Memecoin', 'Stablecoin', 'Gaming', 'Infrastructure', 'Privacy', 'NFT', 'AI', 'RWA', 'Unknown'],
     forbidden_sectors: [],
     
@@ -696,6 +695,7 @@ const RISK_SPECIFICATIONS: Record<string, FeatureSpecificationSheet> = {
         rpn: 21,
         compensation: ['exclude_metric'],
         mitigation_steps: ['Only apply to smart contract platforms'],
+        example: 'Bitcoin has no unlocks. Admin risk should be excluded.',
       },
     ],
     
@@ -730,8 +730,8 @@ const RISK_SPECIFICATIONS: Record<string, FeatureSpecificationSheet> = {
   /**
    * Data Integrity Risk
    */
-  'risk_data_integrity_v1': createFSS({
-    metric_id: 'risk_data_integrity_v1',
+  'risk_dat-integrity_v1': createFSS({
+    metric_id: 'risk_dat-integrity_v1',
     name: 'Data Integrity Risk',
     definition: 'Meta-risk: how reliable is the data we have on this asset?',
     investor_relevance: 'Low data integrity means scores are less reliable.',
@@ -827,7 +827,7 @@ export function getMetricsForCategory(category: 'QS' | 'OS' | 'RISK' | 'META'): 
  */
 export function validateMetricApplication(
   metricId: string,
-  sector: Sector
+  sector: Sector,
 ): { valid: true } | { valid: false; error: string; compensation: string[] } {
   const fss = getFSS(metricId);
   
