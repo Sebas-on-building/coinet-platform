@@ -778,7 +778,14 @@ export function formatMarketDataForAI(snapshot: MarketSnapshot): string {
     timeZoneName: 'short',
   });
 
-  let context = `\n[LIVE MARKET DATA - ${dateStr}, ${timeStr}]\n`;
+  // Add verification header to prevent hallucination
+  let context = `
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║  📋 VERIFIED MARKET DATA - ${dateStr}, ${timeStr}
+║  ⚠️ USE ONLY THESE VALUES. Do NOT use training data for prices/ATH.
+╚═══════════════════════════════════════════════════════════════════════════════════╝
+
+`;
 
   // Sort by market cap descending
   const sortedPrices = [...snapshot.prices].sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
@@ -789,18 +796,20 @@ export function formatMarketDataForAI(snapshot: MarketSnapshot): string {
       ? `+${coin.changePercent24h.toFixed(2)}%`
       : `${coin.changePercent24h.toFixed(2)}%`;
 
-    context += `${coin.symbol}: $${formatPrice(coin.price)} (${direction}${changeStr} 24h)`;
+    context += `${coin.symbol}: CURRENT_PRICE=$${formatPrice(coin.price)} (${direction}${changeStr} 24h)`;
     
     // Add ATH data if available (CRITICAL for accurate AI responses)
     if (coin.ath && coin.athDate) {
       const athDate = new Date(coin.athDate);
       const athDateStr = athDate.toLocaleDateString('en-US', { 
-        month: 'short', 
+        month: 'long', 
         day: 'numeric', 
         year: 'numeric' 
       });
       const athChangePercent = ((coin.price - coin.ath) / coin.ath * 100).toFixed(1);
-      context += ` | ATH: $${formatPrice(coin.ath)} (${athDateStr}, ${athChangePercent}%)`;
+      context += `\n  ALL_TIME_HIGH: $${formatPrice(coin.ath)} on ${athDateStr} (${athChangePercent}% from ATH)`;
+    } else {
+      context += `\n  ALL_TIME_HIGH: [DATA NOT AVAILABLE - DO NOT GUESS]`;
     }
     
     if (coin.source === 'dexscreener') {
@@ -809,14 +818,15 @@ export function formatMarketDataForAI(snapshot: MarketSnapshot): string {
     if (coin.confidence < 0.8) {
       context += ' [unverified]';
     }
-    context += '\n';
+    context += '\n\n';
   }
 
   if (snapshot.missingSymbols.length > 0) {
-    context += `\nNo data found for: ${snapshot.missingSymbols.join(', ')}\n`;
+    context += `⛔ NO DATA FOR (DO NOT GUESS): ${snapshot.missingSymbols.join(', ')}\n`;
   }
 
   context += `[Sources: ${snapshot.sources.join(', ')} | Fetched in ${snapshot.fetchTime}ms]\n`;
+  context += `🔒 REMINDER: Use these EXACT values. Your training data is OUTDATED.\n`;
 
   return context;
 }
