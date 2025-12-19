@@ -52,26 +52,45 @@ const SECTOR_MAPS: Record<SectorType, Set<string>> = {
     'matic', 'polygon', 'near', 'apt', 'aptos', 'sui', 'dot', 'polkadot', 'atom', 'cosmos', 
     'algo', 'algorand', 'ada', 'cardano', 'bnb', 'xrp', 'ton', 'supra', 'hbar', 'hedera',
     'ftm', 'fantom', 'egld', 'multiversx', 'icp', 'internet-computer', 'flow', 'xtz', 'tezos',
-    'neo', 'vet', 'vechain', 'fil', 'filecoin', 'kas', 'kaspa', 'sei']),
+    'neo', 'vet', 'vechain', 'fil', 'filecoin', 'kas', 'kaspa', 'sei', 'trx', 'tron',
+    'xlm', 'stellar', 'eos', 'ltc', 'litecoin', 'bch', 'bitcoin-cash', 'etc', 'ethereum-classic',
+    'xmr', 'monero', 'zec', 'zcash', 'cro', 'cronos', 'kava', 'mina', 'rose', 'oasis',
+    'one', 'harmony', 'zil', 'zilliqa', 'waves', 'qtum', 'ont', 'ontology', 'theta',
+    'aster', 'astr', 'astar']), // Aster/Astar - Binance-backed L1
   L2: new Set(['arb', 'arbitrum', 'op', 'optimism', 'base', 'zksync', 'starknet', 'mantle', 
-    'scroll', 'linea', 'blast', 'mode', 'manta', 'taiko', 'zkevm']),
+    'scroll', 'linea', 'blast', 'mode', 'manta', 'taiko', 'zkevm', 'metis', 'boba', 'loopring',
+    'lrc', 'skale', 'polygon-zkevm', 'imx-zkevm']),
   DeFi: new Set(['uni', 'uniswap', 'aave', 'sushi', 'sushiswap', 'curve', 'crv', 'compound', 
     'comp', 'maker', 'mkr', 'lido', 'steth', 'convex', 'cvx', 'yearn', 'yfi', 'gmx', 'dydx', 
     'pancake', 'cake', 'synthetix', 'snx', 'frax', 'balancer', 'bal', 'pendle', 'velo', 
     'velodrome', 'aero', 'aerodrome', 'rpl', 'rocket', 'eigen', 'jupiter', 'jup', 'raydium',
-    'orca', 'morpho', 'ethena', 'ena', 'usual']),
+    'orca', 'morpho', 'ethena', 'ena', 'usual', '1inch', 'instadapp', 'spell', 'swise',
+    'rsr', 'reserve', 'fxs', 'ankr', 'lqty', 'liquity', 'ribbon', 'alchemix', 'alcx',
+    'badger', 'harvest', 'alpha', 'cream', 'venus', 'xvs', 'benqi', 'qi', 'trader-joe',
+    'joe', 'kyber', 'knc', 'bancor', 'bnt', 'thorchain', 'rune', 'osmosis', 'osmo',
+    'astroport', 'terraswap', 'kujira', 'kuji', 'injective-protocol']),
   Infrastructure: new Set(['link', 'chainlink', 'grt', 'thegraph', 'ar', 'arweave', 'rndr', 
     'render', 'inj', 'injective', 'pyth', 'wormhole', 'layerzero', 'axelar', 'api3', 'band',
-    'the', 'helium', 'hnt', 'mask', 'celestia', 'tia', 'altlayer', 'alt', 'dymension', 'dym']),
+    'the', 'helium', 'hnt', 'mask', 'celestia', 'tia', 'altlayer', 'alt', 'dymension', 'dym',
+    'stx', 'stacks', 'zro', 'w', 'eigenlayer', 'ondo', 'safe', 'ssv', 'storj', 'sia',
+    'flux', 'livepeer', 'lpt', 'theta-network', 'tfuel', 'pocket', 'pokt', 'nucypher', 'keep',
+    'nxm', 'nexus', 'uma', 'api3', 'tellor', 'trb', 'dia', 'redstone', 'switchboard']),
   AI: new Set(['tao', 'bittensor', 'fet', 'fetchai', 'fetch-ai', 'agix', 'singularity', 'ocean', 
     'olas', 'autonolas', 'akt', 'akash', 'wld', 'worldcoin', 'io', 'virtual', 'ai16z', 'goat',
-    'griffain', 'zerebro']),
+    'griffain', 'zerebro', 'rndr', 'render', 'theta', 'theta-network', 'grt', 'numeraire',
+    'nmr', 'deepbrain', 'dbc', 'cortex', 'ctxc', 'matrix', 'man', 'nkn', 'aleph', 'phala',
+    'pha', 'orai', 'oraichain', 'aioz', 'nosana', 'nos', 'clore', 'grass']),
   Meme: new Set(['doge', 'dogecoin', 'shib', 'pepe', 'wif', 'bonk', 'floki', 'turbo', 'mog', 
     'brett', 'popcat', 'neiro', 'fwog', 'spx', 'moodeng', 'pnut', 'act', 'chillguy', 'fartcoin',
-    'gigachad', 'chill-guy']),
+    'gigachad', 'chill-guy', 'myro', 'wen', 'slerf', 'bome', 'book-of-meme', 'coq', 'cat',
+    'simon', 'retardio', 'toshi', 'mochi', 'ponke', 'smog', 'samo', 'cheems', 'kishu',
+    'launchcoin', 'launch', 'believe']),
   Gaming: new Set(['axs', 'axie', 'sand', 'sandbox', 'mana', 'decentraland', 'gala', 'imx', 
     'immutable', 'ronin', 'ron', 'prime', 'echelon', 'beam', 'xai', 'pixel', 'ilv', 'illuvium',
-    'gods', 'super', 'ape', 'magic']),
+    'gods', 'super', 'ape', 'magic', 'enj', 'enjin', 'wax', 'waxp', 'ultra', 'uos', 'treasure',
+    'mc', 'merit-circle', 'ygg', 'yield-guild', 'gmt', 'stepn', 'alice', 'my-neighbor-alice',
+    'pyr', 'vulcan', 'bigtime', 'naka', 'nakamoto-games', 'ghst', 'aavegotchi', 'mobox',
+    'mbox', 'staratlas', 'atlas', 'polis', 'aurory', 'aury', 'genopets', 'gene']),
   Unknown: new Set([])
 };
 
@@ -144,8 +163,397 @@ function normalize(value: number, min: number, max: number): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// v2.8.0: PARTNERSHIPS & BACKING DATA SOURCE
+// This provides information about exchange backing, VC investors, and strategic
+// partnerships that indicate project credibility beyond on-chain metrics.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ProjectBackingInfo {
+  tier: 'tier1' | 'tier2' | 'tier3' | 'unknown';
+  exchanges: string[];
+  vcs: string[];
+  strategicPartners: string[];
+  description: string;
+}
+
+/**
+ * v2.8.0: Get backing/partnership information for a project
+ * tier1: Major exchange backing (Binance, Coinbase, etc.) or top-tier VCs
+ * tier2: Significant backing from known entities
+ * tier3: Some known backing
+ * unknown: No known backing info
+ */
+function getProjectBacking(projectId: string): ProjectBackingInfo {
+  const pid = projectId.toLowerCase();
+  
+  // v2.8.0: Project backing database
+  // This is manually curated data - in production, this could be fetched from an API
+  const backingDatabase: Record<string, ProjectBackingInfo> = {
+    // Binance-backed projects
+    'aster': { tier: 'tier1', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'Binance Labs incubated' },
+    'astr': { tier: 'tier1', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'Binance Labs incubated' },
+    'astar': { tier: 'tier1', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'Binance Labs incubated' },
+    'bnb': { tier: 'tier1', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'Binance native token' },
+    'cake': { tier: 'tier1', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'BNB Chain flagship DEX' },
+    'xvs': { tier: 'tier1', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'Venus Protocol - Binance-backed' },
+    'bake': { tier: 'tier2', exchanges: ['binance'], vcs: [], strategicPartners: ['binance'], description: 'BakerySwap on BNB Chain' },
+    'hook': { tier: 'tier2', exchanges: ['binance'], vcs: ['binance-labs'], strategicPartners: ['binance'], description: 'Hooked Protocol - Binance Launchpad' },
+    
+    // Coinbase-backed projects
+    'base': { tier: 'tier1', exchanges: ['coinbase'], vcs: ['coinbase-ventures'], strategicPartners: ['coinbase'], description: 'Coinbase L2' },
+    'cbeth': { tier: 'tier1', exchanges: ['coinbase'], vcs: ['coinbase-ventures'], strategicPartners: ['coinbase'], description: 'Coinbase staked ETH' },
+    
+    // Major VC-backed
+    'solana': { tier: 'tier1', exchanges: ['ftx', 'alameda'], vcs: ['a16z', 'polychain', 'multicoin'], strategicPartners: ['jump', 'alameda'], description: 'Major VC backing' },
+    'aptos': { tier: 'tier1', exchanges: ['binance', 'coinbase'], vcs: ['a16z', 'multicoin', 'jump'], strategicPartners: [], description: 'Former Diem team, top-tier VC backing' },
+    'sui': { tier: 'tier1', exchanges: ['binance', 'coinbase'], vcs: ['a16z', 'coinbase-ventures', 'jump'], strategicPartners: [], description: 'Former Diem team, top-tier VC backing' },
+    'arbitrum': { tier: 'tier1', exchanges: [], vcs: ['pantera', 'paradigm', 'lightspeed'], strategicPartners: [], description: 'Major VC backing' },
+    'optimism': { tier: 'tier1', exchanges: [], vcs: ['a16z', 'paradigm'], strategicPartners: [], description: 'Major VC backing' },
+    'starknet': { tier: 'tier1', exchanges: [], vcs: ['paradigm', 'sequoia', 'coatue'], strategicPartners: [], description: '$100M+ raises' },
+    'celestia': { tier: 'tier1', exchanges: [], vcs: ['bain', 'polychain', 'placeholder'], strategicPartners: [], description: 'Modular blockchain leader' },
+    'eigenlayer': { tier: 'tier1', exchanges: [], vcs: ['a16z', 'polychain', 'blockchain-capital'], strategicPartners: [], description: 'Restaking pioneer' },
+    'eigen': { tier: 'tier1', exchanges: [], vcs: ['a16z', 'polychain', 'blockchain-capital'], strategicPartners: [], description: 'Restaking pioneer' },
+    
+    // Tier 2 - Significant backing
+    'layerzero': { tier: 'tier2', exchanges: [], vcs: ['a16z', 'sequoia', 'coinbase-ventures'], strategicPartners: [], description: 'Cross-chain messaging' },
+    'zro': { tier: 'tier2', exchanges: [], vcs: ['a16z', 'sequoia', 'coinbase-ventures'], strategicPartners: [], description: 'LayerZero token' },
+    'wormhole': { tier: 'tier2', exchanges: [], vcs: ['jump'], strategicPartners: ['jump-crypto'], description: 'Jump Crypto backed' },
+    'pyth': { tier: 'tier2', exchanges: [], vcs: ['jump'], strategicPartners: ['jump-crypto', 'solana'], description: 'Jump Crypto oracle' },
+    'render': { tier: 'tier2', exchanges: [], vcs: ['multicoin', 'alameda'], strategicPartners: [], description: 'GPU rendering network' },
+    'rndr': { tier: 'tier2', exchanges: [], vcs: ['multicoin', 'alameda'], strategicPartners: [], description: 'GPU rendering network' },
+    'worldcoin': { tier: 'tier2', exchanges: [], vcs: ['a16z', 'khosla'], strategicPartners: ['sam-altman'], description: 'OpenAI founder project' },
+    'wld': { tier: 'tier2', exchanges: [], vcs: ['a16z', 'khosla'], strategicPartners: ['sam-altman'], description: 'OpenAI founder project' },
+    'bittensor': { tier: 'tier2', exchanges: [], vcs: ['dcg', 'polychain'], strategicPartners: [], description: 'Decentralized AI' },
+    'tao': { tier: 'tier2', exchanges: [], vcs: ['dcg', 'polychain'], strategicPartners: [], description: 'Decentralized AI' },
+    
+    // Hedera - Enterprise backing
+    'hedera': { tier: 'tier1', exchanges: [], vcs: [], strategicPartners: ['google', 'ibm', 'lg', 'boeing', 'deutsche-telekom'], description: 'Enterprise governing council' },
+    'hbar': { tier: 'tier1', exchanges: [], vcs: [], strategicPartners: ['google', 'ibm', 'lg', 'boeing', 'deutsche-telekom'], description: 'Enterprise governing council' },
+    
+    // Other notable projects
+    'near': { tier: 'tier2', exchanges: [], vcs: ['a16z', 'tiger-global', 'ftx'], strategicPartners: [], description: 'Significant VC backing' },
+    'avalanche': { tier: 'tier2', exchanges: [], vcs: ['polychain', 'three-arrows', 'dragonfly'], strategicPartners: [], description: 'Significant VC backing' },
+    'avax': { tier: 'tier2', exchanges: [], vcs: ['polychain', 'three-arrows', 'dragonfly'], strategicPartners: [], description: 'Significant VC backing' },
+    'polygon': { tier: 'tier2', exchanges: [], vcs: ['sequoia', 'softbank', 'tiger-global'], strategicPartners: ['meta', 'disney', 'starbucks'], description: 'Enterprise partnerships' },
+    'matic': { tier: 'tier2', exchanges: [], vcs: ['sequoia', 'softbank', 'tiger-global'], strategicPartners: ['meta', 'disney', 'starbucks'], description: 'Enterprise partnerships' },
+    
+    // Supra
+    'supra': { tier: 'tier2', exchanges: [], vcs: ['coinbase-ventures', 'animoca'], strategicPartners: [], description: 'Oracle and L1' },
+  };
+  
+  return backingDatabase[pid] || { tier: 'unknown', exchanges: [], vcs: [], strategicPartners: [], description: '' };
+}
+
+/**
+ * v2.8.0: Generate backing-based quality adjustments
+ */
+function generateBackingEstimates(projectId: string): FeatureInput[] {
+  const qsInputs: FeatureInput[] = [];
+  const backingInfo = getProjectBacking(projectId);
+  
+  if (backingInfo.tier === 'unknown') {
+    return qsInputs; // No extra features for unknown backing
+  }
+  
+  // Add backing-based quality signals
+  const backingScore = backingInfo.tier === 'tier1' ? 85 : 
+                       backingInfo.tier === 'tier2' ? 70 : 55;
+  
+  qsInputs.push(createFeature('team_institutional_backing', 'TEAM', 
+    backingScore, ['partnerships-data']));
+  
+  if (backingInfo.exchanges.length > 0) {
+    qsInputs.push(createFeature('team_exchange_support', 'TEAM', 
+      backingInfo.exchanges.includes('binance') || backingInfo.exchanges.includes('coinbase') ? 90 : 70,
+      ['partnerships-data']));
+  }
+  
+  if (backingInfo.strategicPartners.length > 0) {
+    const hasEnterprise = backingInfo.strategicPartners.some(p => 
+      ['google', 'ibm', 'meta', 'disney', 'microsoft', 'amazon'].includes(p));
+    qsInputs.push(createFeature('team_strategic_partners', 'TEAM', 
+      hasEnterprise ? 90 : 75, ['partnerships-data']));
+  }
+  
+  return qsInputs;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DATA FETCHERS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * v2.8.0: Fetch developer and community data from CoinGecko
+ * This provides real metrics instead of estimates for projects not in our GitHub mapping
+ */
+async function fetchCoinGeckoDeveloperData(projectId: string): Promise<FeatureInput[]> {
+  const qsInputs: FeatureInput[] = [];
+  
+  try {
+    // CoinGecko coin ID mapping (many match directly, some need mapping)
+    const coinIdMap: Record<string, string> = {
+      'aster': 'astar',
+      'astr': 'astar',
+      'hbar': 'hedera-hashgraph',
+      'bnb': 'binancecoin',
+      'xrp': 'ripple',
+      'ada': 'cardano',
+      'sol': 'solana',
+      'dot': 'polkadot',
+      'avax': 'avalanche-2',
+      'matic': 'matic-network',
+      'link': 'chainlink',
+      'uni': 'uniswap',
+      'atom': 'cosmos',
+      'ftm': 'fantom',
+      'near': 'near',
+      'algo': 'algorand',
+      'xtz': 'tezos',
+      'fil': 'filecoin',
+      'icp': 'internet-computer',
+      'egld': 'elrond-erd-2',
+      'mina': 'mina-protocol',
+      'kas': 'kaspa',
+      'sei': 'sei-network',
+      'arb': 'arbitrum',
+      'op': 'optimism',
+      'apt': 'aptos',
+      'sui': 'sui',
+      'inj': 'injective-protocol',
+      'tia': 'celestia',
+      'stx': 'blockstack',
+      'tao': 'bittensor',
+      'rndr': 'render-token',
+      'wld': 'worldcoin-wld',
+      'fet': 'fetch-ai',
+      'akt': 'akash-network',
+      'grt': 'the-graph',
+      'ar': 'arweave',
+      'lpt': 'livepeer',
+      'imx': 'immutable-x',
+      'ron': 'ronin',
+      'gala': 'gala',
+      'sand': 'the-sandbox',
+      'mana': 'decentraland',
+      'axs': 'axie-infinity',
+      'cake': 'pancakeswap-token',
+      'sushi': 'sushi',
+      'crv': 'curve-dao-token',
+      'aave': 'aave',
+      'mkr': 'maker',
+      'snx': 'havven',
+      'comp': 'compound-governance-token',
+      'bal': 'balancer',
+      'yfi': 'yearn-finance',
+      'rune': 'thorchain',
+      'osmo': 'osmosis',
+      'jup': 'jupiter-exchange-solana',
+      'pendle': 'pendle',
+      'eigen': 'eigenlayer',
+      'ena': 'ethena',
+      'doge': 'dogecoin',
+      'shib': 'shiba-inu',
+      'pepe': 'pepe',
+      'wif': 'dogwifcoin',
+      'bonk': 'bonk',
+      'floki': 'floki',
+      'launchcoin': 'launchcoin',
+      'launch': 'launchcoin',
+    };
+    
+    const coinId = coinIdMap[projectId.toLowerCase()] || projectId.toLowerCase();
+    
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=true&sparkline=false`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Coinet-OmniScore/2.8',
+        },
+      }
+    );
+    
+    if (!response.ok) {
+      logger.debug('[OmniScore v2.8] CoinGecko developer data not found', { projectId, coinId });
+      return qsInputs;
+    }
+    
+    const data = await response.json() as {
+      developer_score?: number;
+      community_score?: number;
+      developer_data?: {
+        forks?: number;
+        stars?: number;
+        subscribers?: number;
+        total_issues?: number;
+        closed_issues?: number;
+        pull_requests_merged?: number;
+        pull_request_contributors?: number;
+        code_additions_deletions_4_weeks?: {
+          additions?: number;
+          deletions?: number;
+        };
+        commit_count_4_weeks?: number;
+      };
+      community_data?: {
+        twitter_followers?: number;
+        reddit_subscribers?: number;
+        telegram_channel_user_count?: number;
+      };
+    };
+    
+    // Developer data from CoinGecko
+    if (data.developer_data) {
+      const dev = data.developer_data;
+      
+      // GitHub stars (normalize to 0-100, max ~50k stars)
+      if (dev.stars !== undefined) {
+        qsInputs.push(createFeature('tech_github_stars', 'TECH', 
+          normalize(dev.stars, 0, 50000), ['coingecko-dev']));
+      }
+      
+      // Forks (normalize to 0-100, max ~20k forks)
+      if (dev.forks !== undefined) {
+        qsInputs.push(createFeature('tech_github_forks', 'TECH', 
+          normalize(dev.forks, 0, 20000), ['coingecko-dev']));
+      }
+      
+      // Contributors (normalize to 0-100, max ~500)
+      if (dev.pull_request_contributors !== undefined) {
+        qsInputs.push(createFeature('tech_contributors', 'TECH', 
+          normalize(dev.pull_request_contributors, 0, 500), ['coingecko-dev']));
+      }
+      
+      // Recent commits (normalize 4-week commits, max ~1000)
+      if (dev.commit_count_4_weeks !== undefined) {
+        qsInputs.push(createFeature('tech_recent_commits', 'TECH', 
+          normalize(dev.commit_count_4_weeks, 0, 1000), ['coingecko-dev']));
+      }
+      
+      // Code activity (additions + deletions as activity signal)
+      if (dev.code_additions_deletions_4_weeks) {
+        const codeChanges = (dev.code_additions_deletions_4_weeks.additions || 0) + 
+                           Math.abs(dev.code_additions_deletions_4_weeks.deletions || 0);
+        qsInputs.push(createFeature('tech_code_activity', 'TECH', 
+          normalize(codeChanges, 0, 100000), ['coingecko-dev']));
+      }
+      
+      // PR merge rate (closed issues / total issues)
+      if (dev.total_issues && dev.closed_issues) {
+        const issueResolutionRate = dev.total_issues > 0 ? 
+          (dev.closed_issues / dev.total_issues) * 100 : 50;
+        qsInputs.push(createFeature('tech_issue_resolution', 'TECH', 
+          issueResolutionRate, ['coingecko-dev']));
+      }
+    }
+    
+    // Use CoinGecko's composite developer score if available
+    if (data.developer_score !== undefined) {
+      qsInputs.push(createFeature('tech_developer_score', 'TECH', 
+        data.developer_score, ['coingecko-dev']));
+    }
+    
+    logger.debug('[OmniScore v2.8] Fetched CoinGecko developer data', { 
+      projectId, 
+      coinId, 
+      featuresAdded: qsInputs.length 
+    });
+    
+  } catch (error) {
+    logger.warn('[OmniScore v2.8] CoinGecko developer data fetch failed', { error, projectId });
+  }
+  
+  return qsInputs;
+}
+
+/**
+ * v2.8.0: Fetch community data from CoinGecko for OS features
+ */
+async function fetchCoinGeckoCommunityData(projectId: string): Promise<FeatureInput[]> {
+  const osInputs: FeatureInput[] = [];
+  
+  try {
+    const coinIdMap: Record<string, string> = {
+      'aster': 'astar', 'astr': 'astar', 'hbar': 'hedera-hashgraph',
+      'bnb': 'binancecoin', 'xrp': 'ripple', 'ada': 'cardano',
+      'sol': 'solana', 'avax': 'avalanche-2', 'link': 'chainlink',
+      'launchcoin': 'launchcoin', 'launch': 'launchcoin',
+    };
+    
+    const coinId = coinIdMap[projectId.toLowerCase()] || projectId.toLowerCase();
+    
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=false&community_data=true&developer_data=false&sparkline=false`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Coinet-OmniScore/2.8',
+        },
+      }
+    );
+    
+    if (!response.ok) {
+      return osInputs;
+    }
+    
+    const data = await response.json() as {
+      community_score?: number;
+      community_data?: {
+        twitter_followers?: number;
+        reddit_subscribers?: number;
+        reddit_average_posts_48h?: number;
+        reddit_average_comments_48h?: number;
+        telegram_channel_user_count?: number;
+      };
+    };
+    
+    if (data.community_data) {
+      const comm = data.community_data;
+      
+      // Twitter followers (normalize to 0-100, max ~5M)
+      if (comm.twitter_followers !== undefined) {
+        osInputs.push(createFeature('comm_twitter_followers_real', 'COMM', 
+          normalize(comm.twitter_followers, 0, 5000000), ['coingecko-community']));
+      }
+      
+      // Reddit subscribers (normalize to 0-100, max ~5M)
+      if (comm.reddit_subscribers !== undefined) {
+        osInputs.push(createFeature('comm_reddit_members', 'COMM', 
+          normalize(comm.reddit_subscribers, 0, 5000000), ['coingecko-community']));
+      }
+      
+      // Reddit activity (posts + comments in 48h)
+      if (comm.reddit_average_posts_48h !== undefined || comm.reddit_average_comments_48h !== undefined) {
+        const redditActivity = (comm.reddit_average_posts_48h || 0) + 
+                              (comm.reddit_average_comments_48h || 0);
+        osInputs.push(createFeature('comm_reddit_activity', 'COMM', 
+          normalize(redditActivity, 0, 1000), ['coingecko-community']));
+      }
+      
+      // Telegram (normalize to 0-100, max ~1M)
+      if (comm.telegram_channel_user_count !== undefined) {
+        osInputs.push(createFeature('comm_telegram_members', 'COMM', 
+          normalize(comm.telegram_channel_user_count, 0, 1000000), ['coingecko-community']));
+      }
+    }
+    
+    // Use CoinGecko's composite community score if available
+    if (data.community_score !== undefined) {
+      osInputs.push(createFeature('comm_community_score', 'COMM', 
+        data.community_score, ['coingecko-community']));
+    }
+    
+    logger.debug('[OmniScore v2.8] Fetched CoinGecko community data', { 
+      projectId, 
+      featuresAdded: osInputs.length 
+    });
+    
+  } catch (error) {
+    logger.warn('[OmniScore v2.8] CoinGecko community data fetch failed', { error, projectId });
+  }
+  
+  return osInputs;
+}
 
 async function fetchMarketData(symbol: string): Promise<{
   qsInputs: FeatureInput[];
@@ -210,26 +618,107 @@ async function fetchMarketData(symbol: string): Promise<{
 async function fetchGitHubData(projectId: string): Promise<FeatureInput[]> {
   const qsInputs: FeatureInput[] = [];
   
-  // GitHub API mapping
+  // v2.8.0: Significantly expanded GitHub API mapping
   const githubRepos: Record<string, string> = {
+    // Major L1s
     'ethereum': 'ethereum/go-ethereum',
     'bitcoin': 'bitcoin/bitcoin',
     'solana': 'solana-labs/solana',
     'polygon': 'maticnetwork/bor',
     'avalanche': 'ava-labs/avalanchego',
+    'near': 'near/nearcore',
+    'cosmos': 'cosmos/cosmos-sdk',
+    'polkadot': 'paritytech/polkadot-sdk',
+    'cardano': 'cardano-foundation/developer-portal',
+    'aptos': 'aptos-labs/aptos-core',
+    'sui': 'MystenLabs/sui',
+    'fantom': 'Fantom-foundation/go-opera',
+    'algorand': 'algorand/go-algorand',
+    'tezos': 'tezos/tezos',
+    'flow': 'onflow/flow-go',
+    'hedera': 'hashgraph/hedera-services',
+    'hbar': 'hashgraph/hedera-services',
+    'filecoin': 'filecoin-project/lotus',
+    'icp': 'dfinity/ic',
+    'mina': 'MinaProtocol/mina',
+    'eos': 'EOSIO/eos',
+    'tron': 'tronprotocol/java-tron',
+    'stellar': 'stellar/stellar-core',
+    'sei': 'sei-protocol/sei-chain',
+    'kaspa': 'kaspanet/kaspad',
+    // L2s
     'arbitrum': 'OffchainLabs/arbitrum',
     'optimism': 'ethereum-optimism/optimism',
+    'base': 'base-org/node',
+    'starknet': 'starkware-libs/starknet-specs',
+    'zksync': 'matter-labs/zksync-era',
+    'mantle': 'mantlenetworkio/mantle',
+    'scroll': 'scroll-tech/scroll',
+    'linea': 'Consensys/linea-monorepo',
+    'metis': 'MetisProtocol/metis',
+    'loopring': 'Loopring/protocols',
+    // DeFi
     'chainlink': 'smartcontractkit/chainlink',
     'uniswap': 'Uniswap/v3-core',
     'aave': 'aave/aave-v3-core',
     'compound': 'compound-finance/compound-protocol',
+    'maker': 'makerdao/dss',
+    'lido': 'lidofinance/lido-dao',
+    'curve': 'curvefi/curve-contract',
+    'yearn': 'yearn/yearn-vaults',
+    'gmx': 'gmx-io/gmx-contracts',
+    'synthetix': 'Synthetixio/synthetix',
+    'balancer': 'balancer-labs/balancer-v2-monorepo',
+    'sushiswap': 'sushiswap/sushiswap',
+    'sushi': 'sushiswap/sushiswap',
+    '1inch': '1inch/1inch-v2-contracts',
+    'pancakeswap': 'pancakeswap/pancake-smart-contracts',
+    'cake': 'pancakeswap/pancake-smart-contracts',
+    'thorchain': 'thorchain/thornode',
+    'osmosis': 'osmosis-labs/osmosis',
+    'jupiter': 'jup-ag/jupiter-core',
+    'raydium': 'raydium-io/raydium-amm',
+    // Infrastructure
     'supra': 'supranational/blst',
-    'near': 'near/nearcore',
-    'cosmos': 'cosmos/cosmos-sdk',
+    'thegraph': 'graphprotocol/graph-node',
+    'grt': 'graphprotocol/graph-node',
+    'arweave': 'ArweaveTeam/arweave',
+    'render': 'rndr-network/rndr-js',
+    'livepeer': 'livepeer/go-livepeer',
+    'storj': 'storj/storj',
+    'flux': 'RunOnFlux/fluxd',
+    'celestia': 'celestiaorg/celestia-node',
+    'eigenlayer': 'Layr-Labs/eigenlayer-contracts',
+    'eigen': 'Layr-Labs/eigenlayer-contracts',
+    'layerzero': 'LayerZero-Labs/LayerZero',
+    'wormhole': 'wormhole-foundation/wormhole',
+    'axelar': 'axelarnetwork/axelar-core',
+    'pyth': 'pyth-network/pyth-client',
+    // AI
+    'bittensor': 'opentensor/bittensor',
+    'tao': 'opentensor/bittensor',
+    'akash': 'akash-network/node',
+    'ocean': 'oceanprotocol/ocean.py',
+    'fetch-ai': 'fetchai/fetchd',
+    // Gaming
+    'immutable': 'immutable/imx-core-sdk',
+    'gala': 'AstarNetwork/Astar',
+    'enjin': 'enjin/enjin-api-docs',
+    // Binance ecosystem
+    'aster': 'AstarNetwork/Astar',
+    'astr': 'AstarNetwork/Astar',
+    'astar': 'AstarNetwork/Astar',
+    'venus': 'VenusProtocol/venus-protocol',
+    'xvs': 'VenusProtocol/venus-protocol',
   };
   
   const repo = githubRepos[projectId.toLowerCase()];
   if (!repo) {
+    // v2.8.0: Try CoinGecko developer data before falling back to estimates
+    const cgData = await fetchCoinGeckoDeveloperData(projectId);
+    if (cgData.length > 0) {
+      return cgData;
+    }
     // Return estimated values for unknown projects
     qsInputs.push(createFeature('tech_github_stars', 'TECH', 50, ['estimate']));
     qsInputs.push(createFeature('tech_github_commits', 'TECH', 50, ['estimate']));
@@ -396,13 +885,43 @@ function generateTeamGovernanceEstimates(projectId: string, sector: SectorType):
   const qsInputs: FeatureInput[] = [];
   
   // Well-known projects with higher team scores
+  // v2.8.0: Significantly expanded to include more established projects
   const establishedProjects = new Set([
-    'bitcoin', 'ethereum', 'solana', 'polygon', 'avalanche', 'chainlink',
-    'uniswap', 'aave', 'compound', 'maker', 'arbitrum', 'optimism', 'cosmos',
-    'near', 'polkadot', 'cardano', 'supra'
+    // Major L1s
+    'bitcoin', 'ethereum', 'solana', 'polygon', 'avalanche', 'cosmos',
+    'near', 'polkadot', 'cardano', 'bnb', 'binance', 'xrp', 'ripple', 'ton',
+    'tron', 'trx', 'stellar', 'xlm', 'litecoin', 'ltc', 'eos', 'flow',
+    'aptos', 'apt', 'sui', 'fantom', 'ftm', 'hedera', 'hbar', 'algorand',
+    'algo', 'tezos', 'xtz', 'filecoin', 'fil', 'kaspa', 'kas', 'sei',
+    'icp', 'internet-computer', 'multiversx', 'egld', 'mina', 'kava', 'cronos',
+    'cro', 'vechain', 'vet', 'zilliqa', 'zil', 'waves', 'neo', 'qtum', 'theta',
+    // L2s
+    'arbitrum', 'optimism', 'base', 'zksync', 'starknet', 'mantle', 'scroll',
+    'linea', 'blast', 'mode', 'metis', 'boba', 'loopring', 'lrc', 'skale',
+    // DeFi leaders
+    'chainlink', 'uniswap', 'aave', 'compound', 'maker', 'lido', 'curve',
+    'convex', 'yearn', 'gmx', 'dydx', 'pancakeswap', 'cake', 'synthetix',
+    'frax', 'balancer', 'pendle', '1inch', 'jupiter', 'jup', 'raydium',
+    'orca', 'morpho', 'ethena', 'thorchain', 'rune', 'osmosis', 'osmo',
+    // Infrastructure
+    'supra', 'thegraph', 'grt', 'arweave', 'ar', 'render', 'rndr', 'pyth',
+    'wormhole', 'layerzero', 'zro', 'axelar', 'celestia', 'tia', 'eigenlayer',
+    'eigen', 'ondo', 'safe', 'ssv', 'storj', 'livepeer', 'lpt', 'flux',
+    // AI
+    'bittensor', 'tao', 'fetch-ai', 'fet', 'worldcoin', 'wld', 'akash', 'akt',
+    'render', 'ocean', 'singularitynet', 'agix',
+    // Gaming
+    'immutable', 'imx', 'ronin', 'ron', 'gala', 'sandbox', 'decentraland',
+    'axie', 'axs', 'illuvium', 'ilv', 'stepn', 'gmt', 'enjin', 'enj',
+    // Binance-backed projects (strategic partnerships)
+    'aster', 'astr', 'astar', 'bnb', 'cake', 'xvs', 'venus', 'bake',
   ]);
   
-  const isEstablished = establishedProjects.has(projectId.toLowerCase());
+  // v2.8.0: Check partnerships/backing for additional credibility
+  const backingInfo = getProjectBacking(projectId);
+  const hasStrategicBacking = backingInfo.tier === 'tier1' || backingInfo.tier === 'tier2';
+  
+  const isEstablished = establishedProjects.has(projectId.toLowerCase()) || hasStrategicBacking;
   
   // TEAM estimates (QS)
   qsInputs.push(createFeature('team_experience', 'TEAM', 
@@ -426,22 +945,43 @@ function generateTeamGovernanceEstimates(projectId: string, sector: SectorType):
 function generateSecurityEstimates(projectId: string, sector: SectorType): FeatureInput[] {
   const qsInputs: FeatureInput[] = [];
   
-  // Projects with known audits
+  // v2.8.0: Significantly expanded list of projects with known audits
   const auditedProjects = new Set([
-    'ethereum', 'bitcoin', 'solana', 'polygon', 'avalanche', 'chainlink',
-    'uniswap', 'aave', 'compound', 'maker', 'arbitrum', 'optimism',
-    'lido', 'curve', 'supra', 'near', 'cosmos'
+    // L1s - All major L1s have extensive audits
+    'ethereum', 'bitcoin', 'solana', 'polygon', 'avalanche', 'cosmos',
+    'near', 'polkadot', 'cardano', 'bnb', 'ton', 'tron', 'stellar',
+    'aptos', 'sui', 'fantom', 'hedera', 'algorand', 'tezos', 'sei',
+    'filecoin', 'icp', 'multiversx', 'mina', 'kava', 'cronos', 'vechain',
+    // L2s - All have audits due to bridge security
+    'arbitrum', 'optimism', 'base', 'zksync', 'starknet', 'mantle',
+    'scroll', 'linea', 'blast', 'metis', 'boba', 'loopring',
+    // DeFi - Heavily audited due to TVL
+    'chainlink', 'uniswap', 'aave', 'compound', 'maker', 'lido', 'curve',
+    'convex', 'yearn', 'gmx', 'dydx', 'pancakeswap', 'synthetix', 'frax',
+    'balancer', 'pendle', '1inch', 'jupiter', 'raydium', 'orca', 'morpho',
+    'ethena', 'thorchain', 'osmosis', 'eigen', 'ondo', 'safe',
+    // Infrastructure
+    'supra', 'thegraph', 'arweave', 'render', 'pyth', 'wormhole',
+    'layerzero', 'axelar', 'celestia', 'ssv', 'livepeer',
+    // Binance-backed (Binance requires audits)
+    'aster', 'astr', 'astar', 'xvs', 'venus', 'cake',
+    // Gaming with significant TVL
+    'immutable', 'ronin', 'gala', 'axie',
   ]);
   
-  const isAudited = auditedProjects.has(projectId.toLowerCase());
+  // v2.8.0: Check backing - major exchange backing usually means audited
+  const backingInfo = getProjectBacking(projectId);
+  const hasMajorBacking = backingInfo.tier === 'tier1' || backingInfo.tier === 'tier2';
+  
+  const isAudited = auditedProjects.has(projectId.toLowerCase()) || hasMajorBacking;
   
   // SEC estimates (QS)
   qsInputs.push(createFeature('sec_audit_count', 'SEC', 
-    isAudited ? 80 : sector === 'Meme' ? 20 : 40, ['estimate']));
+    isAudited ? 80 : sector === 'Meme' ? 20 : 45, ['estimate']));
   qsInputs.push(createFeature('sec_bug_bounty', 'SEC', 
-    isAudited ? 75 : 30, ['estimate']));
+    isAudited ? 75 : hasMajorBacking ? 60 : 35, ['estimate']));
   qsInputs.push(createFeature('sec_incident_history', 'SEC', 
-    isAudited ? 85 : 50, ['estimate'])); // No incidents = higher score
+    isAudited ? 85 : 55, ['estimate'])); // No incidents = higher score
   
   return qsInputs;
 }
@@ -532,17 +1072,35 @@ function generateAdoptionCommunityEstimates(
 function generateTokenEstimates(projectId: string, sector: SectorType): FeatureInput[] {
   const osInputs: FeatureInput[] = [];
   
-  // TOKEN estimates (OS)
+  // v2.8.0: Expanded fair distribution list
   const hasFairDistribution = new Set([
-    'bitcoin', 'ethereum', 'solana', 'polygon', 'chainlink', 'uniswap', 'aave'
+    // Major L1s with established distribution
+    'bitcoin', 'ethereum', 'solana', 'polygon', 'avalanche', 'cosmos',
+    'cardano', 'polkadot', 'near', 'algorand', 'tezos', 'stellar',
+    'filecoin', 'hedera', 'tron', 'eos', 'vechain', 'zilliqa', 'waves',
+    // L2s with established distribution
+    'arbitrum', 'optimism', 'starknet', 'loopring',
+    // DeFi protocols
+    'chainlink', 'uniswap', 'aave', 'compound', 'maker', 'curve', 'yearn',
+    'synthetix', 'balancer', '1inch', 'sushi', 'pancakeswap', 'osmosis',
+    // Infrastructure
+    'thegraph', 'arweave', 'render', 'livepeer', 'storj', 'flux',
+    // Binance-backed with public token sales
+    'aster', 'astr', 'astar',
   ]).has(projectId.toLowerCase());
   
+  // v2.8.0: Check for exchange backing - usually better tokenomics
+  const backingInfo = getProjectBacking(projectId);
+  const hasGoodBacking = backingInfo.tier === 'tier1' || backingInfo.tier === 'tier2';
+  
   osInputs.push(createFeature('token_holder_distribution', 'TOKEN', 
-    hasFairDistribution ? 75 : sector === 'Meme' ? 30 : 50, ['estimate']));
+    hasFairDistribution ? 75 : hasGoodBacking ? 65 : sector === 'Meme' ? 30 : 50, ['estimate']));
   osInputs.push(createFeature('token_unlock_schedule', 'TOKEN', 
-    hasFairDistribution ? 80 : 50, ['estimate']));
+    hasFairDistribution ? 80 : hasGoodBacking ? 70 : 50, ['estimate']));
   osInputs.push(createFeature('token_utility_breadth', 'TOKEN', 
-    sector === 'DeFi' || sector === 'L1' ? 75 : sector === 'Meme' ? 20 : 50, ['estimate']));
+    sector === 'DeFi' || sector === 'L1' ? 75 : sector === 'L2' ? 70 : 
+    sector === 'Infrastructure' ? 70 : sector === 'Gaming' ? 65 : 
+    sector === 'Meme' ? 20 : 55, ['estimate']));
   
   return osInputs;
 }
@@ -636,6 +1194,18 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
     });
   }
   
+  // v2.8.0: Fetch CoinGecko community data in parallel (for OS)
+  let communityResult: FeatureInput[] = [];
+  try {
+    communityResult = await fetchCoinGeckoCommunityData(projectId);
+    if (communityResult.length > 0) {
+      sourcesQueried.push('coingecko-community');
+    }
+  } catch (e) {
+    const error = e as Error;
+    errors.push(`CoinGecko Community: ${error.message}`);
+  }
+  
   // Generate estimates for missing data
   const teamGovInputs = generateTeamGovernanceEstimates(projectId, sector);
   const securityInputs = generateSecurityEstimates(projectId, sector);
@@ -643,6 +1213,13 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
   const adoptionResult = generateAdoptionCommunityEstimates(projectId, sector, marketResult.marketCap, twitterResult);
   const tokenInputs = generateTokenEstimates(projectId, sector);
   const legalMacroInputs = generateLegalMacroEstimates();
+  
+  // v2.8.0: Add backing-based quality signals
+  const backingInputs = generateBackingEstimates(projectId);
+  if (backingInputs.length > 0) {
+    sourcesQueried.push('partnerships-data');
+    logger.info(`[OmniScore v2.8 Fetcher] 🤝 Added ${backingInputs.length} backing-based features for ${projectId}`);
+  }
   
   if (teamGovInputs.some(f => f.sources?.includes('estimate'))) sourcesQueried.push('estimates');
   
@@ -653,6 +1230,7 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
     ...defiLlamaResult,
     ...teamGovInputs,
     ...securityInputs,
+    ...backingInputs,  // v2.8.0: Include backing data
     ...legalMacroInputs.filter(f => OMNISCORE_CONFIG.QS_SEGMENTS.includes(f.segment)),
   ];
   
@@ -660,6 +1238,7 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
   const osInputs: FeatureInput[] = [
     ...marketResult.osInputs,
     ...adoptionResult.osInputs,
+    ...communityResult,  // v2.8.0: Include CoinGecko community data
     ...tokenInputs,
     ...legalMacroInputs.filter(f => OMNISCORE_CONFIG.OS_SEGMENTS.includes(f.segment)),
   ];
