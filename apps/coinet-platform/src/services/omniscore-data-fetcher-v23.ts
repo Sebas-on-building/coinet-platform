@@ -1657,59 +1657,227 @@ async function storePosForSmoothing(projectId: string, pos: number, timestamp: s
 }
 
 export async function getProjectOmniScoreV23(projectId: string): Promise<OmniScoreProductionResponse> {
-  const bundle = await fetchProjectDataV23(projectId);
-  
-  // v2.5.0: Fetch previous POS for smoothing (with version-aware reset)
-  const previous = await getPreviousPos(projectId);
-  
-  const params: CalculateOmniScoreParams = {
-    projectId: bundle.projectId,
-    qsInputs: bundle.qsInputs,
-    osInputs: bundle.osInputs,
-    sector: bundle.sector,
-    marketData: bundle.marketData,
-    eventRiskSeverity: bundle.eventRiskSeverity,
-    priceChange30d: bundle.priceChange30d,
-    botRisk: bundle.botRisk,
-    anomalyScore: bundle.anomalyScore,
-    multiSourceConsistency: bundle.multiSourceConsistency,
-    // Twitter-derived metrics
-    influencerConcentration: bundle.influencerConcentration,
-    sentimentDispersion: bundle.sentimentDispersion,
-    // v2.5.0: Temporal smoothing with version-aware reset
-    previousPos: previous.pos,
-    previousTimestamp: previous.timestamp,
-    previousEngineVersion: previous.engineVersion,
-  };
-  
-  const result = calculateOmniScoreProduction(params);
-  
-  // Verify engine version is v2.7.0 (with reliability layer)
-  if (!result.audit.engineVersion.startsWith('2.7')) {
-    logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.7.x, got ${result.audit.engineVersion}`);
+  try {
+    logger.info(`[OmniScore v2.9.1] Starting calculation for ${projectId}`);
+    
+    const bundle = await fetchProjectDataV23(projectId);
+    
+    // Log fetched data summary for diagnostics
+    logger.debug(`[OmniScore v2.9.1] Data bundle fetched for ${projectId}`, {
+      qsInputCount: bundle.qsInputs.length,
+      osInputCount: bundle.osInputs.length,
+      sector: bundle.sector,
+      sourcesQueried: bundle.sourcesQueried,
+      errorCount: bundle.errors.length,
+      errors: bundle.errors,
+    });
+    
+    // v2.5.0: Fetch previous POS for smoothing (with version-aware reset)
+    const previous = await getPreviousPos(projectId);
+    
+    const params: CalculateOmniScoreParams = {
+      projectId: bundle.projectId,
+      qsInputs: bundle.qsInputs,
+      osInputs: bundle.osInputs,
+      sector: bundle.sector,
+      marketData: bundle.marketData,
+      eventRiskSeverity: bundle.eventRiskSeverity,
+      priceChange30d: bundle.priceChange30d,
+      botRisk: bundle.botRisk,
+      anomalyScore: bundle.anomalyScore,
+      multiSourceConsistency: bundle.multiSourceConsistency,
+      // Twitter-derived metrics
+      influencerConcentration: bundle.influencerConcentration,
+      sentimentDispersion: bundle.sentimentDispersion,
+      // v2.5.0: Temporal smoothing with version-aware reset
+      previousPos: previous.pos,
+      previousTimestamp: previous.timestamp,
+      previousEngineVersion: previous.engineVersion,
+    };
+    
+    const result = calculateOmniScoreProduction(params);
+    
+    // Verify engine version is v2.7.0 (with reliability layer)
+    if (!result.audit.engineVersion.startsWith('2.7')) {
+      logger.warn(`⚠️ OmniScore engine version mismatch: expected 2.7.x, got ${result.audit.engineVersion}`);
+    }
+    
+    // Verify formula version (v2.6 or v2.7)
+    if (!['v2.6', 'v2.7'].includes(result.audit.formulaVersion)) {
+      logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.6 or v2.7, got ${result.audit.formulaVersion}`);
+    }
+    
+    // Log calculation details for debugging
+    logger.info(`[OmniScore v2.9.1] ✅ Calculation successful for ${projectId}`, {
+      posAdjusted: result.pos.adjusted,
+      posTier: result.pos.tier,
+      qsScore: result.qualityScore.score,
+      osScore: result.opportunityScore.score,
+      riskScore: result.risk.score,
+      success: result.success,
+      confidence: result.audit.confidence,
+      invariantStatus: result.audit.invariantStatus,
+    });
+    
+    // v2.5.0: Store for future smoothing (with version-aware reset)
+    // Wrap in try-catch to prevent storage failures from breaking calculation
+    try {
+      await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp, result.audit.engineVersion, result.audit.formulaVersion);
+    } catch (storageError) {
+      logger.error(`[OmniScore v2.9.1] Failed to store POS for smoothing (non-critical)`, {
+        projectId,
+        error: storageError,
+      });
+      // Don't throw - storage failure shouldn't break the response
+    }
+    
+    return result;
+    
+  } catch (error) {
+    // PRODUCTION-GRADE ERROR HANDLING: Never throw, always return a proper failed response
+    logger.error(`[OmniScore v2.9.1] ❌ Critical error calculating OmniScore for ${projectId}`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      projectId,
+    });
+    
+    // Return a properly structured failed response
+    // This ensures fallback mechanisms can trigger correctly
+    return {
+      success: false,
+      engine: 'OmniScore' as const,
+      version: OMNISCORE_ENGINE_VERSION,
+      project: projectId,
+      timestamp: new Date().toISOString(),
+      
+      qualityScore: {
+        score: 0,
+        tier: 'Critical' as const,
+        confidence: 'insufficient' as const,
+        coverage: 0,
+        breakdown: {
+          team: 0,
+          tech: 0,
+          security: 0,
+          governance: 0,
+          ecosystem: 0,
+        },
+      },
+      
+      opportunityScore: {
+        status: 'gated' as const,
+        score: 0,
+        tier: 'Critical' as const,
+        coverage: 0,
+        gateReason: 'Calculation error - data unavailable',
+      },
+      
+      risk: {
+        score: 100,
+        eventRiskSeverity: 0,
+        adjustmentGamma: 0,
+      },
+      
+      pos: {
+        raw: 0,
+        adjusted: 0,
+        tier: 'Critical' as const,
+        confidenceBand: [0, 0],
+      },
+      
+      nrg: {
+        value: 0,
+        interpretation: 'low_confidence' as const,
+        hypeScore: 0,
+        fundamentalsScore: 0,
+      },
+      
+      explainability: {
+        topQsDrivers: [],
+        topOsDrivers: [],
+        bottomQsDrivers: [],
+        bottomOsDrivers: [],
+        narrativeContext: 'Calculation error - OmniScore unavailable',
+      },
+      
+      upgradeRecommendations: {
+        recommendations: [],
+        feasibleCount: 0,
+        estimatedMaxPosGain: 0,
+      },
+      
+      nmi: {
+        score: 0,
+        interpretation: 'low_confidence' as const,
+        botRisk: 0,
+        anomalyBursts: 0,
+        influencerConcentration: 0,
+        crossSourceConsistency: 0,
+      },
+      
+      stressTest: {
+        downside10: 0,
+        downside25: 0,
+        downside50: 0,
+        mostVulnerableSegment: 'MARKET' as const,
+      },
+      
+      tierContext: {
+        regime: 'neutral' as const,
+        sector: 'Unknown' as SectorType,
+        capBucket: 'micro' as const,
+        tier: 'Critical' as const,
+        percentile: 0,
+        peerComparison: {
+          medianPOS: 50,
+          top10Threshold: 80,
+          zScore: -3,
+        },
+      },
+      
+      coldStart: {
+        isActive: false,
+        policy: 'none' as const,
+        adjustments: {
+          confidenceBandWidening: 0,
+          tierDowngrade: false,
+          narrativeCaveat: null,
+        },
+      },
+      
+      identityGraph: null,
+      
+      threatModel: {
+        riskLevel: 'critical' as const,
+        threats: [{
+          type: 'calculation_error' as const,
+          severity: 'critical' as const,
+          description: 'OmniScore calculation failed - data unavailable',
+          mitigation: 'Use investigation fallback for basic project data',
+        }],
+        mitigations: [],
+      },
+      
+      audit: {
+        engineVersion: OMNISCORE_ENGINE_VERSION,
+        formulaVersion: 'v2.7',
+        methodologyHash: 'error',
+        confidence: 'insufficient' as const,
+        invariantStatus: 'error' as const,
+        reflexivitySentinel: {
+          status: 'error' as const,
+          qsPriceCorrPearson: 0,
+          threshold: 0.7,
+          passed: false,
+        },
+        violations: [{
+          code: 'CALC-ERROR',
+          severity: 'ERROR' as const,
+          message: error instanceof Error ? error.message : 'Unknown calculation error',
+        }],
+      },
+    };
   }
-  
-  // Verify formula version (v2.6 or v2.7)
-  if (!['v2.6', 'v2.7'].includes(result.audit.formulaVersion)) {
-    logger.warn(`⚠️ OmniScore formula version mismatch: expected v2.6 or v2.7, got ${result.audit.formulaVersion}`);
-  }
-  
-  // Log calculation details for debugging
-  logger.debug('🎯 OmniScore v2.5.0 calculated', {
-    project: result.project,
-    posAdjusted: result.pos.adjusted,
-    posTier: result.pos.tier,
-    qsScore: result.qualityScore.score,
-    osScore: result.opportunityScore.score,
-    riskScore: result.risk.score,
-    formulaVersion: result.audit.formulaVersion,
-    engineVersion: result.audit.engineVersion,
-  });
-  
-  // v2.5.0: Store for future smoothing (with version-aware reset)
-  await storePosForSmoothing(projectId, result.pos.adjusted, result.timestamp, result.audit.engineVersion, result.audit.formulaVersion);
-  
-  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

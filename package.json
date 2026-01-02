@@ -22,6 +22,7 @@
     "train:fallback": "cd services/market-prices && npm run train:fallback"
   },
   "devDependencies": {
+    "next": "^15.5.9",
     "prettier": "^3.0.0",
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"

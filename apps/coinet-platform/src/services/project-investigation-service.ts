@@ -19,6 +19,7 @@ import axios from 'axios';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface ProjectInvestigation {
+  hasData: boolean; // v2.9.1: Always indicates if real data was found
   projectId: string;
   symbol: string;
   name: string;
@@ -430,27 +431,110 @@ export async function investigateProject(
     includeExchangeListings?: boolean;
     searchWeb?: boolean;
   } = {}
-): Promise<ProjectInvestigation | null> {
+): Promise<ProjectInvestigation> {
   const startTime = Date.now();
-  logger.info(`[Investigation] Starting investigation for: ${projectQuery}`);
-  
-  // Resolve to CoinGecko ID
-  const coinId = await resolveCoinGeckoId(projectQuery);
-  
-  if (!coinId) {
-    logger.warn(`[Investigation] Could not resolve ${projectQuery} to a CoinGecko ID`);
-    return null;
-  }
-  
-  logger.info(`[Investigation] Resolved ${projectQuery} to CoinGecko ID: ${coinId}`);
-  
-  // Fetch comprehensive data
-  const cgData = await fetchCoinGeckoComprehensive(coinId);
-  
-  if (!cgData) {
-    logger.warn(`[Investigation] No CoinGecko data found for ${coinId}`);
-    return null;
-  }
+  logger.info(`[Investigation v2.9.1] Starting investigation for: ${projectQuery}`);
+
+  try {
+    // Resolve to CoinGecko ID
+    const coinId = await resolveCoinGeckoId(projectQuery);
+
+    if (!coinId) {
+      logger.warn(`[Investigation v2.9.1] Could not resolve ${projectQuery} to a CoinGecko ID`);
+      
+      // Return minimal investigation with hasData: false
+      return {
+        hasData: false,
+        projectId: projectQuery.toLowerCase(),
+        symbol: projectQuery.toUpperCase(),
+        name: projectQuery,
+        description: '',
+        category: 'Unknown',
+        categories: [],
+        links: {},
+        marketData: {
+          currentPrice: 0, marketCap: 0, volume24h: 0, volumeMarketCapRatio: 0,
+          priceChange24h: 0, priceChange7d: 0, priceChange30d: 0,
+          ath: 0, athDate: '', athChangePercent: 0,
+          atl: 0, atlDate: '', atlChangePercent: 0,
+          high24h: 0, low24h: 0,
+        },
+        supply: {},
+        developerData: {
+          forks: 0, stars: 0, subscribers: 0, totalIssues: 0, closedIssues: 0,
+          pullRequestsMerged: 0, pullRequestContributors: 0,
+          codeAdditions4Weeks: 0, codeDeletions4Weeks: 0, commitCount4Weeks: 0,
+          developerScore: 0,
+        },
+        communityData: {
+          twitterFollowers: 0, redditSubscribers: 0, telegramMembers: 0, communityScore: 0,
+        },
+        scores: {
+          coinGeckoScore: 0, developerScore: 0, communityScore: 0, liquidityScore: 0, publicInterestScore: 0,
+        },
+        platforms: {},
+        sentiment: { upVotes: 0, downVotes: 0, upVotesPercentage: 0, downVotesPercentage: 0 },
+        exchangeListings: [],
+        investigatedAt: new Date().toISOString(),
+        dataQuality: 'low',
+        sources: [],
+        warnings: [
+          'Could not resolve project to CoinGecko ID',
+          'No data available - project may not exist or may be too new',
+        ],
+      };
+    }
+
+    logger.info(`[Investigation v2.9.1] Resolved ${projectQuery} to CoinGecko ID: ${coinId}`);
+
+    // Fetch comprehensive data
+    const cgData = await fetchCoinGeckoComprehensive(coinId);
+
+    if (!cgData) {
+      logger.warn(`[Investigation v2.9.1] No CoinGecko data found for ${coinId}`);
+      
+      // Return minimal investigation with hasData: false but correct IDs
+      return {
+        hasData: false,
+        projectId: coinId,
+        symbol: projectQuery.toUpperCase(),
+        name: projectQuery,
+        description: '',
+        category: 'Unknown',
+        categories: [],
+        links: {},
+        marketData: {
+          currentPrice: 0, marketCap: 0, volume24h: 0, volumeMarketCapRatio: 0,
+          priceChange24h: 0, priceChange7d: 0, priceChange30d: 0,
+          ath: 0, athDate: '', athChangePercent: 0,
+          atl: 0, atlDate: '', atlChangePercent: 0,
+          high24h: 0, low24h: 0,
+        },
+        supply: {},
+        developerData: {
+          forks: 0, stars: 0, subscribers: 0, totalIssues: 0, closedIssues: 0,
+          pullRequestsMerged: 0, pullRequestContributors: 0,
+          codeAdditions4Weeks: 0, codeDeletions4Weeks: 0, commitCount4Weeks: 0,
+          developerScore: 0,
+        },
+        communityData: {
+          twitterFollowers: 0, redditSubscribers: 0, telegramMembers: 0, communityScore: 0,
+        },
+        scores: {
+          coinGeckoScore: 0, developerScore: 0, communityScore: 0, liquidityScore: 0, publicInterestScore: 0,
+        },
+        platforms: {},
+        sentiment: { upVotes: 0, downVotes: 0, upVotesPercentage: 0, downVotesPercentage: 0 },
+        exchangeListings: [],
+        investigatedAt: new Date().toISOString(),
+        dataQuality: 'low',
+        sources: [],
+        warnings: [
+          `CoinGecko API returned no data for ${coinId}`,
+          'Project exists but comprehensive data is unavailable',
+        ],
+      };
+    }
   
   // Calculate data quality
   const hasDescription = (cgData.description?.length || 0) > 50;
@@ -474,6 +558,7 @@ export async function investigateProject(
   if ((cgData.scores?.liquidityScore || 0) < 20) warnings.push('Low liquidity - may have high slippage');
   
   const investigation: ProjectInvestigation = {
+    hasData: true, // v2.9.1: Successful data fetch
     projectId: cgData.projectId || coinId,
     symbol: cgData.symbol || projectQuery.toUpperCase(),
     name: cgData.name || projectQuery,
@@ -511,10 +596,66 @@ export async function investigateProject(
     sources: ['coingecko'],
     warnings,
   };
-  
-  logger.info(`[Investigation] Completed investigation for ${projectQuery} in ${Date.now() - startTime}ms (quality: ${dataQuality})`);
-  
+
+  logger.info(`[Investigation v2.9.1] ✅ Completed investigation for ${projectQuery} in ${Date.now() - startTime}ms`, {
+    quality: dataQuality,
+    hasMarketData: hasMarketData,
+    hasDevData: hasDevData,
+    hasCommunityData: hasCommunityData,
+    warningCount: warnings.length,
+  });
+
   return investigation;
+  
+  } catch (error) {
+    // v2.9.1: PRODUCTION ERROR HANDLING - Never return null, always return structured error
+    logger.error(`[Investigation v2.9.1] ❌ Investigation failed for ${projectQuery}`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
+    // Return a failed investigation with clear error indicators
+    return {
+      hasData: false,
+      projectId: projectQuery.toLowerCase(),
+      symbol: projectQuery.toUpperCase(),
+      name: projectQuery,
+      description: '',
+      category: 'Unknown',
+      categories: [],
+      links: {},
+      marketData: {
+        currentPrice: 0, marketCap: 0, volume24h: 0, volumeMarketCapRatio: 0,
+        priceChange24h: 0, priceChange7d: 0, priceChange30d: 0,
+        ath: 0, athDate: '', athChangePercent: 0,
+        atl: 0, atlDate: '', atlChangePercent: 0,
+        high24h: 0, low24h: 0,
+      },
+      supply: {},
+      developerData: {
+        forks: 0, stars: 0, subscribers: 0, totalIssues: 0, closedIssues: 0,
+        pullRequestsMerged: 0, pullRequestContributors: 0,
+        codeAdditions4Weeks: 0, codeDeletions4Weeks: 0, commitCount4Weeks: 0,
+        developerScore: 0,
+      },
+      communityData: {
+        twitterFollowers: 0, redditSubscribers: 0, telegramMembers: 0, communityScore: 0,
+      },
+      scores: {
+        coinGeckoScore: 0, developerScore: 0, communityScore: 0, liquidityScore: 0, publicInterestScore: 0,
+      },
+      platforms: {},
+      sentiment: { upVotes: 0, downVotes: 0, upVotesPercentage: 0, downVotesPercentage: 0 },
+      exchangeListings: [],
+      investigatedAt: new Date().toISOString(),
+      dataQuality: 'low',
+      sources: [],
+      warnings: [
+        'Investigation failed due to error',
+        error instanceof Error ? error.message : 'Unknown error occurred',
+      ],
+    };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -528,6 +669,26 @@ export async function investigateProject(
 export function formatInvestigationForAI(investigation: ProjectInvestigation): string {
   const { marketData, developerData, communityData, scores, links, supply } = investigation;
   
+  // v2.9.1: Handle failed investigations gracefully
+  if (!investigation.hasData) {
+    return `
+═══════════════════════════════════════════════════════════════════════════════
+⚠️ PROJECT INVESTIGATION FAILED: ${investigation.name} (${investigation.symbol})
+═══════════════════════════════════════════════════════════════════════════════
+
+STATUS: Data unavailable
+REASON: ${investigation.warnings.join('; ')}
+
+⚠️ CRITICAL INSTRUCTION:
+- DO NOT improvise or estimate any data for this project
+- Inform the user that comprehensive project data is currently unavailable
+- Only use verified market data if provided separately
+- Suggest the user try again later or check official project sources
+
+═══════════════════════════════════════════════════════════════════════════════
+`;
+  }
+
   // Format large numbers
   const formatNumber = (n: number): string => {
     if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
@@ -535,23 +696,23 @@ export function formatInvestigationForAI(investigation: ProjectInvestigation): s
     if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
     return `$${n.toFixed(2)}`;
   };
-  
+
   const formatCount = (n: number): string => {
     if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
     return n.toString();
   };
-  
+
   const formatPercent = (n: number): string => {
     const sign = n >= 0 ? '+' : '';
     return `${sign}${n.toFixed(2)}%`;
   };
-  
+
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return '[unknown]';
     try {
-      return new Date(dateStr).toLocaleDateString('en-US', { 
-        year: 'numeric', month: 'long', day: 'numeric' 
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
       });
     } catch {
       return dateStr;
@@ -561,6 +722,7 @@ export function formatInvestigationForAI(investigation: ProjectInvestigation): s
   let context = `
 ═══════════════════════════════════════════════════════════════════════════════
 📊 VERIFIED PROJECT INVESTIGATION: ${investigation.name} (${investigation.symbol})
+DATA_QUALITY: ${investigation.dataQuality.toUpperCase()} | SOURCES: ${investigation.sources.length}
 ═══════════════════════════════════════════════════════════════════════════════
 
 🔖 BASIC INFO

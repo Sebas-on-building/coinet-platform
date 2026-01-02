@@ -665,47 +665,135 @@ DO NOT improvise or estimate OmniScore values. Instead, inform the user that:
                 logger.warn('⚠️ OmniScore Multi-Coin: No valid scores - fail-closed activated');
               }
             } else {
-              // Single coin deep dive
+              // Single coin deep dive with production-grade error handling
               const primaryCoin = detectedCoins[0];
-              const omniScore = await getProjectOmniScoreV23(primaryCoin.coinGeckoId || primaryCoin.symbol.toLowerCase());
+              const projectLookupId = primaryCoin.coinGeckoId || primaryCoin.symbol.toLowerCase();
               
-              if (omniScore && omniScore.success) {
-                // Check confidence level - if insufficient, add warning
-                if (omniScore.audit.confidence === 'insufficient') {
-                  contextParts.push(`
+              logger.info('[OmniScore Chat] Requesting OmniScore', {
+                symbol: primaryCoin.symbol,
+                lookupId: projectLookupId,
+              });
+              
+              try {
+                // PRODUCTION FIX: Explicit try-catch around OmniScore calculation
+                const omniScore = await getProjectOmniScoreV23(projectLookupId);
+                
+                logger.info('[OmniScore Chat] OmniScore response received', {
+                  symbol: primaryCoin.symbol,
+                  success: omniScore.success,
+                  confidence: omniScore.audit.confidence,
+                  invariantStatus: omniScore.audit.invariantStatus,
+                  hasViolations: omniScore.audit.violations?.length > 0,
+                });
+                
+                if (omniScore && omniScore.success) {
+                  // SUCCESS PATH: OmniScore calculated successfully
+                  logger.info('✅ [OmniScore Chat] Using successful OmniScore data', {
+                    symbol: primaryCoin.symbol,
+                    pos: omniScore.pos.adjusted,
+                    tier: omniScore.pos.tier,
+                  });
+                  
+                  // Check confidence level - if insufficient, add warning
+                  if (omniScore.audit.confidence === 'insufficient') {
+                    contextParts.push(`
 ⚠️ OMNISCORE LOW CONFIDENCE WARNING
 The OmniScore for ${primaryCoin.symbol} has INSUFFICIENT confidence.
 Data sources may be degraded. Present these numbers with appropriate caveats.
 `);
-                }
-                
-                // Add stability warning if applicable
-                if ((omniScore as any).stability?.guardApplied) {
-                  contextParts.push(`
+                  }
+                  
+                  // Add stability warning if applicable
+                  if ((omniScore as any).stability?.guardApplied) {
+                    contextParts.push(`
 📊 STABILITY GUARD ACTIVE
 Score stability guard was applied due to data coverage changes.
 ${(omniScore as any).stability.notes?.join('\n') || ''}
 `);
+                  }
+                  
+                  contextParts.push(formatOmniScoreForAI(omniScore));
+                  logger.debug('🎯 OmniScore v2.3.2 context added', {
+                    project: omniScore.project,
+                    posAdjusted: omniScore.pos.adjusted,
+                    posTier: omniScore.pos.tier,
+                    qsScore: omniScore.qualityScore.score,
+                    qsTier: omniScore.qualityScore.tier,
+                    osStatus: omniScore.opportunityScore.status,
+                    osScore: omniScore.opportunityScore.score,
+                    nrgInterpretation: omniScore.nrg.interpretation,
+                    confidence: omniScore.audit.confidence,
+                    invariantStatus: omniScore.audit.invariantStatus,
+                    reflexivityStatus: omniScore.audit.reflexivitySentinel.status,
+                    stabilityApplied: (omniScore as any).stability?.guardApplied || false,
+                  });
+                  
+                } else {
+                  // FAILURE PATH: OmniScore returned success: false
+                  logger.warn('⚠️ [OmniScore Chat] OmniScore calculation failed (success: false)', {
+                    symbol: primaryCoin.symbol,
+                    lookupId: projectLookupId,
+                    confidence: omniScore.audit.confidence,
+                    invariantStatus: omniScore.audit.invariantStatus,
+                    violations: omniScore.audit.violations?.length || 0,
+                  });
+                  
+                  // FALLBACK: Trigger comprehensive investigation
+                  logger.info('🔍 [Fallback] Triggering comprehensive investigation', {
+                    reason: 'omniscore_failed',
+                    coin: primaryCoin.symbol,
+                  });
+                  
+                  try {
+                    const investigation = await investigateProject(
+                      primaryCoin.coinGeckoId || primaryCoin.symbol
+                    );
+                    
+                    if (investigation && investigation.hasData) {
+                      contextParts.push(formatInvestigationForAI(investigation));
+                      logger.info('✅ [Fallback] Project investigation completed', {
+                        project: investigation.name,
+                        symbol: investigation.symbol,
+                        dataQuality: investigation.dataQuality,
+                        sources: investigation.sources?.length || 0,
+                      });
+                    } else {
+                      logger.warn('⚠️ [Fallback] Investigation returned no data', {
+                        symbol: primaryCoin.symbol,
+                      });
+                      contextParts.push(`
+⚠️ PROJECT DATA LIMITED FOR ${primaryCoin.symbol.toUpperCase()}
+Could not retrieve comprehensive data for this project.
+Basic market data may still be available above.
+DO NOT improvise scores or metrics - only use verified data provided.
+`);
+                    }
+                  } catch (invError) {
+                    logger.error('❌ [Fallback] Project investigation threw exception', {
+                      symbol: primaryCoin.symbol,
+                      error: invError instanceof Error ? invError.message : String(invError),
+                    });
+                    contextParts.push(`
+⚠️ OMNISCORE DATA UNAVAILABLE FOR ${primaryCoin.symbol.toUpperCase()}
+The OmniScore engine could not retrieve reliable data for this project.
+DO NOT improvise or estimate OmniScore values.
+`);
+                  }
                 }
                 
-                contextParts.push(formatOmniScoreForAI(omniScore));
-                logger.debug('🎯 OmniScore v2.3.2 context added', {
-                  project: omniScore.project,
-                  posAdjusted: omniScore.pos.adjusted,
-                  posTier: omniScore.pos.tier,
-                  qsScore: omniScore.qualityScore.score,
-                  qsTier: omniScore.qualityScore.tier,
-                  osStatus: omniScore.opportunityScore.status,
-                  osScore: omniScore.opportunityScore.score,
-                  nrgInterpretation: omniScore.nrg.interpretation,
-                  confidence: omniScore.audit.confidence,
-                  invariantStatus: omniScore.audit.invariantStatus,
-                  reflexivityStatus: omniScore.audit.reflexivitySentinel.status,
-                  stabilityApplied: (omniScore as any).stability?.guardApplied || false,
+              } catch (omniScoreException) {
+                // EXCEPTION PATH: getProjectOmniScoreV23 threw an exception
+                // This should NOT happen with the new error handling, but defense in depth
+                logger.error('❌ [OmniScore Chat] getProjectOmniScoreV23 threw exception (unexpected)', {
+                  symbol: primaryCoin.symbol,
+                  lookupId: projectLookupId,
+                  error: omniScoreException instanceof Error ? omniScoreException.message : String(omniScoreException),
+                  stack: omniScoreException instanceof Error ? omniScoreException.stack : undefined,
                 });
-              } else {
-                // FALLBACK: OmniScore failed - trigger comprehensive investigation
-                logger.info('🔍 OmniScore unavailable, triggering comprehensive investigation', {
+                
+                // FALLBACK: Trigger investigation
+                logger.info('🔍 [Fallback] Triggering investigation after exception', {
+                  reason: 'omniscore_exception',
                   coin: primaryCoin.symbol,
                 });
                 
@@ -714,47 +802,56 @@ ${(omniScore as any).stability.notes?.join('\n') || ''}
                     primaryCoin.coinGeckoId || primaryCoin.symbol
                   );
                   
-                  if (investigation) {
+                  if (investigation && investigation.hasData) {
                     contextParts.push(formatInvestigationForAI(investigation));
-                    logger.info('✅ Project investigation completed', {
+                    logger.info('✅ [Fallback] Exception recovery successful via investigation', {
                       project: investigation.name,
-                      symbol: investigation.symbol,
                       dataQuality: investigation.dataQuality,
-                      sources: investigation.sources,
                     });
                   } else {
+                    logger.warn('⚠️ [Fallback] Investigation failed after exception', {
+                      symbol: primaryCoin.symbol,
+                    });
                     contextParts.push(`
-⚠️ PROJECT DATA LIMITED FOR ${primaryCoin.symbol.toUpperCase()}
-Could not retrieve comprehensive data for this project.
-Basic market data may still be available above.
-DO NOT improvise scores or metrics - only use verified data provided.
+⚠️ OMNISCORE ENGINE ERROR
+The OmniScore analysis engine encountered an error and investigation fallback failed.
+DO NOT improvise or estimate any OmniScore values.
+Basic market data may still be available.
 `);
                   }
                 } catch (invError) {
-                  logger.warn('⚠️ Project investigation failed', { error: invError });
+                  logger.error('❌ [Fallback] Investigation also threw exception', {
+                    symbol: primaryCoin.symbol,
+                    error: invError instanceof Error ? invError.message : String(invError),
+                  });
                   contextParts.push(`
-⚠️ OMNISCORE DATA UNAVAILABLE FOR ${primaryCoin.symbol.toUpperCase()}
-The OmniScore engine could not retrieve reliable data for this project.
-DO NOT improvise or estimate OmniScore values.
+⚠️ OMNISCORE ENGINE ERROR
+The OmniScore analysis engine encountered an error.
+DO NOT improvise or estimate any OmniScore values.
+Inform the user that OmniScore analysis is temporarily unavailable.
 `);
                 }
               }
             }
           } catch (error) {
-            // FALLBACK: On error, try investigation before giving up
+            // OUTER CATCH: Catastrophic error in OmniScore section
             const primaryCoin = detectedCoins[0];
-            logger.warn('⚠️ OmniScore v2.3.2 analysis failed, trying investigation fallback', { error });
+            logger.error('❌ [OmniScore Chat] Catastrophic error in OmniScore section', {
+              symbol: primaryCoin?.symbol,
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            });
             
+            // LAST RESORT FALLBACK: Try investigation one final time
             try {
               const investigation = await investigateProject(
                 primaryCoin?.coinGeckoId || primaryCoin?.symbol || 'bitcoin'
               );
               
-              if (investigation) {
+              if (investigation && investigation.hasData) {
                 contextParts.push(formatInvestigationForAI(investigation));
-                logger.info('✅ Fallback investigation completed', {
+                logger.info('✅ [Fallback] Catastrophic error recovered via investigation', {
                   project: investigation.name,
-                  dataQuality: investigation.dataQuality,
                 });
               } else {
                 contextParts.push(`

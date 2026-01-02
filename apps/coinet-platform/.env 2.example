@@ -1,0 +1,96 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# COINET PLATFORM - ENVIRONMENT VARIABLES
+# ═══════════════════════════════════════════════════════════════════════════════
+# Copy this file to .env and fill in your actual values
+# Last updated: OmniScore v2.3.2 + COMM v2.2 Diabolical
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🗄️ DATABASE (Required)
+# ═══════════════════════════════════════════════════════════════════════════════
+DATABASE_URL="postgresql://user:password@host:5432/database"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🚀 SERVER CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+PORT=3000
+NODE_ENV=production
+CORS_ORIGIN=https://your-frontend.com
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🤖 AI SERVICES (At least one required)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Grok/xAI (Primary - Recommended)
+XAI_API_KEY=
+GROK_API_KEY=
+GROK_MODEL=grok-4-1-fast-non-reasoning
+
+# OpenAI (Fallback)
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 💰 MARKET DATA (Core - Highly Recommended)
+# ═══════════════════════════════════════════════════════════════════════════════
+# CoinGecko (Primary pricing + market data)
+COINGECKO_API_KEY=
+COINGECKO_API_URL=https://api.coingecko.com/api/v3
+
+# CoinMarketCap (Backup pricing)
+CMC_API_KEY=
+
+# Internal Services (Railway)
+MARKET_PRICES_URL=https://market-prices-production.up.railway.app
+ALCHEMY_WHALES_URL=https://alchemy-whales-production.up.railway.app
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 📰 NEWS & INTELLIGENCE (Recommended)
+# ═══════════════════════════════════════════════════════════════════════════════
+# CryptoPanic (News aggregation)
+CRYPTOPANIC_API_KEY=
+
+# Messari (Premium research - optional)
+MESSARI_API_KEY=
+
+# The Block (Premium news - optional)
+THEBLOCK_API_KEY=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🌐 SOCIAL INTELLIGENCE (Required for COMM v2.1)
+# ═══════════════════════════════════════════════════════════════════════════════
+# LunarCrush (Social metrics)
+LUNARCRUSH_API_KEY=
+
+# Twitter/X API (Required for OmniScore COMM v2.1 Diabolical Edition)
+TWITTER_API_KEY=new1_f932b6156e30470a9b00b23c5d4e21ed
+TWITTER_API_SECRET=
+TWITTER_BEARER_TOKEN=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 💀 DERIVATIVES & LIQUIDATIONS (Recommended for Derivatives Intelligence)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Coinglass (Liquidations, Funding Rates, Open Interest)
+COINGLASS_API_KEY=
+
+# Laevitas (Advanced derivatives - optional)
+LAEVITAS_API_KEY=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔬 PROJECT RESEARCH (Optional - For OmniScore QS Enhancement)
+# ═══════════════════════════════════════════════════════════════════════════════
+# GitHub (Repository analysis)
+GITHUB_TOKEN=
+
+# Crunchbase (Team & funding data)
+CRUNCHBASE_API_KEY=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 💾 CACHING (Optional but Recommended for Production)
+# ═══════════════════════════════════════════════════════════════════════════════
+# Redis (Low-latency cache for Enterprise Market Data Pipeline)
+REDIS_URL=
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🛠️ DEVELOPMENT & DEBUGGING
+# ═══════════════════════════════════════════════════════════════════════════════
+# Set to 'true' if database is optional in development
+REQUIRE_DATABASE=false
