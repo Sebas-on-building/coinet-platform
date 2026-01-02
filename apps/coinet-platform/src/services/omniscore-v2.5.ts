@@ -1080,17 +1080,20 @@ export function assertTimestampSanity(
   const now = new Date(nowIso).getTime();
   const violations: InvariantViolation[] = [];
   
+  // Allow 2 minute tolerance for clock skew between servers/data sources
+  const CLOCK_SKEW_TOLERANCE_MS = 2 * 60 * 1000;
+  
   for (const f of inputs) {
     if (!f.timestamp) continue;
     const ts = new Date(f.timestamp).getTime();
     if (!Number.isFinite(ts)) continue;
     
-    // No future timestamps
-    if (ts > now) {
+    // No future timestamps (with tolerance for clock skew)
+    if (ts > now + CLOCK_SKEW_TOLERANCE_MS) {
       violations.push({
         code: 'INV-10',
         severity: 'ERROR',
-        message: `Future-dated feature: ${f.key}`,
+        message: `Future-dated feature: ${f.key} (timestamp: ${f.timestamp})`,
       });
       continue;
     }
