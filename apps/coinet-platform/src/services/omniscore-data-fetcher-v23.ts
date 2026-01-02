@@ -1708,16 +1708,31 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
     }
     
     // Log calculation details for debugging
-    logger.info(`[OmniScore v2.9.1] ✅ Calculation successful for ${projectId}`, {
-      posAdjusted: result.pos.adjusted,
-      posTier: result.pos.tier,
-      qsScore: result.qualityScore.score,
-      osScore: result.opportunityScore.score,
-      riskScore: result.risk.score,
-      success: result.success,
-      confidence: result.audit.confidence,
-      invariantStatus: result.audit.invariantStatus,
-    });
+    if (result.success) {
+      logger.info(`[OmniScore v2.9.1] ✅ Calculation successful for ${projectId}`, {
+        posAdjusted: result.pos.adjusted,
+        posTier: result.pos.tier,
+        qsScore: result.qualityScore.score,
+        osScore: result.opportunityScore.score,
+        riskScore: result.risk.score,
+        confidence: result.audit.confidence,
+        invariantStatus: result.audit.invariantStatus,
+      });
+    } else {
+      // Log detailed failure info to diagnose issues
+      logger.error(`[OmniScore v2.9.1] ⚠️ Calculation completed but success=false for ${projectId}`, {
+        posAdjusted: result.pos.adjusted,
+        posTier: result.pos.tier,
+        qsScore: result.qualityScore.score,
+        osScore: result.opportunityScore.score,
+        confidence: result.audit.confidence,
+        invariantStatus: result.audit.invariantStatus,
+        violationCount: result.audit.violations?.length || 0,
+        violations: result.audit.violations?.map(v => `${v.code}: ${v.message}`).join('; '),
+        qsCoverage: result.qualityScore.coverage,
+        osCoverage: result.opportunityScore.coverage,
+      });
+    }
     
     // v2.5.0: Store for future smoothing (with version-aware reset)
     // Wrap in try-catch to prevent storage failures from breaking calculation
