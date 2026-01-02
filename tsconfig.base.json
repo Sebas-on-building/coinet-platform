@@ -50,6 +50,9 @@
     "coverage",
     "**/*.generated.*",
     "**/generated/**",
-    "**/*.md"
+    "**/*.md",
+    "**/omniscore/current/constants.ts",
+    "**/omniscore/current/debug-view.ts",
+    "**/omniscore_v3/data/**/*"
   ]
 }

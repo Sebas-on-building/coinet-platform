@@ -26,5 +26,16 @@
     "paths": {}
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "src/components"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "src/components",
+    "src/services/omniscore/current/constants.ts",
+    "src/services/omniscore/current/debug-view.ts",
+    "src/services/omniscore_v3/data/**/*"
+  ]
 }
