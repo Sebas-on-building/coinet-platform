@@ -490,42 +490,70 @@ export async function saveResearchFindings(
 
 /**
  * Get project knowledge from database
+ * Returns null gracefully if table doesn't exist or query fails
  */
 export async function getProjectKnowledge(projectId: string) {
-  return prisma.projectKnowledge.findUnique({
-    where: { projectId },
-    include: {
-      researchLogs: {
-        orderBy: { createdAt: 'desc' },
-        take: 10,
+  try {
+    return await prisma.projectKnowledge.findUnique({
+      where: { projectId },
+      include: {
+        researchLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    // Gracefully handle missing table or connection errors
+    // This allows OmniScore to continue calculating even if knowledge base is unavailable
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Log but don't throw - knowledge base is optional
+    if (errorMessage.includes('does not exist') || errorMessage.includes('relation') || errorMessage.includes('P2021')) {
+      logger.warn(`[Knowledge Base] Table not yet created, skipping knowledge lookup for ${projectId}`);
+    } else {
+      logger.warn(`[Knowledge Base] Query failed for ${projectId}: ${errorMessage}`);
+    }
+    
+    return null;
+  }
 }
 
 /**
  * Get projects that need research update (old data)
+ * Returns empty array gracefully if table doesn't exist
  */
 export async function getProjectsNeedingResearch(daysOld: number = 30): Promise<string[]> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-  
-  const projects = await prisma.projectKnowledge.findMany({
-    where: {
-      lastResearchedAt: {
-        lt: cutoffDate,
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    
+    const projects = await prisma.projectKnowledge.findMany({
+      where: {
+        lastResearchedAt: {
+          lt: cutoffDate,
+        },
       },
-    },
-    select: {
-      projectId: true,
-    },
-    orderBy: {
-      lastResearchedAt: 'asc',
-    },
-    take: 50,
-  });
-  
-  return projects.map(p => p.projectId);
+      select: {
+        projectId: true,
+      },
+      orderBy: {
+        lastResearchedAt: 'asc',
+      },
+      take: 50,
+    });
+    
+    return projects.map(p => p.projectId);
+  } catch (error) {
+    // Gracefully handle missing table
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('does not exist') || errorMessage.includes('P2021')) {
+      logger.warn('[Knowledge Base] Table not yet created, returning empty list');
+    } else {
+      logger.warn(`[Knowledge Base] Failed to get projects needing research: ${errorMessage}`);
+    }
+    return [];
+  }
 }
 
 /**
