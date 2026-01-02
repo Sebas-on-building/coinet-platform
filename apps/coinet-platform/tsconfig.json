@@ -36,6 +36,7 @@
     "src/components",
     "src/services/omniscore/current/constants.ts",
     "src/services/omniscore/current/debug-view.ts",
-    "src/services/omniscore_v3/data/**/*"
+    "src/services/omniscore_v3/data/**/*",
+    "src/services/cis/**/*"
   ]
 }
