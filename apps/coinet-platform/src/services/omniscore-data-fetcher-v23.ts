@@ -19,7 +19,7 @@
  */
 
 import { logger } from '../utils/logger';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db/client';
 import { 
   FeatureInput, 
   Segment,
@@ -51,8 +51,6 @@ import {
   researchAndSaveProject,
   type ResearchFindings,
 } from './project-web-researcher';
-
-const prisma = new PrismaClient();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTOR DETECTION

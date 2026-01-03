@@ -14,11 +14,9 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db/client';
 import { logger } from '../utils/logger';
 import axios from 'axios';
-
-const prisma = new PrismaClient();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
