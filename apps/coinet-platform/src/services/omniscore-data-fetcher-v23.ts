@@ -29,7 +29,8 @@ import {
   OmniScoreSnapshot,
   toOmniScoreSnapshot,
   getQuadrantZone,
-  OMNISCORE_CONFIG
+  OMNISCORE_CONFIG,
+  OMNISCORE_ENGINE_VERSION
 } from './omniscore-v2.5';
 import { getCachedPrice } from './enterprise-market-data-pipeline';
 import { 
@@ -134,6 +135,7 @@ export interface ProjectDataBundleV23 {
   };
   eventRiskSeverity: number;
   priceChange30d: number;
+  marketCap: number; // Added for synthetic score generation
   botRisk: number;
   anomalyScore: number;
   multiSourceConsistency: number;
@@ -1022,6 +1024,9 @@ function generateTeamGovernanceEstimates(
     
   } else {
     // Fallback to estimates (no Snapshot space found)
+    // Determine if project is established based on common heuristics
+    const isEstablished = ['bitcoin', 'ethereum', 'solana', 'bnb', 'xrp', 'ada', 'avax', 'dot', 'matic', 'link', 'uni', 'aave', 'mkr'].includes(projectId.toLowerCase());
+    
     qsInputs.push(createFeature('gov_decentralization', 'GOV', 
       sector === 'L1' || sector === 'L2' ? 70 : 55, ['estimate']));
     qsInputs.push(createFeature('gov_voting_participation', 'GOV', 
@@ -1590,6 +1595,7 @@ export async function fetchProjectDataV23(projectId: string): Promise<ProjectDat
     },
     eventRiskSeverity: 0, // No active events by default
     priceChange30d: marketResult.priceChange30d,
+    marketCap: marketResult.marketCap, // Add marketCap to bundle
     botRisk: adoptionResult.botRisk,
     anomalyScore: adoptionResult.anomalyScore,
     multiSourceConsistency: sourcesQueried.length >= 2 ? 0.8 : 0.5,
@@ -1670,7 +1676,7 @@ function synthesizeOmniScoreForTopTier(
   });
   
   // Market cap-based Quality Score heuristic
-  const marketCap = bundle.marketCap || failedResult?.audit?.marketCap || 0;
+  const marketCap = bundle.marketCap || 0;
   let syntheticQS = 50; // default
   
   if (marketCap > 100e9) syntheticQS = 85; // >$100B = Elite fundamentals (BTC, ETH)
@@ -1775,71 +1781,101 @@ function synthesizeOmniScoreForTopTier(
     
     nrg: {
       value: 50,
+      percentile: 0.5,
       interpretation: 'balanced' as const,
-      hypeScore: syntheticOS,
-      fundamentalsScore: syntheticQS,
     },
     
     explainability: {
-      topQsDrivers: [
+      qsDrivers: [
         { feature: 'market_dominance', impact: 'positive', value: marketCap / 1e9 },
         { feature: 'ecosystem_maturity', impact: 'positive', value: syntheticQS },
       ],
-      topOsDrivers: [
+      osDrivers: [
         { feature: 'price_momentum_30d', impact: priceChange > 0 ? 'positive' : 'negative', value: priceChange },
       ],
-      bottomQsDrivers: [],
-      bottomOsDrivers: [],
-      narrativeContext: `Synthetic OmniScore generated for top-tier asset ${projectId}. Positioned in ${quadrant} Zone.`,
     },
     
     upgradeRecommendations: {
-      recommendations: [],
-      feasibleCount: 0,
-      estimatedMaxPosGain: 0,
+      note: `Synthetic OmniScore generated for top-tier asset ${projectId}. Positioned in ${quadrant} Zone.`,
+      highImpact: [],
+      quickWins: [],
+      strategicBet: null,
     },
     
     nmi: {
       score: 50,
-      interpretation: 'balanced' as const,
-      botRisk: 0,
-      anomalyBursts: 0,
-      influencerConcentration: 0,
-      crossSourceConsistency: 1,
+      tier: 'clean' as const,
+      components: {
+        botLikelihood: 0,
+        anomalyBursts: 0,
+        influencerConcentrationComposite: 0,
+        influencerConcentrationTop3: 0,
+        influencerConcentrationTop10: 0,
+        influencerConcentrationGini: 0,
+        sentimentDispersion: 0,
+        crossSourceDivergence: 0,
+        socialRealityMismatch: 0,
+      },
+      icrBreakdown: {
+        top3: 0,
+        top10: 0,
+        gini: 0,
+        composite: 0,
+      },
+      socialRealityCheck: {
+        value: 0,
+        interpretation: 'aligned' as const,
+        penalty: 0,
+      },
+      nmiFormula: 'synthetic',
+      confidence: 'medium' as const,
     },
     
     stressTest: {
-      downside10: syntheticPOS - 5,
-      downside25: syntheticPOS - 10,
-      downside50: syntheticPOS - 15,
-      mostVulnerableSegment: 'MARKET' as const,
+      scenarios: [],
+      worstCase: {
+        scenario: 'market_crash',
+        posImpact: syntheticPOS - 15,
+        tierChange: null,
+      },
+      bestCase: {
+        scenario: 'bull_run',
+        posImpact: syntheticPOS + 10,
+        tierChange: null,
+      },
     },
     
     tierContext: {
       regime: 'neutral' as const,
       sector: bundle.sector || 'Unknown' as SectorType,
       capBucket: marketCap > 100e9 ? 'mega' : marketCap > 10e9 ? 'large' : 'mid',
-      tier: posTier,
+      historicalMean: 50,
+      historicalStd: 20,
       percentile: syntheticPOS / 100,
-      peerComparison: {
-        medianPOS: 50,
-        top10Threshold: 80,
-        zScore: 0,
-      },
+      rawTier: posTier,
+      conditionedTier: posTier,
+      tierMismatch: false,
     },
     
     coldStart: {
-      isColdStart: false,
-      adjustments: { posDiscount: 0, uncertaintyMultiplier: 1.0 },
+      isEarlyStage: false,
+      ageInDays: 365,
+      mode: 'standard' as const,
+      adjustments: {
+        priorStrength: 0.5,
+        uncertaintyMultiplier: 1.0,
+        osExposureReduction: 0,
+        tierConservatism: 0,
+      },
+      reason: 'Top-tier asset',
     },
     
     identityGraph: null,
     
     threatModel: {
-      overallThreatLevel: 'low' as const,
-      criticalThreats: [],
-      mediumThreats: [],
-      lowThreats: [],
+      threats: [],
+      overallRisk: 'low' as const,
+      mitigationsApplied: ['synthetic-fallback'],
     },
     
     audit: {
@@ -1866,9 +1902,13 @@ function synthesizeOmniScoreForTopTier(
         hash: 'synthetic',
         url: 'https://docs.coinet.app/omniscore',
       },
-      reflexivitySentinel: { status: 'healthy', priceCorrelation: 0 },
-      featureSchemaVersion: 'v2.9.1-synthetic',
-      sectorPackId: `${bundle.sector || 'unknown'}-synthetic`,
+      reflexivitySentinel: { 
+        corrQsPrice30d: 0,
+        status: 'healthy' as const,
+        threshold: 0.7,
+      },
+      featureSchemaVersion: 'v2.7.0-reliability',
+      sectorPackId: `${bundle.sector || 'unknown'}-core40`,
       clampHistoryCount: 0,
       coldStartMode: 'standard',
       tierConditioningApplied: false,
@@ -1889,7 +1929,7 @@ function synthesizeOmniScoreForTopTier(
       },
       posPlausibilityCapped: false,
       posBeforeCap: syntheticPOS,
-      formulaVersion: 'v2.9.1-synthetic',
+      formulaVersion: 'v2.7',
       fundamentalsFloor: 0,
       fundamentalsFloorApplied: false,
     },
@@ -1902,7 +1942,8 @@ function synthesizeOmniScoreForTopTier(
  */
 async function getPreviousPos(projectId: string): Promise<{ pos: number | null; timestamp: string | null; engineVersion: string | null }> {
   try {
-    const latestEntry = await prisma.omniScoreHistory.findFirst({
+    // Type assertion needed if Prisma client hasn't been regenerated
+    const latestEntry = await (prisma as any).omniScoreHistory?.findFirst({
       where: { projectId },
       orderBy: { calculatedAt: 'desc' },
       select: { pos: true, calculatedAt: true, engineVersion: true },
@@ -1922,7 +1963,8 @@ async function getPreviousPos(projectId: string): Promise<{ pos: number | null; 
  */
 async function storePosForSmoothing(projectId: string, pos: number, timestamp: string, engineVersion: string, formulaVersion: string): Promise<void> {
   try {
-    await prisma.omniScoreHistory.create({
+    // Type assertion needed if Prisma client hasn't been regenerated
+    await (prisma as any).omniScoreHistory?.create({
       data: {
         projectId,
         pos,
@@ -2108,94 +2150,152 @@ export async function getProjectOmniScoreV23(projectId: string): Promise<OmniSco
       
       nrg: {
         value: 0,
+        percentile: 0,
         interpretation: 'low_confidence' as const,
-        hypeScore: 0,
-        fundamentalsScore: 0,
       },
       
       explainability: {
-        topQsDrivers: [],
-        topOsDrivers: [],
-        bottomQsDrivers: [],
-        bottomOsDrivers: [],
-        narrativeContext: 'Calculation error - OmniScore unavailable',
+        qsDrivers: [],
+        osDrivers: [],
       },
       
       upgradeRecommendations: {
-        recommendations: [],
-        feasibleCount: 0,
-        estimatedMaxPosGain: 0,
+        note: 'Calculation error - OmniScore unavailable',
+        highImpact: [],
+        quickWins: [],
+        strategicBet: null,
       },
       
       nmi: {
         score: 0,
-        interpretation: 'low_confidence' as const,
-        botRisk: 0,
-        anomalyBursts: 0,
-        influencerConcentration: 0,
-        crossSourceConsistency: 0,
+        tier: 'clean' as const,
+        components: {
+          botLikelihood: 0,
+          anomalyBursts: 0,
+          influencerConcentrationComposite: 0,
+          influencerConcentrationTop3: 0,
+          influencerConcentrationTop10: 0,
+          influencerConcentrationGini: 0,
+          sentimentDispersion: 0,
+          crossSourceDivergence: 0,
+          socialRealityMismatch: 0,
+        },
+        icrBreakdown: {
+          top3: 0,
+          top10: 0,
+          gini: 0,
+          composite: 0,
+        },
+        socialRealityCheck: {
+          value: 0,
+          interpretation: 'aligned' as const,
+          penalty: 0,
+        },
+        nmiFormula: 'error',
+        confidence: 'insufficient' as const,
       },
       
       stressTest: {
-        downside10: 0,
-        downside25: 0,
-        downside50: 0,
-        mostVulnerableSegment: 'MARKET' as const,
+        scenarios: [],
+        worstCase: {
+          scenario: 'calculation_error',
+          posImpact: 0,
+          tierChange: null,
+        },
+        bestCase: {
+          scenario: 'calculation_error',
+          posImpact: 0,
+          tierChange: null,
+        },
       },
       
       tierContext: {
         regime: 'neutral' as const,
         sector: 'Unknown' as SectorType,
         capBucket: 'micro' as const,
-        tier: 'Critical' as const,
+        historicalMean: 50,
+        historicalStd: 20,
         percentile: 0,
-        peerComparison: {
-          medianPOS: 50,
-          top10Threshold: 80,
-          zScore: -3,
-        },
+        rawTier: 'Critical' as const,
+        conditionedTier: 'Critical' as const,
+        tierMismatch: false,
       },
       
       coldStart: {
-        isActive: false,
-        policy: 'none' as const,
+        isEarlyStage: false,
+        ageInDays: 365,
+        mode: 'standard' as const,
         adjustments: {
-          confidenceBandWidening: 0,
-          tierDowngrade: false,
-          narrativeCaveat: null,
+          priorStrength: 0.5,
+          uncertaintyMultiplier: 1.0,
+          osExposureReduction: 0,
+          tierConservatism: 0,
         },
+        reason: 'Calculation error',
       },
       
       identityGraph: null,
       
       threatModel: {
-        riskLevel: 'critical' as const,
-        threats: [{
-          type: 'calculation_error' as const,
-          severity: 'critical' as const,
-          description: 'OmniScore calculation failed - data unavailable',
-          mitigation: 'Use investigation fallback for basic project data',
-        }],
-        mitigations: [],
+        threats: [],
+        overallRisk: 'critical' as const,
+        mitigationsApplied: [],
       },
       
       audit: {
         engineVersion: OMNISCORE_ENGINE_VERSION,
-        formulaVersion: 'v2.7',
-        methodologyHash: 'error',
+        methodologyVersion: '2.7.0',
+        requestId: `error-${Date.now()}`,
+        dataAsOf: new Date().toISOString(),
+        sourcesUsed: [],
+        coverageQS: 0,
+        coverageOS: 0,
         confidence: 'insufficient' as const,
-        invariantStatus: 'error' as const,
-        reflexivitySentinel: {
-          status: 'error' as const,
-          qsPriceCorrPearson: 0,
-          threshold: 0.7,
-          passed: false,
-        },
+        gatingApplied: true,
+        invariantStatus: 'fail' as const,
         violations: [{
           code: 'CALC-ERROR',
           severity: 'ERROR' as const,
           message: error instanceof Error ? error.message : 'Unknown calculation error',
         }],
+        warnings: [],
+        regimeSnapshot: { bull: 0, bear: 0, neutral: 1, crisis: 0, recovery: 0 },
+        clampApplied: { qs: false, os: false, pos: false, posAdj: false },
+        methodology: {
+          id: 'omniscore-v2.7.0-error',
+          hash: 'error',
+          url: 'https://docs.coinet.app/omniscore',
+        },
+        reflexivitySentinel: {
+          corrQsPrice30d: 0,
+          status: 'healthy' as const,
+          threshold: 0.7,
+        },
+        featureSchemaVersion: 'v2.7.0-reliability',
+        sectorPackId: 'unknown-error',
+        clampHistoryCount: 0,
+        coldStartMode: 'standard',
+        tierConditioningApplied: false,
+        tierMismatch: false,
+        rawTierUsed: 'Critical' as const,
+        conditionedTierInternal: 'Critical' as const,
+        capBucket: 'micro',
+        smoothingApplied: {
+          enabled: false,
+          alpha: 1.0,
+          previousPos: null,
+          rawDelta: 0,
+          boundedDelta: 0,
+          maxDeltaAllowed: 0,
+          wasLimited: false,
+          eventMode: false,
+          timeSinceLastHours: null,
+        },
+        posPlausibilityCapped: false,
+        posBeforeCap: null,
+        formulaVersion: 'v2.7',
+        fundamentalsFloor: null,
+        fundamentalsFloorApplied: false,
       },
     };
   }
