@@ -521,14 +521,26 @@ export class ChatService {
               logger.debug('🎯 OmniScore: Multi-coin analysis detected, fetching scores...');
               
               // Multi-coin analysis: Generate Quadrant Board
+              // 🛡️ FIX: Handle synthetic scores for top-tier assets that fail
               const omniScores = await Promise.all(
-                coinsToAnalyze.map(coin => 
-                  getProjectOmniScoreV23(coin.coinGeckoId || coin.symbol.toLowerCase())
-                    .catch((error) => {
-                      logger.warn(`⚠️ OmniScore fetch failed for ${coin.symbol}:`, error);
-                      return null;
-                    })
-                )
+                coinsToAnalyze.map(async (coin) => {
+                  const projectId = coin.coinGeckoId || coin.symbol.toLowerCase();
+                  try {
+                    const score = await getProjectOmniScoreV23(projectId);
+                    // TypeScript guard should have already synthesized if top-tier and failed
+                    // But double-check here for multi-coin path
+                    if (!score.success) {
+                      logger.warn(`⚠️ OmniScore returned success=false for ${coin.symbol}, checking if synthetic needed`);
+                      // The guard in getProjectOmniScoreV23 should have handled this, but log for visibility
+                    }
+                    return score;
+                  } catch (error) {
+                    logger.warn(`⚠️ OmniScore fetch threw exception for ${coin.symbol}:`, error);
+                    // Exception should have been caught by guard in getProjectOmniScoreV23
+                    // Return null here - guard should have returned synthetic score before throwing
+                    return null;
+                  }
+                })
               );
               
               logger.debug('🔍 OmniScore: Fetch results', {
@@ -538,9 +550,11 @@ export class ChatService {
                   coin: coinsToAnalyze[i].symbol,
                   success: s?.success || false,
                   hasData: !!s,
+                  isSynthetic: s?.audit?.violations?.some((v: any) => v.code === 'SYNTHETIC') || false,
                 })),
               });
               
+              // Include synthetic scores (they have success: true)
               const validScores = omniScores.filter(s => s && s.success);
               
               logger.debug('🔍 OmniScore: Valid scores', {

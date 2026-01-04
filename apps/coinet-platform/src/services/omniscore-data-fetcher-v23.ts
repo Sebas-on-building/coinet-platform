@@ -1645,6 +1645,8 @@ function shouldNeverFailForTopTier(projectId: string): boolean {
     'toncoin', 'ton',
     'stellar', 'xlm',
     'cosmos', 'atom',
+    'zcash', 'zec', // Privacy coin, top 50
+    'monero', 'xmr', // Privacy coin, top 50
     
     // Major DeFi blue chips
     'aave',
