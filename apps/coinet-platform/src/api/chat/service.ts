@@ -49,6 +49,8 @@ import { chartDetector } from './chart-detector';
 import { sourceManager } from './source-manager';
 import { logger } from '../../utils/logger';
 import { generateMockResponse } from './mock-ai-response';
+import { classifyIntent, getResponseFormatInstructions, IntentClassification } from '../../services/intent-classifier';
+import { executeHandler, HandlerResult, DataSourceConfig } from '../../services/intent-handlers';
 import {
   ChatMessageRequest,
   ChatMessageResponse,
@@ -136,17 +138,45 @@ export class ChatService {
         logger.info('📊 Chart detected', chartConfig);
       }
 
+      // 3.5. 🎯 INTENT CLASSIFICATION - Layer A of Conversation OS
+      // Classify user intent to optimize data fetching and response format
+      const intentClassification = await classifyIntent(request.message);
+      
+      logger.info('🎯 Intent classified', {
+        intent: intentClassification.intent,
+        confidence: intentClassification.confidence.toFixed(2),
+        depth: intentClassification.suggestedDepth,
+        shape: intentClassification.responseShape,
+        processingMs: intentClassification.metadata.processingTimeMs.toFixed(1),
+      });
+
       // 4. Get conversation context (last 10 messages)
       const context = await this.getConversationContext(conversation.id);
 
-      // 4.5. Fetch ALL live context: User Memory + Market + Whale + News + Sentiment (parallel)
+      // 4.5. Fetch live context based on INTENT (optimized data fetching)
       let liveContextStr: string | undefined;
+      let handlerResult: HandlerResult | null = null;
       try {
         // Detect coins mentioned in the message for targeted news
         const detectedCoins = await symbolDetector.detectCoins(request.message);
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
         
-        // Check if this is a trading/leverage question that needs perps data
+        // 🎯 Execute intent handler to determine what data to fetch
+        handlerResult = await executeHandler(
+          request.message,
+          intentClassification,
+          coinSymbols
+        );
+        
+        const ds = handlerResult.dataSources; // Data source config from intent handler
+        
+        logger.debug('🎯 Intent handler executed', {
+          intent: intentClassification.intent,
+          enabledSources: Object.entries(ds).filter(([_, v]) => v).map(([k]) => k).join(', '),
+          maxTokens: handlerResult.maxContextTokens,
+        });
+        
+        // Check if this is a trading/leverage question that needs perps data (override handler if explicit)
         const lowerMessage = request.message.toLowerCase();
         const needsPerpsData = lowerMessage.includes('liquidat') || 
                               lowerMessage.includes('funding') || 
@@ -156,34 +186,25 @@ export class ChatService {
                               lowerMessage.includes('long') ||
                               lowerMessage.includes('futures');
         
-        // Parallel fetch all context sources (including user memory + social + perps + influencers + CSI + CSS + Social v2 + News v2)
-        // Note: Using enriched news with AI-driven intelligence (Step 1.1.3)
-        // Note: Using multi-platform social intelligence (Step 1.2.1 + 1.2.2)
-        // Note: Using influencer tracking system (Step 1.2.3)
-        // Note: Using Coinet Sentiment Index (CSI) - Enterprise Grade
-        // Note: Using Composite Social Score (CSS) - 10/10 Divine Perfection (Step 1.2.5)
-        // Note: Using Social Intelligence v2.0 - 10/10 Divine Perfection (Section 1.2 Complete)
-        // Note: Using News Intelligence v2.0 - 10/10 Divine Perfection (Section 1.1 Complete)
-        // Note: Using Derivatives Intelligence v2.0 - 10/10 Divine Perfection (Section 1.3 Complete)
-        // Note: Using Behavioral Finance Intelligence - Neuroeconomic Analysis (Prospect Theory, Cognitive Biases)
-        // Note: Enterprise Market Data Pipeline (Step 1.4.1) - Multi-source aggregation with cross-verification
+        // 🎯 INTENT-AWARE DATA FETCHING
+        // Only fetch data sources enabled by the intent handler (optimizes for quick_answer vs deep_analysis)
         const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal] = await Promise.all([
-          buildUserContextForAI(userId),  // 🧠 User memory
-          fetchPricesForMessage(request.message),
-          coinSymbols.length > 0 ? fetchCachedEnterpriseMarketPrices(coinSymbols).catch(() => null) : Promise.resolve(null),  // ⚡ Enterprise Market Data Pipeline with Low-Latency Cache
-          getWhaleContextForAI(),
-          getEnrichedNewsForCoins(coinSymbols),  // 🧠 AI-enriched news intelligence
-          getMarketSentiment(),
-          getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']),  // 🌐 Multi-platform social intelligence
-          getInfluencerSnapshot(),  // 👤 Influencer tracking intelligence
-          calculateCSI(),  // 📊 Enterprise-grade sentiment index
-          calculateCompositeSocialScore(),  // 📊 Composite Social Score (FUD/FOMO/Sentiment)
-          calculateSocialIntelligenceV2(),  // 🌐 Social Intelligence v2.0 - Divine Perfection
-          calculateNewsIntelligenceV2(),  // 📰 News Intelligence v2.0 - Divine Perfection
-          needsPerpsData ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),  // 💀 Liquidation/Funding data (legacy)
-          calculateDerivativesIntelligenceV2(),  // 💀 Derivatives Intelligence v2.0 - Divine Perfection
-          calculateComprehensiveDerivativesIntelligence().catch(() => null),  // 💀 Comprehensive Derivatives - Step 1.3.2
-          calculateDerivativesIntelligenceFinal().catch(() => null),  // 💀 Derivatives Intelligence FINAL - Divine Perfection (All Acceptance Criteria)
+          buildUserContextForAI(userId),  // 🧠 User memory - always fetch for personalization
+          ds.fetchMarketData ? fetchPricesForMessage(request.message) : Promise.resolve(null),
+          ds.fetchEnterpriseData && coinSymbols.length > 0 ? fetchCachedEnterpriseMarketPrices(coinSymbols).catch(() => null) : Promise.resolve(null),
+          ds.fetchWhaleData ? getWhaleContextForAI() : Promise.resolve({ isAvailable: false, contextForAI: null, monitoredChains: [], capabilities: [] }),
+          ds.fetchNews ? getEnrichedNewsForCoins(coinSymbols) : Promise.resolve(null),
+          ds.fetchSentiment ? getMarketSentiment() : Promise.resolve(null),
+          ds.fetchSocial ? getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']) : Promise.resolve(null),
+          ds.fetchInfluencer ? getInfluencerSnapshot() : Promise.resolve(null),
+          ds.fetchSentiment ? calculateCSI() : Promise.resolve(null),
+          ds.fetchSocial ? calculateCompositeSocialScore() : Promise.resolve(null),
+          ds.fetchSocial ? calculateSocialIntelligenceV2() : Promise.resolve(null),
+          ds.fetchNews ? calculateNewsIntelligenceV2() : Promise.resolve(null),
+          (ds.fetchDerivatives || needsPerpsData) ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),
+          ds.fetchDerivatives ? calculateDerivativesIntelligenceV2() : Promise.resolve(null),
+          ds.fetchDerivatives ? calculateComprehensiveDerivativesIntelligence().catch(() => null) : Promise.resolve(null),
+          ds.fetchDerivatives ? calculateDerivativesIntelligenceFinal().catch(() => null) : Promise.resolve(null),
         ]);
         
         // Calculate behavioral finance intelligence using derivatives data
@@ -921,6 +942,30 @@ Inform the user that OmniScore analysis is temporarily unavailable.
         
         if (contextParts.length > 0) {
           liveContextStr = contextParts.join('\n');
+        }
+        
+        // 🎯 INTENT-AWARE FORMATTING: Prepend response format instructions
+        if (handlerResult && liveContextStr) {
+          const formatInstructions = `
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  🎯 INTENT-AWARE RESPONSE GUIDANCE                                           ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+DETECTED INTENT: ${intentClassification.intent.toUpperCase()} (${(intentClassification.confidence * 100).toFixed(0)}% confidence)
+
+${handlerResult.aiFormatHint}
+
+${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` : ''}
+
+═══════════════════════════════════════════════════════════════════════════════
+`;
+          liveContextStr = formatInstructions + liveContextStr;
+          
+          logger.debug('🎯 Intent format instructions added', {
+            intent: intentClassification.intent,
+            shape: intentClassification.responseShape,
+            contextLength: liveContextStr.length,
+          });
         }
       } catch (error: any) {
         logger.debug('⚠️ Could not fetch live context', { error: error?.message });

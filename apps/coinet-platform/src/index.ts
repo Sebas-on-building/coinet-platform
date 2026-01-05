@@ -11,6 +11,8 @@ import dotenv from 'dotenv';
 import { prisma } from './db/client';
 import { logger } from './utils/logger';
 import chatRoutes from './api/chat/routes';
+import retentionRoutes from './api/retention/routes';
+import authRoutes from './api/auth/routes';
 import { symbolDetector } from './services/symbol-detector';
 import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
 import { getWhaleContextForAI } from './services/whale-data';
@@ -446,6 +448,9 @@ app.get('/api/keys', async (_req: Request, res: Response) => {
 
 // API routes
 app.use('/api/chat', chatRoutes);
+app.use('/api/retention', retentionRoutes);
+app.use('/auth', authRoutes);
+app.use('/users', authRoutes); // Also handle /users/me via same router
 
 // =============================================================================
 // 📰 NEWS TEST ENDPOINT - Verify Section 1.1 Acceptance Criteria
@@ -4505,6 +4510,17 @@ async function startServer() {
       
       // Start background news refresh (every 2 minutes)
       startNewsRefreshInterval(2 * 60 * 1000);
+      
+      // Initialize Retention System (if enabled)
+      if (process.env.RETENTION_ENABLED === 'true') {
+        try {
+          const { setupRetentionCronJobs } = await import('./services/retention/cron-config');
+          setupRetentionCronJobs();
+          logger.info('✅ Retention system initialized with cron jobs');
+        } catch (error) {
+          logger.warn('⚠️ Failed to initialize retention system', { error });
+        }
+      }
     });
   } catch (error) {
     logger.error('❌ Failed to start server', error);
