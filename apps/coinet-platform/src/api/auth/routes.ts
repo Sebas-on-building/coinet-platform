@@ -1,9 +1,21 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
+
+// Import prisma - ensure it's loaded correctly
+let prisma: any;
+try {
+  const dbModule = require('../../db/client');
+  prisma = dbModule.prisma || dbModule.default;
+  if (!prisma) {
+    throw new Error('Prisma client not found in module');
+  }
+} catch (error) {
+  logger.error('❌ Failed to import prisma client', error);
+  throw error;
+}
 
 const router = Router();
 
