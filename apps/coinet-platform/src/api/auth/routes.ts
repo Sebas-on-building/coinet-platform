@@ -7,6 +7,12 @@ import { z } from 'zod';
 
 const router = Router();
 
+// Verify prisma is initialized
+if (!prisma) {
+  logger.error('❌ Prisma client is not initialized in auth routes');
+  throw new Error('Prisma client initialization failed');
+}
+
 // Validation schemas
 const loginSchema = z.object({
   email: z.string().email(),
@@ -24,6 +30,15 @@ const registerSchema = z.object({
 // ============================================================================
 router.post('/login', async (req: Request, res: Response) => {
   try {
+    // Validate prisma is available
+    if (!prisma || !prisma.user) {
+      logger.error('Prisma client not available', { prisma: !!prisma, hasUser: !!(prisma as any)?.user });
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection error',
+      });
+    }
+
     // Validate input
     const validation = loginSchema.safeParse(req.body);
     if (!validation.success) {
@@ -37,7 +52,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const { email, password } = validation.data;
 
     // Find user
-    const user = await prisma.user.findUnique({
+    const user = await (prisma as any).user.findUnique({
       where: { email: email.toLowerCase() },
     });
 
@@ -79,14 +94,14 @@ router.post('/login', async (req: Request, res: Response) => {
     );
 
     // Update last login
-    await prisma.user.update({
+    await (prisma as any).user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
     // Create session
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await prisma.session.create({
+    await (prisma as any).session.create({
       data: {
         userId: user.id,
         token,
@@ -142,7 +157,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const { email, password, name } = validation.data;
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await (prisma as any).user.findUnique({
       where: { email: email.toLowerCase() },
     });
 
@@ -157,7 +172,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
-    const user = await prisma.user.create({
+    const user = await (prisma as any).user.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
@@ -183,7 +198,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Create session
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await prisma.session.create({
+    await (prisma as any).session.create({
       data: {
         userId: user.id,
         token,
@@ -249,7 +264,7 @@ router.get('/me', async (req: Request, res: Response) => {
     }
 
     // Get user
-    const user = await prisma.user.findUnique({
+    const user = await (prisma as any).user.findUnique({
       where: { id: decoded.userId },
     });
 
@@ -299,7 +314,7 @@ router.post('/logout', async (req: Request, res: Response) => {
     const token = authHeader.substring(7);
 
     // Delete session
-    await prisma.session.deleteMany({
+    await (prisma as any).session.deleteMany({
       where: { token },
     });
 
