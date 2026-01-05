@@ -1,28 +1,22 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
-// Import prisma - ensure it's loaded correctly
-let prisma: any;
-try {
-  const dbModule = require('../../db/client');
-  prisma = dbModule.prisma || dbModule.default;
-  if (!prisma) {
-    throw new Error('Prisma client not found in module');
-  }
-} catch (error) {
-  logger.error('❌ Failed to import prisma client', error);
-  throw error;
-}
-
-const router = Router();
+const router: Router = Router();
 
 // Verify prisma is initialized
 if (!prisma) {
   logger.error('❌ Prisma client is not initialized in auth routes');
   throw new Error('Prisma client initialization failed');
+}
+
+// Verify JWT_SECRET is set
+if (!process.env.JWT_SECRET) {
+  logger.error('❌ JWT_SECRET environment variable is not set');
+  throw new Error('JWT_SECRET must be configured');
 }
 
 // Validation schemas
@@ -43,8 +37,8 @@ const registerSchema = z.object({
 router.post('/login', async (req: Request, res: Response) => {
   try {
     // Validate prisma is available
-    if (!prisma || !prisma.user) {
-      logger.error('Prisma client not available', { prisma: !!prisma, hasUser: !!(prisma as any)?.user });
+    if (!prisma) {
+      logger.error('Prisma client not available');
       return res.status(500).json({
         success: false,
         error: 'Database connection error',
@@ -196,7 +190,7 @@ router.post('/register', async (req: Request, res: Response) => {
     });
 
     // Generate JWT token
-    const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+    const JWT_SECRET = process.env.JWT_SECRET!;
     const token = jwt.sign(
       {
         userId: user.id,
@@ -262,7 +256,7 @@ router.get('/me', async (req: Request, res: Response) => {
     }
 
     const token = authHeader.substring(7);
-    const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+    const JWT_SECRET = process.env.JWT_SECRET!;
 
     // Verify token
     let decoded: any;
