@@ -15,6 +15,18 @@ export default defineConfig(({ mode }) => ({
         secure: false,
         ws: true, // Enable WebSocket proxying
       },
+      // Proxy auth endpoints to user service
+      '/auth': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+      },
+      // Proxy user endpoints to user service
+      '/users': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   plugins: [
