@@ -1,15 +1,11 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prismaClient from '../../db/client';
+import { prisma } from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
 const router: Router = Router();
-
-// Use type assertion to access Prisma models (types are generated at build time)
-// At runtime, prismaClient is a CoinetPrismaClient instance which extends PrismaClient
-const prisma = prismaClient as any;
 
 // Verify prisma is initialized
 if (!prisma) {
