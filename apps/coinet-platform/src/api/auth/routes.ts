@@ -114,6 +114,7 @@ router.post('/login', async (req: Request, res: Response) => {
     await prisma.session.create({
       data: {
         userId: user.id,
+        tenantId: 'default',
         token,
         expiresAt,
         isActive: true,
@@ -211,6 +212,7 @@ router.post('/register', async (req: Request, res: Response) => {
     await prisma.session.create({
       data: {
         userId: user.id,
+        tenantId: 'default',
         token,
         expiresAt,
         isActive: true,
