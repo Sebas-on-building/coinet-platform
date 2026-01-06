@@ -1,19 +1,30 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import * as dbClient from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
 const router: Router = Router();
 
-// Get prisma client - use named export
-const prisma = dbClient.prisma;
+// Import prisma dynamically to ensure it's available at runtime
+const getPrisma = () => {
+  const { prisma } = require('../../db/client');
+  if (!prisma) {
+    throw new Error('Prisma client not initialized');
+  }
+  return prisma;
+};
 
-// Verify prisma is initialized
-if (!prisma) {
-  logger.error('❌ Prisma client is not initialized in auth routes');
-  throw new Error('Prisma client initialization failed');
+// Verify prisma is initialized at module load
+try {
+  const testPrisma = getPrisma();
+  if (!testPrisma) {
+    logger.error('❌ Prisma client is not initialized in auth routes');
+    throw new Error('Prisma client initialization failed');
+  }
+} catch (error) {
+  logger.error('❌ Failed to initialize Prisma client', error);
+  throw error;
 }
 
 // Verify JWT_SECRET is set
@@ -39,14 +50,7 @@ const registerSchema = z.object({
 // ============================================================================
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    // Validate prisma is available
-    if (!prisma) {
-      logger.error('Prisma client not available');
-      return res.status(500).json({
-        success: false,
-        error: 'Database connection error',
-      });
-    }
+    const prisma = getPrisma();
 
     // Validate input
     const validation = loginSchema.safeParse(req.body);
@@ -154,6 +158,8 @@ router.post('/login', async (req: Request, res: Response) => {
 // ============================================================================
 router.post('/register', async (req: Request, res: Response) => {
   try {
+    const prisma = getPrisma();
+
     // Validate input
     const validation = registerSchema.safeParse(req.body);
     if (!validation.success) {
@@ -257,6 +263,8 @@ router.post('/register', async (req: Request, res: Response) => {
 // ============================================================================
 router.get('/me', async (req: Request, res: Response) => {
   try {
+    const prisma = getPrisma();
+
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -320,6 +328,8 @@ router.get('/me', async (req: Request, res: Response) => {
 // ============================================================================
 router.post('/logout', async (req: Request, res: Response) => {
   try {
+    const prisma = getPrisma();
+
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
