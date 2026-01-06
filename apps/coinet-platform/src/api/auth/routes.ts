@@ -243,10 +243,12 @@ router.post('/register', async (req: Request, res: Response) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
     logger.error('Registration error details', { errorMessage, errorStack });
+    // Include error details in response for debugging
     res.status(500).json({
       success: false,
       error: 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      message: errorMessage,
+      stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
     });
   }
 });
