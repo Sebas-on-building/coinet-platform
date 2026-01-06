@@ -55,6 +55,22 @@ CREATE INDEX IF NOT EXISTS "sessions_isActive_idx" ON "sessions"("isActive");
 -- Add foreign key constraints
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- Handle existing user_preferences: Create placeholder users for orphaned preferences
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM "user_preferences" WHERE "userId" NOT IN (SELECT "id" FROM "users")) THEN
+        -- Ensure system user exists
+        INSERT INTO "users" ("id", "email", "password", "role", "tier", "active", "name")
+        VALUES ('system-orphaned-user', 'system@coinet.ai', '$2a$12$placeholder', 'USER', 'FREE', false, 'System User (Orphaned Data)')
+        ON CONFLICT ("id") DO NOTHING;
+        
+        -- Update orphaned preferences
+        UPDATE "user_preferences" 
+        SET "userId" = 'system-orphaned-user'
+        WHERE "userId" NOT IN (SELECT "id" FROM "users");
+    END IF;
+END $$;
+
 -- Add foreign key to user_preferences if it doesn't exist
 DO $$
 BEGIN
@@ -62,6 +78,25 @@ BEGIN
         SELECT 1 FROM pg_constraint WHERE conname = 'user_preferences_userId_fkey'
     ) THEN
         ALTER TABLE "user_preferences" ADD CONSTRAINT "user_preferences_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
+
+-- Handle existing conversations: Create placeholder users for orphaned conversations
+DO $$
+DECLARE
+    orphan_user_id TEXT;
+BEGIN
+    -- Create a placeholder user for orphaned conversations if any exist
+    IF EXISTS (SELECT 1 FROM "conversations" WHERE "userId" NOT IN (SELECT "id" FROM "users")) THEN
+        -- Create a system user for orphaned data
+        INSERT INTO "users" ("id", "email", "password", "role", "tier", "active", "name")
+        VALUES ('system-orphaned-user', 'system@coinet.ai', '$2a$12$placeholder', 'USER', 'FREE', false, 'System User (Orphaned Data)')
+        ON CONFLICT ("id") DO NOTHING;
+        
+        -- Update orphaned conversations to use the system user
+        UPDATE "conversations" 
+        SET "userId" = 'system-orphaned-user'
+        WHERE "userId" NOT IN (SELECT "id" FROM "users");
     END IF;
 END $$;
 
@@ -75,6 +110,22 @@ BEGIN
     END IF;
 END $$;
 
+-- Handle existing agents: Create placeholder users for orphaned agents
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM "agents" WHERE "userId" NOT IN (SELECT "id" FROM "users")) THEN
+        -- Ensure system user exists
+        INSERT INTO "users" ("id", "email", "password", "role", "tier", "active", "name")
+        VALUES ('system-orphaned-user', 'system@coinet.ai', '$2a$12$placeholder', 'USER', 'FREE', false, 'System User (Orphaned Data)')
+        ON CONFLICT ("id") DO NOTHING;
+        
+        -- Update orphaned agents
+        UPDATE "agents" 
+        SET "userId" = 'system-orphaned-user'
+        WHERE "userId" NOT IN (SELECT "id" FROM "users");
+    END IF;
+END $$;
+
 -- Add foreign key to agents if it doesn't exist
 DO $$
 BEGIN
@@ -82,6 +133,22 @@ BEGIN
         SELECT 1 FROM pg_constraint WHERE conname = 'agents_userId_fkey'
     ) THEN
         ALTER TABLE "agents" ADD CONSTRAINT "agents_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
+
+-- Handle existing alerts: Create placeholder users for orphaned alerts
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM "alerts" WHERE "userId" NOT IN (SELECT "id" FROM "users")) THEN
+        -- Ensure system user exists
+        INSERT INTO "users" ("id", "email", "password", "role", "tier", "active", "name")
+        VALUES ('system-orphaned-user', 'system@coinet.ai', '$2a$12$placeholder', 'USER', 'FREE', false, 'System User (Orphaned Data)')
+        ON CONFLICT ("id") DO NOTHING;
+        
+        -- Update orphaned alerts
+        UPDATE "alerts" 
+        SET "userId" = 'system-orphaned-user'
+        WHERE "userId" NOT IN (SELECT "id" FROM "users");
     END IF;
 END $$;
 
