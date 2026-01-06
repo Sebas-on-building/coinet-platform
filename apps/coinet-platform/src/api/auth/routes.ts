@@ -18,16 +18,6 @@ const getPrismaModel = (modelName: string) => {
       throw new Error('Prisma client is not initialized');
     }
     
-    // Log prisma structure for debugging
-    const prismaKeys = Object.keys(prisma).filter(key => !key.startsWith('$') && !key.startsWith('_'));
-    logger.info('Prisma client structure', {
-      hasPrisma: !!prisma,
-      prismaType: typeof prisma,
-      prismaConstructor: prisma?.constructor?.name,
-      availableKeys: prismaKeys,
-      lookingForModel: modelName,
-    });
-    
     const model = (prisma as any)[modelName];
     if (!model) {
       logger.error(`Prisma model '${modelName}' is not available`, {
