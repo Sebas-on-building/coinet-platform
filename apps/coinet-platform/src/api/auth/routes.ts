@@ -17,12 +17,6 @@ if (!prisma) {
   throw new Error('Prisma client initialization failed');
 }
 
-// Runtime check: verify prisma.user exists (Prisma Client must be generated)
-if (!prisma.user) {
-  logger.error('❌ Prisma Client not generated - user model not available');
-  throw new Error('Prisma Client must be generated. Run: pnpm db:generate');
-}
-
 // Verify JWT_SECRET is set
 if (!process.env.JWT_SECRET) {
   logger.error('❌ JWT_SECRET environment variable is not set');
