@@ -5,7 +5,7 @@
     "buildCommand": "(DATABASE_URL=\"postgresql://dummy:dummy@localhost:5432/dummy\" npx prisma generate --schema=./prisma/schema.prisma || echo 'Prisma generate skipped') && npm run build"
   },
   "deploy": {
-    "startCommand": "bash scripts/resolve-failed-migration.sh && npm_config_loglevel=silent npm_config_production=false npm start 2>&1 | grep -vE '(npm warn|npm warn config)' || npm start",
+    "startCommand": "bash scripts/resolve-failed-migration.sh && npm_config_loglevel=silent npm_config_production=false npm start",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "on_failure",
