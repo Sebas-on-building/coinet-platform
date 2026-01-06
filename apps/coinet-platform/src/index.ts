@@ -4475,19 +4475,20 @@ async function startServer() {
             const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
             // Quote schema path to handle spaces in directory names
             const quotedSchemaPath = `"${schemaPath}"`;
-            // Suppress npm production warning by temporarily unsetting NODE_ENV
+            // Suppress npm production warning by removing NODE_ENV from command environment
             // Prisma doesn't install dependencies, so this is safe
-            const originalNodeEnv = process.env.NODE_ENV;
             const env = {
               ...process.env,
               npm_config_production: 'false',
             };
-            // Temporarily unset NODE_ENV to prevent npm production warning
+            // Remove NODE_ENV from environment to prevent npm production warning
             delete env.NODE_ENV;
-            execSync(`npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss`, {
+            // Use env -u NODE_ENV to completely remove it from the command's environment
+            execSync(`env -u NODE_ENV npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss`, {
               stdio: 'inherit',
               env,
               cwd: path.join(__dirname, '..'),
+              shell: '/bin/bash',
             });
             logger.info('✅ Database schema synced');
           } catch (migrationError) {
