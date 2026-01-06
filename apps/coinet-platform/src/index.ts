@@ -4475,16 +4475,18 @@ async function startServer() {
             const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
             // Quote schema path to handle spaces in directory names
             const quotedSchemaPath = `"${schemaPath}"`;
-            // Suppress npm production warning by removing NODE_ENV from command environment
+            // Suppress npm production warning by setting loglevel and filtering stderr
             // Prisma doesn't install dependencies, so this is safe
             const env = {
               ...process.env,
+              npm_config_loglevel: 'error',
               npm_config_production: 'false',
             };
             // Remove NODE_ENV from environment to prevent npm production warning
             delete env.NODE_ENV;
-            // Use env -u NODE_ENV to completely remove it from the command's environment
-            execSync(`env -u NODE_ENV npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss`, {
+            // Use env -u NODE_ENV and filter npm warnings from stderr
+            const command = `env -u NODE_ENV npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss 2>&1 | grep -v "npm warn" || { EXIT_CODE=\${PIPESTATUS[0]}; if [ \$EXIT_CODE -ne 0 ] && [ \$EXIT_CODE -ne 141 ]; then exit \$EXIT_CODE; fi; }`;
+            execSync(command, {
               stdio: 'inherit',
               env,
               cwd: path.join(__dirname, '..'),
