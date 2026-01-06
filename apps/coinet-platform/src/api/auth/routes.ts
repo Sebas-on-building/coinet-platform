@@ -9,19 +9,52 @@ const router: Router = Router();
 
 // Helper function to safely access Prisma models
 const getPrismaModel = (modelName: string) => {
-  if (!prisma) {
-    throw new Error('Prisma client is not initialized');
-  }
-  const model = (prisma as any)[modelName];
-  if (!model) {
-    logger.error(`Prisma model '${modelName}' is not available`, {
-      availableModels: Object.keys(prisma).filter(key => !key.startsWith('$') && !key.startsWith('_')),
+  try {
+    if (!prisma) {
+      logger.error('Prisma client is not initialized', {
+        prismaValue: prisma,
+        prismaType: typeof prisma,
+      });
+      throw new Error('Prisma client is not initialized');
+    }
+    
+    // Log prisma structure for debugging
+    const prismaKeys = Object.keys(prisma).filter(key => !key.startsWith('$') && !key.startsWith('_'));
+    logger.info('Prisma client structure', {
+      hasPrisma: !!prisma,
       prismaType: typeof prisma,
-      prismaConstructor: prisma.constructor?.name,
+      prismaConstructor: prisma?.constructor?.name,
+      availableKeys: prismaKeys,
+      lookingForModel: modelName,
     });
-    throw new Error(`Prisma model '${modelName}' is not available. Make sure Prisma Client is generated.`);
+    
+    const model = (prisma as any)[modelName];
+    if (!model) {
+      logger.error(`Prisma model '${modelName}' is not available`, {
+        availableModels: prismaKeys,
+        prismaType: typeof prisma,
+        prismaConstructor: prisma?.constructor?.name,
+        prismaValue: JSON.stringify(prisma, null, 2).substring(0, 500),
+      });
+      throw new Error(`Prisma model '${modelName}' is not available. Available models: ${prismaKeys.join(', ')}`);
+    }
+    
+    if (typeof model.findUnique !== 'function') {
+      logger.error(`Prisma model '${modelName}' does not have findUnique method`, {
+        modelType: typeof model,
+        modelKeys: model ? Object.keys(model) : [],
+      });
+      throw new Error(`Prisma model '${modelName}' does not have findUnique method`);
+    }
+    
+    return model;
+  } catch (error) {
+    logger.error(`Error accessing Prisma model '${modelName}'`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
   }
-  return model;
 };
 
 // Verify JWT_SECRET is set
@@ -262,7 +295,13 @@ router.post('/register', async (req: Request, res: Response) => {
     logger.error('Registration error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
-    logger.error('Registration error details', { errorMessage, errorStack });
+    logger.error('Registration error details', { 
+      errorMessage, 
+      errorStack,
+      errorType: error?.constructor?.name,
+      prismaAvailable: !!prisma,
+      prismaType: typeof prisma,
+    });
     // Include error details in response for debugging
     res.status(500).json({
       success: false,
