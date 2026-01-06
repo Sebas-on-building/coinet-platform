@@ -34,7 +34,7 @@ const getPrismaModel = (modelName: string) => {
         availableModels: prismaKeys,
         prismaType: typeof prisma,
         prismaConstructor: prisma?.constructor?.name,
-        prismaValue: JSON.stringify(prisma, null, 2).substring(0, 500),
+        hasPrisma: !!prisma,
       });
       throw new Error(`Prisma model '${modelName}' is not available. Available models: ${prismaKeys.join(', ')}`);
     }
