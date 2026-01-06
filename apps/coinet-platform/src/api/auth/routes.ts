@@ -12,8 +12,8 @@ const getPrismaModel = (modelName: string) => {
   try {
     if (!prisma) {
       logger.error('Prisma client is not initialized', {
-        prismaValue: prisma,
         prismaType: typeof prisma,
+        hasPrisma: false,
       });
       throw new Error('Prisma client is not initialized');
     }
@@ -301,6 +301,7 @@ router.post('/register', async (req: Request, res: Response) => {
       errorType: error?.constructor?.name,
       prismaAvailable: !!prisma,
       prismaType: typeof prisma,
+      // Don't include prisma object itself to avoid circular reference
     });
     // Include error details in response for debugging
     res.status(500).json({
