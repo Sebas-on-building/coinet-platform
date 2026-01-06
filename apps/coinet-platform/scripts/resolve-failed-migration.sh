@@ -11,23 +11,27 @@ echo "🔧 Resolving failed migration..."
 
 # Try to resolve the failed migration (ignore if already resolved or doesn't exist)
 # This marks the failed migration as applied so Prisma can proceed
-# Filter out npm warnings from both stdout and stderr
-env -u NODE_ENV npx prisma migrate resolve --applied 20251216180000_add_project_knowledge --schema=./prisma/schema.prisma 2>&1 | grep -vE "(^npm warn|npm warn config)" || true
-RESOLVE_EXIT=${PIPESTATUS[0]}
-if [ $RESOLVE_EXIT -eq 0 ]; then
+# Filter out npm warnings - redirect to temp file, filter, then output
+TEMP_OUT=$(mktemp)
+env -u NODE_ENV npx prisma migrate resolve --applied 20251216180000_add_project_knowledge --schema=./prisma/schema.prisma > "$TEMP_OUT" 2>&1 || true
+grep -vE "(npm warn|npm warn config)" "$TEMP_OUT" || true
+rm -f "$TEMP_OUT"
+if [ ${PIPESTATUS[0]} -eq 0 ]; then
   echo "✅ Marked failed migration as resolved"
 else
   echo "⚠️ Migration resolution skipped (may already be resolved or not found)"
 fi
 
 # Deploy all migrations (this will apply the fix migration)
-# Filter out npm warnings from both stdout and stderr while preserving exit code
+# Filter out npm warnings while preserving exit code
 echo "📦 Deploying migrations..."
-env -u NODE_ENV npx prisma migrate deploy --schema=./prisma/schema.prisma 2>&1 | grep -vE "(^npm warn|npm warn config)" || {
-  DEPLOY_EXIT=${PIPESTATUS[0]}
-  if [ $DEPLOY_EXIT -ne 0 ] && [ $DEPLOY_EXIT -ne 141 ]; then
-    exit $DEPLOY_EXIT
-  fi
-}
+TEMP_OUT=$(mktemp)
+env -u NODE_ENV npx prisma migrate deploy --schema=./prisma/schema.prisma > "$TEMP_OUT" 2>&1
+DEPLOY_EXIT=$?
+grep -vE "(npm warn|npm warn config)" "$TEMP_OUT" || true
+rm -f "$TEMP_OUT"
+if [ $DEPLOY_EXIT -ne 0 ]; then
+  exit $DEPLOY_EXIT
+fi
 
 echo "✅ Migrations deployed successfully"
