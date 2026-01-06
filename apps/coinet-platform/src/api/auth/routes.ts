@@ -36,6 +36,14 @@ const registerSchema = z.object({
 // ============================================================================
 router.post('/login', async (req: Request, res: Response) => {
   try {
+    // Runtime check for prisma
+    if (!prisma) {
+      logger.error('Prisma client not available in login handler');
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection error',
+      });
+    }
 
     // Validate input
     const validation = loginSchema.safeParse(req.body);
@@ -143,6 +151,14 @@ router.post('/login', async (req: Request, res: Response) => {
 // ============================================================================
 router.post('/register', async (req: Request, res: Response) => {
   try {
+    // Runtime check for prisma
+    if (!prisma) {
+      logger.error('Prisma client not available in register handler');
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection error',
+      });
+    }
 
     // Validate input
     const validation = registerSchema.safeParse(req.body);
@@ -247,6 +263,14 @@ router.post('/register', async (req: Request, res: Response) => {
 // ============================================================================
 router.get('/me', async (req: Request, res: Response) => {
   try {
+    // Runtime check for prisma
+    if (!prisma) {
+      logger.error('Prisma client not available in /me handler');
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection error',
+      });
+    }
 
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
@@ -311,6 +335,14 @@ router.get('/me', async (req: Request, res: Response) => {
 // ============================================================================
 router.post('/logout', async (req: Request, res: Response) => {
   try {
+    // Runtime check for prisma
+    if (!prisma) {
+      logger.error('Prisma client not available in logout handler');
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection error',
+      });
+    }
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
