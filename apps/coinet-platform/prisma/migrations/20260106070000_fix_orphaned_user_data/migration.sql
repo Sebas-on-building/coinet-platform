@@ -42,9 +42,27 @@ BEGIN
 END $$;
 
 -- Fix orphaned user_portfolio
+-- Handle duplicates: Multiple orphaned records with same (symbol, exchange) will conflict
+-- Unique constraint: (userId, symbol, exchange)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_portfolio') THEN
+        -- Delete duplicate orphaned records (keep the oldest one per symbol/exchange)
+        DELETE FROM "user_portfolio" 
+        WHERE "id" IN (
+            SELECT "id" FROM (
+                SELECT "id", 
+                       ROW_NUMBER() OVER (
+                           PARTITION BY "symbol", COALESCE("exchange", '') 
+                           ORDER BY "addedAt" ASC
+                       ) as rn
+                FROM "user_portfolio"
+                WHERE "userId" NOT IN (SELECT "id" FROM "users")
+            ) t
+            WHERE rn > 1
+        );
+        
+        -- Then update remaining orphaned records to system user
         UPDATE "user_portfolio" 
         SET "userId" = 'system-orphaned-user'
         WHERE "userId" NOT IN (SELECT "id" FROM "users");
@@ -52,9 +70,27 @@ BEGIN
 END $$;
 
 -- Fix orphaned user_watchlist
+-- Handle duplicates: Multiple orphaned records with same symbol will conflict
+-- Unique constraint: (userId, symbol)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_watchlist') THEN
+        -- Delete duplicate orphaned records (keep the oldest one per symbol)
+        DELETE FROM "user_watchlist" 
+        WHERE "id" IN (
+            SELECT "id" FROM (
+                SELECT "id", 
+                       ROW_NUMBER() OVER (
+                           PARTITION BY "symbol" 
+                           ORDER BY "addedAt" ASC
+                       ) as rn
+                FROM "user_watchlist"
+                WHERE "userId" NOT IN (SELECT "id" FROM "users")
+            ) t
+            WHERE rn > 1
+        );
+        
+        -- Then update remaining orphaned records to system user
         UPDATE "user_watchlist" 
         SET "userId" = 'system-orphaned-user'
         WHERE "userId" NOT IN (SELECT "id" FROM "users");
