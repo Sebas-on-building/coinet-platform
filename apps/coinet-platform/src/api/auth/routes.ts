@@ -1,16 +1,26 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../../db/client';
+import prismaClient from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
 const router: Router = Router();
 
+// Use type assertion to access Prisma models (types are generated at build time)
+// At runtime, prismaClient is a CoinetPrismaClient instance which extends PrismaClient
+const prisma = prismaClient as any;
+
 // Verify prisma is initialized
 if (!prisma) {
   logger.error('❌ Prisma client is not initialized in auth routes');
   throw new Error('Prisma client initialization failed');
+}
+
+// Runtime check: verify prisma.user exists (Prisma Client must be generated)
+if (!prisma.user) {
+  logger.error('❌ Prisma Client not generated - user model not available');
+  throw new Error('Prisma Client must be generated. Run: pnpm db:generate');
 }
 
 // Verify JWT_SECRET is set
@@ -58,7 +68,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const { email, password } = validation.data;
 
     // Find user
-    const user = await (prisma as any).user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
 
@@ -100,14 +110,14 @@ router.post('/login', async (req: Request, res: Response) => {
     );
 
     // Update last login
-    await (prisma as any).user.update({
+    await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
     // Create session
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await (prisma as any).session.create({
+    await prisma.session.create({
       data: {
         userId: user.id,
         token,
@@ -163,7 +173,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const { email, password, name } = validation.data;
 
     // Check if user already exists
-    const existingUser = await (prisma as any).user.findUnique({
+    const existingUser = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
 
@@ -178,7 +188,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
-    const user = await (prisma as any).user.create({
+    const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
@@ -204,7 +214,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Create session
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await (prisma as any).session.create({
+    await prisma.session.create({
       data: {
         userId: user.id,
         token,
@@ -270,7 +280,7 @@ router.get('/me', async (req: Request, res: Response) => {
     }
 
     // Get user
-    const user = await (prisma as any).user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
     });
 
@@ -320,7 +330,7 @@ router.post('/logout', async (req: Request, res: Response) => {
     const token = authHeader.substring(7);
 
     // Delete session
-    await (prisma as any).session.deleteMany({
+    await prisma.session.deleteMany({
       where: { token },
     });
 
