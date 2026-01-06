@@ -188,6 +188,7 @@ BEGIN
 END $$;
 
 -- Handle existing user_memories: Create placeholder users for orphaned memories
+-- Handle duplicates by keeping only one record per (userId, category, key) combination
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') 
@@ -198,7 +199,22 @@ BEGIN
             VALUES ('system-orphaned-user', 'system@coinet.ai', '$2a$12$placeholder', 'USER', 'FREE', false, 'System User (Orphaned Data)', NOW(), NOW())
             ON CONFLICT ("id") DO NOTHING;
             
-            -- Update orphaned memories
+            -- Delete duplicate orphaned records (keep the oldest one)
+            DELETE FROM "user_memories" 
+            WHERE "id" IN (
+                SELECT "id" FROM (
+                    SELECT "id", 
+                           ROW_NUMBER() OVER (
+                               PARTITION BY "userId", "category", "key" 
+                               ORDER BY "createdAt" ASC
+                           ) as rn
+                    FROM "user_memories"
+                    WHERE "userId" NOT IN (SELECT "id" FROM "users")
+                ) t
+                WHERE rn > 1
+            );
+            
+            -- Then update remaining orphaned records to system user
             UPDATE "user_memories" 
             SET "userId" = 'system-orphaned-user'
             WHERE "userId" NOT IN (SELECT "id" FROM "users");

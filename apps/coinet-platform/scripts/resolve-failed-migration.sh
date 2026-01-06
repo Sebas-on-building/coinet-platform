@@ -33,6 +33,17 @@ else
   echo "⚠️ User/session migration resolution skipped"
 fi
 
+# Resolve the orphaned data fix migration if it failed
+TEMP_OUT=$(mktemp)
+(env -u NODE_ENV npx --yes prisma migrate resolve --rolled-back 20260106070000_fix_orphaned_user_data --schema=./prisma/schema.prisma 2>&1 | grep -vE "(npm warn|npm warn config)" || true) > "$TEMP_OUT" 2>&1 || true
+cat "$TEMP_OUT" | grep -vE "(npm warn|npm warn config)" || true
+rm -f "$TEMP_OUT"
+if [ ${PIPESTATUS[0]} -eq 0 ] 2>/dev/null || [ $? -eq 0 ]; then
+  echo "✅ Marked orphaned data fix migration as rolled back (will retry)"
+else
+  echo "⚠️ Orphaned data fix migration resolution skipped"
+fi
+
 # Deploy all migrations (this will apply the fix migration)
 # Use --yes flag and redirect npm warnings completely
 echo "📦 Deploying migrations..."
