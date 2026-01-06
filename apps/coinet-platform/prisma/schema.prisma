@@ -18,6 +18,9 @@ model Conversation {
   id     String @id @default(cuid())
   userId String
 
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Conversation metadata
   title   String? // Auto-generated from first message
   context Json? // Conversation context, preferences, active agent
@@ -94,6 +97,9 @@ model Agent {
   id     String @id @default(cuid())
   userId String
 
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Basic info
   name         String
   description  String @db.Text
@@ -139,6 +145,9 @@ model Agent {
 model Alert {
   id     String @id @default(cuid())
   userId String
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Alert info
   name        String
@@ -264,12 +273,89 @@ enum InsightSeverity {
 }
 
 // ============================================================================
+// AUTHENTICATION & USER MANAGEMENT
+// ============================================================================
+
+model User {
+  id       String  @id @default(cuid())
+  email    String  @unique
+  password String // Hashed password
+  name     String?
+
+  // User roles and tiers
+  role UserRole @default(USER)
+  tier UserTier @default(FREE)
+
+  // Account status
+  active Boolean @default(true)
+  avatar String?
+
+  // Authentication tracking
+  lastLoginAt DateTime?
+
+  // Relationships
+  preferences   UserPreferences?
+  memories      UserMemory[]
+  portfolio     UserPortfolio[]
+  watchlist     UserWatchlist[]
+  conversations Conversation[]
+  agents        Agent[]
+  alerts        Alert[]
+  sessions      Session[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([active])
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum UserTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String   @default("default")
+  token     String   @unique
+  expiresAt DateTime
+  isActive  Boolean  @default(true)
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@index([isActive])
+  @@map("sessions")
+}
+
+// ============================================================================
 // USER PREFERENCES & SETTINGS
 // ============================================================================
 
 model UserPreferences {
   id     String @id @default(cuid())
   userId String @unique
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Chat preferences
   defaultAgentId String?
@@ -324,6 +410,7 @@ model UserMemory {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   expiresAt DateTime? // Some memories can expire
+  User      User      @relation(fields: [userId], references: [id])
 
   // Indexes
   @@unique([userId, category, key])
@@ -362,6 +449,7 @@ model UserPortfolio {
   // Tracking
   addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
+  User      User     @relation(fields: [userId], references: [id])
 
   // Indexes
   @@unique([userId, symbol, exchange])
@@ -388,6 +476,7 @@ model UserWatchlist {
 
   // Timestamps
   addedAt DateTime @default(now())
+  User    User     @relation(fields: [userId], references: [id])
 
   // Indexes
   @@unique([userId, symbol])
@@ -441,69 +530,69 @@ model OmniScoreHistory {
 // ============================================================================
 
 model ProjectKnowledge {
-  id        String   @id @default(cuid())
-  projectId String   @unique @db.VarChar(100) // e.g., "uniswap", "bitcoin"
-  
+  id        String @id @default(cuid())
+  projectId String @unique @db.VarChar(100) // e.g., "uniswap", "bitcoin"
+
   // Basic identification
-  name          String?  @db.VarChar(200)
-  symbol        String?  @db.VarChar(20)
-  ticker        String?  @db.VarChar(20)
-  aliases       String[] // Alternative names/tickers
-  
+  name    String?  @db.VarChar(200)
+  symbol  String?  @db.VarChar(20)
+  ticker  String?  @db.VarChar(20)
+  aliases String[] // Alternative names/tickers
+
   // Project details (AI-researched)
-  description   String?  @db.Text
-  category      String?  @db.VarChar(50) // L1, L2, DeFi, Infrastructure, etc.
-  website       String?  @db.VarChar(500)
-  whitepaper    String?  @db.VarChar(500)
-  
+  description String? @db.Text
+  category    String? @db.VarChar(50) // L1, L2, DeFi, Infrastructure, etc.
+  website     String? @db.VarChar(500)
+  whitepaper  String? @db.VarChar(500)
+
   // Team information (web-researched)
-  teamInfo      Json?    // { founders: [], advisors: [], backers: [] }
-  foundedDate   DateTime?
-  headquarters  String?  @db.VarChar(200)
-  
+  teamInfo     Json? // { founders: [], advisors: [], backers: [] }
+  foundedDate  DateTime?
+  headquarters String?   @db.VarChar(200)
+
   // Partnerships & Backing (critical for scoring)
-  partnerships  Json?    // { exchanges: [], vcs: [], strategic: [] }
-  backers       Json?    // { tier1: [], tier2: [], tier3: [] }
-  
+  partnerships Json? // { exchanges: [], vcs: [], strategic: [] }
+  backers      Json? // { tier1: [], tier2: [], tier3: [] }
+
   // Security & Audits (web-researched)
-  audits        Json?    // { auditor: string, date: string, url: string }[]
-  securityScore Int?     // 0-100
+  audits        Json? // { auditor: string, date: string, url: string }[]
+  securityScore Int? // 0-100
   bugBounty     Boolean? @default(false)
   bugBountyUrl  String?  @db.VarChar(500)
-  
+
   // Governance (web-researched)
-  governanceType String?  @db.VarChar(50) // DAO, Multisig, Foundation, etc.
-  governanceUrl  String?  @db.VarChar(500)
-  votingPlatform String?  @db.VarChar(100) // Snapshot, Tally, etc.
-  
+  governanceType String? @db.VarChar(50) // DAO, Multisig, Foundation, etc.
+  governanceUrl  String? @db.VarChar(500)
+  votingPlatform String? @db.VarChar(100) // Snapshot, Tally, etc.
+
   // Social presence (web-researched)
-  socialLinks   Json?    // { twitter: url, discord: url, telegram: url, github: url }
-  
+  socialLinks Json? // { twitter: url, discord: url, telegram: url, github: url }
+
   // Technical info (web-researched)
-  blockchain    String?  @db.VarChar(100) // Which chain it's built on
+  blockchain        String?  @db.VarChar(100) // Which chain it's built on
   contractAddresses Json? // { ethereum: address, bsc: address, etc. }
-  codeRepository String? @db.VarChar(500)
-  isOpenSource  Boolean? @default(false)
-  
+  codeRepository    String?  @db.VarChar(500)
+  isOpenSource      Boolean? @default(false)
+
   // Research metadata
-  researchDepth     Int      @default(1)  // How many times researched (increases each update)
-  lastResearchType  String?  @db.VarChar(50) // "initial", "update", "deep_dive"
-  dataQuality       Float?   // 0-1, confidence in the data
-  sourcesUsed       String[] // URLs/sources used in research
-  
+  researchDepth    Int      @default(1) // How many times researched (increases each update)
+  lastResearchType String?  @db.VarChar(50) // "initial", "update", "deep_dive"
+  dataQuality      Float? // 0-1, confidence in the data
+  sourcesUsed      String[] // URLs/sources used in research
+
   // Verification status
-  verified          Boolean  @default(false) // Manually verified by team
-  verifiedBy        String?  @db.VarChar(100)
-  verifiedAt        DateTime?
-  
+  verified   Boolean   @default(false) // Manually verified by team
+  verifiedBy String?   @db.VarChar(100)
+  verifiedAt DateTime?
+
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  lastResearchedAt  DateTime @default(now())
-  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lastResearchedAt DateTime @default(now())
+
   // Research history
-  researchLogs      ProjectResearchLog[]
-  
+  researchLogs ProjectResearchLog[]
+
   @@index([projectId])
   @@index([category])
   @@index([lastResearchedAt(sort: Desc)])
@@ -512,33 +601,33 @@ model ProjectKnowledge {
 }
 
 model ProjectResearchLog {
-  id        String   @id @default(cuid())
-  projectId String   @db.VarChar(100)
-  
+  id        String @id @default(cuid())
+  projectId String @db.VarChar(100)
+
   // What was researched
-  researchType  String   @db.VarChar(50) // "team", "audits", "partnerships", "governance", "full"
-  query         String?  @db.Text        // The search query used
-  
+  researchType String  @db.VarChar(50) // "team", "audits", "partnerships", "governance", "full"
+  query        String? @db.Text // The search query used
+
   // What was found
-  findings      Json                      // Raw data discovered
-  sourcesUsed   String[]                  // URLs of sources
-  confidence    Float?                    // 0-1, confidence in findings
-  
+  findings    Json // Raw data discovered
+  sourcesUsed String[] // URLs of sources
+  confidence  Float? // 0-1, confidence in findings
+
   // What changed
-  fieldsUpdated String[]                  // Which fields were updated
-  dataAdded     Boolean  @default(false)  // Did we add new data?
-  dataRefined   Boolean  @default(false)  // Did we refine existing data?
-  
+  fieldsUpdated String[] // Which fields were updated
+  dataAdded     Boolean  @default(false) // Did we add new data?
+  dataRefined   Boolean  @default(false) // Did we refine existing data?
+
   // Context
-  triggeredBy   String?  @db.VarChar(50)  // "user_query", "scheduled", "manual"
-  userId        String?  @db.VarChar(100) // If triggered by user
-  
+  triggeredBy String? @db.VarChar(50) // "user_query", "scheduled", "manual"
+  userId      String? @db.VarChar(100) // If triggered by user
+
   // Timestamps
-  createdAt     DateTime @default(now())
-  
+  createdAt DateTime @default(now())
+
   // Relationships
-  project       ProjectKnowledge @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
-  
+  project ProjectKnowledge @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+
   @@index([projectId, createdAt(sort: Desc)])
   @@index([researchType])
   @@index([createdAt(sort: Desc)])
