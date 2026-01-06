@@ -200,12 +200,14 @@ BEGIN
             ON CONFLICT ("id") DO NOTHING;
             
             -- Delete duplicate orphaned records (keep the oldest one)
+            -- Partition by (category, key) only since all will become system user
+            -- This prevents unique constraint violations when updating to system user
             DELETE FROM "user_memories" 
             WHERE "id" IN (
                 SELECT "id" FROM (
                     SELECT "id", 
                            ROW_NUMBER() OVER (
-                               PARTITION BY "userId", "category", "key" 
+                               PARTITION BY "category", "key" 
                                ORDER BY "createdAt" ASC
                            ) as rn
                     FROM "user_memories"

@@ -11,17 +11,20 @@ VALUES ('system-orphaned-user', 'system@coinet.ai', '$2a$12$placeholder', 'USER'
 ON CONFLICT ("id") DO NOTHING;
 
 -- Fix orphaned user_memories
--- Handle duplicates by keeping only one record per (userId, category, key) combination
+-- Handle duplicates: Multiple orphaned records with same (category, key) will conflict when updated to system user
+-- Solution: Delete duplicates BEFORE updating, keeping only the oldest record per (category, key)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_memories') THEN
-        -- First, delete duplicate orphaned records (keep the oldest one)
+        -- First, delete duplicate orphaned records
+        -- Partition by (category, key) only (not userId) since all will become system user
+        -- Keep the oldest record per (category, key) combination
         DELETE FROM "user_memories" 
         WHERE "id" IN (
             SELECT "id" FROM (
                 SELECT "id", 
                        ROW_NUMBER() OVER (
-                           PARTITION BY "userId", "category", "key" 
+                           PARTITION BY "category", "key" 
                            ORDER BY "createdAt" ASC
                        ) as rn
                 FROM "user_memories"
@@ -31,7 +34,7 @@ BEGIN
         );
         
         -- Then update remaining orphaned records to system user
-        -- This is safe now because duplicates have been removed
+        -- This is safe now because we've ensured only one record per (category, key) exists
         UPDATE "user_memories" 
         SET "userId" = 'system-orphaned-user'
         WHERE "userId" NOT IN (SELECT "id" FROM "users");
