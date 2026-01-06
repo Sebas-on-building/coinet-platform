@@ -1,11 +1,14 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../../db/client';
+import * as dbClient from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
 
 const router: Router = Router();
+
+// Get prisma client - use named export
+const prisma = dbClient.prisma;
 
 // Verify prisma is initialized
 if (!prisma) {
