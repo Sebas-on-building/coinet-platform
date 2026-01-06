@@ -3,7 +3,10 @@
 
 set -e
 
-# Suppress npm production warning (Prisma doesn't install dependencies, so this is safe)
+# Save original NODE_ENV and temporarily unset it to suppress npm production warning
+# Prisma doesn't install dependencies, so this is safe
+ORIGINAL_NODE_ENV="${NODE_ENV:-}"
+unset NODE_ENV
 export npm_config_production=false
 
 echo "🔧 Resolving failed migration..."
@@ -19,5 +22,10 @@ fi
 # Deploy all migrations (this will apply the fix migration)
 echo "📦 Deploying migrations..."
 npx prisma migrate deploy --schema=./prisma/schema.prisma
+
+# Restore NODE_ENV if it was set
+if [ -n "$ORIGINAL_NODE_ENV" ]; then
+  export NODE_ENV="$ORIGINAL_NODE_ENV"
+fi
 
 echo "✅ Migrations deployed successfully"
