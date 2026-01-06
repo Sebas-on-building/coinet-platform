@@ -7,11 +7,22 @@ import { z } from 'zod';
 
 const router: Router = Router();
 
-// Verify prisma is initialized
-if (!prisma) {
-  logger.error('❌ Prisma client is not initialized in auth routes');
-  throw new Error('Prisma client initialization failed');
-}
+// Helper function to safely access Prisma models
+const getPrismaModel = (modelName: string) => {
+  if (!prisma) {
+    throw new Error('Prisma client is not initialized');
+  }
+  const model = (prisma as any)[modelName];
+  if (!model) {
+    logger.error(`Prisma model '${modelName}' is not available`, {
+      availableModels: Object.keys(prisma).filter(key => !key.startsWith('$') && !key.startsWith('_')),
+      prismaType: typeof prisma,
+      prismaConstructor: prisma.constructor?.name,
+    });
+    throw new Error(`Prisma model '${modelName}' is not available. Make sure Prisma Client is generated.`);
+  }
+  return model;
+};
 
 // Verify JWT_SECRET is set
 if (!process.env.JWT_SECRET) {
@@ -58,7 +69,8 @@ router.post('/login', async (req: Request, res: Response) => {
     const { email, password } = validation.data;
 
     // Find user
-    const user = await (prisma as any).user.findUnique({
+    const User = getPrismaModel('user');
+    const user = await User.findUnique({
       where: { email: email.toLowerCase() },
     });
 
@@ -100,14 +112,15 @@ router.post('/login', async (req: Request, res: Response) => {
     );
 
     // Update last login
-    await (prisma as any).user.update({
+    await User.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
     // Create session
+    const Session = getPrismaModel('session');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await (prisma as any).session.create({
+    await Session.create({
       data: {
         userId: user.id,
         tenantId: 'default',
@@ -173,7 +186,8 @@ router.post('/register', async (req: Request, res: Response) => {
     const { email, password, name } = validation.data;
 
     // Check if user already exists
-    const existingUser = await (prisma as any).user.findUnique({
+    const User = getPrismaModel('user');
+    const existingUser = await User.findUnique({
       where: { email: email.toLowerCase() },
     });
 
@@ -188,7 +202,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
-    const user = await (prisma as any).user.create({
+    const user = await User.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
@@ -213,8 +227,9 @@ router.post('/register', async (req: Request, res: Response) => {
     );
 
     // Create session
+    const Session = getPrismaModel('session');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    await (prisma as any).session.create({
+    await Session.create({
       data: {
         userId: user.id,
         tenantId: 'default',
@@ -296,7 +311,8 @@ router.get('/me', async (req: Request, res: Response) => {
     }
 
     // Get user
-    const user = await (prisma as any).user.findUnique({
+    const User = getPrismaModel('user');
+    const user = await User.findUnique({
       where: { id: decoded.userId },
     });
 
@@ -355,7 +371,8 @@ router.post('/logout', async (req: Request, res: Response) => {
     const token = authHeader.substring(7);
 
     // Delete session
-    await (prisma as any).session.deleteMany({
+    const Session = getPrismaModel('session');
+    await Session.deleteMany({
       where: { token },
     });
 
