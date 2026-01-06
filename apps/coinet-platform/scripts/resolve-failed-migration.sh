@@ -38,3 +38,16 @@ if [ $DEPLOY_EXIT -ne 0 ]; then
 fi
 
 echo "✅ Migrations deployed successfully"
+
+# Regenerate Prisma Client after migrations to include new models
+echo "🔄 Regenerating Prisma Client..."
+TEMP_OUT=$(mktemp)
+(env -u NODE_ENV npx --yes prisma generate --schema=./prisma/schema.prisma 2>&1 | grep -vE "(npm warn|npm warn config)" || true) > "$TEMP_OUT" 2>&1
+GENERATE_EXIT=$?
+cat "$TEMP_OUT" | grep -vE "(npm warn|npm warn config)" || true
+rm -f "$TEMP_OUT"
+if [ $GENERATE_EXIT -eq 0 ]; then
+  echo "✅ Prisma Client regenerated successfully"
+else
+  echo "⚠️ Prisma Client regeneration failed (may still work with cached client)"
+fi
