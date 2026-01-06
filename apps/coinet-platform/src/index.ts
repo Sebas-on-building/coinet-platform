@@ -4475,9 +4475,11 @@ async function startServer() {
             const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
             // Quote schema path to handle spaces in directory names
             const quotedSchemaPath = `"${schemaPath}"`;
+            // Suppress npm production warning (Prisma doesn't install dependencies)
+            const env = { ...process.env, npm_config_production: 'false' };
             execSync(`npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss`, {
               stdio: 'inherit',
-              env: process.env,
+              env,
               cwd: path.join(__dirname, '..'),
             });
             logger.info('✅ Database schema synced');

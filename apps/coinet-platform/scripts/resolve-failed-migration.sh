@@ -3,6 +3,9 @@
 
 set -e
 
+# Suppress npm production warning (Prisma doesn't install dependencies, so this is safe)
+export npm_config_production=false
+
 echo "🔧 Resolving failed migration..."
 
 # Try to resolve the failed migration (ignore if already resolved or doesn't exist)
