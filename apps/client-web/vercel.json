@@ -1,7 +1,4 @@
 {
-  "buildCommand": "cd apps/client-web && npm install && npm run build",
-  "outputDirectory": "apps/client-web/dist",
-  "installCommand": "cd apps/client-web && npm install",
   "framework": "vite",
   "rewrites": [
     {
