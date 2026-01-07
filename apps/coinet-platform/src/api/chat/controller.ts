@@ -1,8 +1,10 @@
 /**
  * 🎮 Chat Controller - Request Handlers
  * 
- * Divine controller that handles HTTP requests with
+ * Controller that handles HTTP requests with
  * validation, error handling, and response formatting.
+ * 
+ * All handlers expect authenticated requests (req.auth is set by requireAuth middleware).
  */
 
 import { Request, Response } from 'express';
@@ -15,6 +17,7 @@ import {
   RegenerateMessageRequest,
 } from './types';
 import { z } from 'zod';
+import { AuthenticatedRequest } from '../../middleware/requireAuth';
 
 // Request validation schemas
 const ChatMessageSchema = z.object({
@@ -33,16 +36,39 @@ const RegenerateMessageSchema = z.object({
   conversationId: z.string(),
 });
 
+/**
+ * Get userId from authenticated request.
+ * Throws if request is not authenticated.
+ */
+function getUserId(req: Request): string {
+  const auth = (req as AuthenticatedRequest).auth;
+  
+  if (!auth?.userId) {
+    // This should never happen if requireAuth middleware is applied
+    throw new Error('Request is not authenticated');
+  }
+  
+  return auth.userId;
+}
+
+/**
+ * Get requestId from request.
+ */
+function getRequestId(req: Request): string {
+  return (req as any).requestId || 'unknown';
+}
+
 export class ChatController {
   /**
    * POST /api/chat/message
    */
   async sendMessage(req: Request, res: Response): Promise<void> {
     const startTime = Date.now();
+    const requestId = getRequestId(req);
 
     try {
-      // Get user ID from auth (for now, using placeholder)
-      const userId = (req as any).user?.id || req.headers['x-user-id'] as string || 'anonymous';
+      // Get authenticated user ID (no more anonymous fallback)
+      const userId = getUserId(req);
 
       // Validate request
       const validationResult = ChatMessageSchema.safeParse(req.body);
@@ -54,6 +80,7 @@ export class ChatController {
             message: 'Invalid request format',
             details: validationResult.error.errors,
           },
+          requestId,
         });
         return;
       }
@@ -66,6 +93,7 @@ export class ChatController {
 
       const processingTime = Date.now() - startTime;
       logger.info('✅ Chat message sent', {
+        requestId,
         userId,
         conversationId: response.data.conversationId,
         processingTime,
@@ -74,7 +102,7 @@ export class ChatController {
       res.status(200).json(response);
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      logger.error('❌ Chat message failed', error, { processingTime });
+      logger.error('❌ Chat message failed', error, { requestId, processingTime });
 
       res.status(500).json({
         success: false,
@@ -85,6 +113,7 @@ export class ChatController {
         metadata: {
           processingTime,
         },
+        requestId,
       });
     }
   }
@@ -93,8 +122,10 @@ export class ChatController {
    * GET /api/chat/history/:conversationId
    */
   async getHistory(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
     try {
-      const userId = (req as any).user?.id || req.headers['x-user-id'] as string || 'anonymous';
+      const userId = getUserId(req);
       const { conversationId } = req.params;
 
       if (!conversationId) {
@@ -104,6 +135,7 @@ export class ChatController {
             code: 'VALIDATION_ERROR',
             message: 'conversationId is required',
           },
+          requestId,
         });
         return;
       }
@@ -112,7 +144,20 @@ export class ChatController {
 
       res.status(200).json(response);
     } catch (error) {
-      logger.error('❌ Failed to get conversation history', error);
+      logger.error('❌ Failed to get conversation history', error, { requestId });
+
+      // Check for authorization errors (user doesn't own conversation)
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have access to this conversation',
+          },
+          requestId,
+        });
+        return;
+      }
 
       res.status(500).json({
         success: false,
@@ -120,6 +165,7 @@ export class ChatController {
           code: 'HISTORY_ERROR',
           message: error instanceof Error ? error.message : 'Failed to get conversation history',
         },
+        requestId,
       });
     }
   }
@@ -128,8 +174,10 @@ export class ChatController {
    * DELETE /api/chat/message/:messageId
    */
   async deleteMessage(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
     try {
-      const userId = (req as any).user?.id || req.headers['x-user-id'] as string || 'anonymous';
+      const userId = getUserId(req);
       const { messageId } = req.params;
       const conversationId = req.query.conversationId as string;
 
@@ -140,6 +188,7 @@ export class ChatController {
             code: 'VALIDATION_ERROR',
             message: 'messageId and conversationId are required',
           },
+          requestId,
         });
         return;
       }
@@ -148,7 +197,20 @@ export class ChatController {
 
       res.status(200).json(response);
     } catch (error) {
-      logger.error('❌ Failed to delete message', error);
+      logger.error('❌ Failed to delete message', error, { requestId });
+
+      // Check for authorization errors
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have permission to delete this message',
+          },
+          requestId,
+        });
+        return;
+      }
 
       res.status(500).json({
         success: false,
@@ -156,6 +218,7 @@ export class ChatController {
           code: 'DELETE_ERROR',
           message: error instanceof Error ? error.message : 'Failed to delete message',
         },
+        requestId,
       });
     }
   }
@@ -165,9 +228,10 @@ export class ChatController {
    */
   async regenerate(req: Request, res: Response): Promise<void> {
     const startTime = Date.now();
+    const requestId = getRequestId(req);
 
     try {
-      const userId = (req as any).user?.id || req.headers['x-user-id'] as string || 'anonymous';
+      const userId = getUserId(req);
 
       // Validate request
       const validationResult = RegenerateMessageSchema.safeParse(req.body);
@@ -179,6 +243,7 @@ export class ChatController {
             message: 'Invalid request format',
             details: validationResult.error.errors,
           },
+          requestId,
         });
         return;
       }
@@ -189,6 +254,7 @@ export class ChatController {
 
       const processingTime = Date.now() - startTime;
       logger.info('✅ Message regenerated', {
+        requestId,
         userId,
         messageId,
         conversationId,
@@ -198,7 +264,20 @@ export class ChatController {
       res.status(200).json(response);
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      logger.error('❌ Failed to regenerate message', error, { processingTime });
+      logger.error('❌ Failed to regenerate message', error, { requestId, processingTime });
+
+      // Check for authorization errors
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have permission to regenerate this message',
+          },
+          requestId,
+        });
+        return;
+      }
 
       res.status(500).json({
         success: false,
@@ -209,6 +288,7 @@ export class ChatController {
         metadata: {
           processingTime,
         },
+        requestId,
       });
     }
   }
@@ -216,4 +296,3 @@ export class ChatController {
 
 // Export singleton instance
 export const chatController = new ChatController();
-

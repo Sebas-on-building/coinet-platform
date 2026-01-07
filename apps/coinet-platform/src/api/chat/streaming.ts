@@ -1,13 +1,16 @@
 /**
  * 🌊 Chat Streaming - Server-Sent Events (SSE)
  * 
- * Divine SSE implementation for real-time chat responses.
+ * SSE implementation for real-time chat responses.
  * Streams tokens as they are generated for instant user feedback.
+ * 
+ * All handlers expect authenticated requests (req.auth is set by requireAuth middleware).
  */
 
 import { Request, Response } from 'express';
 import { chatService } from './service';
 import { logger } from '../../utils/logger';
+import { AuthenticatedRequest } from '../../middleware/requireAuth';
 
 export interface StreamChunk {
   type: 'token' | 'source' | 'chart' | 'metadata' | 'complete' | 'error';
@@ -20,22 +23,64 @@ export interface StreamChunk {
   };
 }
 
+/**
+ * Get userId from authenticated request.
+ * Throws if request is not authenticated.
+ */
+function getUserId(req: Request): string {
+  const auth = (req as AuthenticatedRequest).auth;
+  
+  if (!auth?.userId) {
+    // This should never happen if requireAuth middleware is applied
+    throw new Error('Request is not authenticated');
+  }
+  
+  return auth.userId;
+}
+
+/**
+ * Get requestId from request.
+ */
+function getRequestId(req: Request): string {
+  return (req as any).requestId || 'unknown';
+}
+
 export class ChatStreamingController {
   /**
-   * GET /api/chat/stream
+   * POST /api/chat/stream
    * Stream chat response using Server-Sent Events
+   * 
+   * @requires Authentication (JWT token in Authorization header)
    */
   async streamMessage(req: Request, res: Response): Promise<void> {
-    const userId = (req as any).user?.id || req.headers['x-user-id'] as string || 'anonymous';
-    const { message, conversationId, agentId, context } = req.body;
-
-    // Set up SSE headers
+    const requestId = getRequestId(req);
+    
+    // Set up SSE headers first (before any potential errors)
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.setHeader('X-Request-ID', requestId);
+    
+    let userId: string;
+    
+    try {
+      // Get authenticated user ID (no more anonymous fallback)
+      userId = getUserId(req);
+    } catch (error) {
+      // Send error event for authentication failures
+      this.sendEvent(res, {
+        type: 'error',
+        content: 'Authentication required',
+        data: { code: 'AUTH_REQUIRED' },
+      });
+      res.end();
+      return;
+    }
+    
+    const { message, conversationId, agentId, context } = req.body;
 
-    logger.info('🌊 Starting SSE stream', { userId, conversationId });
+    logger.info('🌊 Starting SSE stream', { requestId, userId, conversationId });
 
     try {
       // Send initial connection event
@@ -43,6 +88,7 @@ export class ChatStreamingController {
         type: 'metadata',
         data: {
           status: 'connected',
+          requestId,
         },
       });
 
@@ -105,17 +151,22 @@ export class ChatStreamingController {
       });
 
       logger.info('✅ SSE stream complete', {
+        requestId,
         userId,
         conversationId: response.data.conversationId,
       });
 
       res.end();
     } catch (error) {
-      logger.error('❌ SSE stream error', error);
+      logger.error('❌ SSE stream error', error, { requestId, userId });
 
       this.sendEvent(res, {
         type: 'error',
         content: error instanceof Error ? error.message : 'Stream error',
+        data: { 
+          code: 'STREAM_ERROR',
+          requestId,
+        },
       });
 
       res.end();
@@ -139,4 +190,3 @@ export class ChatStreamingController {
 
 // Export singleton
 export const chatStreamingController = new ChatStreamingController();
-

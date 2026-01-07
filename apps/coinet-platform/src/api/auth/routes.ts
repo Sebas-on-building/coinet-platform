@@ -4,6 +4,12 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../../db/client';
 import { logger } from '../../utils/logger';
 import { z } from 'zod';
+import { 
+  authRateLimit, 
+  recordAuthFailure, 
+  clearAuthFailures,
+  isAuthBlocked 
+} from '../../middleware/rateLimit';
 
 const router: Router = Router();
 
@@ -20,16 +26,21 @@ const getPrismaModel = (modelName: string) => {
     
     const model = (prisma as any)[modelName];
     if (!model) {
+      // Get available models from prisma object (excluding internal properties)
+      const availableModels = Object.keys(prisma).filter(
+        key => !key.startsWith('$') && !key.startsWith('_') && typeof (prisma as any)[key] === 'object'
+      );
       logger.error(`Prisma model '${modelName}' is not available`, {
-        availableModels: prismaKeys,
+        availableModels,
         prismaType: typeof prisma,
         prismaConstructor: prisma?.constructor?.name,
         hasPrisma: !!prisma,
       });
-      throw new Error(`Prisma model '${modelName}' is not available. Available models: ${prismaKeys.join(', ')}`);
+      throw new Error(`Prisma model '${modelName}' is not available. Available models: ${availableModels.join(', ')}`);
     }
     
-    if (typeof model.findUnique !== 'function') {
+    if (typeof model.findUnique !== 'function' && modelName === 'user') {
+      // Only check for findUnique on user model (session uses different methods)
       logger.error(`Prisma model '${modelName}' does not have findUnique method`, {
         modelType: typeof model,
         modelKeys: model ? Object.keys(model) : [],
@@ -68,14 +79,27 @@ const registerSchema = z.object({
 // ============================================================================
 // POST /auth/login
 // ============================================================================
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authRateLimit, async (req: Request, res: Response) => {
+  const requestId = (req as any).requestId || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
+    // Check if IP is blocked due to too many failures
+    if (await isAuthBlocked(req)) {
+      logger.warn('🚫 Auth blocked due to too many failures', { requestId, path: req.path });
+      return res.status(429).json({
+        success: false,
+        error: 'Too many failed login attempts. Please try again later.',
+        requestId,
+      });
+    }
+    
     // Runtime check for prisma
     if (!prisma) {
-      logger.error('Prisma client not available in login handler');
+      logger.error('Prisma client not available in login handler', { requestId });
       return res.status(500).json({
         success: false,
         error: 'Database connection error',
+        requestId,
       });
     }
 
@@ -98,28 +122,37 @@ router.post('/login', async (req: Request, res: Response) => {
     });
 
     if (!user) {
+      await recordAuthFailure(req);
       return res.status(401).json({
         success: false,
         error: 'Invalid email or password',
+        requestId,
       });
     }
 
     // Check if user is active
     if (!user.active) {
+      await recordAuthFailure(req);
       return res.status(401).json({
         success: false,
         error: 'Account is inactive',
+        requestId,
       });
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      await recordAuthFailure(req);
       return res.status(401).json({
         success: false,
         error: 'Invalid email or password',
+        requestId,
       });
     }
+    
+    // Clear any recorded auth failures on successful login
+    await clearAuthFailures(req);
 
     // Generate JWT token
     const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
@@ -185,14 +218,17 @@ router.post('/login', async (req: Request, res: Response) => {
 // ============================================================================
 // POST /auth/register
 // ============================================================================
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', authRateLimit, async (req: Request, res: Response) => {
+  const requestId = (req as any).requestId || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     // Runtime check for prisma
     if (!prisma) {
-      logger.error('Prisma client not available in register handler');
+      logger.error('Prisma client not available in register handler', { requestId });
       return res.status(500).json({
         success: false,
         error: 'Database connection error',
+        requestId,
       });
     }
 
