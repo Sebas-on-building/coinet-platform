@@ -13,6 +13,8 @@
  */
 
 import { API_BASE_URL } from '@/utils/api-config';
+import { TokenStorage } from '@/components/auth/AuthProvider';
+
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // Start at 1 second
@@ -99,6 +101,22 @@ class ApiClient {
   }
 
   /**
+   * Get authentication headers
+   */
+  private getAuthHeaders(): Record<string, string> {
+    const token = TokenStorage.getToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  /**
    * Send chat message to backend
    */
   async sendChatMessage(request: ChatMessageRequest): Promise<ChatMessageResponse> {
@@ -106,13 +124,15 @@ class ApiClient {
     console.log('🔍 Making request to:', url);
     console.log('📦 Request body:', request);
     
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+    
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': this.getUserId(),
-        },
+        headers: this.getAuthHeaders(),
         credentials: 'include', // Include credentials for CORS
         mode: 'cors', // Explicitly set CORS mode
         body: JSON.stringify(request),
@@ -124,6 +144,13 @@ class ApiClient {
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Unknown error' }));
         console.error('❌ Response error:', error);
+        
+        // Handle authentication errors
+        if (response.status === 401) {
+          TokenStorage.clearToken();
+          throw new Error(error.error?.message || error.message || 'Please log in to continue.');
+        }
+        
         throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
       }
 
@@ -162,10 +189,13 @@ class ApiClient {
    * Get conversation history
    */
   async getConversationHistory(conversationId: string): Promise<ConversationHistoryResponse> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+    
     const response = await fetch(`${this.baseURL}/api/chat/history/${conversationId}`, {
-      headers: {
-        'X-User-Id': this.getUserId(),
-      },
+      headers: this.getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -183,12 +213,14 @@ class ApiClient {
     conversationId: string,
     messageId: string
   ): Promise<ChatMessageResponse> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+    
     const response = await fetch(`${this.baseURL}/api/chat/regenerate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': this.getUserId(),
-      },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
         conversationId,
         messageId,
@@ -207,11 +239,14 @@ class ApiClient {
    * Delete a message
    */
   async deleteMessage(conversationId: string, messageId: string): Promise<void> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+    
     const response = await fetch(`${this.baseURL}/api/chat/message/${messageId}?conversationId=${conversationId}`, {
       method: 'DELETE',
-      headers: {
-        'X-User-Id': this.getUserId(),
-      },
+      headers: this.getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -220,21 +255,6 @@ class ApiClient {
     }
   }
 
-  /**
-   * Get user ID from storage or generate one
-   */
-  private getUserId(): string {
-    // Check localStorage for stored user ID
-    const stored = localStorage.getItem('coinet_user_id');
-    if (stored) {
-      return stored;
-    }
-
-    // Generate and store new user ID
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('coinet_user_id', userId);
-    return userId;
-  }
 
   /**
    * Health check

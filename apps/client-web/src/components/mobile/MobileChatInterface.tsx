@@ -228,6 +228,23 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
       triggerHaptic('success');
     } catch (error) {
       console.error('Chat API error:', error);
+      
+      // Handle authentication errors
+      if (error instanceof Error && (
+        error.message.includes('Please log in') || 
+        error.message.includes('AUTH_MISSING_TOKEN') ||
+        error.message.includes('AUTH_INVALID_TOKEN') ||
+        error.message.includes('AUTH_EXPIRED_TOKEN')
+      )) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to continue.",
+          variant: "destructive",
+        });
+        // Redirect to login page
+        window.location.href = '/auth';
+        return;
+      }
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to generate response. Please try again.",
@@ -307,9 +324,26 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
       toast({ title: "Response regenerated", description: "Generated a new response" });
     } catch (error) {
       console.error('Regenerate API error:', error);
+      
+      // Handle authentication errors
+      if (error instanceof Error && (
+        error.message.includes('Please log in') || 
+        error.message.includes('AUTH_MISSING_TOKEN') ||
+        error.message.includes('AUTH_INVALID_TOKEN') ||
+        error.message.includes('AUTH_EXPIRED_TOKEN')
+      )) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to continue.",
+          variant: "destructive",
+        });
+        window.location.href = '/auth';
+        return;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to regenerate response",
+        description: error instanceof Error ? error.message : "Failed to regenerate response",
         variant: "destructive",
       });
     } finally {

@@ -13,6 +13,7 @@
  */
 
 import { API_BASE_URL } from '@/utils/api-config';
+import { TokenStorage } from '@/components/auth/AuthProvider';
 
 export interface ChatMessageRequest {
   message: string;
@@ -302,14 +303,20 @@ class EnhancedApiClient {
         const timeoutId = setTimeout(() => controller.abort(), this.requestTimeout);
 
         try {
+          const token = TokenStorage.getToken();
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'X-Request-ID': this.generateRequestId(),
+            ...options.headers as Record<string, string>,
+          };
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+          
           const response = await fetch(`${this.baseURL}${endpoint}`, {
             ...options,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-User-Id': this.getUserId(),
-              'X-Request-ID': this.generateRequestId(),
-              ...options.headers,
-            },
+            headers,
             signal: controller.signal,
           });
 
@@ -317,6 +324,13 @@ class EnhancedApiClient {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            
+            // Handle authentication errors
+            if (response.status === 401) {
+              TokenStorage.clearToken();
+              throw new Error(errorData.error?.message || errorData.message || 'Please log in to continue.');
+            }
+            
             throw new Error(
               errorData.error?.message || 
               errorData.message || 
@@ -441,17 +455,6 @@ class EnhancedApiClient {
     });
   }
 
-  /**
-   * 🆔 User ID management
-   */
-  private getUserId(): string {
-    const stored = localStorage.getItem('coinet_user_id');
-    if (stored) return stored;
-
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('coinet_user_id', userId);
-    return userId;
-  }
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

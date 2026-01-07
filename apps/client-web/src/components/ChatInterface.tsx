@@ -289,6 +289,23 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
     } catch (error) {
       console.error('Chat API error:', error);
       
+      // Handle authentication errors
+      if (error instanceof Error && (
+        error.message.includes('Please log in') || 
+        error.message.includes('AUTH_MISSING_TOKEN') ||
+        error.message.includes('AUTH_INVALID_TOKEN') ||
+        error.message.includes('AUTH_EXPIRED_TOKEN')
+      )) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to continue.",
+          variant: "destructive",
+        });
+        // Redirect to login page
+        window.location.href = '/auth';
+        return;
+      }
+      
       // Provide more helpful error messages
       let errorMessage = "Failed to generate response. Please try again.";
       if (error instanceof Error) {
