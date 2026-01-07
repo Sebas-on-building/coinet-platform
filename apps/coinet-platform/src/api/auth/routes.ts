@@ -154,17 +154,25 @@ router.post('/login', authRateLimit, async (req: Request, res: Response) => {
     // Clear any recorded auth failures on successful login
     await clearAuthFailures(req);
 
-    // Generate JWT token
+    // Generate JWT token with proper claims
     const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+    const JWT_ISSUER = process.env.JWT_ISSUER || 'coinet-platform';
+    const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'coinet-users';
+    
     const token = jwt.sign(
       {
         userId: user.id,
+        sub: user.id, // Standard JWT claim
         email: user.email,
         role: user.role,
         tier: user.tier,
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      {
+        expiresIn: '7d',
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+      }
     );
 
     // Update last login
@@ -272,17 +280,25 @@ router.post('/register', authRateLimit, async (req: Request, res: Response) => {
       },
     });
 
-    // Generate JWT token
+    // Generate JWT token with proper claims
     const JWT_SECRET = process.env.JWT_SECRET!;
+    const JWT_ISSUER = process.env.JWT_ISSUER || 'coinet-platform';
+    const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'coinet-users';
+    
     const token = jwt.sign(
       {
         userId: user.id,
+        sub: user.id, // Standard JWT claim
         email: user.email,
         role: user.role,
         tier: user.tier,
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      {
+        expiresIn: '7d',
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+      }
     );
 
     // Create session
