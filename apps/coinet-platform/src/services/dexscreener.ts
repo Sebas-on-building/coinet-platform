@@ -742,6 +742,375 @@ function formatNumber(num: number): string {
 }
 
 // ============================================================================
+// 🆕 NEW COIN / MEME COIN SPECIFIC FUNCTIONS
+// ============================================================================
+
+/**
+ * Enhanced token data for meme coin analysis
+ */
+export interface EnhancedDexToken extends DexToken {
+  // Additional metrics for new coins
+  ageMinutes: number;
+  ageHours: number;
+  isNewCoin: boolean;           // < 24 hours old
+  isVeryNew: boolean;           // < 1 hour old
+  
+  // Trading activity analysis
+  buyPressure: number;          // 0-1, ratio of buys
+  volumeToLiquidity: number;    // Velocity indicator
+  txnsPerHour: number;          // Activity rate
+  
+  // Risk indicators specific to new coins
+  isLowLiquidity: boolean;      // < $10K
+  isMicroCap: boolean;          // < $100K mcap
+  hasHighSellPressure: boolean; // > 60% sells
+  
+  // Price action
+  priceChange5mPercent: number;
+  priceChange1hPercent: number;
+  
+  // Data quality
+  hasVerifiedInfo: boolean;
+  pairCount: number;
+}
+
+/**
+ * 🆕 Get enhanced token data optimized for new/meme coins
+ */
+export async function getEnhancedTokenData(address: string): Promise<EnhancedDexToken | null> {
+  const cacheKey = `enhanced:${address.toLowerCase()}`;
+  
+  const cached = cache.get<EnhancedDexToken>(cacheKey);
+  if (cached) return cached;
+  
+  try {
+    await rateLimiter.waitForSlot();
+    
+    // Get all pairs for the token
+    const response = await axios.get(
+      `${CONFIG.BASE_URL}/latest/dex/tokens/${address}`,
+      { timeout: CONFIG.TIMEOUT }
+    );
+    
+    const pairs: DexPair[] = response.data?.pairs || [];
+    
+    if (pairs.length === 0) {
+      // Try search as fallback
+      const searchResult = await searchToken(address);
+      if (searchResult.tokens.length === 0) return null;
+      
+      const token = searchResult.tokens[0];
+      return convertToEnhancedToken(token, 1);
+    }
+    
+    // Find the best pair (highest liquidity with USD quote)
+    const usdPairs = pairs.filter(p => 
+      CONFIG.USD_QUOTE_TOKENS.includes(p.quoteToken.symbol.toUpperCase())
+    );
+    const bestPairs = usdPairs.length > 0 ? usdPairs : pairs;
+    const bestPair = bestPairs.sort((a, b) => 
+      (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+    )[0];
+    
+    if (!bestPair) return null;
+    
+    const baseToken = pairToToken(bestPair);
+    const enhanced = convertToEnhancedToken(baseToken, pairs.length);
+    
+    cache.set(cacheKey, enhanced);
+    
+    logger.debug('🦎 Enhanced token data fetched', {
+      symbol: enhanced.symbol,
+      age: enhanced.ageHours.toFixed(1) + 'h',
+      isNew: enhanced.isNewCoin,
+      buyPressure: (enhanced.buyPressure * 100).toFixed(0) + '%',
+    });
+    
+    return enhanced;
+  } catch (error: any) {
+    logger.error('🦎 Enhanced token fetch failed', {
+      address: address.slice(0, 8),
+      error: error.message,
+    });
+    return null;
+  }
+}
+
+/**
+ * Convert DexToken to EnhancedDexToken with additional metrics
+ */
+function convertToEnhancedToken(token: DexToken, pairCount: number): EnhancedDexToken {
+  const now = Date.now();
+  const createdAt = token.pairCreatedAt?.getTime() || now;
+  const ageMs = now - createdAt;
+  const ageMinutes = ageMs / (1000 * 60);
+  const ageHours = ageMinutes / 60;
+  
+  const totalTxns = token.txns24h.buys + token.txns24h.sells;
+  const buyPressure = totalTxns > 0 ? token.txns24h.buys / totalTxns : 0.5;
+  const volumeToLiquidity = token.liquidity > 0 ? token.volume24h / token.liquidity : 0;
+  const txnsPerHour = ageHours > 0 ? totalTxns / Math.min(24, ageHours) : totalTxns;
+  
+  return {
+    ...token,
+    ageMinutes,
+    ageHours,
+    isNewCoin: ageHours < 24,
+    isVeryNew: ageHours < 1,
+    buyPressure,
+    volumeToLiquidity,
+    txnsPerHour,
+    isLowLiquidity: token.liquidity < 10000,
+    isMicroCap: (token.marketCap || token.fdv) < 100000,
+    hasHighSellPressure: buyPressure < 0.4,
+    priceChange5mPercent: token.priceChange5m || 0,
+    priceChange1hPercent: token.priceChange1h || 0,
+    hasVerifiedInfo: token.isVerified,
+    pairCount,
+  };
+}
+
+/**
+ * 🔥 Get trending new tokens on a specific chain
+ */
+export async function getTrendingNewTokens(
+  chainId: ChainId,
+  maxAgeHours: number = 24,
+  minLiquidity: number = 5000,
+  limit: number = 20
+): Promise<EnhancedDexToken[]> {
+  const cacheKey = `trending:${chainId}:${maxAgeHours}:${minLiquidity}`;
+  
+  const cached = cache.get<EnhancedDexToken[]>(cacheKey);
+  if (cached) return cached;
+  
+  try {
+    // DexScreener doesn't have a direct "new tokens" endpoint
+    // We search for popular base tokens and filter
+    const searchQueries = chainId === 'solana' 
+      ? ['sol', 'usdc', 'pump'] 
+      : ['eth', 'usdc', 'weth'];
+    
+    const allTokens: DexToken[] = [];
+    
+    for (const query of searchQueries) {
+      const result = await searchToken(query);
+      const chainTokens = result.tokens.filter(t => 
+        t.chainId === chainId &&
+        t.liquidity >= minLiquidity
+      );
+      allTokens.push(...chainTokens);
+    }
+    
+    // Deduplicate
+    const uniqueTokens = dedupeTokens(allTokens);
+    
+    // Convert to enhanced and filter by age
+    const enhanced: EnhancedDexToken[] = uniqueTokens
+      .map(t => convertToEnhancedToken(t, 1))
+      .filter(t => t.ageHours <= maxAgeHours)
+      .sort((a, b) => b.volume24h - a.volume24h)
+      .slice(0, limit);
+    
+    cache.set(cacheKey, enhanced);
+    
+    return enhanced;
+  } catch (error: any) {
+    logger.error('🦎 Failed to get trending new tokens', { error: error.message });
+    return [];
+  }
+}
+
+/**
+ * 📊 Analyze token specifically for meme coin risks
+ */
+export interface MemeCoinRiskAnalysis {
+  overallRisk: 'low' | 'medium' | 'high' | 'extreme';
+  riskScore: number;  // 0-100
+  
+  // Individual risk factors
+  liquidityRisk: 'low' | 'medium' | 'high';
+  ageRisk: 'low' | 'medium' | 'high';
+  volumeRisk: 'low' | 'medium' | 'high';
+  sellPressureRisk: 'low' | 'medium' | 'high';
+  
+  // Warnings
+  warnings: string[];
+  positives: string[];
+  
+  // Recommendations
+  maxPositionSizeUsd: number;
+  expectedSlippagePercent: number;
+}
+
+export function analyzeMemeCoinRisk(token: EnhancedDexToken): MemeCoinRiskAnalysis {
+  let riskScore = 0;
+  const warnings: string[] = [];
+  const positives: string[] = [];
+  
+  // Age risk
+  let ageRisk: 'low' | 'medium' | 'high' = 'low';
+  if (token.isVeryNew) {
+    ageRisk = 'high';
+    riskScore += 25;
+    warnings.push(`Extremely new (${Math.round(token.ageMinutes)} minutes old)`);
+  } else if (token.isNewCoin) {
+    ageRisk = 'medium';
+    riskScore += 10;
+    warnings.push(`New token (${token.ageHours.toFixed(1)} hours old)`);
+  } else if (token.ageHours > 168) { // > 7 days
+    positives.push(`Established (${Math.floor(token.ageHours / 24)} days old)`);
+  }
+  
+  // Liquidity risk
+  let liquidityRisk: 'low' | 'medium' | 'high' = 'low';
+  if (token.liquidity < 5000) {
+    liquidityRisk = 'high';
+    riskScore += 30;
+    warnings.push(`Dangerously low liquidity ($${formatNumber(token.liquidity)})`);
+  } else if (token.liquidity < 20000) {
+    liquidityRisk = 'medium';
+    riskScore += 15;
+    warnings.push(`Low liquidity ($${formatNumber(token.liquidity)})`);
+  } else if (token.liquidity > 100000) {
+    positives.push(`Good liquidity ($${formatNumber(token.liquidity)})`);
+  }
+  
+  // Sell pressure risk
+  let sellPressureRisk: 'low' | 'medium' | 'high' = 'low';
+  if (token.hasHighSellPressure) {
+    sellPressureRisk = 'high';
+    riskScore += 20;
+    warnings.push(`Heavy sell pressure (${((1 - token.buyPressure) * 100).toFixed(0)}% sells)`);
+  } else if (token.buyPressure > 0.65) {
+    positives.push(`Strong buy pressure (${(token.buyPressure * 100).toFixed(0)}% buys)`);
+  }
+  
+  // Volume/liquidity ratio risk
+  let volumeRisk: 'low' | 'medium' | 'high' = 'low';
+  if (token.volumeToLiquidity > 20) {
+    volumeRisk = 'high';
+    riskScore += 15;
+    warnings.push(`Suspicious volume (${token.volumeToLiquidity.toFixed(1)}x liquidity)`);
+  } else if (token.volumeToLiquidity > 10) {
+    volumeRisk = 'medium';
+    riskScore += 8;
+    warnings.push(`High volume relative to liquidity`);
+  } else if (token.volumeToLiquidity > 1 && token.volumeToLiquidity < 5) {
+    positives.push(`Healthy volume/liquidity ratio`);
+  }
+  
+  // Verification
+  if (!token.hasVerifiedInfo) {
+    riskScore += 10;
+    warnings.push(`No verified website or socials`);
+  } else {
+    positives.push(`Verified project info`);
+  }
+  
+  // Multiple pairs is usually good
+  if (token.pairCount > 1) {
+    positives.push(`Multiple trading pairs (${token.pairCount})`);
+  }
+  
+  // Determine overall risk
+  let overallRisk: 'low' | 'medium' | 'high' | 'extreme';
+  if (riskScore >= 70) overallRisk = 'extreme';
+  else if (riskScore >= 50) overallRisk = 'high';
+  else if (riskScore >= 25) overallRisk = 'medium';
+  else overallRisk = 'low';
+  
+  // Calculate max position size based on liquidity
+  // Rule: don't be more than 2% of liquidity to avoid massive slippage
+  const maxPositionSizeUsd = Math.min(
+    token.liquidity * 0.02,
+    10000 // Cap at $10K for safety
+  );
+  
+  // Estimate slippage for a $1000 trade
+  const expectedSlippagePercent = token.liquidity > 0
+    ? Math.min(50, (1000 / token.liquidity) * 100 * 2) // Rough estimate
+    : 50;
+  
+  return {
+    overallRisk,
+    riskScore: Math.min(100, riskScore),
+    liquidityRisk,
+    ageRisk,
+    volumeRisk,
+    sellPressureRisk,
+    warnings,
+    positives,
+    maxPositionSizeUsd,
+    expectedSlippagePercent,
+  };
+}
+
+/**
+ * Build comprehensive AI context for a meme coin
+ */
+export function buildMemeCoinContext(token: EnhancedDexToken): string {
+  const risk = analyzeMemeCoinRisk(token);
+  const priceStr = token.priceUsd < 0.00001 
+    ? token.priceUsd.toExponential(4) 
+    : token.priceUsd.toFixed(8);
+  
+  return `
+=== DEXSCREENER DATA: ${token.symbol} ===
+
+📊 TOKEN INFO:
+• Symbol: ${token.symbol}
+• Name: ${token.name}
+• Address: ${token.address}
+• Chain: ${token.chainId}
+• DEX: ${token.dex}
+• Trading Pairs: ${token.pairCount}
+
+💰 PRICE & MARKET:
+• Price: $${priceStr}
+• Market Cap: $${formatNumber(token.marketCap || token.fdv)}
+• FDV: $${formatNumber(token.fdv)}
+• Liquidity: $${formatNumber(token.liquidity)}
+• 24h Volume: $${formatNumber(token.volume24h)}
+
+📈 PRICE CHANGES:
+• 5m: ${token.priceChange5mPercent >= 0 ? '+' : ''}${token.priceChange5mPercent.toFixed(1)}%
+• 1h: ${token.priceChange1hPercent >= 0 ? '+' : ''}${token.priceChange1hPercent.toFixed(1)}%
+• 24h: ${token.priceChange24h >= 0 ? '+' : ''}${token.priceChange24h.toFixed(1)}%
+
+📊 TRADING ACTIVITY:
+• Buys (24h): ${token.txns24h.buys}
+• Sells (24h): ${token.txns24h.sells}
+• Buy Pressure: ${(token.buyPressure * 100).toFixed(0)}%
+• Txns/Hour: ${token.txnsPerHour.toFixed(1)}
+• Volume/Liquidity: ${token.volumeToLiquidity.toFixed(2)}x
+
+⏰ AGE & STATUS:
+• Age: ${token.ageHours < 1 ? `${Math.round(token.ageMinutes)} minutes` : `${token.ageHours.toFixed(1)} hours`}
+• Is New Coin: ${token.isNewCoin ? 'YES' : 'NO'}
+• Is Very New (<1h): ${token.isVeryNew ? '⚠️ YES' : 'NO'}
+• Verified Info: ${token.hasVerifiedInfo ? 'YES' : 'NO'}
+
+🎯 RISK ANALYSIS:
+• Overall Risk: ${risk.overallRisk.toUpperCase()} (${risk.riskScore}/100)
+• Liquidity Risk: ${risk.liquidityRisk}
+• Age Risk: ${risk.ageRisk}
+• Sell Pressure Risk: ${risk.sellPressureRisk}
+• Volume Risk: ${risk.volumeRisk}
+
+${risk.warnings.length > 0 ? `⚠️ WARNINGS:\n${risk.warnings.map(w => `• ${w}`).join('\n')}` : ''}
+
+${risk.positives.length > 0 ? `✅ POSITIVES:\n${risk.positives.map(p => `• ${p}`).join('\n')}` : ''}
+
+💡 TRADING GUIDANCE:
+• Max Safe Position: $${formatNumber(risk.maxPositionSizeUsd)}
+• Expected Slippage: ~${risk.expectedSlippagePercent.toFixed(1)}%
+
+🔗 DEX Link: ${token.pairUrl}
+`.trim();
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -754,6 +1123,11 @@ export const dexscreener = {
   getNew: getNewPairs,
   analyzeRisk: analyzeTokenRisk,
   formatForAI: formatTokenForAI,
+  // 🆕 New coin specific
+  getEnhanced: getEnhancedTokenData,
+  getTrendingNew: getTrendingNewTokens,
+  analyzeMemeCoinRisk,
+  buildMemeCoinContext,
 };
 
 export default dexscreener;

@@ -69,40 +69,33 @@ export async function troubleshootHandler(
   dataSources.fetchSentiment = mentionedFeature?.includes('sentiment') || false;
   dataSources.fetchOmniScore = mentionedFeature?.includes('OmniScore') && detectedCoins.length > 0;
   
-  // Build empathetic diagnostic format
-  const formatHint = `RESPONSE FORMAT: Troubleshooting Mode
+  // Build conversational diagnostic format
+  const formatHint = `INTENT-AWARE RESPONSE GUIDANCE: Helpful Friend Debugging
+
+Something's not working for the user. They might be frustrated. Be empathetic and solution-focused.
 
 CRITICAL RULES:
-1. NEVER expose technical errors, stack traces, or internal system details
-2. NEVER blame the user
-3. ALWAYS provide a workaround or next step
+1. NEVER expose technical jargon, error codes, or system internals
+2. NEVER make them feel stupid for asking
+3. ALWAYS give them something actionable — even if it's just "let me check"
 
-STRUCTURE:
+HOW TO RESPOND:
+- First, acknowledge what they're seeing ("Yeah, I see what you're running into...")
+- Explain what's happening in plain language — like you'd explain to a friend
+- Give them a workaround or solution
+- If you can't fix it, be honest and offer an alternative
 
-LINE 1 — ACKNOWLEDGE (with empathy)
-"I see what you mean..." or "Got it, let me check that..."
-Show you understand their frustration.
+THEIR SITUATION:
+- Issue area: ${issueType}
+- Feature mentioned: ${mentionedFeature || 'not specified'}
+- Seems urgent: ${hasSpecificError ? 'yes, they mentioned an error' : 'moderate frustration'}
 
-LINE 2-3 — DIAGNOSE
-Explain what might be happening in simple terms.
-If the feature is working, show evidence.
-If it's not working, explain why (in user-friendly language).
+EXAMPLE TONE: "Yeah, I see what you're running into there. Looks like the derivatives data is lagging a bit right now — happens sometimes during high-volume periods. The core price and OmniScore should still be accurate though. Want me to run the analysis without the derivatives component for now?"
 
-LINE 4 — SOLUTION/WORKAROUND
-Always provide something actionable:
-- "Try asking about [X] instead"
-- "The data should refresh in a few minutes"
-- "Here's what I can tell you in the meantime..."
-
-CONTEXT:
-- Issue type: ${issueType}
-- Feature mentioned: ${mentionedFeature || 'none specified'}
-- Has specific error: ${hasSpecificError}
-
-If the user is reporting incorrect data:
-- Verify against the data you have in context
-- If data looks correct, explain what they might be comparing against
-- If data is unavailable, acknowledge and offer alternatives`;
+If they're reporting incorrect data:
+- Check against what you have in context
+- If YOUR data looks right, gently explain what they might be comparing against (different exchange, different timeframe, etc.)
+- If data really is unavailable, say so honestly and offer what you CAN provide`;
 
   return {
     dataSources,

@@ -21,8 +21,8 @@ const MAX_TOKEN_LENGTH = 4096;
 /** Valid user roles */
 const VALID_ROLES: UserRole[] = ['USER', 'ADMIN', 'MODERATOR'];
 
-/** Valid user tiers */
-const VALID_TIERS: UserTier[] = ['FREE', 'PREMIUM', 'ENTERPRISE', 'VIP'];
+/** Valid user tiers - must match Prisma schema UserTier enum */
+const VALID_TIERS: UserTier[] = ['FREE', 'PRO', 'ENTERPRISE'];
 
 /** Default clock tolerance in seconds */
 const DEFAULT_CLOCK_TOLERANCE_SEC = 30;

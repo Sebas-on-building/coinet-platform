@@ -69,14 +69,20 @@ export async function quickAnswerHandler(
     dataSources.fetchSentiment = true;
   }
   
-  // Build concise format hint
-  const formatHint = `RESPONSE FORMAT: Quick Answer Mode
-- Answer in 1-2 sentences with the exact data requested
-- Include ONE additional signal if relevant (e.g., 24h change with price)
-- Do NOT provide analysis or recommendations unless asked
-- Keep it crisp: this user wants fast information, not a lecture
+  // Build conversational format hint
+  const formatHint = `INTENT-AWARE RESPONSE GUIDANCE: Quick Chat Mode
 
-USER WANTS: ${requestedMetrics.join(', ')}`;
+The user wants a fast answer — treat this like a quick question from a friend who's busy.
+
+HOW TO RESPOND:
+- Give them the answer immediately in natural language ("BTC's at $87,500, up 3% today")
+- Add ONE useful piece of context if it's relevant
+- That's it. 3-4 sentences max. Don't pad it, don't lecture.
+- Sound like a friend glancing at their phone, not generating a report
+
+WHAT THEY'RE ASKING FOR: ${requestedMetrics.join(', ')}
+
+EXAMPLE TONE: "Bitcoin's sitting at $87,500 right now — up about 3% in the last 24 hours. Sentiment's pretty neutral at the moment."`;
 
   return {
     dataSources,

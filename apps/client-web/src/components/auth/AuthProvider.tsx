@@ -6,7 +6,8 @@ import { API_BASE_URL } from "@/utils/api-config";
 // TYPES - Railway Backend Compatible
 // ============================================================================
 
-export type UserTier = "FREE" | "PREMIUM" | "ENTERPRISE" | "VIP";
+// Must match backend Prisma schema UserTier enum
+export type UserTier = "FREE" | "PRO" | "ENTERPRISE";
 
 // User type compatible with rest of app (matches database.ts User interface)
 export interface User {
@@ -256,7 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           TokenStorage.clearToken();
         }
       }
-
+      
       setLoading(false);
     };
 
@@ -267,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string): Promise<{ error: Error | null }> => {
     try {
       setLoading(true);
-
+      
       // Try the user service auth endpoint
       // In dev: Vite proxy sends /auth/* to localhost:3000
       // In prod: API Gateway should route this correctly
@@ -278,7 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         body: JSON.stringify({ email, password }),
       });
-
+      
       const data: RailwayLoginResponse = await response.json();
 
       if (!response.ok || !data.success || !data.data) {
@@ -288,7 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         return { error: new Error(errorMessage) };
       }
-
+      
       // Store token
       TokenStorage.setToken(data.data.token);
 
@@ -327,7 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ): Promise<{ error: Error | null }> => {
     try {
       setLoading(true);
-
+      
       // Try the user service auth endpoint
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
@@ -335,8 +336,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email,
-          password,
+        email,
+        password,
           name: metadata?.display_name || undefined,
         }),
       });
@@ -350,7 +351,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         return { error: new Error(errorMessage) };
       }
-
+      
       // If registration returns a token, log the user in automatically
       if (data.data?.token) {
         TokenStorage.setToken(data.data.token);
@@ -373,7 +374,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           description: "Please check your email to verify your account.",
         });
       }
-
+      
       return { error: null };
     } catch (error) {
       const err = error as Error;
@@ -391,7 +392,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async (): Promise<void> => {
     try {
       setLoading(true);
-
+      
       const token = TokenStorage.getToken();
 
       // Call logout endpoint (optional, for session invalidation)
@@ -414,9 +415,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setSession(null);
       setProfile(null);
-
+      
       toast.success("Signed out successfully");
-
+      
       // Redirect to auth page
       window.location.href = "/auth";
     } catch (error) {
@@ -484,7 +485,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user) {
         throw new Error("No authenticated user");
       }
-
+      
       const token = TokenStorage.getToken();
       if (!token) {
         throw new Error("No authentication token");
@@ -501,19 +502,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           avatar: updates.avatar_url,
           bio: updates.bio,
         }),
-      });
-
+        });
+        
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || data.message || "Profile update failed");
       }
-
+      
       // Refresh user data
       const freshUser = await fetchCurrentUser(token);
       if (freshUser) {
         setUser(freshUser);
       }
-
+      
       toast.success("Profile updated successfully");
       return { error: null };
     } catch (error) {
@@ -531,7 +532,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     if (enabled) {
       const DEMO_USER_UUID = "00000000-0000-0000-0000-000000000001";
-
+      
       const mockUser: User = {
         id: DEMO_USER_UUID,
         email: "demo@coinet.ai",
@@ -542,7 +543,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updated_at: new Date().toISOString(),
         last_sign_in_at: new Date().toISOString(),
       };
-
+      
       const mockSession: Session = {
         access_token: "demo-token",
         refresh_token: "demo-refresh",
@@ -569,7 +570,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(mockSession);
       setProfile(mockProfile);
       setLoading(false);
-
+      
       toast.success("Demo mode activated! 🚀");
     }
   };

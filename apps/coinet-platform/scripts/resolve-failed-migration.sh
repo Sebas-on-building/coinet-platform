@@ -10,6 +10,11 @@ export npm_config_production=false
 
 echo "🔧 Checking migration state..."
 
+# Function to filter npm warnings from output
+filter_npm_warnings() {
+  grep -vE "(npm warn|npm warn config)" || true
+}
+
 # Function to safely run prisma commands
 run_prisma() {
   local cmd="$1"
@@ -17,17 +22,27 @@ run_prisma() {
   local skip_msg="$3"
   
   TEMP_OUT=$(mktemp)
-  if (env -u NODE_ENV npx --yes $cmd 2>&1 | grep -vE "(npm warn)" || true) > "$TEMP_OUT" 2>&1; then
-    local output=$(cat "$TEMP_OUT" | grep -vE "(npm warn)" || true)
-    rm -f "$TEMP_OUT"
-    # Check if there was an actual error
-    if echo "$output" | grep -q "Error:"; then
+  TEMP_ERR=$(mktemp)
+  
+  # Run command and filter warnings
+  if (env -u NODE_ENV npm_config_loglevel=silent npm_config_production=false npx --yes $cmd 2>&1 | filter_npm_warnings) > "$TEMP_OUT" 2>"$TEMP_ERR"; then
+    local output=$(cat "$TEMP_OUT" | filter_npm_warnings)
+    local errors=$(cat "$TEMP_ERR" | filter_npm_warnings)
+    rm -f "$TEMP_OUT" "$TEMP_ERR"
+    
+    # Check if there was an actual error (but ignore P3008 which means already applied)
+    if echo "$output$errors" | grep -qE "Error: (P[0-9]+|.*)" && ! echo "$output$errors" | grep -q "P3008"; then
+      echo "$output$errors" | filter_npm_warnings
       return 1
     fi
+    echo "$output$errors" | filter_npm_warnings
     echo "$success_msg"
     return 0
   else
-    rm -f "$TEMP_OUT"
+    local output=$(cat "$TEMP_OUT" | filter_npm_warnings)
+    local errors=$(cat "$TEMP_ERR" | filter_npm_warnings)
+    rm -f "$TEMP_OUT" "$TEMP_ERR"
+    echo "$output$errors" | filter_npm_warnings
     echo "$skip_msg"
     return 1
   fi
@@ -55,9 +70,9 @@ run_prisma "prisma migrate resolve --applied 20260106070000_fix_orphaned_user_da
 echo "📦 Deploying migrations..."
 TEMP_OUT=$(mktemp)
 TEMP_ERR=$(mktemp)
-(env -u NODE_ENV npx --yes prisma migrate deploy --schema=./prisma/schema.prisma 2>&1 | grep -vE "(npm warn)" || true) > "$TEMP_OUT" 2>"$TEMP_ERR"
+(env -u NODE_ENV npm_config_loglevel=silent npm_config_production=false npx --yes prisma migrate deploy --schema=./prisma/schema.prisma 2>&1 | filter_npm_warnings) > "$TEMP_OUT" 2>"$TEMP_ERR"
 DEPLOY_EXIT=$?
-cat "$TEMP_OUT" | grep -vE "(npm warn)" || true
+cat "$TEMP_OUT" "$TEMP_ERR" | filter_npm_warnings
 rm -f "$TEMP_OUT" "$TEMP_ERR"
 
 if [ $DEPLOY_EXIT -ne 0 ]; then
@@ -69,11 +84,12 @@ echo "✅ Migration state synchronized"
 # Regenerate Prisma Client to ensure models are up-to-date
 echo "🔄 Regenerating Prisma Client..."
 TEMP_OUT=$(mktemp)
-if (env -u NODE_ENV npx --yes prisma generate --schema=./prisma/schema.prisma 2>&1 | grep -vE "(npm warn)" || true) > "$TEMP_OUT" 2>&1; then
-  cat "$TEMP_OUT" | grep -vE "(npm warn)" || true
+TEMP_ERR=$(mktemp)
+if (env -u NODE_ENV npm_config_loglevel=silent npm_config_production=false npx --yes prisma generate --schema=./prisma/schema.prisma 2>&1 | filter_npm_warnings) > "$TEMP_OUT" 2>"$TEMP_ERR"; then
+  cat "$TEMP_OUT" "$TEMP_ERR" | filter_npm_warnings
   echo "✅ Prisma Client regenerated successfully"
 else
-  cat "$TEMP_OUT" | grep -vE "(npm warn)" || true
+  cat "$TEMP_OUT" "$TEMP_ERR" | filter_npm_warnings
   echo "⚠️ Prisma Client regeneration had issues (may still work)"
 fi
-rm -f "$TEMP_OUT"
+rm -f "$TEMP_OUT" "$TEMP_ERR"

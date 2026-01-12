@@ -22,6 +22,7 @@ import { aiService } from './services/ai-service';
 import { initializeRedis, getRedisStatus, getCacheStats, closeRedis } from './services/redis-client';
 import { logApiKeysStatus, generateApiKeysReport, getGracefulDegradation } from './services/api-keys';
 import { initializeCoinIdValidator } from './services/coin-id-validator';
+import { securityHeaders } from './middleware/securityHeaders';
 
 // Load environment variables
 dotenv.config();
@@ -81,6 +82,9 @@ app.use(cors({
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Security headers - MUST be early in the middleware chain
+app.use(securityHeaders);
 
 // Request logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {

@@ -1,63 +1,21 @@
-/**
- * Atomic Input component for Coinet
- * Inspired by Apple, Canva, TradingView, Solana
- * All props are documented and extensible
- */
-import React, { forwardRef } from 'react';
-import { twMerge } from 'tailwind-merge';
-import { colors } from 'src/styles/tokens/colors';
-import { spacing } from 'src/styles/tokens/spacing';
+import * as React from "react"
+import { cn } from "@/lib/utils"
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  className?: string;
-  error?: boolean;
-  helperText?: string;
-}
-
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, error, helperText, ...props }, ref) => {
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, type, ...props }, ref) => {
     return (
-      <div className="space-y-1">
         <input
-          ref={ref}
-          style={{
-            width: '100%',
-            padding: '14px 20px',
-            borderRadius: spacing.borderRadius,
-            border: `1.5px solid ${colors.dark.border}`,
-            background: colors.dark.surface,
-            color: colors.dark.text,
-            fontSize: 16,
-            outline: 'none',
-            boxShadow: 'none',
-            transition: 'border 0.2s',
-          }}
-          onFocus={e => (e.target.style.border = `1.5px solid ${colors.dark.primary}`)}
-          onBlur={e => (e.target.style.border = `1.5px solid ${colors.dark.border}`)}
-          className={twMerge(
-            "w-full px-3 py-2 bg-white dark:bg-gray-800 border rounded-md transition-colors",
-            error
-              ? "border-red-500 dark:border-red-400 focus:ring-red-500/20 focus:border-red-500"
-              : "border-gray-300 dark:border-gray-600 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400",
-            "focus:outline-none focus:ring-4",
-            "disabled:opacity-60 disabled:cursor-not-allowed",
+        type={type}
+        className={cn(
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 md:text-sm transition-colors",
             className
           )}
+        ref={ref}
           {...props}
         />
-        {helperText && (
-          <p
-            className={twMerge(
-              "text-xs",
-              error ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400"
-            )}
-          >
-            {helperText}
-          </p>
-        )}
-      </div>
-    );
+    )
   }
-);
+)
+Input.displayName = "Input"
 
-Input.displayName = 'Input';
+export { Input }

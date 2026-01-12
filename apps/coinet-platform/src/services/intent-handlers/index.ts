@@ -4,7 +4,7 @@
  * Routes classified intents to appropriate handler logic.
  * Each handler determines what context to fetch and how to shape responses.
  * 
- * @version 1.0.0
+ * @version 2.0.0 - Added new_coin_analysis handler for meme coin intelligence
  */
 
 import { IntentType, DataDepth, ResponseShape, IntentClassification } from '../intent-classifier';
@@ -13,6 +13,7 @@ import { decisionHelpHandler, DecisionHelpContext } from './decision-help';
 import { deepAnalysisHandler, DeepAnalysisContext } from './deep-analysis';
 import { troubleshootHandler, TroubleshootContext } from './troubleshoot';
 import { learningHandler, LearningContext } from './learning';
+import { newCoinAnalysisHandler, NewCoinAnalysisContext } from './new-coin-analysis';  // 🆕
 import { logger } from '../../utils/logger';
 
 // ============================================================================
@@ -67,6 +68,7 @@ const handlers: Record<IntentType, IntentHandler> = {
   deep_analysis: deepAnalysisHandler,
   troubleshoot: troubleshootHandler,
   learning: learningHandler,
+  new_coin_analysis: newCoinAnalysisHandler,  // 🆕 Meme coin intelligence
 };
 
 /**
@@ -190,3 +192,4 @@ export { decisionHelpHandler, DecisionHelpContext } from './decision-help';
 export { deepAnalysisHandler, DeepAnalysisContext } from './deep-analysis';
 export { troubleshootHandler, TroubleshootContext } from './troubleshoot';
 export { learningHandler, LearningContext } from './learning';
+export { newCoinAnalysisHandler, NewCoinAnalysisContext } from './new-coin-analysis';  // 🆕

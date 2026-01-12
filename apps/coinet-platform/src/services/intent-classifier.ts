@@ -10,8 +10,9 @@
  * - deep_analysis: Full breakdown of project/market
  * - troubleshoot: Technical/data error identification
  * - learning: Explanation of concepts
+ * - new_coin_analysis: Meme coin / pump.fun token analysis 🆕
  * 
- * @version 1.0.0 - MVP with rule-based classification
+ * @version 2.0.0 - Added new_coin_analysis intent for meme coin traders
  */
 
 import { logger } from '../utils/logger';
@@ -25,7 +26,8 @@ export type IntentType =
   | 'decision_help' 
   | 'deep_analysis'
   | 'troubleshoot'
-  | 'learning';
+  | 'learning'
+  | 'new_coin_analysis';  // 🆕 Meme coin / new token analysis
 
 export type DataDepth = 'minimal' | 'medium' | 'full';
 
@@ -34,7 +36,8 @@ export type ResponseShape =
   | 'three_block'    // Decision help: Answer, Why (3 bullets), Next step
   | 'dashboard'      // Deep analysis: Full metrics and breakdown
   | 'diagnostic'     // Troubleshoot: Acknowledge, diagnose, fallback
-  | 'story';         // Learning: Analogy-based explanation
+  | 'story'          // Learning: Analogy-based explanation
+  | 'meme_verdict';  // 🆕 Meme coin verdict: Risk/Potential + Price range
 
 export interface IntentClassification {
   intent: IntentType;
@@ -169,6 +172,48 @@ const INTENT_PATTERNS: Record<IntentType, PatternConfig> = {
       /\bcompare\b/i,
     ],
   },
+
+  // 🆕 NEW COIN ANALYSIS - Meme coins, pump.fun, trenching
+  new_coin_analysis: {
+    patterns: [
+      // Contract address patterns (highest priority)
+      /\b[1-9A-HJ-NP-Za-km-z]{32,44}pump\b/i,  // pump.fun addresses
+      /\b0x[a-fA-F0-9]{40}\b/i,                 // EVM addresses
+      /\b[1-9A-HJ-NP-Za-km-z]{40,44}\b/,        // Solana addresses
+      
+      // Explicit new coin keywords
+      /\bpump\.?fun\b/i,
+      /\braydium\b/i,
+      /\bmoonshot\b/i,
+      /\bnew (?:coin|token|launch)\b/i,
+      /\bjust (?:launched|listed|dropped)\b/i,
+      
+      // Scam check patterns
+      /\bis (?:this|it) (?:a )?(?:scam|rug|legit|safe)\b/i,
+      /\bscam check\b/i,
+      /\brug ?(?:check|pull)\b/i,
+      /\bhoneypot\b/i,
+      /\bcheck this (?:coin|token|address)\b/i,
+      
+      // Degen/trenching language
+      /\bshould i ape\b/i,
+      /\bworth (?:aping|buying|the risk)\b/i,
+      /\bdegen\b/i,
+      /\btrenching\b/i,
+      /\bmeme ?coin\b/i,
+      /\bshit ?coin\b/i,
+      
+      // Analysis requests for new coins
+      /\bpotential\b.*\b(?:scam|rug|moon)\b/i,
+      /\bprice (?:range|target|prediction)\b/i,
+      /\bgive me (?:a )?(?:quick|short).*(?:analysis|check)\b/i,
+    ],
+    weight: 1.6,  // Highest weight - new coin queries should always win
+    exclusions: [
+      /\bwhat is (?:a )?(?:meme ?coin|pump\.?fun)\b/i,  // Educational questions go to learning
+      /\bhow (?:does|do) pump\.?fun work\b/i,
+    ],
+  },
 };
 
 // Response shape and depth mappings
@@ -178,6 +223,7 @@ const INTENT_CONFIG: Record<IntentType, { depth: DataDepth; shape: ResponseShape
   deep_analysis: { depth: 'full', shape: 'dashboard' },
   troubleshoot: { depth: 'minimal', shape: 'diagnostic' },
   learning: { depth: 'minimal', shape: 'story' },
+  new_coin_analysis: { depth: 'full', shape: 'meme_verdict' },  // 🆕 Full data for meme coin analysis
 };
 
 // ============================================================================
@@ -335,47 +381,96 @@ export function getIntentDescription(intent: IntentType): string {
     deep_analysis: 'Comprehensive analysis - full OmniScore and metrics',
     troubleshoot: 'Technical issue resolution - diagnostic and fallback',
     learning: 'Educational explanation - concept breakdown with analogies',
+    new_coin_analysis: 'Meme coin analysis - scam detection, risk scoring, price range',  // 🆕
   };
   return descriptions[intent];
 }
 
 /**
  * Get formatting instructions for AI based on intent
+ * These instructions emphasize natural, human-like conversation patterns
  */
 export function getResponseFormatInstructions(intent: IntentType): string {
   const instructions: Record<IntentType, string> = {
-    quick_answer: `RESPONSE FORMAT: Quick Answer
-- Lead with the direct answer in 1-2 sentences
-- Include ONE key signal or context point
-- Total response: 3-4 sentences maximum
-- Be crisp and actionable`,
+    quick_answer: `RESPONSE STYLE: Quick Chat
+The user wants a fast answer, not a lecture. Treat this like someone asking you a quick question while you're both busy.
 
-    decision_help: `RESPONSE FORMAT: 3-Block Decision Framework
-BLOCK 1 (Answer): Your clear recommendation in 1-3 sentences
-BLOCK 2 (Why): Exactly 3 bullet points with key signals supporting your view
-BLOCK 3 (Next Step): One specific action or follow-up question
-- Keep total length moderate - respect the user's time`,
+HOW TO RESPOND:
+- Give them the answer immediately in natural language ("BTC's at $87,500, up 3.2% today")
+- Add ONE useful piece of context if relevant ("Fear & Greed is neutral at 45")
+- That's it. 3-4 sentences max. Don't pad it.
+- Sound like a friend checking their phone, not a report generator
 
-    deep_analysis: `RESPONSE FORMAT: Comprehensive Analysis
-- Provide full OmniScore breakdown with exact numbers
-- Include QS, OS, POS, quadrant position, and risk assessment
-- Reference all relevant metrics from the data
-- Structure with clear sections if comparing multiple assets
-- Be thorough but organized`,
+EXAMPLE TONE: "Bitcoin's sitting at $87,500 right now — up about 3% in the last 24 hours. Market sentiment's pretty neutral at the moment."`,
 
-    troubleshoot: `RESPONSE FORMAT: Diagnostic Response
-LINE 1: Acknowledge the issue with empathy ("I see the problem...")
-LINE 2: Explain what's happening or what went wrong
-LINE 3-4: Provide actionable solution or workaround
-- Never expose technical errors to user
-- Always offer a next step even if data is unavailable`,
+    decision_help: `RESPONSE STYLE: Friend Giving Advice
+The user is trying to make a decision. They want your honest take, not a data dump.
 
-    learning: `RESPONSE FORMAT: Educational Explanation
-- Start with a relatable analogy or simple definition
-- Build complexity gradually
-- Use "imagine..." or "think of it like..." framing
-- Offer to go deeper: "Want me to explain [specific aspect] in more detail?"
-- Avoid jargon unless explaining it`,
+HOW TO RESPOND:
+- Lead with your actual opinion ("Honestly? I'd wait here..." or "Yeah, this looks like a decent entry...")
+- Give them 2-3 reasons WHY in conversational prose — not a bullet-pointed checklist
+- End with a question about THEIR situation ("What's your timeframe?" "How much are you comfortable risking?")
+- Show you care about helping them make a good decision for THEIR circumstances
+
+EXAMPLE TONE: "I'd probably hold off on adding more here. Funding rates are looking stretched and RSI's pushing overbought territory. If you're set on entering, maybe wait for a pullback to the $82K range? What's your risk tolerance like?"`,
+
+    deep_analysis: `RESPONSE STYLE: Knowledgeable Friend Going Deep
+The user wants the full picture. Give them thorough analysis, but don't sound like a textbook.
+
+HOW TO RESPOND:
+- Open with a quick summary of your overall take ("Alright, let me break this down...")
+- Walk through the OmniScore metrics conversationally — use exact numbers but explain what they mean
+- For comparisons, group insights naturally ("BTC's in a much stronger position than ETH right now...")
+- Include risks and opportunities, but weave them in naturally
+- End with what YOU think matters most and invite questions
+
+EXAMPLE TONE: "So, looking at Ethereum's OmniScore — it's sitting at 43/100, which puts it in Weak tier overall. But here's where it gets interesting: the Quality Score is actually solid at 74/100, that's Strong tier. The problem is the Opportunity Score at just 31/100. Basically, great fundamentals but the market isn't paying attention right now. That's classic Builder Zone territory. What's driving your interest in ETH specifically?"`,
+
+    troubleshoot: `RESPONSE STYLE: Helpful Friend Debugging
+Something's not working for the user. They might be frustrated. Be empathetic and solution-focused.
+
+HOW TO RESPOND:
+- Acknowledge what they're seeing ("Yeah, I see what you mean about that score looking off...")
+- Explain what's happening in plain language — no tech jargon, no error codes
+- Give them a workaround or solution if possible
+- If you can't fix it, be honest and offer an alternative ("I can't pull that specific data right now, but here's what I CAN tell you...")
+- NEVER make them feel stupid for asking
+
+EXAMPLE TONE: "I see what you're running into there. Looks like the derivatives data is lagging a bit right now — it happens sometimes during high-volume periods. The core price and OmniScore data should still be accurate though. Want me to run the analysis without the derivatives component for now?"`,
+
+    learning: `RESPONSE STYLE: Patient Friend Explaining
+The user wants to understand something. Be a teacher who actually cares about them getting it.
+
+HOW TO RESPOND:
+- Start with a relatable analogy ("Think of market cap like a company's total value...")
+- Build from simple to complex — don't frontload jargon
+- Check for understanding by inviting questions ("Make sense so far?")
+- Use "you" language — make it about THEIR understanding, not showing off your knowledge
+- Offer to go deeper ("Want me to get into how that's different from fully diluted valuation?")
+
+EXAMPLE TONE: "Okay so market cap — easiest way to think about it is like the total price tag on a crypto project. If every coin was sold right now at the current price, what would the whole thing be worth? It's calculated by multiplying the current price by the number of coins out there. Does that click? I can break down why it matters for evaluating projects if you want."`,
+
+    // 🆕 NEW COIN ANALYSIS - Meme coin / pump.fun token verdicts
+    new_coin_analysis: `RESPONSE STYLE: Degen's Trusted Research Partner
+The user is asking about a new/meme coin. They want to know: Is it a scam? Does it have potential? What's the price range?
+
+HOW TO RESPOND:
+- Lead with a VERDICT — give them your honest take immediately ("Alright, this one's actually not terrible..." or "Yeah, stay far away from this...")
+- Show the Risk Score and Potential Score upfront with clear labels
+- List 2-3 key red flags and 2-3 positive signals in natural language
+- Give a price range estimate with scenarios (downside/base/upside)
+- End with what YOU would do and a question about their risk tolerance
+- Be direct, no fluff — trenchers need fast, actionable intel
+
+STRUCTURE YOUR RESPONSE LIKE THIS:
+1. Opening verdict (1-2 sentences, your honest take)
+2. Key stats block (Price, MCap, Liquidity, Age, Holders)
+3. Risk factors (⚠️) — the bad stuff
+4. Positive signals (✅) — the good stuff  
+5. Price range estimate (💰) — downside, base, upside scenarios
+6. Your take + question about their situation
+
+EXAMPLE TONE: "Honestly? This one's sketchy but not the worst I've seen. Risk score's at 45/100, potential's decent at 58/100. Main red flags: only 4 hours old, liquidity's thin at $23K, and there's no verified socials. But the buy pressure is solid — 73% buys — and dev wallet hasn't dumped yet. If you're gonna ape, I'd wait for a dip to the $0.00015 range. What's your usual position size on stuff like this?"`,
   };
   return instructions[intent];
 }

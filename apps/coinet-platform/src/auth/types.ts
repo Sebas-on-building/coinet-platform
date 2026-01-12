@@ -12,7 +12,8 @@ import { Request } from 'express';
 // =============================================================================
 
 export type UserRole = 'USER' | 'ADMIN' | 'MODERATOR';
-export type UserTier = 'FREE' | 'PREMIUM' | 'ENTERPRISE' | 'VIP';
+// Must match Prisma schema UserTier enum
+export type UserTier = 'FREE' | 'PRO' | 'ENTERPRISE';
 
 // =============================================================================
 // JWT TOKEN CLAIMS

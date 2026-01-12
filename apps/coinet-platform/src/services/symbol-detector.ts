@@ -1,15 +1,18 @@
 /**
  * 🔍 Symbol Detection Engine - Divine Perfection
  * 
- * Extracts cryptocurrency symbols and names from natural language,
+ * Extracts cryptocurrency symbols, names, and CONTRACT ADDRESSES from natural language,
  * maps them to CoinGecko IDs, and maintains a comprehensive coin cache.
  * 
  * Capabilities:
  * - Regex + pattern matching for symbol extraction
  * - Handles: "$BTC", "Bitcoin", "btc", "BTC/USD", "btcusdt"
+ * - CONTRACT ADDRESS DETECTION (Solana, EVM, pump.fun)
  * - Maps 14,000+ coins via CoinGecko
  * - In-memory cache with 24h refresh
  * - Ready for Pro API upgrade
+ * 
+ * @version 2.0.0 - Added contract address detection for meme coin analysis
  */
 
 import axios from 'axios';
@@ -33,12 +36,65 @@ export interface DetectedCoin {
   confidence: number;   // 0-1 match confidence
 }
 
+/**
+ * 🆕 Detected Contract Address - For new/meme coins
+ */
+export type ChainType = 'solana' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'polygon' | 'unknown';
+export type AddressSource = 'pump_fun' | 'raydium' | 'moonshot' | 'dex_generic' | 'evm_generic';
+
+export interface DetectedContractAddress {
+  address: string;              // The contract address
+  chain: ChainType;             // Detected blockchain
+  source: AddressSource;        // Where it likely came from
+  confidence: number;           // 0-1 detection confidence
+  isPumpFun: boolean;           // pump.fun token indicator
+  original: string;             // Original matched string
+}
+
+/**
+ * Combined detection result for messages
+ */
+export interface MessageDetectionResult {
+  coins: DetectedCoin[];                    // Traditional symbol/name detections
+  contractAddresses: DetectedContractAddress[];  // New coin contract addresses
+  hasNewCoinQuery: boolean;                 // True if likely asking about new/meme coin
+  primaryChain: ChainType | null;           // Primary chain if detected
+}
+
 export interface SymbolDetectorConfig {
   cacheRefreshMs: number;
   maxCoinsToCache: number;
   coinGeckoBaseUrl: string;
   enableFuzzyMatch: boolean;
 }
+
+// ============================================================================
+// CONTRACT ADDRESS PATTERNS
+// ============================================================================
+
+/**
+ * Solana address pattern:
+ * - Base58 encoding (no 0, O, I, l)
+ * - 32-44 characters
+ * - pump.fun tokens end with "pump"
+ */
+const SOLANA_ADDRESS_PATTERN = /\b([1-9A-HJ-NP-Za-km-z]{32,44})\b/g;
+const PUMP_FUN_ADDRESS_PATTERN = /\b([1-9A-HJ-NP-Za-km-z]{32,44}pump)\b/gi;
+
+/**
+ * EVM address pattern:
+ * - Starts with 0x
+ * - 40 hex characters
+ */
+const EVM_ADDRESS_PATTERN = /\b(0x[a-fA-F0-9]{40})\b/gi;
+
+/**
+ * Common words that look like Solana addresses but aren't
+ */
+const SOLANA_FALSE_POSITIVES = new Set([
+  'bitcoin', 'ethereum', 'solana', 'cardano', 'polygon', 'avalanche',
+  'chainlink', 'uniswap', 'aave', 'compound', 'makerdao', 'sushiswap',
+]);
 
 // ============================================================================
 // DEFAULT CONFIGURATION
@@ -411,6 +467,234 @@ export class SymbolDetector {
       lastUpdate: this.lastCacheUpdate ? new Date(this.lastCacheUpdate).toISOString() : 'never',
       isInitialized: this.isInitialized,
     };
+  }
+
+  // ==========================================================================
+  // 🆕 CONTRACT ADDRESS DETECTION - For Meme Coins & New Tokens
+  // ==========================================================================
+
+  /**
+   * 🎯 Detect contract addresses in a message
+   * Identifies Solana (including pump.fun), EVM, and other chain addresses
+   */
+  detectContractAddresses(message: string): DetectedContractAddress[] {
+    const detected: DetectedContractAddress[] = [];
+    const seen = new Set<string>();
+
+    // Strategy 1: Pump.fun addresses (highest priority - specific pattern)
+    const pumpFunMatches = message.match(PUMP_FUN_ADDRESS_PATTERN) || [];
+    for (const match of pumpFunMatches) {
+      const address = match.toLowerCase();
+      if (!seen.has(address)) {
+        detected.push({
+          address: match, // Keep original case
+          chain: 'solana',
+          source: 'pump_fun',
+          confidence: 0.98,
+          isPumpFun: true,
+          original: match,
+        });
+        seen.add(address);
+      }
+    }
+
+    // Strategy 2: EVM addresses (0x...)
+    const evmMatches = message.match(EVM_ADDRESS_PATTERN) || [];
+    for (const match of evmMatches) {
+      const address = match.toLowerCase();
+      if (!seen.has(address)) {
+        // Try to determine EVM chain from context
+        const chain = this.detectEvmChainFromContext(message);
+        detected.push({
+          address: match,
+          chain,
+          source: 'evm_generic',
+          confidence: 0.95,
+          isPumpFun: false,
+          original: match,
+        });
+        seen.add(address);
+      }
+    }
+
+    // Strategy 3: Generic Solana addresses (Base58, not pump.fun)
+    const solanaMatches = message.match(SOLANA_ADDRESS_PATTERN) || [];
+    for (const match of solanaMatches) {
+      const addressLower = match.toLowerCase();
+      
+      // Skip if already detected as pump.fun or is a false positive
+      if (seen.has(addressLower)) continue;
+      if (SOLANA_FALSE_POSITIVES.has(addressLower)) continue;
+      
+      // Validate it looks like a real Solana address (not a word)
+      if (this.isLikelySolanaAddress(match)) {
+        detected.push({
+          address: match,
+          chain: 'solana',
+          source: this.detectSolanaSourceFromContext(message),
+          confidence: 0.90,
+          isPumpFun: false,
+          original: match,
+        });
+        seen.add(addressLower);
+      }
+    }
+
+    // Sort by confidence
+    detected.sort((a, b) => b.confidence - a.confidence);
+
+    if (detected.length > 0) {
+      logger.info('🔍 Contract addresses detected', {
+        count: detected.length,
+        addresses: detected.map(d => ({
+          address: d.address.slice(0, 8) + '...' + d.address.slice(-4),
+          chain: d.chain,
+          source: d.source,
+        })),
+      });
+    }
+
+    return detected;
+  }
+
+  /**
+   * Validate if a string is likely a real Solana address (not a word)
+   */
+  private isLikelySolanaAddress(str: string): boolean {
+    // Must be at least 32 chars
+    if (str.length < 32) return false;
+    
+    // Should have mixed case (real addresses do)
+    const hasUppercase = /[A-Z]/.test(str);
+    const hasLowercase = /[a-z]/.test(str);
+    const hasNumbers = /[0-9]/.test(str);
+    
+    // Real addresses typically have numbers and mixed case
+    // Pure lowercase words are likely false positives
+    if (!hasNumbers && !hasUppercase) return false;
+    
+    // Check entropy - real addresses have good distribution
+    const uniqueChars = new Set(str).size;
+    if (uniqueChars < 10) return false; // Too repetitive
+    
+    return true;
+  }
+
+  /**
+   * Try to detect EVM chain from message context
+   */
+  private detectEvmChainFromContext(message: string): ChainType {
+    const lower = message.toLowerCase();
+    
+    if (lower.includes('ethereum') || lower.includes('eth ') || lower.includes('uniswap')) {
+      return 'ethereum';
+    }
+    if (lower.includes('bsc') || lower.includes('binance') || lower.includes('pancake')) {
+      return 'bsc';
+    }
+    if (lower.includes('base') || lower.includes('coinbase')) {
+      return 'base';
+    }
+    if (lower.includes('arbitrum') || lower.includes('arb ')) {
+      return 'arbitrum';
+    }
+    if (lower.includes('polygon') || lower.includes('matic')) {
+      return 'polygon';
+    }
+    
+    // Default to ethereum as most common
+    return 'ethereum';
+  }
+
+  /**
+   * Try to detect Solana DEX source from message context
+   */
+  private detectSolanaSourceFromContext(message: string): AddressSource {
+    const lower = message.toLowerCase();
+    
+    if (lower.includes('pump') || lower.includes('pump.fun')) {
+      return 'pump_fun';
+    }
+    if (lower.includes('raydium') || lower.includes('ray ')) {
+      return 'raydium';
+    }
+    if (lower.includes('moonshot')) {
+      return 'moonshot';
+    }
+    
+    return 'dex_generic';
+  }
+
+  /**
+   * 🎯 COMPREHENSIVE DETECTION: Coins + Contract Addresses
+   * Use this for new coin analysis queries
+   */
+  async detectAll(message: string): Promise<MessageDetectionResult> {
+    // Run both detections
+    const [coins, contractAddresses] = await Promise.all([
+      this.detectCoins(message),
+      Promise.resolve(this.detectContractAddresses(message)),
+    ]);
+
+    // Determine if this is likely a new coin query
+    const hasNewCoinQuery = this.isNewCoinQuery(message, contractAddresses);
+
+    // Determine primary chain
+    let primaryChain: ChainType | null = null;
+    if (contractAddresses.length > 0) {
+      primaryChain = contractAddresses[0].chain;
+    }
+
+    const result: MessageDetectionResult = {
+      coins,
+      contractAddresses,
+      hasNewCoinQuery,
+      primaryChain,
+    };
+
+    logger.debug('🔍 Full detection result', {
+      coinsFound: coins.length,
+      addressesFound: contractAddresses.length,
+      hasNewCoinQuery,
+      primaryChain,
+    });
+
+    return result;
+  }
+
+  /**
+   * Determine if message is asking about a new/meme coin
+   */
+  private isNewCoinQuery(message: string, addresses: DetectedContractAddress[]): boolean {
+    // Has contract addresses = definitely new coin query
+    if (addresses.length > 0) return true;
+
+    const lower = message.toLowerCase();
+    
+    // Keywords that indicate new coin analysis
+    const newCoinKeywords = [
+      'pump.fun', 'pumpfun', 'pump fun',
+      'new coin', 'new token', 'just launched',
+      'is this a scam', 'scam check', 'rug check', 'rugcheck',
+      'should i ape', 'worth aping',
+      'meme coin', 'memecoin', 'shitcoin',
+      'degen', 'trenching',
+      'check this coin', 'check this token',
+      'potential', 'moonshot',
+      'honeypot', 'honey pot',
+      'safe to buy', 'legit',
+    ];
+
+    return newCoinKeywords.some(keyword => lower.includes(keyword));
+  }
+
+  /**
+   * Quick check if message contains any contract address
+   */
+  hasContractAddress(message: string): boolean {
+    return PUMP_FUN_ADDRESS_PATTERN.test(message) || 
+           EVM_ADDRESS_PATTERN.test(message) ||
+           SOLANA_ADDRESS_PATTERN.test(message);
   }
 }
 

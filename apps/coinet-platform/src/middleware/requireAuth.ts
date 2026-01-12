@@ -213,6 +213,12 @@ export async function requireAuth(
       await verifyUserInDatabase(claims.userId, requestId);
     }
     
+    // 3.5 Verify session is still active in database
+    // SECURITY: Ensures logged-out tokens are invalidated
+    if (AUTH_VERIFY_USER_IN_DB && token) {
+      await verifySessionInDatabase(token, requestId);
+    }
+    
     // 4. Build auth context
     const authContext: AuthContext = {
       userId: claims.userId,
@@ -321,6 +327,49 @@ async function verifyUserInDatabase(userId: string, requestId: string): Promise<
     throw new AuthError(
       AUTH_ERROR_CODES.AUTH_INTERNAL_ERROR,
       `Database error: ${error instanceof Error ? error.message : 'Unknown'}`
+    );
+  }
+}
+
+/**
+ * Verify session is still active in database.
+ * This ensures logged-out sessions are actually invalidated.
+ * 
+ * @param token The raw JWT token
+ * @param requestId Request ID for logging
+ * @throws AuthError if session not found or inactive
+ */
+async function verifySessionInDatabase(token: string, requestId: string): Promise<void> {
+  try {
+    const session = await (prisma as any).session.findFirst({
+      where: {
+        token,
+        isActive: true,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        userId: true,
+        isActive: true,
+      },
+    });
+    
+    if (!session) {
+      logger.warn('⚠️ Token valid but session not found or inactive', { requestId });
+      throw new AuthError(AUTH_ERROR_CODES.AUTH_SESSION_INVALID);
+    }
+  } catch (error) {
+    if (error instanceof AuthError) {
+      throw error;
+    }
+    
+    // Database error - log but don't fail (graceful degradation)
+    // In production, you might want to fail closed instead
+    logger.error('❌ Database error during session verification', error, { requestId });
+    // For security, fail closed - reject if we can't verify
+    throw new AuthError(
+      AUTH_ERROR_CODES.AUTH_INTERNAL_ERROR,
+      `Session verification failed: ${error instanceof Error ? error.message : 'Unknown'}`
     );
   }
 }

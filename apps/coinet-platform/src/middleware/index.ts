@@ -28,3 +28,9 @@ export {
   isAuthBlocked,
   RATE_LIMIT_CONFIGS,
 } from './rateLimit';
+
+// Security headers middleware
+export {
+  securityHeaders,
+  CORS_OPTIONS,
+} from './securityHeaders';

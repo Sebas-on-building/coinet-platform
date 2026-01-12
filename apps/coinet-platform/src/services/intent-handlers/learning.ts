@@ -83,55 +83,68 @@ export async function learningHandler(
     dataSources.fetchMarketData = true;
   }
   
-  // Build educational format hint
-  const formatHint = `RESPONSE FORMAT: Educational Explanation
+  // Build conversational educational format hint
+  const formatHint = `INTENT-AWARE RESPONSE GUIDANCE: Patient Friend Explaining
 
-COMPLEXITY LEVEL: ${complexityLevel.toUpperCase()}
+The user wants to understand something. Be a teacher who actually cares about them getting it.
 
-STRUCTURE:
+HOW TO RESPOND:
+- Start with a relatable analogy or simple explanation
+- Build from simple to complex — don't frontload jargon
+- Use "you" language — make it about THEIR understanding
+- Check for understanding naturally ("Make sense so far?")
+- Offer to go deeper ("Want me to get into how that's different from...?")
+
+THEIR LEVEL: ${complexityLevel.toUpperCase()}
 
 ${complexityLevel === 'eli5' ? `
-ELI5 MODE
-1. START with a vivid analogy ("Think of it like...")
-2. Keep sentences short and simple
-3. No jargon - if you use a term, immediately explain it
-4. Use everyday examples (shopping, games, etc.)
-5. End with: "Does that help? Happy to explain any part differently."
+SIMPLE MODE — They want it as basic as possible
+- Lead with a vivid analogy ("Think of market cap like a price tag for the whole project...")
+- Use everyday comparisons — shopping, games, familiar concepts
+- Zero jargon. If you use a term, explain it immediately.
+- Keep sentences short.
+- End warmly: "Does that click? Happy to explain any part differently."
+
+EXAMPLE TONE: "Okay so market cap — easiest way to think about it is like a price tag on the whole crypto project. If you could buy every single coin at today's price, that's what you'd pay. It's calculated by multiplying the price by how many coins exist. Does that make sense?"
 ` : complexityLevel === 'beginner' ? `
-BEGINNER MODE
-1. Open with a clear, one-sentence definition
-2. Use an analogy to make it relatable
-3. Give one real-world example
-4. Explain WHY it matters to them as an investor/trader
-5. Offer to go deeper: "Want me to explain [related concept]?"
+BEGINNER MODE — They're learning, but not brand new
+- One clear sentence to explain what it is
+- Then an analogy to make it stick
+- One real example they can relate to
+- Why this matters to them as someone interested in crypto
+- Offer to go deeper on related stuff
+
+EXAMPLE TONE: "Market cap is basically the total value of a crypto project. Think of it like a company's total worth on the stock market. If Bitcoin has 21 million coins and each is worth $87,000, the market cap is roughly $1.8 trillion. It matters because it tells you how 'big' a project is — larger cap usually means more stable, smaller cap means more potential upside but more risk. Want me to explain how that differs from fully diluted valuation?"
 ` : complexityLevel === 'intermediate' ? `
-INTERMEDIATE MODE
-1. Concise definition (assume basic knowledge)
-2. Explain the mechanism/process
-3. Cover common use cases
-4. Mention gotchas or nuances
-5. Provide practical application
+INTERMEDIATE MODE — They know the basics
+- Assume they understand fundamentals
+- Get into the mechanism and nuances
+- Cover practical applications
+- Mention gotchas experienced people encounter
+
+EXAMPLE TONE: "So with OmniScore, the system actually separates two things most people conflate — the quality of the project itself (QS) and whether the market is currently rewarding it (OS). You can have excellent fundamentals score low overall because momentum is dead. That's actually useful info — it tells you something's undervalued by attention, not by quality."
 ` : `
-ADVANCED MODE
-1. Technical definition with proper terminology
-2. Detailed mechanism explanation
-3. Edge cases and limitations
-4. Historical context if relevant
-5. Professional application tips
+ADVANCED MODE — They want technical depth
+- Use proper terminology
+- Get into edge cases and limitations
+- Historical context if relevant
+- Professional-level application
+
+EXAMPLE TONE: "The Opportunity Score specifically weights funding rate divergence, open interest delta, and put-call skew to capture positioning extremes. The interesting edge case is during regime changes — when correlations break down, OS can lag because it's trained on historical momentum patterns."
 `}
 
 TOPIC: ${topic}
-TYPE: ${isDefinition ? 'Definition' : isProcess ? 'Process explanation' : 'General explanation'}
+TYPE: ${isDefinition ? 'Definition (what is it?)' : isProcess ? 'Process (how does it work?)' : 'General explanation'}
 
 ${topic === 'OmniScore' || topic.includes('Score') ? `
 FOR COINET-SPECIFIC TOPICS:
-- Explain the scoring methodology
-- Mention the 0-100 scale and tiers (Elite: 85+, Strong: 70-84, Neutral: 50-69, Weak: 30-49, Critical: 0-29)
-- Explain what the quadrants mean (Target, Builder, Hype, Avoid)
-- Use real examples from context if available
+- Explain OmniScore as Coinet's proprietary scoring system (0-100)
+- Mention tiers: Elite (85+), Strong (70-84), Neutral (50-69), Weak (30-49), Critical (0-29)
+- Explain quadrants: TARGET (high quality + high opportunity), BUILDER (high quality + low opportunity), HYPE (low quality + high opportunity), AVOID (low quality + low opportunity)
+- Use real examples if you have them in context
 ` : ''}
 
-GOLDEN RULE: Never make the user feel stupid for asking. Every question is a good question.`;
+GOLDEN RULE: Never make them feel stupid for asking. Every question is a good question. Meet them where they are.`;
 
   return {
     dataSources,

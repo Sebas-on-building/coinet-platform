@@ -86,46 +86,52 @@ export async function deepAnalysisHandler(
     dataSources.fetchNeuroeconomic = false;
   }
   
-  // Build comprehensive format hint
-  let formatHint = `RESPONSE FORMAT: Comprehensive Analysis
+  // Build conversational format hint
+  let formatHint = `INTENT-AWARE RESPONSE GUIDANCE: Knowledgeable Friend Going Deep
 
-STRUCTURE:`;
+The user wants the full picture. Give them thorough analysis, but don't sound like a textbook.
+
+HOW TO RESPOND:
+- Open with a quick summary of your overall take ("Alright, let me break this down...")
+- Walk through the OmniScore metrics conversationally — use exact numbers but explain what they MEAN
+- Include risks and opportunities, but weave them in naturally
+- End with what YOU think matters most and invite follow-up questions`;
 
   if (isComparison) {
     formatHint += `
 
 COMPARISON MODE (${detectedCoins.length} assets)
-1. OVERVIEW: Brief positioning of each asset (1 sentence each)
-2. HEAD-TO-HEAD: Compare key metrics side by side
-   - OmniScore (POS, tier, quadrant)
-   - Quality Score vs Opportunity Score
-   - Risk assessment
-3. VERDICT: Clear winner or nuanced recommendation
-4. QUADRANT CHART: Reference the visual quadrant chart displayed above
+You're comparing multiple assets. Structure it like explaining to a friend:
+- Start with the quick verdict ("BTC's in a much stronger position than ETH right now...")
+- Walk through each asset's strengths and weaknesses naturally
+- Use the OmniScore quadrant to explain WHERE each sits and WHY that matters
+- End with your honest take on which makes more sense given current conditions
 
-Note: A visual OmniScore quadrant chart will be rendered automatically.
-Reference it: "Looking at the quadrant chart above..."`;
+A visual OmniScore quadrant chart will be rendered automatically above your response.
+Reference it naturally: "Looking at where they sit on the quadrant..."
+
+EXAMPLE TONE: "So, comparing these three — BTC's clearly the strongest position at 85/100, that's Elite tier. ETH's interesting though — it's only 43/100 overall (Weak tier, I know), but look at the QS: 74/100. The fundamentals are actually solid, the market just isn't rewarding it right now. SOL's somewhere in between..."`;
   } else {
     formatHint += `
 
 SINGLE ASSET DEEP DIVE
-1. HEADLINE: POS score and tier in first sentence
-2. QUALITY BREAKDOWN: QS components and what they mean
-3. OPPORTUNITY ASSESSMENT: OS components and timing signals
-4. RISK PROFILE: Key risks with severity
-5. POSITIONING: Quadrant and what it implies
-6. BOTTOM LINE: 2-3 sentence synthesis
+Walk through the analysis like you're explaining over coffee:
+- Lead with the overall OmniScore and what tier that puts them in
+- Break down Quality Score — what's driving it up or down?
+- Break down Opportunity Score — is the market paying attention or not?
+- Explain the quadrant position and what that means for their situation
+- Be honest about risks
+- End with YOUR take and invite questions
 
-Use exact numbers from OmniScore data. Never estimate or round.`;
+EXAMPLE TONE: "Alright, let me break down ETH's OmniScore for you. It's sitting at 43/100 overall — Weak tier, which sounds rough. But here's where it gets interesting: the Quality Score is actually 74/100, that's Strong tier. Solid fundamentals. The problem is the Opportunity Score at just 31/100 — the market isn't paying attention right now. Classic Builder Zone setup. What specifically caught your eye about ETH?"`;
   }
 
   formatHint += `
 
-RULES:
-- Lead with OmniScore if available
-- Use exact numbers: "scores 74.2/100" not "scores around 74"
-- Cite tier correctly based on thresholds (Elite: 85+, Strong: 70-84, etc.)
-- Reference data sources when making claims`;
+CRITICAL RULES:
+- Use EXACT numbers from OmniScore: "74.2/100" not "around 74"
+- Cite tier correctly (Elite: 85+, Strong: 70-84, Neutral: 50-69, Weak: 30-49, Critical: 0-29)
+- Be thorough but CONVERSATIONAL — this isn't a report, it's an explanation`;
 
   return {
     dataSources,

@@ -81,26 +81,25 @@ export async function decisionHelpHandler(
     dataSources.fetchSocial = true; // For sentiment extremes
   }
   
-  // Build 3-Block format hint
-  const formatHint = `RESPONSE FORMAT: 3-Block Decision Framework
+  // Build conversational format hint
+  const formatHint = `INTENT-AWARE RESPONSE GUIDANCE: Friend Giving Advice
 
-BLOCK 1 — THE ANSWER (1-3 sentences)
-Give your clear recommendation. Be direct: "Yes, consider buying..." or "I'd wait because..."
-Don't hedge excessively. Take a stance based on the data.
+The user is trying to make a decision. They want your honest take, not a data dump.
 
-BLOCK 2 — THE WHY (exactly 3 bullets)
-• Signal 1: The strongest supporting data point
-• Signal 2: A confirming or contrasting signal  
-• Signal 3: The key risk or caveat
+HOW TO RESPOND:
+- Lead with your actual opinion as a friend would ("Honestly? I'd wait here..." or "Yeah, this looks like a decent entry...")
+- Give them 2-3 reasons WHY in conversational prose — not a bullet-pointed checklist
+- End by asking about THEIR situation ("What's your timeframe?" or "How much are you comfortable risking?")
+- Show you care about helping them make a good decision for THEIR circumstances
 
-BLOCK 3 — NEXT STEP (1 sentence)
-One specific action: "Watch for $X level" or "Consider DCA over the next week"
-
-CONTEXT:
+THEIR CONTEXT:
 - Decision type: ${decisionType.toUpperCase()}
-- Time horizon: ${timeHorizon || 'not specified'}
-- Risk focus: ${riskFocus ? 'YES - emphasize risks' : 'balanced'}
-- Use OmniScore quadrant position to inform recommendation`;
+- Time horizon: ${timeHorizon || 'not specified (ask them!)'}
+- Risk concern: ${riskFocus ? 'HIGH - they mentioned risk, address it directly' : 'normal'}
+
+EXAMPLE TONE: "Honestly? I'd probably hold off on adding more here. Funding rates are looking stretched and RSI's pushing overbought territory. If you're set on entering, maybe wait for a pullback to the $82K range. What's your risk tolerance like — are you okay with potential 10-15% drawdowns?"
+
+Remember: Use OmniScore quadrant position to inform your recommendation, but explain it conversationally.`;
 
   return {
     dataSources,

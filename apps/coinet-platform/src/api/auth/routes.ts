@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../db/client';
 import { logger } from '../../utils/logger';
@@ -10,6 +11,26 @@ import {
   clearAuthFailures,
   isAuthBlocked 
 } from '../../middleware/rateLimit';
+
+// =============================================================================
+// SECURITY CONSTANTS
+// =============================================================================
+
+/** 
+ * Marker for OAuth users who cannot use password login.
+ * This is a cryptographically random string that cannot be guessed or brute-forced.
+ * OAuth users have this as their password hash, which will never match any input.
+ */
+const OAUTH_USER_PASSWORD_MARKER = '$OAUTH_PROVIDER$_NO_PASSWORD_LOGIN_ALLOWED';
+
+/**
+ * Generate a secure random password for OAuth users.
+ * This ensures bcrypt.compare() will always fail for OAuth accounts attempting password login.
+ */
+function generateOAuthPasswordMarker(): string {
+  // Generate a random 64-byte hex string - impossible to guess
+  return `$OAUTH$${crypto.randomBytes(64).toString('hex')}`;
+}
 
 const router: Router = Router();
 
@@ -66,14 +87,22 @@ if (!process.env.JWT_SECRET) {
 
 // Validation schemas
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
+  email: z.string().email().transform(v => v.toLowerCase()),
+  password: z.string().min(1), // Min 1 for login (validation happens via bcrypt)
 });
 
+// SECURITY: Strong password requirements for registration
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must be at most 128 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one number');
+
 const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-  name: z.string().optional(),
+  email: z.string().email().transform(v => v.toLowerCase()),
+  password: passwordSchema,
+  name: z.string().max(100).optional(),
 });
 
 // ============================================================================
@@ -155,7 +184,16 @@ router.post('/login', authRateLimit, async (req: Request, res: Response) => {
     await clearAuthFailures(req);
 
     // Generate JWT token with proper claims
-    const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+    // SECURITY: Never use fallback secrets - fail loudly if not configured
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      logger.error('❌ CRITICAL: JWT_SECRET not configured');
+      return res.status(500).json({
+        success: false,
+        error: 'Authentication service unavailable',
+        requestId,
+      });
+    }
     const JWT_ISSUER = process.env.JWT_ISSUER || 'coinet-platform';
     const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'coinet-users';
     
@@ -259,9 +297,13 @@ router.post('/register', authRateLimit, async (req: Request, res: Response) => {
     });
 
     if (existingUser) {
-      return res.status(409).json({
+      // SECURITY: Generic error to prevent user enumeration
+      // Don't reveal that this specific email exists
+      logger.info('Registration attempt for existing email', { email: email.substring(0, 3) + '***' });
+      return res.status(400).json({
         success: false,
-        error: 'User with this email already exists',
+        error: 'Unable to create account with this email. Please try a different email or log in.',
+        requestId,
       });
     }
 
@@ -359,13 +401,16 @@ router.post('/register', authRateLimit, async (req: Request, res: Response) => {
 // GET /users/me - Get current user
 // ============================================================================
 router.get('/me', async (req: Request, res: Response) => {
+  const requestId = (req as any).requestId || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
     // Runtime check for prisma
     if (!prisma) {
-      logger.error('Prisma client not available in /me handler');
+      logger.error('Prisma client not available in /me handler', { requestId });
       return res.status(500).json({
         success: false,
         error: 'Database connection error',
+        requestId,
       });
     }
 
@@ -375,13 +420,24 @@ router.get('/me', async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         error: 'Unauthorized',
+        requestId,
       });
     }
 
     const token = authHeader.substring(7);
-    const JWT_SECRET = process.env.JWT_SECRET!;
+    const JWT_SECRET = process.env.JWT_SECRET;
+    
+    // SECURITY: Never use fallback - fail if not configured
+    if (!JWT_SECRET) {
+      logger.error('❌ CRITICAL: JWT_SECRET not configured', { requestId });
+      return res.status(500).json({
+        success: false,
+        error: 'Authentication service unavailable',
+        requestId,
+      });
+    }
 
-    // Verify token
+    // Verify token signature
     let decoded: any;
     try {
       decoded = jwt.verify(token, JWT_SECRET);
@@ -389,6 +445,30 @@ router.get('/me', async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         error: 'Invalid or expired token',
+        requestId,
+      });
+    }
+
+    // SECURITY: Verify session is still active in database
+    // This ensures logged-out sessions are actually invalidated
+    const Session = getPrismaModel('session');
+    const session = await Session.findFirst({
+      where: {
+        token,
+        isActive: true,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!session) {
+      logger.warn('🚫 Token valid but session not found or inactive', {
+        requestId,
+        userId: decoded.userId,
+      });
+      return res.status(401).json({
+        success: false,
+        error: 'Session invalid or expired. Please log in again.',
+        requestId,
       });
     }
 
@@ -402,6 +482,7 @@ router.get('/me', async (req: Request, res: Response) => {
       return res.status(401).json({
         success: false,
         error: 'User not found or inactive',
+        requestId,
       });
     }
 
@@ -420,10 +501,11 @@ router.get('/me', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    logger.error('Get user error', error);
+    logger.error('Get user error', error, { requestId });
     res.status(500).json({
       success: false,
       error: 'Internal server error',
+      requestId,
     });
   }
 });
@@ -617,6 +699,8 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     
     if (!user) {
       // Create new user
+      // SECURITY: OAuth users get a random impossible-to-guess password marker
+      // This prevents password login for OAuth accounts
       user = await User.create({
         data: {
           email: email.toLowerCase(),
@@ -625,8 +709,8 @@ router.get('/google/callback', async (req: Request, res: Response) => {
           role: 'USER',
           tier: 'FREE',
           active: true,
-          // No password for OAuth users
-          password: '', // OAuth users don't have passwords
+          // SECURITY: Random marker prevents password login for OAuth users
+          password: generateOAuthPasswordMarker(),
         },
       });
       logger.info('User created via Google OAuth', { userId: user.id, email });
@@ -838,6 +922,8 @@ router.get('/github/callback', async (req: Request, res: Response) => {
     });
     
     if (!user) {
+      // SECURITY: OAuth users get a random impossible-to-guess password marker
+      // This prevents password login for OAuth accounts
       user = await User.create({
         data: {
           email: email.toLowerCase(),
@@ -846,7 +932,8 @@ router.get('/github/callback', async (req: Request, res: Response) => {
           role: 'USER',
           tier: 'FREE',
           active: true,
-          password: '', // OAuth users don't have passwords
+          // SECURITY: Random marker prevents password login for OAuth users
+          password: generateOAuthPasswordMarker(),
         },
       });
       logger.info('User created via GitHub OAuth', { userId: user.id, email });

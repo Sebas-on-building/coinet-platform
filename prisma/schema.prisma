@@ -2804,3 +2804,655 @@ model OmniScoreHistory {
   @@map("omniscore_history")
 }
 
+// =============================================================================
+// COINET AI RETENTION SYSTEM - DIVINE PERFECTION
+// =============================================================================
+// The Intelligence Ritual: A mathematically precise retention system that
+// transforms Coinet from "occasional lookup tool" into "daily intelligence ritual"
+// 
+// Architecture follows empirical calibration standards (10/10 Divine Perfection):
+// - Data-driven weights from behavioral analysis
+// - Regime-aware personalization (user lifecycle stage)
+// - Quality-scored triggers and rewards
+// - Confidence bands on all predictions
+// =============================================================================
+
+// User Memory System
+model UserMemory {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  userId       String   @db.VarChar(36)
+  tenantId     String   @default("default") @db.VarChar(36)
+  
+  // Memory data
+  category     String   @db.VarChar(50) // preference, portfolio, watchlist, goal, context, interaction, insight
+  key          String   @db.VarChar(100)
+  value        String   @db.Text
+  confidence   Float    @default(1.0) // 0-1 confidence in extracted memory
+  source       String?  @db.VarChar(50) // conversation, manual, inferred
+  
+  // Access tracking
+  accessCount  Int      @default(0)
+  lastAccessed DateTime?
+  
+  // Timestamps
+  createdAt    DateTime @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime @updatedAt @db.Timestamp(6)
+  
+  @@unique([userId, category, key])
+  @@index([userId, category])
+  @@index([tenantId])
+  @@map("user_memories")
+}
+
+// User Portfolio (Holdings)
+model UserPortfolio {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  userId    String   @db.VarChar(36)
+  tenantId  String   @default("default") @db.VarChar(36)
+  
+  // Holding data
+  symbol    String   @db.VarChar(20)
+  name      String?  @db.VarChar(100)
+  amount    Float    @default(0)
+  avgCost   Float?   // Average cost basis
+  exchange  String   @default("default") @db.VarChar(50)
+  
+  // Tracking
+  addedAt   DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @db.Timestamp(6)
+  
+  @@unique([userId, symbol, exchange])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("user_portfolios")
+}
+
+// User Watchlist
+model UserWatchlist {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  userId        String   @db.VarChar(36)
+  tenantId      String   @default("default") @db.VarChar(36)
+  
+  // Watchlist item
+  symbol        String   @db.VarChar(20)
+  name          String?  @db.VarChar(100)
+  targetBuy     Float?   // Price target to buy
+  targetSell    Float?   // Price target to sell
+  notes         String?  @db.Text // User's thesis/notes
+  
+  // OmniScore snapshot at time of add (for "Your Call" rewards)
+  omniscoreAtAdd Float?  // POS when added
+  qsAtAdd        Float?  // Quality Score when added
+  osAtAdd        Float?  // Opportunity Score when added
+  priceAtAdd     Float?  // Price when added
+  
+  // Engagement tracking
+  lastChecked   DateTime?
+  checkCount    Int      @default(0)
+  alertsSet     Int      @default(0)
+  
+  // Timestamps
+  addedAt       DateTime @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime @updatedAt @db.Timestamp(6)
+  
+  // Archive support for watchlist hygiene
+  isArchived    Boolean  @default(false)
+  archivedAt    DateTime?
+  
+  @@unique([userId, symbol])
+  @@index([userId, isArchived])
+  @@index([tenantId])
+  @@map("user_watchlists")
+}
+
+// User Preferences (Retention-specific)
+model UserPreferences {
+  id                    String   @id @default(uuid()) @db.VarChar(36)
+  userId                String   @unique @db.VarChar(36)
+  tenantId              String   @default("default") @db.VarChar(36)
+  
+  // Risk tolerance
+  riskTolerance         String?  @db.VarChar(20) // conservative, moderate, aggressive
+  tradingStyle          String?  @db.VarChar(20) // day_trader, swing_trader, hodler
+  experienceLevel       String?  @db.VarChar(20) // beginner, intermediate, experienced
+  
+  // Preferred assets
+  preferredAssets       String[] // Array of preferred coin symbols
+  preferredSectors      String[] // DeFi, L1, L2, etc.
+  
+  // Notification preferences
+  morningDigestEnabled  Boolean  @default(false)
+  morningDigestTime     String?  @db.VarChar(5) // HH:MM format, user local time
+  regimeAlertsEnabled   Boolean  @default(true)
+  priceAlertsEnabled    Boolean  @default(true)
+  opportunityAlerts     Boolean  @default(true)
+  maxPushPerDay         Int      @default(2) // Guardrail: max 2 unless user-set
+  
+  // Learned behavior patterns
+  typicalSessionTime    String?  @db.VarChar(5) // Learned optimal notification time
+  sessionTimeConfidence Float    @default(0) // Confidence in learned time
+  preferredDepth        String   @default("medium") @db.VarChar(20) // quick, medium, deep
+  
+  // Timestamps
+  createdAt             DateTime @default(now()) @db.Timestamp(6)
+  updatedAt             DateTime @updatedAt @db.Timestamp(6)
+  
+  @@index([tenantId])
+  @@map("user_preferences")
+}
+
+// =============================================================================
+// RETENTION TRIGGERS & ALERTS
+// =============================================================================
+
+// User Alert Configuration
+model RetentionAlert {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Alert configuration
+  alertType       String   @db.VarChar(50) // price_threshold, omniscore_change, regime_shift, quadrant_transition
+  symbol          String?  @db.VarChar(20) // For coin-specific alerts
+  
+  // Thresholds
+  priceAbove      Float?
+  priceBelow      Float?
+  omniscoreDelta  Float?   // Trigger if OmniScore changes by X points
+  
+  // Cooldowns (anti-spam)
+  minIntervalHours Int     @default(6) // Minimum hours between triggers
+  lastTriggeredAt DateTime?
+  
+  // Status
+  isActive        Boolean  @default(true)
+  triggerCount    Int      @default(0)
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime @updatedAt @db.Timestamp(6)
+  
+  @@index([userId, alertType, isActive])
+  @@index([symbol, isActive])
+  @@index([tenantId])
+  @@map("retention_alerts")
+}
+
+// Notification Delivery Log (for throttling & analytics)
+model NotificationDelivery {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Notification content
+  notificationType String  @db.VarChar(50) // regime_shift, price_alert, morning_digest, opportunity, tribe_reward, hunt_reward, self_reward
+  channel         String   @db.VarChar(20) // push, email, in_app
+  title           String   @db.VarChar(200)
+  body            String   @db.Text
+  
+  // Targeting metadata
+  symbol          String?  @db.VarChar(20)
+  metadata        Json?    // Additional context
+  
+  // Delivery status
+  status          String   @default("pending") @db.VarChar(20) // pending, sent, delivered, opened, clicked, failed
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  failureReason   String?  @db.VarChar(200)
+  
+  // A/B test tracking
+  abTestId        String?  @db.VarChar(36)
+  variant         String?  @db.VarChar(10) // A, B, control
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, notificationType, createdAt(sort: Desc)])
+  @@index([tenantId, status])
+  @@index([abTestId, variant])
+  @@map("notification_deliveries")
+}
+
+// =============================================================================
+// USER SESSION & BEHAVIOR TRACKING (For Lifecycle Segmentation)
+// =============================================================================
+
+model UserSession {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Session data
+  sessionStart    DateTime @default(now()) @db.Timestamp(6)
+  sessionEnd      DateTime?
+  durationSeconds Int?
+  
+  // Entry point
+  entryTrigger    String?  @db.VarChar(50) // notification, organic, watchlist, search
+  entrySource     String?  @db.VarChar(100) // The specific notification/trigger ID
+  
+  // Engagement metrics
+  queriesCount    Int      @default(0)
+  watchlistChecks Int      @default(0)
+  alertsSet       Int      @default(0)
+  coinsAnalyzed   String[] // Symbols analyzed in session
+  
+  // Intent types (from intent classifier)
+  intents         Json?    // {quick_answer: 3, decision_help: 1, deep_analysis: 2}
+  
+  // Device/context
+  deviceType      String?  @db.VarChar(20) // mobile, desktop, tablet
+  platform        String?  @db.VarChar(20) // ios, android, web
+  
+  @@index([userId, sessionStart(sort: Desc)])
+  @@index([tenantId, sessionStart(sort: Desc)])
+  @@map("user_sessions")
+}
+
+// User Query History (For Conversation Memory Triggers)
+model UserQuery {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  sessionId       String?  @db.VarChar(36)
+  
+  // Query data
+  query           String   @db.Text
+  intent          String?  @db.VarChar(30) // quick_answer, decision_help, deep_analysis, troubleshoot, learning
+  symbols         String[] // Detected symbols in query
+  
+  // Response data
+  responseType    String?  @db.VarChar(30) // one_liner, three_block, dashboard, diagnostic, story
+  omniscoresServed Json?   // {symbol: {pos: X, qs: Y, os: Z}} at time of query
+  
+  // Follow-up tracking (for "Your Call" rewards)
+  requiresFollowUp Boolean @default(false)
+  followUpSentAt  DateTime?
+  followUpType    String?  @db.VarChar(50) // conversation_memory, decision_validation
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, symbols])
+  @@index([requiresFollowUp, createdAt])
+  @@index([tenantId])
+  @@map("user_queries")
+}
+
+// =============================================================================
+// RETENTION REWARDS SYSTEM
+// =============================================================================
+
+// Reward Delivery Tracking
+model RetentionReward {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Reward type classification
+  rewardCategory  String   @db.VarChar(20) // tribe, hunt, self
+  rewardType      String   @db.VarChar(50) // early_adopter, quadrant_transition, decision_validation, etc.
+  
+  // Reward content
+  title           String   @db.VarChar(200)
+  body            String   @db.Text
+  symbol          String?  @db.VarChar(20)
+  metadata        Json?    // Additional context (percentages, dates, etc.)
+  
+  // Quality metrics
+  signalStrength  Float    @default(0.5) // 0-1, how strong the signal was for this reward
+  dataQuality     Float    @default(1.0) // 0-1, quality of underlying data
+  
+  // Engagement tracking
+  surfaceType     String   @db.VarChar(20) // in_app_banner, in_app_card, chat_footer, notification
+  isViewed        Boolean  @default(false)
+  viewedAt        DateTime?
+  isClicked       Boolean  @default(false)
+  clickedAt       DateTime?
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  expiresAt       DateTime? // Some rewards have limited relevance
+  
+  @@index([userId, rewardCategory, createdAt(sort: Desc)])
+  @@index([userId, isViewed])
+  @@index([tenantId, rewardType])
+  @@map("retention_rewards")
+}
+
+// =============================================================================
+// LIFECYCLE & INVESTMENT TRACKING
+// =============================================================================
+
+// User Lifecycle Stage
+model UserLifecycleState {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @unique @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Current segment
+  segment         String   @db.VarChar(30) // new_user, early, habit_forming, power_user, churning, dormant
+  segmentEnteredAt DateTime @default(now()) @db.Timestamp(6)
+  previousSegment String?  @db.VarChar(30)
+  
+  // Key metrics for segmentation
+  signupDate      DateTime @db.Timestamp(6)
+  daysSinceSignup Int      @default(0)
+  totalSessions   Int      @default(0)
+  sessionsLast7Days Int    @default(0)
+  sessionsLast30Days Int   @default(0)
+  
+  // Streak tracking
+  currentStreak   Int      @default(0) // Consecutive days with session
+  longestStreak   Int      @default(0)
+  lastSessionDate DateTime?
+  
+  // Investment depth
+  watchlistSize   Int      @default(0)
+  alertsConfigured Int     @default(0)
+  portfolioShared Boolean  @default(false)
+  riskToleranceSet Boolean @default(false)
+  morningDigestEnabled Boolean @default(false)
+  walletConnected Boolean  @default(false)
+  
+  // Engagement scores (rolling averages)
+  avgSessionsPerWeek Float @default(0)
+  avgQueriesPerSession Float @default(0)
+  avgSessionDuration Float @default(0) // In seconds
+  
+  // Risk indicators
+  churnProbability Float  @default(0) // 0-1, predicted churn risk
+  lastChurnPrediction DateTime?
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime @updatedAt @db.Timestamp(6)
+  
+  @@index([segment])
+  @@index([tenantId, segment])
+  @@index([churnProbability(sort: Desc)])
+  @@map("user_lifecycle_states")
+}
+
+// Investment Actions Tracking
+model UserInvestmentAction {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Action type (from the 10 investment actions)
+  actionType      String   @db.VarChar(50) // watchlist_add, price_alert, morning_digest, save_history, risk_tolerance, portfolio_set, regime_prefs, trading_notes, wallet_connect, referral
+  
+  // Context
+  symbol          String?  @db.VarChar(20)
+  metadata        Json?    // Additional action-specific data
+  
+  // Prompt tracking
+  wasPrompted     Boolean  @default(false)
+  promptType      String?  @db.VarChar(50) // immediate, delayed_24h, weekly_summary
+  promptContext   String?  @db.VarChar(100) // What triggered the prompt
+  
+  // Timestamps
+  completedAt     DateTime @default(now()) @db.Timestamp(6)
+  promptedAt      DateTime?
+  
+  @@index([userId, actionType, completedAt(sort: Desc)])
+  @@index([tenantId, actionType])
+  @@map("user_investment_actions")
+}
+
+// =============================================================================
+// A/B TESTING FRAMEWORK
+// =============================================================================
+
+// A/B Test Configuration
+model RetentionABTest {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Test identity
+  testName        String   @unique @db.VarChar(100)
+  hypothesis      String   @db.Text
+  
+  // Test configuration
+  testType        String   @db.VarChar(50) // trigger_timing, watchlist_size, notification_copy, reward_frequency, etc.
+  variants        Json     // [{id: "A", description: "...", config: {...}}, {id: "B", ...}]
+  trafficSplit    Json     // {A: 0.5, B: 0.5} or {A: 0.33, B: 0.33, control: 0.34}
+  
+  // Target segment
+  targetSegments  String[] // Which lifecycle segments to include
+  minSampleSize   Int      @default(1000)
+  
+  // Metrics
+  primaryMetric   String   @db.VarChar(100) // e.g., "digest_open_rate", "session_conversion"
+  secondaryMetrics String[]
+  
+  // Status
+  status          String   @default("draft") @db.VarChar(20) // draft, running, paused, completed, cancelled
+  startedAt       DateTime?
+  endedAt         DateTime?
+  
+  // Results
+  results         Json?    // Statistical results when completed
+  winningVariant  String?  @db.VarChar(10)
+  statisticalSignificance Float?
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime @updatedAt @db.Timestamp(6)
+  
+  @@index([status])
+  @@index([tenantId, status])
+  @@map("retention_ab_tests")
+}
+
+// User A/B Test Assignment
+model UserABTestAssignment {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  userId          String   @db.VarChar(36)
+  testId          String   @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Assignment
+  variant         String   @db.VarChar(10) // A, B, control
+  assignedAt      DateTime @default(now()) @db.Timestamp(6)
+  
+  // Metrics collection
+  primaryMetricValue Float?
+  secondaryMetrics Json?
+  measuredAt      DateTime?
+  
+  // Conversion tracking
+  converted       Boolean  @default(false)
+  conversionType  String?  @db.VarChar(50)
+  convertedAt     DateTime?
+  
+  @@unique([userId, testId])
+  @@index([testId, variant])
+  @@index([tenantId])
+  @@map("user_ab_test_assignments")
+}
+
+// =============================================================================
+// MARKET STATE TRACKING (For Regime-Aware Triggers)
+// =============================================================================
+
+model MarketRegimeState {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  
+  // Current regime
+  regime          String   @db.VarChar(30) // risk_on, risk_off, sideways, bull, bear, crash
+  previousRegime  String?  @db.VarChar(30)
+  regimeChangedAt DateTime?
+  
+  // Key indicators
+  fearGreedIndex  Int?     // 0-100
+  btcDominance    Float?
+  totalMarketCap  Float?   // In billions
+  btc24hChange    Float?
+  eth24hChange    Float?
+  
+  // Derived signals
+  isVolatile      Boolean  @default(false) // High volatility regime
+  trendStrength   Float    @default(0) // -1 (strong bearish) to 1 (strong bullish)
+  
+  // Data quality
+  dataQuality     Float    @default(1.0) // 0-1
+  lastDataUpdate  DateTime @default(now()) @db.Timestamp(6)
+  
+  // Singleton pattern - only one active record
+  isActive        Boolean  @default(true)
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  updatedAt       DateTime @updatedAt @db.Timestamp(6)
+  
+  @@index([isActive])
+  @@map("market_regime_states")
+}
+
+// Market Regime History (For regime shift notifications)
+model MarketRegimeHistory {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  
+  regime          String   @db.VarChar(30)
+  fearGreedIndex  Int?
+  btcPrice        Float?
+  trendStrength   Float?
+  
+  // Context
+  triggerReason   String?  @db.VarChar(200) // What caused the regime classification
+  
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  
+  @@index([createdAt(sort: Desc)])
+  @@map("market_regime_history")
+}
+
+// =============================================================================
+// COIN STATE TRACKING (For Quadrant Transitions & Opportunities)
+// =============================================================================
+
+model CoinStateSnapshot {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  
+  // Coin identity
+  symbol          String   @db.VarChar(20)
+  name            String?  @db.VarChar(100)
+  
+  // OmniScore components
+  pos             Float    // Project OmniScore
+  qs              Float    // Quality Score
+  os              Float    // Opportunity Score
+  riskScore       Float?
+  
+  // Quadrant classification
+  quadrant        String   @db.VarChar(30) // builder, target, avoid, moon_or_doom
+  previousQuadrant String? @db.VarChar(30)
+  quadrantChangedAt DateTime?
+  
+  // Price data
+  price           Float
+  price24hChange  Float?
+  marketCap       Float?
+  volume24h       Float?
+  
+  // Attention metrics
+  watchlistAdds24h Int     @default(0) // Platform-wide watchlist adds
+  queryCount24h   Int      @default(0) // Platform-wide queries about this coin
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  
+  @@index([symbol, createdAt(sort: Desc)])
+  @@index([quadrant, createdAt(sort: Desc)])
+  @@map("coin_state_snapshots")
+}
+
+// =============================================================================
+// RETENTION METRICS & ANALYTICS
+// =============================================================================
+
+// Daily Retention Metrics Aggregation
+model RetentionMetricsDaily {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Date
+  date            DateTime @db.Date
+  
+  // North Star Metric
+  weeklyActiveUsers Int    // WAU with ≥1 meaningful interaction
+  
+  // Supporting Metrics
+  dailyHabitFormationRate Float // % of Week 2 users with 4+ session days/week
+  medianTimeToFirstInsight Float // Seconds from app open to actionable intelligence
+  watchlistReturnRate Float // % of users who return within 24h of watchlist setup
+  omniscoreEngagementDepth Float // % of users who expand beyond headline scores
+  alertResponseRate Float  // % of regime/watchlist alerts that trigger a session
+  
+  // Funnel metrics
+  d1Retention     Float    // Day 1 retention rate
+  d7Retention     Float    // Day 7 retention rate
+  d30Retention    Float    // Day 30 retention rate
+  
+  // Segment breakdown
+  newUserCount    Int      @default(0)
+  earlyUserCount  Int      @default(0)
+  habitFormingCount Int    @default(0)
+  powerUserCount  Int      @default(0)
+  dormantCount    Int      @default(0)
+  
+  // Notification metrics
+  pushNotificationsSent Int @default(0)
+  pushNotificationsCTR Float @default(0)
+  
+  // Reward metrics
+  tribeRewardsDelivered Int @default(0)
+  huntRewardsDelivered Int @default(0)
+  selfRewardsDelivered Int @default(0)
+  rewardCTR       Float    @default(0)
+  
+  // Investment metrics
+  watchlistAddsTotal Int   @default(0)
+  alertsSetTotal Int       @default(0)
+  morningDigestOptIns Int  @default(0)
+  
+  // Timestamps
+  createdAt       DateTime @default(now()) @db.Timestamp(6)
+  
+  @@unique([tenantId, date])
+  @@index([date(sort: Desc)])
+  @@map("retention_metrics_daily")
+}
+
+// Failure Mode Detection
+model RetentionFailureEvent {
+  id              String   @id @default(uuid()) @db.VarChar(36)
+  tenantId        String   @default("default") @db.VarChar(36)
+  
+  // Failure identification
+  failureType     String   @db.VarChar(50) // spam_notifications, random_rewards, slow_analysis, stale_watchlist, etc.
+  severity        String   @db.VarChar(20) // warning, critical
+  
+  // Context
+  userId          String?  @db.VarChar(36) // If user-specific
+  description     String   @db.Text
+  metadata        Json?
+  
+  // Resolution
+  isResolved      Boolean  @default(false)
+  resolvedAt      DateTime?
+  resolution      String?  @db.Text
+  
+  // Timestamps
+  detectedAt      DateTime @default(now()) @db.Timestamp(6)
+  
+  @@index([failureType, isResolved])
+  @@index([tenantId, detectedAt(sort: Desc)])
+  @@map("retention_failure_events")
+}
