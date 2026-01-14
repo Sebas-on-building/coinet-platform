@@ -402,14 +402,23 @@ export class CoinIdValidator {
         const isBadRequest = axiosError.response?.status === 400;
         const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
         
-        logger.warn('Coin list fetch failed', {
+        // Enhanced error logging for debugging
+        const errorDetails: any = {
           attempt: attempt + 1,
           maxRetries: CONFIG.MAX_RETRIES,
           error: error.message,
           isRateLimit,
           isBadRequest,
           isTimeout,
-        });
+        };
+        
+        if (axiosError.response) {
+          errorDetails.status = axiosError.response.status;
+          errorDetails.statusText = axiosError.response.statusText;
+          errorDetails.responseData = axiosError.response.data;
+        }
+        
+        logger.warn('Coin list fetch failed', errorDetails);
 
         // If rate limited, set backoff and don't retry
         if (isRateLimit) {
@@ -417,8 +426,13 @@ export class CoinIdValidator {
           throw new Error('Rate limited by CoinGecko API');
         }
 
-        // If bad request, don't retry - API might be down or endpoint changed
+        // If bad request, don't retry - API might be down, endpoint changed, or API key issue
+        // Note: CoinGecko /coins/list endpoint should work without auth, but may require specific headers
         if (isBadRequest) {
+          logger.debug('CoinGecko API returned 400 - possible causes: API endpoint changed, invalid request format, or API key issue', {
+            url: `${baseUrl}/coins/list`,
+            hasApiKey: isPro,
+          });
           throw new Error('Bad request to CoinGecko API - using fallback');
         }
 
