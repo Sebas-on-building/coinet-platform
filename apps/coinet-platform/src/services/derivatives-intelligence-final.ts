@@ -386,6 +386,10 @@ interface RawLiquidation {
   timestamp: number;
 }
 
+// Track Coinglass API availability
+let coinglassFinalDisabledUntil = 0;
+const COINGLASS_FINAL_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown
+
 async function fetchCoinglassData(): Promise<{
   liquidations: RawLiquidation[];
   funding: RawFundingRate[];
@@ -393,6 +397,13 @@ async function fetchCoinglassData(): Promise<{
 } | null> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) return null;
+  
+  // Check if Coinglass is temporarily disabled
+  const now = Date.now();
+  if (now < coinglassFinalDisabledUntil) {
+    logger.debug('Coinglass API disabled (plan upgrade required)');
+    return null;
+  }
   
   try {
     const [liqRes, fundRes, oiRes] = await Promise.all([
@@ -410,6 +421,19 @@ async function fetchCoinglassData(): Promise<{
         timeout: API_CONFIG.coinglass.timeout,
       }),
     ]);
+    
+    // Check for plan upgrade errors in any response
+    const hasUpgradeError = [liqRes, fundRes, oiRes].some(res => 
+      res.data?.code === '40001' || res.data?.code === 40001
+    );
+    
+    if (hasUpgradeError) {
+      coinglassFinalDisabledUntil = now + COINGLASS_FINAL_COOLDOWN_MS;
+      logger.warn('Coinglass API requires plan upgrade', {
+        action: 'Disabled for 1 hour, falling back to exchange APIs',
+      });
+      return null;
+    }
     
     return {
       liquidations: liqRes.data?.data || [],

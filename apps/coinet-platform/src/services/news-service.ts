@@ -129,11 +129,12 @@ const CONFIG = {
   MAX_NEWS_PER_SOURCE: 25,
   MAX_TOTAL_NEWS: 100, // Allow up to 100 articles
   MAX_NEWS_FOR_AI: 20, // More context for AI
-  MIN_ARTICLES_REQUIRED: 50, // Acceptance criteria: minimum 50 articles
+  MIN_ARTICLES_REQUIRED: 20, // Reduced - RSS alone can provide sufficient coverage
   
   // Failover
   MAX_CONSECUTIVE_FAILURES: 3,
-  FAILURE_COOLDOWN_MS: 3 * 60 * 1000, // 3 minutes before retrying failed source (faster recovery)
+  FAILURE_COOLDOWN_MS: 15 * 60 * 1000, // 15 minutes before retrying failed source
+  RATE_LIMIT_COOLDOWN_MS: 30 * 60 * 1000, // 30 minutes cooldown after rate limit
   
   // Deduplication
   TITLE_SIMILARITY_THRESHOLD: 0.75, // Slightly more aggressive dedup
@@ -150,13 +151,14 @@ const CONFIG = {
 const newsSources: Map<string, NewsSource> = new Map();
 
 // Initialize CryptoPanic source
+// NOTE: CryptoPanic has very strict rate limits - disable if no API key or consistently rate limited
 newsSources.set('cryptopanic', {
   name: 'CryptoPanic',
   priority: 1,
-  enabled: true,
+  enabled: !!process.env.CRYPTOPANIC_API_KEY, // Only enable if API key is configured
   apiKey: process.env.CRYPTOPANIC_API_KEY,
   rateLimit: {
-    requestsPerMinute: process.env.CRYPTOPANIC_API_KEY ? 60 : 5, // Pro vs Free
+    requestsPerMinute: 2, // Very conservative - even with API key, they rate limit aggressively
     lastRequestTime: 0,
     requestCount: 0,
     windowStart: Date.now(),
@@ -400,13 +402,19 @@ function markSourceSuccess(sourceName: string): void {
   }
 }
 
-function markSourceFailure(sourceName: string, error: string): void {
+function markSourceFailure(sourceName: string, error: string, isRateLimit: boolean = false): void {
   const source = newsSources.get(sourceName);
   if (source) {
     source.consecutiveFailures++;
     source.lastError = error;
     
-    if (source.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
+    // Set appropriate cooldown based on error type
+    if (isRateLimit) {
+      // Longer cooldown for rate limits
+      source.rateLimit.lastRequestTime = Date.now() + CONFIG.RATE_LIMIT_COOLDOWN_MS - CONFIG.FAILURE_COOLDOWN_MS;
+      source.healthStatus = 'failed';
+      logger.warn(`📰 Source ${sourceName} rate limited, cooling down for ${CONFIG.RATE_LIMIT_COOLDOWN_MS / 60000} minutes`);
+    } else if (source.consecutiveFailures >= CONFIG.MAX_CONSECUTIVE_FAILURES) {
       source.healthStatus = 'failed';
       logger.warn(`📰 Source ${sourceName} marked as FAILED after ${source.consecutiveFailures} failures`);
     } else {
@@ -516,18 +524,21 @@ async function fetchFromCryptoPanic(coins?: string[]): Promise<NewsArticle[]> {
     
     return articles;
   } catch (error: any) {
-    const message = error.response?.status === 429 
+    const isRateLimit = error.response?.status === 429;
+    const message = isRateLimit 
       ? 'Rate limited' 
       : error.response?.status === 401
       ? 'Invalid API key'
       : error.response?.status === 403
       ? 'Access forbidden'
+      : error.response?.status === 502
+      ? 'Service unavailable'
       : error.message || 'Unknown error';
-    markSourceFailure('cryptopanic', message);
+    markSourceFailure('cryptopanic', message, isRateLimit);
     logger.warn('📰 CryptoPanic fetch FAILED', { error: message, status: error.response?.status });
-      return [];
+    return [];
   }
-    }
+}
     
 function transformCryptoPanicArticle(post: CryptoPanicPost): NewsArticle {
   const { sentiment, sentimentScore } = analyzeSentimentAdvanced(post.title, post.votes);

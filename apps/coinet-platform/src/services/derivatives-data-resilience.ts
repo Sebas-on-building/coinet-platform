@@ -303,8 +303,9 @@ const DATA_SOURCES: DataSource[] = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const sourceHealthMap: Map<string, SourceHealth> = new Map();
-const CIRCUIT_BREAKER_THRESHOLD = 5;      // Failures before opening circuit
-const CIRCUIT_BREAKER_RESET_MS = 300000;  // 5 minutes before retry
+const CIRCUIT_BREAKER_THRESHOLD = 8;       // Failures before opening circuit (more lenient)
+const CIRCUIT_BREAKER_RESET_MS = 60000;    // 1 minute before retry (faster recovery)
+const RATE_LIMIT_RECOVERY_MS = 30000;      // 30 seconds after rate limit error
 
 function initializeSourceHealth(sourceId: string): SourceHealth {
   return {
@@ -336,6 +337,14 @@ function updateSourceHealth(
   const health = getSourceHealth(sourceId);
   health.lastCheck = new Date();
   
+  // Detect if this is a rate limit error (treat differently)
+  const isRateLimit = error && (
+    error.includes('429') || 
+    error.toLowerCase().includes('rate') || 
+    error.toLowerCase().includes('limit') ||
+    error.toLowerCase().includes('too many')
+  );
+  
   if (success) {
     health.lastSuccess = new Date();
     health.consecutiveFailures = 0;
@@ -348,19 +357,32 @@ function updateSourceHealth(
     else health.status = 'unhealthy';
     
   } else {
-    health.consecutiveFailures++;
     health.recentErrors.push({ timestamp: new Date(), error: error || 'Unknown error' });
     health.recentErrors = health.recentErrors.slice(-10);  // Keep last 10
     
-    if (health.consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+    // Rate limits are handled differently - they're recoverable
+    if (isRateLimit) {
+      health.status = 'degraded';
       health.circuitBreakerOpen = true;
-      health.status = 'offline';
-      logger.warn(`🔌 Circuit breaker OPEN for ${sourceId}`, {
-        failures: health.consecutiveFailures,
-        lastError: error,
+      // Set a shorter recovery time by adjusting lastCheck
+      health.lastCheck = new Date(Date.now() - CIRCUIT_BREAKER_RESET_MS + RATE_LIMIT_RECOVERY_MS);
+      logger.debug(`⏳ Rate limit pause for ${sourceId}`, {
+        recoveryIn: `${RATE_LIMIT_RECOVERY_MS / 1000}s`,
       });
     } else {
-      health.status = 'unhealthy';
+      health.consecutiveFailures++;
+      
+      if (health.consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        health.circuitBreakerOpen = true;
+        health.status = 'offline';
+        logger.warn(`🔌 Circuit breaker OPEN for ${sourceId}`, {
+          failures: health.consecutiveFailures,
+          lastError: error,
+          resetIn: `${CIRCUIT_BREAKER_RESET_MS / 1000}s`,
+        });
+      } else {
+        health.status = 'unhealthy';
+      }
     }
   }
   
@@ -491,6 +513,10 @@ const DEFAULT_FETCH_CONFIG: FetchConfig = {
   retryDelay: 1000,
 };
 
+// Track sources with plan limitations
+const sourcesDisabled: Map<string, { until: number; reason: string }> = new Map();
+const SOURCE_DISABLE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown for plan errors
+
 async function fetchFromSource<T>(
   source: DataSource,
   endpoint: string,
@@ -499,6 +525,18 @@ async function fetchFromSource<T>(
 ): Promise<{ data: T | null; latencyMs: number; error?: string }> {
   const { timeout, retries, retryDelay } = { ...DEFAULT_FETCH_CONFIG, ...config };
   const startTime = Date.now();
+  
+  // Check if source is temporarily disabled
+  const disabledEntry = sourcesDisabled.get(source.id);
+  if (disabledEntry && Date.now() < disabledEntry.until) {
+    logger.debug(`Source ${source.id} disabled: ${disabledEntry.reason}`);
+    return { data: null, latencyMs: 0, error: disabledEntry.reason };
+  }
+  
+  // Clear expired disable entries
+  if (disabledEntry && Date.now() >= disabledEntry.until) {
+    sourcesDisabled.delete(source.id);
+  }
   
   // Add API key if required
   const headers: Record<string, string> = {};
@@ -523,6 +561,25 @@ async function fetchFromSource<T>(
         headers,
         timeout,
       });
+      
+      // Handle Coinglass-specific API error codes in response body
+      if (source.id === 'coinglass' && response.data) {
+        const code = response.data.code;
+        if (code === '40001' || code === 40001) {
+          // Plan upgrade required - disable source temporarily
+          sourcesDisabled.set(source.id, {
+            until: Date.now() + SOURCE_DISABLE_COOLDOWN_MS,
+            reason: 'Coinglass API requires plan upgrade (40001)',
+          });
+          logger.warn('💀 Coinglass API requires plan upgrade', {
+            code,
+            msg: response.data.msg,
+            action: 'Source disabled for 1 hour',
+          });
+          const latencyMs = Date.now() - startTime;
+          return { data: null, latencyMs, error: 'Plan upgrade required' };
+        }
+      }
       
       const latencyMs = Date.now() - startTime;
       updateSourceHealth(source.id, true, latencyMs);

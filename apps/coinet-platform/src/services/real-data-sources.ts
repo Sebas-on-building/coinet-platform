@@ -628,11 +628,35 @@ const COINGECKO_IDS: Record<string, string> = {
   'floki': 'floki',
 };
 
+// Cache for tokenomics data to reduce API calls
+const tokenomicsCache: Map<string, { data: RealTokenomicsData; timestamp: number }> = new Map();
+const TOKENOMICS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Rate limiting for CoinGecko API
+let lastCoinGeckoRequest = 0;
+const COINGECKO_MIN_INTERVAL_MS = 2000; // 2 seconds between requests (conservative)
+
 /**
- * Fetch real tokenomics data from CoinGecko
+ * Fetch real tokenomics data from CoinGecko with caching and rate limiting
  */
 export async function fetchCoinGeckoTokenomics(projectId: string): Promise<RealTokenomicsData> {
   const coinId = COINGECKO_IDS[projectId.toLowerCase()] || projectId.toLowerCase();
+  
+  // Check cache first
+  const cached = tokenomicsCache.get(coinId);
+  if (cached && Date.now() - cached.timestamp < TOKENOMICS_CACHE_TTL_MS) {
+    logger.debug(`[RealData] Using cached tokenomics for ${projectId}`);
+    return cached.data;
+  }
+  
+  // Rate limit
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastCoinGeckoRequest;
+  if (timeSinceLastRequest < COINGECKO_MIN_INTERVAL_MS) {
+    const waitTime = COINGECKO_MIN_INTERVAL_MS - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  lastCoinGeckoRequest = Date.now();
   
   try {
     const response = await axios.get(
@@ -646,7 +670,7 @@ export async function fetchCoinGeckoTokenomics(projectId: string): Promise<RealT
           developer_data: false,
           sparkline: false,
         },
-        timeout: 10000,
+        timeout: 15000,
         headers: {
           'Accept': 'application/json',
           'User-Agent': 'Coinet-RealData/1.0',
@@ -654,10 +678,13 @@ export async function fetchCoinGeckoTokenomics(projectId: string): Promise<RealT
       }
     );
     
-    const data = response.data;
-    const marketData = data.market_data;
-    
-    if (!marketData) {
+    // Handle rate limit response (429)
+    if (response.status === 429) {
+      logger.warn(`[RealData] CoinGecko rate limited for ${projectId}, using cache or fallback`);
+      // Return cached data if available (even if stale)
+      if (cached) {
+        return cached.data;
+      }
       return {
         hasTokenomicsData: false,
         circulatingSupply: 0,
@@ -665,6 +692,21 @@ export async function fetchCoinGeckoTokenomics(projectId: string): Promise<RealT
         circulatingPercent: 0,
         sources: [],
       };
+    }
+    
+    const data = response.data;
+    const marketData = data.market_data;
+    
+    if (!marketData) {
+      const emptyResult: RealTokenomicsData = {
+        hasTokenomicsData: false,
+        circulatingSupply: 0,
+        totalSupply: 0,
+        circulatingPercent: 0,
+        sources: [],
+      };
+      tokenomicsCache.set(coinId, { data: emptyResult, timestamp: Date.now() });
+      return emptyResult;
     }
     
     const circulatingSupply = marketData.circulating_supply || 0;
@@ -682,15 +724,13 @@ export async function fetchCoinGeckoTokenomics(projectId: string): Promise<RealT
     const fdv = marketData.fully_diluted_valuation?.usd;
     const mcapToFdv = fdv && fdv > 0 ? marketCap / fdv : undefined;
     
-    logger.info(`[RealData] CoinGecko tokenomics fetched for ${projectId}`, {
+    logger.debug(`[RealData] CoinGecko tokenomics fetched for ${projectId}`, {
       circulatingSupply,
       totalSupply,
-      maxSupply,
       circulatingPercent,
-      mcapToFdv,
     });
     
-    return {
+    const result: RealTokenomicsData = {
       hasTokenomicsData: true,
       circulatingSupply,
       totalSupply,
@@ -701,8 +741,25 @@ export async function fetchCoinGeckoTokenomics(projectId: string): Promise<RealT
       sources: ['coingecko'],
     };
     
-  } catch (error) {
-    logger.warn(`[RealData] CoinGecko tokenomics fetch failed for ${projectId}:`, error);
+    // Cache the result
+    tokenomicsCache.set(coinId, { data: result, timestamp: Date.now() });
+    
+    return result;
+    
+  } catch (error: any) {
+    // Log with less noise if it's a rate limit or common error
+    const isRateLimit = error.response?.status === 429;
+    if (isRateLimit) {
+      logger.debug(`[RealData] CoinGecko rate limited for ${projectId}`);
+    } else {
+      logger.warn(`[RealData] CoinGecko tokenomics fetch failed for ${projectId}:`, error.message);
+    }
+    
+    // Return cached data if available (even if stale)
+    if (cached) {
+      return cached.data;
+    }
+    
     return {
       hasTokenomicsData: false,
       circulatingSupply: 0,

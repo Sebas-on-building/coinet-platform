@@ -152,10 +152,29 @@ async function waitForRateLimit(): Promise<void> {
 // COINGLASS API INTEGRATION
 // ============================================================================
 
+// Track Coinglass API health
+let coinglassApiDisabled = false;
+let coinglassDisabledUntil = 0;
+const COINGLASS_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown after plan error
+
 async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
   if (!CONFIG.COINGLASS_API_KEY) {
     logger.debug('💀 Coinglass API key not configured');
     return null;
+  }
+
+  // Check if API is temporarily disabled
+  const now = Date.now();
+  if (coinglassApiDisabled && now < coinglassDisabledUntil) {
+    logger.debug('💀 Coinglass API temporarily disabled', {
+      remainingMs: coinglassDisabledUntil - now,
+    });
+    return null;
+  }
+  
+  // Reset if cooldown expired
+  if (coinglassApiDisabled && now >= coinglassDisabledUntil) {
+    coinglassApiDisabled = false;
   }
 
   try {
@@ -169,6 +188,19 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
       timeout: CONFIG.TIMEOUT_MS,
     });
 
+    // Handle Coinglass-specific error codes
+    if (response.data?.code === '40001' || response.data?.code === 40001) {
+      // "Upgrade plan" error - disable API temporarily
+      coinglassApiDisabled = true;
+      coinglassDisabledUntil = now + COINGLASS_COOLDOWN_MS;
+      logger.warn('💀 Coinglass API error', { 
+        code: response.data?.code, 
+        msg: response.data?.msg,
+        action: 'API disabled for 1 hour - plan upgrade required',
+      });
+      return null;
+    }
+    
     if (response.data?.code !== '0' && response.data?.code !== 0) {
       logger.warn('💀 Coinglass API error', { code: response.data?.code, msg: response.data?.msg });
       return null;

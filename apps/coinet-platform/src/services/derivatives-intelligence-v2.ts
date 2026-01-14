@@ -876,10 +876,23 @@ let previousSmoothedScore: number | null = null;
 // DATA FETCHING
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Track Coinglass API availability
+let coinglassDisabledUntil = 0;
+const COINGLASS_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown
+
 async function fetchCoinglassLiquidations(): Promise<LiquidationEvent[]> {
   const apiKey = process.env.COINGLASS_API_KEY;
   if (!apiKey) {
     logger.debug('Coinglass API key not configured');
+    return generateMockLiquidations();
+  }
+  
+  // Check if Coinglass is temporarily disabled
+  const now = Date.now();
+  if (now < coinglassDisabledUntil) {
+    logger.debug('Coinglass API disabled (plan upgrade required)', {
+      remainingMs: coinglassDisabledUntil - now,
+    });
     return generateMockLiquidations();
   }
   
@@ -889,6 +902,17 @@ async function fetchCoinglassLiquidations(): Promise<LiquidationEvent[]> {
       params: { symbol: 'all', time_type: 'h24' },
       timeout: 10000,
     });
+    
+    // Handle plan upgrade error (40001)
+    if (response.data?.code === '40001' || response.data?.code === 40001) {
+      coinglassDisabledUntil = now + COINGLASS_COOLDOWN_MS;
+      logger.warn('Coinglass API requires plan upgrade', {
+        code: response.data.code,
+        msg: response.data.msg,
+        action: 'Disabled for 1 hour, using mock data',
+      });
+      return generateMockLiquidations();
+    }
     
     if (response.data?.data) {
       return response.data.data.map((item: any, index: number) => ({

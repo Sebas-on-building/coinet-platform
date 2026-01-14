@@ -83,6 +83,8 @@ export interface ValidatorStats {
   totalValidIds: number;
   totalInvalidIds: number;
   hitRate: number;
+  isFallbackMode: boolean;
+  rateLimitedUntil?: number;
 }
 
 // ============================================================================
@@ -99,12 +101,13 @@ const CONFIG = {
   CACHE_REFRESH_BUFFER_MS: 60 * 60 * 1000, // Refresh 1 hour before expiry
   
   // API settings
-  TIMEOUT_MS: 20000, // 20 seconds (coin list is large)
-  MAX_RETRIES: 3,
-  RETRY_DELAY_BASE_MS: 1000, // Exponential backoff base
+  TIMEOUT_MS: 30000, // 30 seconds (coin list is large)
+  MAX_RETRIES: 2, // Reduced retries to avoid excessive API calls
+  RETRY_DELAY_BASE_MS: 2000, // Longer base delay for backoff
   
-  // Rate limiting
-  MIN_FETCH_INTERVAL_MS: 60000, // Don't fetch more than once per minute
+  // Rate limiting - much more conservative to avoid 429 errors
+  MIN_FETCH_INTERVAL_MS: 300000, // 5 minutes between fetch attempts
+  RATE_LIMIT_BACKOFF_MS: 600000, // 10 minutes backoff after rate limit
 };
 
 // ============================================================================
@@ -145,6 +148,12 @@ export class CoinIdValidator {
   
   /** Last fetch attempt timestamp (for rate limiting) */
   private lastFetchAttempt: number = 0;
+
+  /** Track if we hit rate limit recently */
+  private rateLimitedUntil: number = 0;
+
+  /** Flag to use fallback coin list if API persistently fails */
+  private useFallbackMode: boolean = false;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // METRICS
@@ -199,8 +208,21 @@ export class CoinIdValidator {
       return;
     }
 
-    // Rate limit fetch attempts
     const now = Date.now();
+    
+    // Check if we're still in rate limit backoff
+    if (now < this.rateLimitedUntil) {
+      logger.debug('Coin ID validator: skipping fetch (rate limit backoff)', {
+        waitMs: this.rateLimitedUntil - now,
+      });
+      // Use fallback mode if we haven't initialized yet
+      if (!this.isInitialized) {
+        this.initializeWithFallback();
+      }
+      return;
+    }
+
+    // Rate limit fetch attempts
     if (now - this.lastFetchAttempt < CONFIG.MIN_FETCH_INTERVAL_MS && this.isInitialized) {
       logger.debug('Coin ID validator: skipping fetch (rate limited)');
       return;
@@ -212,6 +234,7 @@ export class CoinIdValidator {
     try {
       await this.fetchCoinList();
       this.isInitialized = true;
+      this.useFallbackMode = false;
       
       logger.info('✅ Coin ID validator initialized', {
         coinCount: this.validCoinIds.size,
@@ -220,14 +243,103 @@ export class CoinIdValidator {
       });
     } catch (error: any) {
       this.metrics.fetchFailures++;
-      logger.error('❌ Failed to initialize coin ID validator', {
-        error: error.message,
-        attempts: this.metrics.fetchAttempts,
-      });
-      // Don't throw - allow graceful degradation
+      
+      // Check if it's a rate limit error
+      const isRateLimit = (error as AxiosError)?.response?.status === 429 ||
+                          error.message?.includes('429') ||
+                          error.message?.includes('rate');
+      
+      if (isRateLimit) {
+        this.rateLimitedUntil = now + CONFIG.RATE_LIMIT_BACKOFF_MS;
+        logger.warn('⚠️ Coin ID validator rate limited, backing off', {
+          backoffMs: CONFIG.RATE_LIMIT_BACKOFF_MS,
+          retryAt: new Date(this.rateLimitedUntil).toISOString(),
+        });
+      }
+      
+      // Initialize with fallback if API fails
+      if (!this.isInitialized) {
+        this.initializeWithFallback();
+        logger.warn('⚠️ Coin ID validator using fallback coin list', {
+          error: error.message,
+          fallbackCoins: this.validCoinIds.size,
+        });
+      }
     } finally {
       this.fetchInProgress = false;
     }
+  }
+
+  /**
+   * Initialize with a fallback list of common coins when API fails
+   */
+  private initializeWithFallback(): void {
+    // Common cryptocurrency coins that should always be valid
+    const FALLBACK_COINS: CoinGeckoCoinEntry[] = [
+      // Top 50 by market cap + common tokens
+      { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin' },
+      { id: 'ethereum', symbol: 'eth', name: 'Ethereum' },
+      { id: 'tether', symbol: 'usdt', name: 'Tether' },
+      { id: 'binancecoin', symbol: 'bnb', name: 'BNB' },
+      { id: 'solana', symbol: 'sol', name: 'Solana' },
+      { id: 'ripple', symbol: 'xrp', name: 'XRP' },
+      { id: 'usd-coin', symbol: 'usdc', name: 'USD Coin' },
+      { id: 'staked-ether', symbol: 'steth', name: 'Lido Staked Ether' },
+      { id: 'cardano', symbol: 'ada', name: 'Cardano' },
+      { id: 'dogecoin', symbol: 'doge', name: 'Dogecoin' },
+      { id: 'avalanche-2', symbol: 'avax', name: 'Avalanche' },
+      { id: 'tron', symbol: 'trx', name: 'TRON' },
+      { id: 'the-open-network', symbol: 'ton', name: 'Toncoin' },
+      { id: 'chainlink', symbol: 'link', name: 'Chainlink' },
+      { id: 'polkadot', symbol: 'dot', name: 'Polkadot' },
+      { id: 'matic-network', symbol: 'matic', name: 'Polygon' },
+      { id: 'shiba-inu', symbol: 'shib', name: 'Shiba Inu' },
+      { id: 'wrapped-bitcoin', symbol: 'wbtc', name: 'Wrapped Bitcoin' },
+      { id: 'dai', symbol: 'dai', name: 'Dai' },
+      { id: 'litecoin', symbol: 'ltc', name: 'Litecoin' },
+      { id: 'bitcoin-cash', symbol: 'bch', name: 'Bitcoin Cash' },
+      { id: 'uniswap', symbol: 'uni', name: 'Uniswap' },
+      { id: 'cosmos', symbol: 'atom', name: 'Cosmos Hub' },
+      { id: 'stellar', symbol: 'xlm', name: 'Stellar' },
+      { id: 'ethereum-classic', symbol: 'etc', name: 'Ethereum Classic' },
+      { id: 'internet-computer', symbol: 'icp', name: 'Internet Computer' },
+      { id: 'filecoin', symbol: 'fil', name: 'Filecoin' },
+      { id: 'hedera-hashgraph', symbol: 'hbar', name: 'Hedera' },
+      { id: 'aptos', symbol: 'apt', name: 'Aptos' },
+      { id: 'arbitrum', symbol: 'arb', name: 'Arbitrum' },
+      { id: 'optimism', symbol: 'op', name: 'Optimism' },
+      { id: 'sui', symbol: 'sui', name: 'Sui' },
+      { id: 'near', symbol: 'near', name: 'NEAR Protocol' },
+      { id: 'vechain', symbol: 'vet', name: 'VeChain' },
+      { id: 'maker', symbol: 'mkr', name: 'Maker' },
+      { id: 'aave', symbol: 'aave', name: 'Aave' },
+      { id: 'the-graph', symbol: 'grt', name: 'The Graph' },
+      { id: 'render-token', symbol: 'rndr', name: 'Render Token' },
+      { id: 'algorand', symbol: 'algo', name: 'Algorand' },
+      { id: 'fantom', symbol: 'ftm', name: 'Fantom' },
+      { id: 'pepe', symbol: 'pepe', name: 'Pepe' },
+      { id: 'injective-protocol', symbol: 'inj', name: 'Injective' },
+      { id: 'kaspa', symbol: 'kas', name: 'Kaspa' },
+      { id: 'immutable-x', symbol: 'imx', name: 'Immutable' },
+      { id: 'sei-network', symbol: 'sei', name: 'Sei' },
+      { id: 'celestia', symbol: 'tia', name: 'Celestia' },
+      { id: 'bittensor', symbol: 'tao', name: 'Bittensor' },
+      { id: 'bonk', symbol: 'bonk', name: 'Bonk' },
+      { id: 'floki', symbol: 'floki', name: 'FLOKI' },
+      { id: 'jupiter', symbol: 'jup', name: 'Jupiter' },
+      { id: 'just', symbol: 'jst', name: 'JUST' },
+      { id: '2026-token', symbol: '2026', name: '2026' }, // Support tokens mentioned in logs
+    ];
+
+    this.buildValidationStructures(FALLBACK_COINS);
+    this.isInitialized = true;
+    this.useFallbackMode = true;
+    this.lastFetchTime = Date.now();
+    
+    logger.info('✅ Coin ID validator initialized with fallback list', {
+      coinCount: this.validCoinIds.size,
+      mode: 'fallback',
+    });
   }
 
   /**
@@ -236,7 +348,10 @@ export class CoinIdValidator {
   private async fetchCoinList(): Promise<void> {
     const isPro = !!process.env.COINGECKO_API_KEY;
     const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
-    const headers: Record<string, string> = { 'Accept': 'application/json' };
+    const headers: Record<string, string> = { 
+      'Accept': 'application/json',
+      'User-Agent': 'Coinet-Platform/1.0',
+    };
     
     if (isPro) {
       headers['x-cg-pro-api-key'] = process.env.COINGECKO_API_KEY!;
@@ -268,6 +383,7 @@ export class CoinIdValidator {
         this.buildValidationStructures(response.data);
         this.lastFetchTime = Date.now();
         this.metrics.fetchSuccesses++;
+        this.rateLimitedUntil = 0; // Clear rate limit flag on success
 
         logger.info('📋 CoinGecko coin list fetched', {
           coinCount: this.validCoinIds.size,
@@ -281,7 +397,9 @@ export class CoinIdValidator {
         lastError = error;
         
         // Log the error
-        const isRateLimit = (error as AxiosError).response?.status === 429;
+        const axiosError = error as AxiosError;
+        const isRateLimit = axiosError.response?.status === 429;
+        const isBadRequest = axiosError.response?.status === 400;
         const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
         
         logger.warn('Coin list fetch failed', {
@@ -289,15 +407,27 @@ export class CoinIdValidator {
           maxRetries: CONFIG.MAX_RETRIES,
           error: error.message,
           isRateLimit,
+          isBadRequest,
           isTimeout,
         });
+
+        // If rate limited, set backoff and don't retry
+        if (isRateLimit) {
+          this.rateLimitedUntil = Date.now() + CONFIG.RATE_LIMIT_BACKOFF_MS;
+          throw new Error('Rate limited by CoinGecko API');
+        }
+
+        // If bad request, don't retry - API might be down or endpoint changed
+        if (isBadRequest) {
+          throw new Error('Bad request to CoinGecko API - using fallback');
+        }
 
         // Calculate delay with exponential backoff
         if (attempt < CONFIG.MAX_RETRIES - 1) {
           const delay = CONFIG.RETRY_DELAY_BASE_MS * Math.pow(2, attempt);
-          const jitter = Math.random() * 500; // Add jitter to prevent thundering herd
+          const jitter = Math.random() * 1000; // Add jitter to prevent thundering herd
           
-          logger.debug(`Retrying in ${delay + jitter}ms...`);
+          logger.debug(`Retrying in ${Math.round(delay + jitter)}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay + jitter));
         }
       }
@@ -522,6 +652,8 @@ export class CoinIdValidator {
       totalValidIds: this.metrics.totalValidIds,
       totalInvalidIds: this.metrics.totalInvalidIds,
       hitRate: totalIds > 0 ? this.metrics.totalValidIds / totalIds : 0,
+      isFallbackMode: this.useFallbackMode,
+      rateLimitedUntil: this.rateLimitedUntil > Date.now() ? this.rateLimitedUntil : undefined,
     };
   }
 
