@@ -12,7 +12,7 @@
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 import { validateAIResponse, quickHallucinationCheck } from './ai-hallucination-guard';
-import { classifyConversation, generateResponseGuidance } from './conversation-rules';
+import { classifyVerbosity, generateResponseGuidance } from './conversation-rules';
 
 export interface AIAnalysisRequest {
   content: string;
@@ -651,17 +651,28 @@ export class AIService {
       }
 
       // ═══════════════════════════════════════════════════════════════════════
-      // 🎯 CONVERSATION RULES — Classify intent & energy, generate guidance
+      // 🎛️ VERBOSITY CONTROLLER — Classify signals, select mode, apply caps
       // ═══════════════════════════════════════════════════════════════════════
-      const conversationClass = classifyConversation(request.content);
-      const responseGuidance = generateResponseGuidance(conversationClass);
+      const verbosityClass = classifyVerbosity(
+        request.content,
+        request.context?.conversationHistory
+      );
+      const responseGuidance = generateResponseGuidance(verbosityClass);
       
-      logger.debug('🎯 Conversation rules applied', {
-        intent: conversationClass.intent,
-        energy: conversationClass.energy,
-        verbosity: conversationClass.verbosity,
-        maxLines: conversationClass.responseConstraints.maxLines,
-        maxNumbers: conversationClass.responseConstraints.maxNumbers,
+      logger.debug('🎛️ Verbosity controller applied', {
+        mode: verbosityClass.mode,
+        template: verbosityClass.template,
+        signals: {
+          length: verbosityClass.signals.length,
+          depth: verbosityClass.signals.depth,
+          urgency: verbosityClass.signals.urgency,
+          domain: verbosityClass.signals.domain,
+        },
+        caps: {
+          maxLines: verbosityClass.caps.maxLines,
+          maxNumbers: verbosityClass.caps.maxNumbers,
+          maxBullets: verbosityClass.caps.maxBullets,
+        },
       });
 
       // Add live market data context if available

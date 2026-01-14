@@ -1,392 +1,711 @@
 /**
- * 🎯 Conversation Rules Engine v1.0
+ * 🎛️ Verbosity & Structure Controller v2.0
  * 
- * Implements three hard rules for natural, human-like conversation:
+ * Production-ready deterministic policy layer that prevents "Bible replies"
+ * by forcing Coinet to choose a response size + structure BEFORE writing.
  * 
- * RULE A: Intent & Energy Matching
- *   - Classify every message into intent bucket + energy level
- *   - Response MUST match the user's mode
+ * This runs EVERY turn and hard-limits:
+ * - Output length (lines)
+ * - Numbers/metrics count
+ * - Bullets allowed
+ * - Structure template
+ * - Question count (max 1)
  * 
- * RULE B: "Small answer → offer depth" layering
- *   - Layer 1: Minimum useful response (1-3 lines)
- *   - Layer 2: Single "depth offer" line
- *   - User chooses to go deeper
+ * FIVE-STEP PROCESS:
+ * 1. Extract signals from user message (LEN, DEPTH, URGENT, STATE, DOMAIN)
+ * 2. Decide output mode (S/M/L) with deterministic rules
+ * 3. Apply hard caps per mode
+ * 4. Select structure template
+ * 5. Generate expansion protocol
  * 
- * RULE C: One question max at the end
- *   - Exactly ONE question mark per message
- *   - Move the conversation forward with minimal friction
- * 
- * @version 1.0.0
+ * @version 2.0.0 - Production-ready spec
  */
 
 import { logger } from '../utils/logger';
 
 // ============================================================================
-// TYPES
+// TYPES — SIGNAL FLAGS
 // ============================================================================
 
 /**
- * Intent Buckets - What the user wants
+ * Detail Signal - How much info the user provided
  */
-export type IntentBucket = 
-  | 'social'      // Greetings, small talk, "hey", "yo", "lol", emojis
-  | 'command'     // "give me overview", "check SOL", "price BTC"
-  | 'question'    // "why did it dump?", "what does funding mean?"
-  | 'decision'    // "should I buy?", "sell?", "what's the play?"
-  | 'meta';       // "your data is wrong", "how do you calculate?"
+export type LengthSignal = 'LEN_SHORT' | 'LEN_MED' | 'LEN_LONG';
 
 /**
- * Energy Levels - How fast the user wants it
+ * Depth Intent Signal - What level of detail they want
  */
-export type EnergyLevel = 
-  | 'low'     // 1-3 words, casual, no punctuation ("hey", "overview", "btc?")
-  | 'normal'  // Clear sentence, direct request
-  | 'high';   // Urgent words, caps, frustration, lots of detail
+export type DepthSignal = 'DEPTH_LOW' | 'DEPTH_MED' | 'DEPTH_HIGH' | 'DEPTH_NONE';
 
 /**
- * Response verbosity based on energy
+ * Urgency Signal - Time pressure
  */
-export type VerbosityMode = 'tiny' | 'small' | 'medium' | 'full';
+export type UrgencySignal = 'URGENT' | 'NOT_URGENT';
 
 /**
- * Classification result
+ * Conversation State Signal - Where we are in the flow
  */
-export interface ConversationClassification {
-  intent: IntentBucket;
-  energy: EnergyLevel;
-  verbosity: VerbosityMode;
-  confidence: number;
-  triggers: string[];
-  responseConstraints: ResponseConstraints;
+export type StateSignal = 'STATE_NEW' | 'STATE_ACTIVE' | 'STATE_DEEP';
+
+/**
+ * Domain Focus Signal - Scope of the query
+ */
+export type DomainSignal = 'SINGLE_ASSET' | 'MARKET_WIDE' | 'META' | 'SOCIAL' | 'UNKNOWN';
+
+/**
+ * Output Mode - The final verbosity decision
+ */
+export type OutputMode = 'S' | 'M' | 'L';
+
+/**
+ * All extracted signals from a message
+ */
+export interface MessageSignals {
+  length: LengthSignal;
+  depth: DepthSignal;
+  urgency: UrgencySignal;
+  state: StateSignal;
+  domain: DomainSignal;
+  detectedAssets: string[];
+  isGreeting: boolean;
+  isDepthOptIn: boolean;  // User said "yes", "full", "deep dive" to expand
 }
 
 /**
- * Hard constraints for the response
+ * Hard caps for the response
  */
-export interface ResponseConstraints {
+export interface HardCaps {
+  minLines: number;
   maxLines: number;
+  maxBullets: number;
   maxNumbers: number;
-  requiresDepthOffer: boolean;
-  depthOfferType: DepthOfferType | null;
-  questionType: QuestionType | null;
-  forbiddenPatterns: string[];
+  maxAssets: number;
+  requireHumanSummary: boolean;
+  maxQuestions: 1;
+  structure: StructureTemplate;
 }
 
 /**
- * Types of depth offers
+ * Structure templates for different query types
  */
-export type DepthOfferType = 
-  | 'vibe_or_numbers'    // "Want the quick vibe or the exact numbers?"
-  | 'levels_or_direction' // "Want levels + setups, or just direction?"
-  | 'short_or_deep'      // "Want the short version or a deep dive?"
-  | 'metrics_offer';     // "Want the metrics to confirm?"
+export type StructureTemplate = 
+  | 'GREETING'           // Greet + 1 question
+  | 'PRICE_CHECK'        // Price + context + offer
+  | 'MARKET_OVERVIEW'    // Vibe + leaders/laggers + risk + bullets + question
+  | 'WHY_MOVE'           // Driver + supporting + confirm/deny + question
+  | 'DECISION_HELP'      // Opinion + reasons + their situation question
+  | 'DEEP_ANALYSIS'      // Thesis → Drivers → Levels → Risk → Question
+  | 'META_RESPONSE'      // Acknowledge + explain + help
+  | 'GENERIC_SMALL'      // Answer + context + offer
+  | 'GENERIC_MEDIUM';    // Summary + details + offer
 
 /**
- * Types of follow-up questions (only ONE allowed)
+ * Complete classification result
  */
-export type QuestionType =
-  | 'scope'      // "Quick pulse or deep dive?"
-  | 'asset'      // "Which coin are you watching?"
-  | 'goal'       // "Are you looking for entries or just direction?"
-  | 'timeframe'; // "Scalp today or swing?"
+export interface VerbosityClassification {
+  signals: MessageSignals;
+  mode: OutputMode;
+  caps: HardCaps;
+  template: StructureTemplate;
+  depthOffer: string | null;
+  questionPrompt: string | null;
+}
 
 // ============================================================================
-// PATTERN DEFINITIONS
-// ============================================================================
-
-const INTENT_PATTERNS: Record<IntentBucket, { patterns: RegExp[]; weight: number }> = {
-  social: {
-    patterns: [
-      /^(?:hey|hi|hello|yo|sup|gm|gn|wassup|what'?s up)[\s\?!\.]*$/i,
-      /^(?:how are you|how'?s it going|what'?s good)[\s\?]*$/i,
-      /^(?:lol|lmao|haha|nice|cool|thanks|ty|thx)[\s!\.]*$/i,
-      /^(?:bro|dude|fam|man|bruh)[\s,\?!\.]*$/i,
-      /^[^\w]*(?:👋|😊|🙏|😂|🔥|💯|😎|🤙)+[^\w]*$/,
-      /^(?:u there|you there|anyone|hello\??)[\s\?]*$/i,
-      /^(?:ok|okay|alright|sure|yep|yeah|yea|ya)[\s!\.]*$/i,
-    ],
-    weight: 2.0,
-  },
-  
-  command: {
-    patterns: [
-      /\b(?:give me|show me|get me|pull up)\b/i,
-      /\b(?:overview|summary|update|status|check)\b/i,
-      /\b(?:price|prices) (?:of |for )?/i,
-      /^(?:btc|eth|sol|bitcoin|ethereum|solana)\s*\??$/i,
-      /\b(?:market|markets)\b/i,
-      /\b(?:compare|versus|vs)\b/i,
-      /\b(?:top|best|worst)\s+\d+/i,
-      /^[A-Z]{2,5}\s*\??$/,  // Single ticker like "BTC?" or "SOL"
-    ],
-    weight: 1.5,
-  },
-  
-  question: {
-    patterns: [
-      /\bwhy\s+(?:did|does|is|are|has|have|was|were)\b/i,
-      /\bwhat\s+(?:does|is|are|causes?|happened|made)\b/i,
-      /\bhow\s+(?:does|do|did|can|should|would)\b/i,
-      /\bwhat'?s\s+(?:the|a|an)\s+\w+\??$/i,
-      /\bexplain\b/i,
-      /\bmean(?:s|ing)?\b/i,
-      /\bwork(?:s|ing)?\b.*\?/i,
-    ],
-    weight: 1.3,
-  },
-  
-  decision: {
-    patterns: [
-      /\bshould\s+i\b/i,
-      /\b(?:buy|sell|hold|long|short)\s*\??$/i,
-      /\bis\s+(?:it|this|now)\s+(?:a\s+)?good\s+time\b/i,
-      /\bwhat'?s\s+the\s+play\b/i,
-      /\bwhat\s+(?:would|should)\s+you\s+do\b/i,
-      /\brisk\b/i,
-      /\bentry\b/i,
-      /\bworth\s+(?:it|buying|holding)\b/i,
-      /\bbullish\s+or\s+bearish\b/i,
-    ],
-    weight: 1.4,
-  },
-  
-  meta: {
-    patterns: [
-      /\b(?:your|the)\s+(?:data|numbers?|scores?)\s+(?:is|are|seems?)\s+(?:wrong|off|incorrect|outdated)\b/i,
-      /\bhow\s+(?:do|does)\s+(?:you|coinet|omniscore)\s+(?:calculate|work|get)\b/i,
-      /\b(?:fix|update|correct)\b/i,
-      /\bbug\b/i,
-      /\berror\b/i,
-      /\bwhy\s+(?:is|are)\s+(?:your|the)\b/i,
-    ],
-    weight: 1.6,
-  },
-};
-
-const ENERGY_PATTERNS: Record<EnergyLevel, { patterns: RegExp[]; maxWords?: number }> = {
-  low: {
-    patterns: [
-      /^[a-z\s\$]{1,15}[\?\!]?$/i,  // Very short, lowercase
-      /^[A-Z]{2,5}\s*\??$/,          // Single ticker
-      /^(?:hey|hi|yo|sup|gm|overview|update|price)\s*\??$/i,
-    ],
-    maxWords: 3,
-  },
-  
-  normal: {
-    patterns: [
-      /[A-Z][a-z]/,  // Has proper capitalization
-      /\.\s/,        // Has sentence structure
-      /,\s/,         // Has commas
-    ],
-  },
-  
-  high: {
-    patterns: [
-      /[A-Z]{3,}/,                    // Multiple caps
-      /[\!\?]{2,}/,                   // Multiple punctuation
-      /\b(?:now|quick|urgent|asap|help|please)\b/i,
-      /\b(?:wtf|seriously|come on)\b/i,
-      /.{150,}/,                      // Long message
-    ],
-  },
-};
-
-// ============================================================================
-// CLASSIFICATION ENGINE
+// STEP 1 — SIGNAL EXTRACTION
 // ============================================================================
 
 /**
- * Count words in a message
+ * Count words in a message (excluding emojis and punctuation)
  */
 function countWords(message: string): number {
-  return message.trim().split(/\s+/).filter(w => w.length > 0).length;
+  const words = message.trim().split(/\s+/).filter(w => /\w/.test(w));
+  return words.length;
 }
 
 /**
- * Detect energy level from message
+ * Check if message is only emojis
  */
-function detectEnergy(message: string): EnergyLevel {
+function isOnlyEmojis(message: string): boolean {
+  const withoutEmojis = message.replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+  return withoutEmojis.length === 0 && message.trim().length > 0;
+}
+
+/**
+ * Extract LENGTH signal
+ */
+function extractLengthSignal(message: string): LengthSignal {
   const wordCount = countWords(message);
-  const trimmed = message.trim();
   
-  // Check for high energy first (urgency indicators)
-  for (const pattern of ENERGY_PATTERNS.high.patterns) {
-    if (pattern.test(trimmed)) {
-      return 'high';
-    }
+  // ≤3 words OR only emojis = SHORT
+  if (wordCount <= 3 || isOnlyEmojis(message)) {
+    return 'LEN_SHORT';
   }
   
-  // Check for low energy (very short, casual)
-  if (wordCount <= 3) {
-    return 'low';
+  // 4-20 words = MED
+  if (wordCount <= 20) {
+    return 'LEN_MED';
   }
   
-  // Check explicit low patterns
-  for (const pattern of ENERGY_PATTERNS.low.patterns) {
-    if (pattern.test(trimmed)) {
-      return 'low';
-    }
-  }
-  
-  // Default to normal
-  return 'normal';
+  // >20 words or multiple clauses = LONG
+  return 'LEN_LONG';
 }
 
 /**
- * Detect intent bucket from message
+ * Extract DEPTH signal - what level of detail they explicitly requested
  */
-function detectIntent(message: string): { intent: IntentBucket; confidence: number; triggers: string[] } {
-  const scores: Array<{ intent: IntentBucket; score: number; triggers: string[] }> = [];
+function extractDepthSignal(message: string): DepthSignal {
+  const lower = message.toLowerCase();
   
-  for (const [intent, config] of Object.entries(INTENT_PATTERNS) as [IntentBucket, { patterns: RegExp[]; weight: number }][]) {
-    let score = 0;
-    const triggers: string[] = [];
+  // DEPTH_HIGH triggers
+  const highPatterns = [
+    /\bdeep\s*dive\b/,
+    /\bfull\s*(?:breakdown|analysis|review)\b/,
+    /\bstep[\s-]*by[\s-]*step\b/,
+    /\bthesis\b/,
+    /\beverything\b/,
+    /\bdetailed\b/,
+    /\bcomprehensive\b/,
+    /\bin[\s-]*depth\b/,
+    /\btell\s+me\s+(?:all|everything)\b/,
+    /\bbreak(?:down)?\s+(?:it|this)\s+(?:for|to)\s+me\b/,
+  ];
+  
+  for (const pattern of highPatterns) {
+    if (pattern.test(lower)) return 'DEPTH_HIGH';
+  }
+  
+  // DEPTH_MED triggers
+  const medPatterns = [
+    /\boverview\b/,
+    /\bupdate\b/,
+    /\bwhat'?s\s+happening\b/,
+    /\bsummary\b/,
+    /\bquick\s+(?:look|check|rundown)\b/,
+    /\bstatus\b/,
+    /\bhow'?s\s+(?:the\s+)?market\b/,
+  ];
+  
+  for (const pattern of medPatterns) {
+    if (pattern.test(lower)) return 'DEPTH_MED';
+  }
+  
+  // DEPTH_LOW triggers
+  const lowPatterns = [
+    /\bprice\s*\??$/,
+    /^[A-Z]{2,5}\s*\??$/,  // Single ticker
+    /\bcheck\s+\w+\b/,
+    /\bthoughts\s+on\b/,
+    /\bquick\b/,
+    /\bjust\s+(?:the|a)\b/,
+  ];
+  
+  for (const pattern of lowPatterns) {
+    if (pattern.test(lower) || pattern.test(message)) return 'DEPTH_LOW';
+  }
+  
+  return 'DEPTH_NONE';
+}
+
+/**
+ * Extract URGENCY signal
+ */
+function extractUrgencySignal(message: string): UrgencySignal {
+  const lower = message.toLowerCase();
+  
+  const urgentPatterns = [
+    /\bnow\b/,
+    /\bquick(?:ly)?\b/,
+    /\bfast\b/,
+    /\basap\b/,
+    /\brn\b/,
+    /\bhurry\b/,
+    /\bimmediately\b/,
+    /\burgent\b/,
+  ];
+  
+  // Caps + exclamation = urgent
+  if (/[A-Z]{4,}.*!/.test(message)) return 'URGENT';
+  
+  // Multiple exclamations
+  if (/!{2,}/.test(message)) return 'URGENT';
+  
+  // Frustration indicators
+  if (/\b(?:wtf|seriously|come on|cmon)\b/i.test(message)) return 'URGENT';
+  
+  for (const pattern of urgentPatterns) {
+    if (pattern.test(lower)) return 'URGENT';
+  }
+  
+  return 'NOT_URGENT';
+}
+
+/**
+ * Extract DOMAIN signal - what scope is the user asking about
+ */
+function extractDomainSignal(message: string): { domain: DomainSignal; assets: string[] } {
+  const lower = message.toLowerCase();
+  const assets: string[] = [];
+  
+  // Check for social/greeting first
+  const greetingPatterns = [
+    /^(?:hey|hi|hello|yo|sup|gm|gn|wassup|what'?s up)[\s\?!\.]*$/i,
+    /^(?:how are you|how'?s it going|what'?s good)[\s\?]*$/i,
+    /^(?:lol|lmao|haha|nice|cool|thanks|ty|thx)[\s!\.]*$/i,
+    /^(?:bro|dude|fam|man|bruh)[\s,\?!\.]*$/i,
+  ];
+  
+  for (const pattern of greetingPatterns) {
+    if (pattern.test(message)) {
+      return { domain: 'SOCIAL', assets: [] };
+    }
+  }
+  
+  // Only emojis = social
+  if (isOnlyEmojis(message)) {
+    return { domain: 'SOCIAL', assets: [] };
+  }
+  
+  // Check for meta (about Coinet itself)
+  const metaPatterns = [
+    /\b(?:your|coinet'?s?)\s+(?:data|numbers?|scores?|output)\b/i,
+    /\bhow\s+(?:do|does)\s+(?:you|coinet|omniscore)\b/i,
+    /\b(?:fix|bug|error|wrong|incorrect|broken)\b/i,
+    /\bwhy\s+(?:is|are|did)\s+(?:your|the|this)\b/i,
+  ];
+  
+  for (const pattern of metaPatterns) {
+    if (pattern.test(message)) {
+      return { domain: 'META', assets: [] };
+    }
+  }
+  
+  // Check for single asset mentions
+  const tickerPattern = /\b(BTC|ETH|SOL|ADA|AVAX|MATIC|DOT|LINK|XRP|BNB|DOGE|SHIB|UNI|AAVE|ARB|OP|ATOM|NEAR|APT|SUI)\b/gi;
+  const namePattern = /\b(bitcoin|ethereum|solana|cardano|avalanche|polygon|polkadot|chainlink|ripple|binance|dogecoin|shiba|uniswap|aave|arbitrum|optimism|cosmos|near|aptos|sui)\b/gi;
+  
+  let match;
+  while ((match = tickerPattern.exec(message)) !== null) {
+    const ticker = match[1].toUpperCase();
+    if (!assets.includes(ticker)) assets.push(ticker);
+  }
+  while ((match = namePattern.exec(message)) !== null) {
+    const name = match[1].toLowerCase();
+    const tickerMap: Record<string, string> = {
+      bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', cardano: 'ADA',
+      avalanche: 'AVAX', polygon: 'MATIC', polkadot: 'DOT', chainlink: 'LINK',
+      ripple: 'XRP', binance: 'BNB', dogecoin: 'DOGE', shiba: 'SHIB',
+      uniswap: 'UNI', aave: 'AAVE', arbitrum: 'ARB', optimism: 'OP',
+      cosmos: 'ATOM', near: 'NEAR', aptos: 'APT', sui: 'SUI',
+    };
+    const ticker = tickerMap[name];
+    if (ticker && !assets.includes(ticker)) assets.push(ticker);
+  }
+  
+  // Contract addresses
+  const contractPattern = /\b(?:0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/g;
+  while ((match = contractPattern.exec(message)) !== null) {
+    if (!assets.includes(match[0])) assets.push(match[0]);
+  }
+  
+  // Determine domain
+  if (assets.length === 1) {
+    return { domain: 'SINGLE_ASSET', assets };
+  }
+  
+  // Check for market-wide signals
+  const marketWidePatterns = [
+    /\bmarket\b/i,
+    /\balts?\b/i,
+    /\boverall\b/i,
+    /\bmacro\b/i,
+    /\bcrypto\s+(?:market|space)\b/i,
+    /\btop\s+\d+\b/i,
+    /\bcompare\b/i,
+  ];
+  
+  for (const pattern of marketWidePatterns) {
+    if (pattern.test(message)) {
+      return { domain: 'MARKET_WIDE', assets };
+    }
+  }
+  
+  if (assets.length > 1) {
+    return { domain: 'MARKET_WIDE', assets };
+  }
+  
+  return { domain: 'UNKNOWN', assets };
+}
+
+/**
+ * Check if user is opting in to more depth
+ */
+function isDepthOptIn(message: string): boolean {
+  const lower = message.toLowerCase();
+  const optInPatterns = [
+    /^(?:yes|yeah|yep|yea|ya|sure|ok|okay|go|do it|please|yup)\b/,
+    /\bfull\b/,
+    /\bdeep(?:er)?\b/,
+    /\bmore\b/,
+    /\bdetails?\b/,
+    /\bbreak(?:down)?\b/,
+    /\bexplain\b/,
+    /\blevels\b/,
+    /\bnumbers\b/,
+    /\bmetrics\b/,
+  ];
+  
+  for (const pattern of optInPatterns) {
+    if (pattern.test(lower)) return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Extract all signals from a message
+ */
+export function extractSignals(
+  message: string,
+  conversationHistory?: { role: string; content: string }[]
+): MessageSignals {
+  const length = extractLengthSignal(message);
+  const depth = extractDepthSignal(message);
+  const urgency = extractUrgencySignal(message);
+  const { domain, assets } = extractDomainSignal(message);
+  
+  // Determine conversation state from history
+  let state: StateSignal = 'STATE_NEW';
+  if (conversationHistory && conversationHistory.length > 0) {
+    const recentTurns = conversationHistory.slice(-6);
     
-    for (const pattern of config.patterns) {
-      const match = message.match(pattern);
-      if (match) {
-        score += config.weight;
-        triggers.push(match[0].substring(0, 20));
-      }
-    }
+    // Check if we've been discussing specific assets
+    const hasAssetDiscussion = recentTurns.some(turn => 
+      /\b(?:BTC|ETH|SOL|bitcoin|ethereum|solana)\b/i.test(turn.content)
+    );
     
-    scores.push({ intent, score, triggers });
+    // Check if user previously asked for depth
+    const hasDepthRequest = recentTurns.some(turn => 
+      turn.role === 'user' && /\b(?:deep|full|detailed|breakdown|thesis)\b/i.test(turn.content)
+    );
+    
+    if (hasDepthRequest) {
+      state = 'STATE_DEEP';
+    } else if (hasAssetDiscussion || conversationHistory.length >= 4) {
+      state = 'STATE_ACTIVE';
+    }
   }
   
-  scores.sort((a, b) => b.score - a.score);
-  const top = scores[0];
-  const second = scores[1];
+  const isGreeting = domain === 'SOCIAL';
+  const optIn = isDepthOptIn(message);
   
-  // Calculate confidence
-  let confidence = 0;
-  if (top.score > 0) {
-    const differential = second.score > 0 ? (top.score - second.score) / top.score : 1;
-    confidence = Math.min(0.95, 0.5 + (differential * 0.45));
+  return {
+    length,
+    depth,
+    urgency,
+    state,
+    domain,
+    detectedAssets: assets,
+    isGreeting,
+    isDepthOptIn: optIn,
+  };
+}
+
+// ============================================================================
+// STEP 2 — MODE SELECTION (DETERMINISTIC RULES)
+// ============================================================================
+
+/**
+ * Select output mode based on signals
+ * 
+ * BASE RULES:
+ * 1. If LEN_SHORT and DEPTH_HIGH not present → Mode S
+ * 2. If DEPTH_HIGH → Mode L
+ * 3. If DEPTH_MED OR MARKET_WIDE → Mode M
+ * 4. Else default → Mode S
+ * 
+ * OVERRIDE RULES:
+ * - If URGENT: drop one level (L→M, M→S) unless explicit "full breakdown"
+ * - If STATE_NEW and not market-wide: prefer S, ask clarifying question
+ * - If SINGLE_ASSET and "overview": still M, but only about that asset
+ */
+export function selectMode(signals: MessageSignals): OutputMode {
+  const { length, depth, urgency, state, domain, isDepthOptIn } = signals;
+  
+  // Social greetings are always S (actually even smaller)
+  if (domain === 'SOCIAL') {
+    return 'S';
   }
   
-  // Default to command if no clear match (safest fallback)
-  if (top.score === 0) {
-    return { intent: 'command', confidence: 0.3, triggers: [] };
+  // User opted in to depth → Mode L
+  if (isDepthOptIn) {
+    return 'L';
   }
   
-  return { intent: top.intent, confidence, triggers: top.triggers };
+  // BASE RULE 1: Short message without explicit depth request → S
+  if (length === 'LEN_SHORT' && depth !== 'DEPTH_HIGH') {
+    return 'S';
+  }
+  
+  // BASE RULE 2: Explicit high depth request → L
+  if (depth === 'DEPTH_HIGH') {
+    // Override: urgent drops one level unless they said "full breakdown"
+    if (urgency === 'URGENT') {
+      return 'M';  // L → M
+    }
+    return 'L';
+  }
+  
+  // BASE RULE 3: Medium depth OR market-wide → M
+  if (depth === 'DEPTH_MED' || domain === 'MARKET_WIDE') {
+    // Override: urgent drops to S
+    if (urgency === 'URGENT') {
+      return 'S';  // M → S
+    }
+    return 'M';
+  }
+  
+  // OVERRIDE: New conversation state → prefer S with clarifying question
+  // (MARKET_WIDE already handled above, so we can safely check just STATE_NEW)
+  if (state === 'STATE_NEW') {
+    return 'S';
+  }
+  
+  // BASE RULE 4: Default → S (Coinet should be naturally concise)
+  return 'S';
+}
+
+// ============================================================================
+// STEP 3 — HARD CAPS PER MODE
+// ============================================================================
+
+/**
+ * Mode S (Small) caps
+ * Goal: conversational, fast
+ */
+const CAPS_S: HardCaps = {
+  minLines: 1,
+  maxLines: 3,
+  maxBullets: 0,
+  maxNumbers: 1,  // Only if directly asked
+  maxAssets: 1,
+  requireHumanSummary: false,
+  maxQuestions: 1,
+  structure: 'GENERIC_SMALL',
+};
+
+/**
+ * Mode M (Medium) caps
+ * Goal: useful overview without flooding
+ */
+const CAPS_M: HardCaps = {
+  minLines: 4,
+  maxLines: 10,
+  maxBullets: 4,
+  maxNumbers: 5,
+  maxAssets: 6,
+  requireHumanSummary: true,
+  maxQuestions: 1,
+  structure: 'GENERIC_MEDIUM',
+};
+
+/**
+ * Mode L (Large) caps
+ * Goal: deep analysis only when requested
+ */
+const CAPS_L: HardCaps = {
+  minLines: 8,
+  maxLines: 20,
+  maxBullets: 8,
+  maxNumbers: 15,
+  maxAssets: 10,
+  requireHumanSummary: true,
+  maxQuestions: 1,
+  structure: 'DEEP_ANALYSIS',
+};
+
+/**
+ * Get hard caps for a mode
+ */
+export function getCaps(mode: OutputMode): HardCaps {
+  switch (mode) {
+    case 'S': return { ...CAPS_S };
+    case 'M': return { ...CAPS_M };
+    case 'L': return { ...CAPS_L };
+  }
+}
+
+// ============================================================================
+// STEP 4 — STRUCTURE TEMPLATES
+// ============================================================================
+
+/**
+ * Select the appropriate structure template based on signals and mode
+ */
+export function selectTemplate(signals: MessageSignals, mode: OutputMode): StructureTemplate {
+  const { domain, depth } = signals;
+  const message = signals.detectedAssets.length > 0 ? 'has_asset' : 'no_asset';
+  
+  // Social → Greeting template
+  if (domain === 'SOCIAL' || signals.isGreeting) {
+    return 'GREETING';
+  }
+  
+  // Meta questions → Meta response
+  if (domain === 'META') {
+    return 'META_RESPONSE';
+  }
+  
+  // Deep analysis mode → Deep template
+  if (mode === 'L') {
+    return 'DEEP_ANALYSIS';
+  }
+  
+  // Determine based on query type
+  if (depth === 'DEPTH_LOW' && signals.detectedAssets.length === 1) {
+    return 'PRICE_CHECK';
+  }
+  
+  if (domain === 'MARKET_WIDE' || depth === 'DEPTH_MED') {
+    return 'MARKET_OVERVIEW';
+  }
+  
+  // "Why" questions
+  if (signals.detectedAssets.length > 0) {
+    return mode === 'M' ? 'WHY_MOVE' : 'PRICE_CHECK';
+  }
+  
+  // Default based on mode
+  return mode === 'S' ? 'GENERIC_SMALL' : 'GENERIC_MEDIUM';
 }
 
 /**
- * Determine verbosity mode from intent and energy
+ * Get template instructions for the AI
  */
-function getVerbosityMode(intent: IntentBucket, energy: EnergyLevel): VerbosityMode {
-  // Social is always tiny regardless of energy
-  if (intent === 'social') return 'tiny';
-  
-  // Low energy = tiny/small responses
-  if (energy === 'low') {
-    return intent === 'decision' ? 'small' : 'tiny';
-  }
-  
-  // High energy + question/decision = medium (they want depth)
-  if (energy === 'high' && (intent === 'question' || intent === 'decision')) {
-    return 'medium';
-  }
-  
-  // Normal energy
-  if (energy === 'normal') {
-    if (intent === 'command') return 'small';
-    if (intent === 'question') return 'small';
-    if (intent === 'decision') return 'medium';
-    if (intent === 'meta') return 'medium';
-  }
-  
-  return 'small';
-}
+export function getTemplateInstructions(template: StructureTemplate): string {
+  const templates: Record<StructureTemplate, string> = {
+    GREETING: `TEMPLATE: Greeting Response
+1. Brief, natural greeting (match their energy)
+2. ONE question to discover intent
+DO NOT mention any market data, prices, or metrics.
+EXAMPLE: "Yo — what's up. You here for markets or something else?"`,
 
-/**
- * Get appropriate depth offer type
- */
-function getDepthOfferType(intent: IntentBucket): DepthOfferType | null {
-  switch (intent) {
-    case 'social': return null;  // No depth offer for social
-    case 'command': return 'vibe_or_numbers';
-    case 'question': return 'metrics_offer';
-    case 'decision': return 'levels_or_direction';
-    case 'meta': return 'short_or_deep';
-  }
-}
+    PRICE_CHECK: `TEMPLATE: Price Check (Mode S)
+1. Price (1 line)
+2. Context — trend/chop (1 line)
+3. Depth offer question (1 line)
+EXAMPLE: "SOL is ~146 right now. Still choppy intraday. Want levels or just the number?"`,
 
-/**
- * Get appropriate question type for follow-up
- */
-function getQuestionType(intent: IntentBucket, message: string): QuestionType | null {
-  // Social intent → ask about intent (scope)
-  if (intent === 'social') return 'scope';
-  
-  // If no coin detected in message, ask about asset
-  const hasCoinMention = /\b(?:btc|eth|sol|bitcoin|ethereum|solana|ada|avax|matic|dot|link|xrp|bnb)\b/i.test(message);
-  if (intent === 'command' && !hasCoinMention) return 'asset';
-  
-  // Decision intent → ask about goal or timeframe
-  if (intent === 'decision') return 'timeframe';
-  
-  // Question intent → offer to go deeper
-  if (intent === 'question') return 'scope';
-  
-  // Meta → no question needed usually
-  if (intent === 'meta') return null;
-  
-  return 'scope';
-}
+    MARKET_OVERVIEW: `TEMPLATE: Market Overview (Mode M)
+1. VIBE in one line (human translation of market mood)
+2. What's leading / lagging (2-3 lines)
+3. Key risk or catalyst (1-2 lines)
+4. Optional: 2-4 bullets with notable levels/flows/alts
+5. ONE question: "What are you trading today?"
+EXAMPLE: "Market's in wait-and-see mode ahead of FOMC. BTC holding 87K, ETH lagging at 3.1K. Main risk is a hawkish surprise — could flush leveraged longs. What are you watching?"`,
 
-/**
- * Build response constraints based on classification
- */
-function buildConstraints(
-  intent: IntentBucket, 
-  energy: EnergyLevel, 
-  verbosity: VerbosityMode,
-  message: string
-): ResponseConstraints {
-  const constraints: ResponseConstraints = {
-    maxLines: 3,
-    maxNumbers: 2,
-    requiresDepthOffer: true,
-    depthOfferType: getDepthOfferType(intent),
-    questionType: getQuestionType(intent, message),
-    forbiddenPatterns: [],
+    WHY_MOVE: `TEMPLATE: Why Did X Move (Mode M)
+1. Primary driver in 1 line (human explanation)
+2. Supporting drivers (2-4 lines)
+3. What would confirm/deny the thesis (1 line)
+4. ONE question: "Want the data-backed breakdown or just the main reason?"
+EXAMPLE: "Main driver was a whale liquidation cascade on Binance — $45M in longs got flushed in 10 minutes. BTC dominance ticking up added pressure. If we reclaim 88K in the next 4 hours, it was just a shakeout. Want the exact liq data?"`,
+
+    DECISION_HELP: `TEMPLATE: Decision Help (Mode M)
+1. Your honest opinion FIRST (take a stance)
+2. 2-3 reasons why (not a bullet list — conversational)
+3. ONE question about their situation: timeframe, risk tolerance, or position size
+EXAMPLE: "I'd probably wait here. Funding is stretched at 0.03%, and we're right at resistance. If you're set on entering, a pullback to 85K would be cleaner. What's your usual stop distance?"`,
+
+    DEEP_ANALYSIS: `TEMPLATE: Deep Analysis (Mode L)
+Structure your response as:
+1. THESIS (2-3 lines): Your overall take
+2. DRIVERS: What's pushing this (3-4 points, can use bullets)
+3. LEVELS/SCENARIOS: Key prices to watch, bull/bear cases
+4. RISK/INVALIDATION: What would make you wrong
+5. ONE question: "What's your timeframe and risk tolerance?"
+Keep it conversational, not report-like. No walls of numbers.`,
+
+    META_RESPONSE: `TEMPLATE: Meta/Product Response
+1. Acknowledge their point (don't be defensive)
+2. Explain what's happening in plain language
+3. Offer to help or provide alternative
+EXAMPLE: "You're right, that OmniScore looks off — let me check. Sometimes derivatives data lags during high volume. Want me to recalculate without the derivatives component?"`,
+
+    GENERIC_SMALL: `TEMPLATE: Generic Small (Mode S)
+1. Direct answer (1-2 lines)
+2. One context line
+3. Depth offer
+Keep it tight. No bullet points. Max 1 number unless they asked for data.`,
+
+    GENERIC_MEDIUM: `TEMPLATE: Generic Medium (Mode M)
+1. Human summary sentence FIRST
+2. Supporting details (3-5 lines)
+3. Optional: 2-3 bullets if listing things
+4. Depth offer or clarifying question
+Start with the takeaway, then explain.`,
   };
   
-  // Adjust based on verbosity
-  switch (verbosity) {
-    case 'tiny':
-      constraints.maxLines = 2;
-      constraints.maxNumbers = 1;
-      constraints.requiresDepthOffer = intent !== 'social';
-      break;
-    case 'small':
-      constraints.maxLines = 4;
-      constraints.maxNumbers = 2;
-      break;
-    case 'medium':
-      constraints.maxLines = 8;
-      constraints.maxNumbers = 5;
-      break;
-    case 'full':
-      constraints.maxLines = 15;
-      constraints.maxNumbers = 10;
-      constraints.requiresDepthOffer = false;
-      break;
+  return templates[template];
+}
+
+// ============================================================================
+// STEP 5 — EXPANSION PROTOCOL
+// ============================================================================
+
+/**
+ * Get the appropriate depth offer based on context
+ */
+export function getDepthOffer(template: StructureTemplate, mode: OutputMode): string | null {
+  // No depth offers in L mode — they already asked for depth
+  if (mode === 'L') return null;
+  
+  // No depth offers for greetings
+  if (template === 'GREETING') return null;
+  
+  const offers: Record<StructureTemplate, string> = {
+    GREETING: '',
+    PRICE_CHECK: 'Want levels or just the number?',
+    MARKET_OVERVIEW: 'Want the quick take or the full breakdown?',
+    WHY_MOVE: 'Want the exact metrics behind this?',
+    DECISION_HELP: 'Want levels + scenarios?',
+    DEEP_ANALYSIS: '',
+    META_RESPONSE: 'Want me to dig deeper into this?',
+    GENERIC_SMALL: 'Want more detail?',
+    GENERIC_MEDIUM: 'Want the full breakdown?',
+  };
+  
+  return offers[template] || null;
+}
+
+/**
+ * Get the appropriate follow-up question
+ */
+export function getFollowUpQuestion(signals: MessageSignals, template: StructureTemplate): string | null {
+  // Greetings need intent discovery
+  if (template === 'GREETING') {
+    return 'You here for markets or something else?';
   }
   
-  // Social intent: NEVER output market stats
-  if (intent === 'social') {
-    constraints.maxNumbers = 0;
-    constraints.forbiddenPatterns = [
-      'BTC', 'ETH', 'market cap', 'price', 'volume', '24h', 
-      'OmniScore', 'funding', 'liquidation', '$'
-    ];
+  // If no asset detected, ask about asset
+  if (signals.detectedAssets.length === 0 && signals.domain !== 'META') {
+    return 'Which coin are you watching?';
   }
   
-  return constraints;
+  // Based on template
+  const questions: Record<StructureTemplate, string> = {
+    GREETING: 'You here for markets or something else?',
+    PRICE_CHECK: 'Want levels or just the number?',
+    MARKET_OVERVIEW: 'What are you trading today?',
+    WHY_MOVE: 'Want the data-backed breakdown?',
+    DECISION_HELP: 'What\'s your timeframe?',
+    DEEP_ANALYSIS: 'What\'s your timeframe and risk tolerance?',
+    META_RESPONSE: 'Want me to recalculate?',
+    GENERIC_SMALL: 'Quick take or deep dive?',
+    GENERIC_MEDIUM: 'Want levels + setups?',
+  };
+  
+  return questions[template] || null;
 }
 
 // ============================================================================
@@ -394,39 +713,59 @@ function buildConstraints(
 // ============================================================================
 
 /**
- * Classify a user message according to the three conversation rules.
- * 
- * RULE A: Intent & Energy Matching
- * RULE B: Small answer → offer depth
- * RULE C: One question max
+ * Run the full verbosity classification pipeline
  */
-export function classifyConversation(message: string): ConversationClassification {
+export function classifyVerbosity(
+  message: string,
+  conversationHistory?: { role: string; content: string }[]
+): VerbosityClassification {
   const startTime = performance.now();
   
-  const { intent, confidence, triggers } = detectIntent(message);
-  const energy = detectEnergy(message);
-  const verbosity = getVerbosityMode(intent, energy);
-  const constraints = buildConstraints(intent, energy, verbosity, message);
+  // Step 1: Extract signals
+  const signals = extractSignals(message, conversationHistory);
   
-  const classification: ConversationClassification = {
-    intent,
-    energy,
-    verbosity,
-    confidence,
-    triggers,
-    responseConstraints: constraints,
+  // Step 2: Select mode
+  const mode = selectMode(signals);
+  
+  // Step 3: Get hard caps
+  const caps = getCaps(mode);
+  
+  // Step 4: Select template
+  const template = selectTemplate(signals, mode);
+  caps.structure = template;
+  
+  // Step 5: Get expansion protocol
+  const depthOffer = getDepthOffer(template, mode);
+  const questionPrompt = getFollowUpQuestion(signals, template);
+  
+  const result: VerbosityClassification = {
+    signals,
+    mode,
+    caps,
+    template,
+    depthOffer,
+    questionPrompt,
   };
   
-  logger.debug('🎯 Conversation classified', {
+  logger.debug('🎛️ Verbosity classified', {
     message: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
-    intent,
-    energy,
-    verbosity,
-    confidence: confidence.toFixed(2),
+    mode,
+    template,
+    signals: {
+      length: signals.length,
+      depth: signals.depth,
+      urgency: signals.urgency,
+      domain: signals.domain,
+    },
+    caps: {
+      maxLines: caps.maxLines,
+      maxNumbers: caps.maxNumbers,
+      maxBullets: caps.maxBullets,
+    },
     processingMs: (performance.now() - startTime).toFixed(1),
   });
   
-  return classification;
+  return result;
 }
 
 // ============================================================================
@@ -434,164 +773,101 @@ export function classifyConversation(message: string): ConversationClassificatio
 // ============================================================================
 
 /**
- * Generate the system prompt guidance for the AI based on classification.
- * This enforces the three hard rules.
+ * Generate the complete AI guidance block
  */
-export function generateResponseGuidance(classification: ConversationClassification): string {
-  const { intent, energy, verbosity, responseConstraints: c } = classification;
+export function generateResponseGuidance(classification: VerbosityClassification): string {
+  const { signals, mode, caps, template, depthOffer, questionPrompt } = classification;
   
-  let guidance = `
+  return `
 ═══════════════════════════════════════════════════════════════════════════════
-🎯 CONVERSATION RULES — MANDATORY COMPLIANCE
-═══════════════════════════════════════════════════════════════════════════════
-
-DETECTED MODE:
-• Intent: ${intent.toUpperCase()} (${getIntentDescription(intent)})
-• Energy: ${energy.toUpperCase()} (user wants ${energy === 'low' ? 'minimal' : energy === 'high' ? 'thorough' : 'balanced'} response)
-• Verbosity: ${verbosity.toUpperCase()} mode
-
-═══════════════════════════════════════════════════════════════════════════════
-RULE A — INTENT MATCHING (NON-NEGOTIABLE)
-═══════════════════════════════════════════════════════════════════════════════
-`;
-
-  // Intent-specific guidance
-  switch (intent) {
-    case 'social':
-      guidance += `
-🚫 HARD FAIL: This is a SOCIAL/GREETING message. DO NOT output any market data.
-✅ REQUIRED: Greet naturally + ask ONE question to discover intent.
-📝 EXAMPLE: "Yo — what's up. You here for markets or something else?"
-`;
-      break;
-      
-    case 'command':
-      guidance += `
-✅ This is a COMMAND. Deliver what they asked for, nothing more.
-📝 FORMAT: [Answer] + [1 context line] + [optional depth offer]
-🚫 DO NOT: Add unsolicited metrics, explanations, or lectures.
-📝 EXAMPLE (overview): "Market's mostly sideways. BTC steady, ETH stable, alts mixed. Want quick vibe or levels + catalysts?"
-📝 EXAMPLE (price): "SOL is ~146 right now. Still choppy intraday. Want levels or just the number?"
-`;
-      break;
-      
-    case 'question':
-      guidance += `
-✅ This is a QUESTION. Explain the WHY in human words first.
-📝 FORMAT: [Explanation in plain language] + [optional "want the metrics?"]
-🚫 DO NOT: Lead with a scoreboard of 12 indicators.
-📝 EXAMPLE: "Main driver looks like liquidation pressure + BTC dominance uptick. Want the liq/funding data to confirm?"
-`;
-      break;
-      
-    case 'decision':
-      guidance += `
-✅ This is a DECISION request. Give your honest take, then ask about THEIR situation.
-📝 FORMAT: [Your opinion] + [2-3 reasons why] + [question about their circumstances]
-🚫 DO NOT: Give a neutral "here are the factors" list. Take a stance.
-📝 EXAMPLE: "I'd probably wait here. Funding's stretched, RSI's hot. If you're set on entering, watch for $82K. What's your risk tolerance?"
-`;
-      break;
-      
-    case 'meta':
-      guidance += `
-✅ This is a META/PRODUCT question. Be helpful and transparent.
-📝 FORMAT: Acknowledge their concern + explain clearly + offer to help
-🚫 DO NOT: Be defensive or dismiss their feedback.
-📝 EXAMPLE: "You're right, that score looks off. Let me check what's happening — sometimes data lags during high volume. Want me to recalculate?"
-`;
-      break;
-  }
-
-  guidance += `
-═══════════════════════════════════════════════════════════════════════════════
-RULE B — SMALL ANSWER FIRST (HARD CAPS)
+🎛️ VERBOSITY CONTROLLER — PRODUCTION MODE
 ═══════════════════════════════════════════════════════════════════════════════
 
-LAYER 1 (your default response):
-• Maximum lines: ${c.maxLines}
-• Maximum numbers/metrics: ${c.maxNumbers}
-• Plain language first, data only if asked
+OUTPUT MODE: ${mode} (${mode === 'S' ? 'Small — fast, conversational' : mode === 'M' ? 'Medium — useful overview' : 'Large — deep analysis'})
 
-LAYER 2 (depth offer):
-${c.requiresDepthOffer ? `• END with one depth offer: "${getDepthOfferPhrase(c.depthOfferType)}"` : '• No depth offer needed for this response'}
-
-📏 VERBOSITY MODE: ${verbosity.toUpperCase()}
-${verbosity === 'tiny' ? '• 1-2 lines max. Be brief.' : ''}
-${verbosity === 'small' ? '• 2-4 lines. Concise but helpful.' : ''}
-${verbosity === 'medium' ? '• 4-8 lines. Give context but stay focused.' : ''}
-${verbosity === 'full' ? '• Full analysis allowed. Still be conversational.' : ''}
+DETECTED SIGNALS:
+• Length: ${signals.length} (${signals.length === 'LEN_SHORT' ? '≤3 words' : signals.length === 'LEN_MED' ? '4-20 words' : '>20 words'})
+• Depth Intent: ${signals.depth}
+• Urgency: ${signals.urgency}
+• Domain: ${signals.domain}${signals.detectedAssets.length > 0 ? ` (${signals.detectedAssets.join(', ')})` : ''}
+• Conversation State: ${signals.state}
+${signals.isDepthOptIn ? '• ⚡ USER OPTED IN TO DEPTH' : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
-RULE C — ONE QUESTION MAX (STRICT)
+HARD CAPS — NON-NEGOTIABLE
 ═══════════════════════════════════════════════════════════════════════════════
 
-⚠️ You are allowed EXACTLY ONE question mark in your entire response.
-${c.questionType ? `
-✅ Your question should be: ${getQuestionPhrase(c.questionType)}
-` : '✅ You may skip the question if the response is complete.'}
+📏 LENGTH:     ${caps.minLines}-${caps.maxLines} lines
+📊 NUMBERS:    max ${caps.maxNumbers} total
+📋 BULLETS:    max ${caps.maxBullets}
+🪙 ASSETS:     max ${caps.maxAssets} tickers
+❓ QUESTIONS:  max ${caps.maxQuestions}
+${caps.requireHumanSummary ? '✅ MUST include human summary sentence first' : ''}
 
-🚫 FORBIDDEN — DO NOT end with:
-• Multiple questions ("What's your timeframe? Risk tolerance? Entry size?")
-• Menu of options ("Holding majors, hunting dips, or something else?")
-• "Let me know if you want X, Y, or Z"
+${template === 'GREETING' ? `
+🚫 FORBIDDEN FOR GREETINGS:
+• ANY market data, prices, percentages, metrics
+• BTC, ETH, SOL mentions
+• OmniScore, funding, liquidations
+• Dollar signs or numbers
 
-✅ GOOD — End with ONE clean question:
-• "What are you trading today?"
-• "Quick pulse or deep dive?"
-• "Scalp or swing?"
+If you output market data in response to a greeting, YOU HAVE FAILED.
+` : ''}
+
+═══════════════════════════════════════════════════════════════════════════════
+STRUCTURE TEMPLATE: ${template}
+═══════════════════════════════════════════════════════════════════════════════
+
+${getTemplateInstructions(template)}
+
+═══════════════════════════════════════════════════════════════════════════════
+EXPANSION PROTOCOL
+═══════════════════════════════════════════════════════════════════════════════
+
+${depthOffer ? `DEPTH OFFER (use at end): "${depthOffer}"` : 'No depth offer needed — user requested full analysis'}
+${questionPrompt ? `FOLLOW-UP QUESTION: "${questionPrompt}"` : ''}
+
+⚠️ CRITICAL: You may ONLY expand beyond Mode ${mode} if user explicitly opts in.
+Even if you "have more to say" — respect the caps.
+
+If user says "yes/full/deep/more" → next turn switches to Mode L.
+Until then, stay within Mode ${mode} limits.
+
+═══════════════════════════════════════════════════════════════════════════════
+ANTI-SPAM SAFETY RAIL
+═══════════════════════════════════════════════════════════════════════════════
+
+${mode === 'S' ? `MODE S ACTIVE — Keep it TIGHT:
+• No bullets
+• No unsolicited metrics
+• No "by the way" tangents
+• Answer → Context → Offer. Done.` : ''}
+
+${mode === 'M' ? `MODE M ACTIVE — Stay FOCUSED:
+• Lead with human summary
+• Max 5 numbers, max 4 bullets
+• One clear takeaway
+• No scoreboard dumps` : ''}
+
+${mode === 'L' ? `MODE L ACTIVE — Be THOROUGH but READABLE:
+• Thesis → Drivers → Levels → Risk
+• Still conversational, not report-like
+• No walls of numbers
+• End with timeframe question` : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
 `;
-
-  // Add forbidden patterns for social intent
-  if (c.forbiddenPatterns.length > 0) {
-    guidance += `
-🚫 FORBIDDEN WORDS/PATTERNS FOR THIS RESPONSE:
-${c.forbiddenPatterns.map(p => `• "${p}"`).join('\n')}
-
-If you mention ANY of these in response to a social greeting, you have FAILED.
-═══════════════════════════════════════════════════════════════════════════════
-`;
-  }
-
-  return guidance;
 }
 
 // ============================================================================
-// HELPER FUNCTIONS
+// LEGACY COMPATIBILITY — Keep old function names working
 // ============================================================================
 
-function getIntentDescription(intent: IntentBucket): string {
-  const descriptions: Record<IntentBucket, string> = {
-    social: 'greeting, small talk, checking in',
-    command: 'direct request for data or action',
-    question: 'asking why/how something works',
-    decision: 'seeking advice on what to do',
-    meta: 'feedback about the product/data',
-  };
-  return descriptions[intent];
-}
-
-function getDepthOfferPhrase(type: DepthOfferType | null): string {
-  if (!type) return '';
-  const phrases: Record<DepthOfferType, string> = {
-    vibe_or_numbers: 'Want the quick vibe or the exact numbers?',
-    levels_or_direction: 'Want levels + setups, or just direction?',
-    short_or_deep: 'Want the short version or a deep dive?',
-    metrics_offer: 'Want the metrics to back that up?',
-  };
-  return phrases[type];
-}
-
-function getQuestionPhrase(type: QuestionType): string {
-  const phrases: Record<QuestionType, string> = {
-    scope: 'Quick pulse or deep dive?',
-    asset: 'Which coin are you watching?',
-    goal: 'Looking for entries or just direction?',
-    timeframe: 'Scalp today or swing?',
-  };
-  return phrases[type];
+/**
+ * @deprecated Use classifyVerbosity instead
+ */
+export function classifyConversation(message: string): VerbosityClassification {
+  return classifyVerbosity(message);
 }
 
 // ============================================================================
@@ -599,7 +875,11 @@ function getQuestionPhrase(type: QuestionType): string {
 // ============================================================================
 
 export const conversationRules = {
-  classify: classifyConversation,
+  classify: classifyVerbosity,
+  extractSignals,
+  selectMode,
+  getCaps,
+  selectTemplate,
   generateGuidance: generateResponseGuidance,
 };
 
