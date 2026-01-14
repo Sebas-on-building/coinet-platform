@@ -23,6 +23,13 @@ export interface AIAnalysisRequest {
     analysisDepth?: 'quick' | 'standard' | 'deep';
     conversationHistory?: Array<{ role: string; content: string }>;
     liveMarketData?: string; // Formatted live market data
+    // Data quality flags for uncertainty handling
+    dataQuality?: {
+      hasDataFreshnessConcern?: boolean;  // Data may be minutes behind
+      hasPartialData?: boolean;            // Rate limit or incomplete feed
+      hasConflictingData?: boolean;        // Multiple sources disagree
+      hasEstimatedMetrics?: boolean;       // Inferred metrics, not confirmed
+    };
   };
 }
 
@@ -651,27 +658,30 @@ export class AIService {
       }
 
       // ═══════════════════════════════════════════════════════════════════════
-      // 🎛️ VERBOSITY CONTROLLER — Classify signals, select mode, apply caps
+      // 🎛️ UNIFIED RESPONSE POLICY — Mode + Clarifier + Continuity + Uncertainty
       // ═══════════════════════════════════════════════════════════════════════
       const verbosityClass = classifyVerbosity(
         request.content,
-        request.context?.conversationHistory
+        request.context?.conversationHistory,
+        request.context?.dataQuality  // Pass data quality flags for uncertainty handling
       );
       const responseGuidance = generateResponseGuidance(verbosityClass);
       
-      logger.debug('🎛️ Verbosity controller applied', {
+      logger.debug('🎛️ Response policy applied', {
         mode: verbosityClass.mode,
         template: verbosityClass.template,
+        clarifierNeeded: verbosityClass.behaviors.clarifier.needed,
+        clarifierType: verbosityClass.behaviors.clarifier.type,
+        continuityAnchor: verbosityClass.behaviors.continuity.anchor,
+        uncertaintyPresent: verbosityClass.behaviors.uncertainty.present,
         signals: {
           length: verbosityClass.signals.length,
           depth: verbosityClass.signals.depth,
-          urgency: verbosityClass.signals.urgency,
           domain: verbosityClass.signals.domain,
         },
         caps: {
           maxLines: verbosityClass.caps.maxLines,
           maxNumbers: verbosityClass.caps.maxNumbers,
-          maxBullets: verbosityClass.caps.maxBullets,
         },
       });
 
