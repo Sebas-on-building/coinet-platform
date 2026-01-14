@@ -344,18 +344,19 @@ export class CoinIdValidator {
 
   /**
    * Fetch coin list from CoinGecko with retry logic
+   * 
+   * NOTE: The /coins/list endpoint doesn't require authentication and works on the free API.
+   * We always use the free endpoint here to avoid 400 errors from invalid Pro API keys.
+   * The Pro API should only be used for endpoints that require authentication or premium features.
    */
   private async fetchCoinList(): Promise<void> {
-    const isPro = !!process.env.COINGECKO_API_KEY;
-    const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
+    // Always use free API for /coins/list - it doesn't require auth
+    // Using Pro API here can cause 400 errors if the API key isn't valid for Pro tier
+    const baseUrl = CONFIG.COINGECKO_BASE_URL;
     const headers: Record<string, string> = { 
       'Accept': 'application/json',
       'User-Agent': 'Coinet-Platform/1.0',
     };
-    
-    if (isPro) {
-      headers['x-cg-pro-api-key'] = process.env.COINGECKO_API_KEY!;
-    }
 
     let lastError: Error | null = null;
 
@@ -363,7 +364,10 @@ export class CoinIdValidator {
       this.metrics.fetchAttempts++;
 
       try {
-        logger.debug('Fetching CoinGecko coin list', { attempt: attempt + 1, isPro });
+        logger.debug('Fetching CoinGecko coin list from free API', { 
+          attempt: attempt + 1,
+          url: `${baseUrl}/coins/list`,
+        });
 
         const response = await axios.get<CoinGeckoCoinEntry[]>(`${baseUrl}/coins/list`, {
           headers,
@@ -385,10 +389,9 @@ export class CoinIdValidator {
         this.metrics.fetchSuccesses++;
         this.rateLimitedUntil = 0; // Clear rate limit flag on success
 
-        logger.info('📋 CoinGecko coin list fetched', {
+        logger.info('📋 CoinGecko coin list fetched successfully', {
           coinCount: this.validCoinIds.size,
           symbolCount: this.symbolToId.size,
-          isPro,
           attempt: attempt + 1,
         });
 
@@ -426,12 +429,13 @@ export class CoinIdValidator {
           throw new Error('Rate limited by CoinGecko API');
         }
 
-        // If bad request, don't retry - API might be down, endpoint changed, or API key issue
-        // Note: CoinGecko /coins/list endpoint should work without auth, but may require specific headers
+        // If bad request, don't retry - API might be down or endpoint changed
+        // Note: We use the free API endpoint which doesn't require authentication
         if (isBadRequest) {
-          logger.debug('CoinGecko API returned 400 - possible causes: API endpoint changed, invalid request format, or API key issue', {
+          logger.warn('CoinGecko free API returned 400 - possible causes: API endpoint changed, invalid request format, or temporary API issue', {
             url: `${baseUrl}/coins/list`,
-            hasApiKey: isPro,
+            endpoint: '/coins/list',
+            note: 'Using free API endpoint (no auth required)',
           });
           throw new Error('Bad request to CoinGecko API - using fallback');
         }
