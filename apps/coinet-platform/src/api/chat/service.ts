@@ -46,7 +46,7 @@ import {
 } from '../../services/project-investigation-service';
 import { symbolDetector } from '../../services/symbol-detector';
 import { chartDetector } from './chart-detector';
-import { sourceManager } from './source-manager';
+import { clearTrackedSources, getTrackedSources } from './source-manager';
 import { logger } from '../../utils/logger';
 import { generateMockResponse } from './mock-ai-response';
 import { classifyIntent, getResponseFormatInstructions, IntentClassification } from '../../services/intent-classifier';
@@ -106,6 +106,9 @@ export class ChatService {
     request: ChatMessageRequest
   ): Promise<ChatMessageResponse> {
     const startTime = Date.now();
+
+    // Clear tracked sources at the start of each request
+    clearTrackedSources();
 
     try {
       logger.info('💬 Processing chat message', {
@@ -995,13 +998,9 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
         aiResponse = generateMockResponse(request.message);
       }
 
-      // 6. Get sources
+      // 6. Get sources - only show sources that were actually used during data fetching
       const sources = request.context?.includeSources !== false
-        ? await sourceManager.getSources(
-            aiResponse.data.symbol || 'BTC',
-            aiResponse.data.keyTopics || [],
-            5
-          )
+        ? getTrackedSources()
         : [];
 
       // 7. Prepare assistant response

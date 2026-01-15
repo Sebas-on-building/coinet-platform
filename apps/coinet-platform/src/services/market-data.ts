@@ -26,6 +26,7 @@
 import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
 import { symbolDetector, DetectedCoin } from './symbol-detector';
+import { recordDataSource } from '../api/chat/source-manager';
 import { searchToken, DexToken, analyzeTokenRisk } from './dexscreener';
 import { 
   isRedisAvailable, 
@@ -397,6 +398,11 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
       preValidated: validation.cached,
     });
     
+    // Record source usage for each symbol fetched
+    if (prices.length > 0) {
+      prices.forEach(p => recordDataSource('coingecko', p.symbol, 'price'));
+    }
+    
     return prices;
   } catch (error: any) {
     if ((error as AxiosError).response?.status === 429) {
@@ -451,6 +457,12 @@ async function fetchFromCoinMarketCap(symbols: string[]): Promise<MarketPrice[]>
     }
 
     logger.debug('📊 CoinMarketCap fetch', { requested: symbols.length, found: prices.length });
+    
+    // Record source usage
+    if (prices.length > 0) {
+      prices.forEach(p => recordDataSource('coinmarketcap', p.symbol, 'price'));
+    }
+    
     return prices;
   } catch (error: any) {
     logger.debug('CoinMarketCap fetch failed', { error: error.message });
@@ -507,6 +519,9 @@ async function fetchFromDexScreener(symbol: string): Promise<MarketPrice | null>
       risk: risk.riskLevel,
       confidence: price.confidence.toFixed(2)
     });
+    
+    // Record source usage
+    recordDataSource('dexscreener', symbol, 'price');
     
     return price;
   } catch (error: any) {
