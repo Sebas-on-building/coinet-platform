@@ -1,20 +1,24 @@
 /**
- * 🎛️ Unified Response Policy v3.0
+ * 🎛️ Unified Response Policy v4.0
  * 
  * Production-ready policy layer that combines:
  * 1. Verbosity & Structure Controller (Mode S/M/L, hard caps, templates)
  * 2. Human Conversation Behaviors (clarifier gate, continuity, uncertainty)
+ * 3. No-Unasked-Metrics Gate (BLOCK/LIMIT/ALLOW, metric budgets)
  * 
  * EXECUTION FLOW (every turn):
  * 1. Extract signals from message (LEN, DEPTH, URGENT, STATE, DOMAIN)
  * 2. Select output mode (S/M/L) with deterministic rules
- * 3. Run Clarifier Gate — ask ONE question if genuinely needed
- * 4. Apply Continuity Anchoring — first line must reference user's request
- * 5. Check Uncertainty — inject micro-pattern if data is uncertain
- * 6. Apply hard caps and structure template
- * 7. End with exactly ONE question (clarifier OR next-step, never both)
+ * 3. Run Metrics Gate — determine if numbers are allowed (BLOCK/LIMIT/ALLOW)
+ * 4. Run Clarifier Gate — ask ONE question if genuinely needed
+ * 5. Apply Continuity Anchoring — first line must reference user's request
+ * 6. Check Uncertainty — inject micro-pattern if data is uncertain
+ * 7. Apply hard caps and metric budget
+ * 8. End with exactly ONE question (clarifier OR receipts offer, never both)
  * 
- * @version 3.0.0 - Unified Response Policy
+ * CORE PRINCIPLE: Meaning first. Numbers only when invited. Receipts when requested.
+ * 
+ * @version 4.0.0 - Added No-Unasked-Metrics Gate
  */
 
 import { logger } from '../utils/logger';
@@ -84,6 +88,45 @@ export type ContinuityAnchor =
   | 'PARAPHRASE';        // "You want a market overview…"
 
 /**
+ * Metrics Gate state - controls if numbers are allowed
+ */
+export type MetricsGateState = 'BLOCK' | 'LIMIT' | 'ALLOW';
+
+/**
+ * Metric categories for budget tracking
+ */
+export type MetricCategory =
+  | 'PRICE'        // Prices, % change, market cap
+  | 'DERIVATIVES'  // Funding, OI, liquidations, basis
+  | 'ONCHAIN'      // Exchange flows, whale tx, reserves
+  | 'INDICATORS'   // Fear & Greed, RSI, sentiment
+  | 'SCORES';      // OmniScore, /100 ratings
+
+/**
+ * Metric budget - caps on numbers allowed
+ */
+export interface MetricBudget {
+  maxNumbers: number;
+  maxMetricCategories: number;
+  maxTickers: number;
+  allowScores: boolean;
+  preferRounded: boolean;
+  requireReceiptsBlock: boolean;
+}
+
+/**
+ * Metrics Gate result
+ */
+export interface MetricsGate {
+  state: MetricsGateState;
+  budget: MetricBudget;
+  allowedCategories: MetricCategory[];
+  priorityMetrics: string[];  // Which metrics to show first
+  receiptsOffer: string | null;
+  reason: string;
+}
+
+/**
  * All extracted signals from a message
  */
 export interface MessageSignals {
@@ -95,11 +138,15 @@ export interface MessageSignals {
   detectedAssets: string[];
   isGreeting: boolean;
   isDepthOptIn: boolean;
-  // New: for human behaviors
+  // For human behaviors
   hasTimeframe: boolean;
   hasGoal: boolean;
   requestsAnalysis: boolean;
   requestsDecision: boolean;
+  // For metrics gate
+  requestsData: boolean;           // User explicitly wants data/metrics
+  requestsSpecificMetrics: boolean; // User asked for specific metric types
+  requestedMetricTypes: MetricCategory[];
 }
 
 /**
@@ -151,6 +198,7 @@ export interface HumanBehaviors {
     disclosure: string | null;
     actionOffer: string | null;
   };
+  metricsGate: MetricsGate;
 }
 
 /**
@@ -377,6 +425,89 @@ function requestsDecision(message: string): boolean {
   return decisionPatterns.some(p => p.test(message));
 }
 
+// ============================================================================
+// METRICS GATE — Signal Detection
+// ============================================================================
+
+/**
+ * Check if user is requesting data/metrics (general data request)
+ * These trigger LIMIT gate state (2-5 numbers allowed)
+ */
+function detectsDataRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  const dataPatterns = [
+    /\boverview\b/,
+    /\bupdate\b/,
+    /\bmarket\b/,
+    /\bhow'?s\s+(?:it|the|things?)\s+(?:looking|going)\b/,
+    /\bstats?\b/,
+    /\bnumbers?\b/,
+    /\bdata\b/,
+    /\bprice\b/,
+    /\bchart\b/,
+    /\blevels?\b/,
+    /\bsupport\b/,
+    /\bresistance\b/,
+    /\btargets?\b/,
+    /\bwhat'?s\s+(?:btc|eth|sol|bitcoin|ethereum|solana)\b/,
+    /\bhow'?s\s+(?:btc|eth|sol|bitcoin|ethereum|solana)\b/,
+  ];
+  return dataPatterns.some(p => p.test(lower));
+}
+
+/**
+ * Check if user is requesting specific metrics (ALLOW gate state)
+ * These trigger full metrics allowed with receipts block
+ */
+function detectsSpecificMetrics(message: string): { 
+  requested: boolean; 
+  types: MetricCategory[] 
+} {
+  const lower = message.toLowerCase();
+  const types: MetricCategory[] = [];
+  
+  // Price metrics
+  if (/\b(?:price|prices|%|percent|market\s*cap|mcap|volume|vol)\b/.test(lower)) {
+    types.push('PRICE');
+  }
+  
+  // Derivatives metrics
+  if (/\b(?:funding|oi|open\s*interest|liqs?|liquidations?|basis|perps?|futures?|iv|implied)\b/.test(lower)) {
+    types.push('DERIVATIVES');
+  }
+  
+  // On-chain metrics
+  if (/\b(?:on[\s-]?chain|flows?|whale|whales|exchange\s+(?:flows?|reserves?)|reserves?|inflows?|outflows?)\b/.test(lower)) {
+    types.push('ONCHAIN');
+  }
+  
+  // Indicator metrics
+  if (/\b(?:fear\s*(?:and|&)?\s*greed|sentiment|rsi|macd|indicators?|technicals?|ta)\b/.test(lower)) {
+    types.push('INDICATORS');
+  }
+  
+  // Score metrics
+  if (/\b(?:omniscore|score|scores|rating|ratings|\/100)\b/.test(lower)) {
+    types.push('SCORES');
+  }
+  
+  // Explicit data requests
+  const explicitPatterns = [
+    /\bshow\s+(?:me\s+)?(?:the\s+)?(?:exact|latest|current)\b/,
+    /\bgive\s+(?:me\s+)?(?:the\s+)?(?:numbers?|data|stats?|metrics?)\b/,
+    /\bpull\s+(?:the\s+)?(?:latest|current|a)?\s*(?:snapshot|data|numbers?)\b/,
+    /\bexact\s+(?:numbers?|data|price)\b/,
+    /\blatest\s+(?:numbers?|data|stats?)\b/,
+  ];
+  
+  const hasExplicitRequest = explicitPatterns.some(p => p.test(lower));
+  
+  return {
+    requested: types.length > 0 || hasExplicitRequest,
+    types,
+  };
+}
+
 /**
  * Extract all signals from a message
  */
@@ -407,6 +538,10 @@ export function extractSignals(
     }
   }
   
+  // Detect data/metrics requests
+  const dataRequest = detectsDataRequest(message);
+  const specificMetrics = detectsSpecificMetrics(message);
+  
   return {
     length,
     depth,
@@ -420,6 +555,9 @@ export function extractSignals(
     hasGoal: hasGoalIndication(message),
     requestsAnalysis: requestsAnalysis(message),
     requestsDecision: requestsDecision(message),
+    requestsData: dataRequest || specificMetrics.requested,
+    requestsSpecificMetrics: specificMetrics.requested,
+    requestedMetricTypes: specificMetrics.types,
   };
 }
 
@@ -448,7 +586,191 @@ export function selectMode(signals: MessageSignals): OutputMode {
 }
 
 // ============================================================================
-// STEP 3 — CLARIFIER GATE (Human Behavior 1)
+// STEP 3 — METRICS GATE (No-Unasked-Metrics)
+// ============================================================================
+
+/**
+ * Metric budgets for each gate state
+ */
+const METRIC_BUDGET_BLOCK: MetricBudget = {
+  maxNumbers: 0,
+  maxMetricCategories: 0,
+  maxTickers: 0,
+  allowScores: false,
+  preferRounded: true,
+  requireReceiptsBlock: false,
+};
+
+const METRIC_BUDGET_LIMIT: MetricBudget = {
+  maxNumbers: 5,
+  maxMetricCategories: 2,
+  maxTickers: 6,
+  allowScores: false,  // No /100 scores unless asked
+  preferRounded: true, // Prefer 97k over $97,104
+  requireReceiptsBlock: false,
+};
+
+const METRIC_BUDGET_ALLOW_M: MetricBudget = {
+  maxNumbers: 12,
+  maxMetricCategories: 4,
+  maxTickers: 8,
+  allowScores: true,
+  preferRounded: false,
+  requireReceiptsBlock: true,
+};
+
+const METRIC_BUDGET_ALLOW_L: MetricBudget = {
+  maxNumbers: 20,
+  maxMetricCategories: 5,
+  maxTickers: 12,
+  allowScores: true,
+  preferRounded: false,
+  requireReceiptsBlock: true,
+};
+
+/**
+ * Run the Metrics Gate to determine if numbers are allowed.
+ * 
+ * BLOCK (default): No data request → 0 numbers
+ * LIMIT: Overview/general request → 2-5 numbers, rounded, anchor only
+ * ALLOW: Explicit metrics request → full metrics in receipts block
+ */
+function runMetricsGate(
+  signals: MessageSignals, 
+  mode: OutputMode,
+  conversationHistory?: { role: string; content: string }[]
+): MetricsGate {
+  const { 
+    domain, requestsData, requestsSpecificMetrics, 
+    requestedMetricTypes, detectedAssets, isGreeting,
+    requestsDecision
+  } = signals;
+  
+  // BLOCK: Social/greetings — absolutely no numbers
+  if (isGreeting || domain === 'SOCIAL') {
+    return {
+      state: 'BLOCK',
+      budget: METRIC_BUDGET_BLOCK,
+      allowedCategories: [],
+      priorityMetrics: [],
+      receiptsOffer: null,
+      reason: 'Social/greeting message — no data allowed',
+    };
+  }
+  
+  // ALLOW: User explicitly requested specific metrics
+  if (requestsSpecificMetrics && requestedMetricTypes.length > 0) {
+    const budget = mode === 'L' ? METRIC_BUDGET_ALLOW_L : METRIC_BUDGET_ALLOW_M;
+    return {
+      state: 'ALLOW',
+      budget,
+      allowedCategories: requestedMetricTypes,
+      priorityMetrics: getPriorityMetrics(requestedMetricTypes, detectedAssets),
+      receiptsOffer: null,  // No offer needed — they asked for it
+      reason: `User requested specific metrics: ${requestedMetricTypes.join(', ')}`,
+    };
+  }
+  
+  // LIMIT: General data request (overview, update, how's X looking)
+  if (requestsData || detectedAssets.length > 0 || domain === 'MARKET_WIDE') {
+    // Decision requests get LIMIT but avoid precision
+    const allowedCategories: MetricCategory[] = ['PRICE'];
+    if (domain === 'MARKET_WIDE') {
+      allowedCategories.push('INDICATORS');  // Allow Fear & Greed for market overview
+    }
+    
+    return {
+      state: 'LIMIT',
+      budget: { ...METRIC_BUDGET_LIMIT, maxNumbers: requestsDecision ? 2 : 5 },
+      allowedCategories,
+      priorityMetrics: getPriorityMetrics(allowedCategories, detectedAssets),
+      receiptsOffer: getReceiptsOffer(domain, detectedAssets),
+      reason: 'General data request — limited anchor numbers allowed',
+    };
+  }
+  
+  // Check for implicit data continuation from conversation
+  if (conversationHistory && conversationHistory.length >= 2) {
+    const lastTwoUserTurns = conversationHistory
+      .filter(t => t.role === 'user')
+      .slice(-2);
+    
+    const hadRecentDataRequest = lastTwoUserTurns.some(t => 
+      detectsDataRequest(t.content) || detectsSpecificMetrics(t.content).requested
+    );
+    
+    // User continuing a data discussion (e.g., "and ETH?")
+    if (hadRecentDataRequest && detectedAssets.length > 0) {
+      return {
+        state: 'LIMIT',
+        budget: METRIC_BUDGET_LIMIT,
+        allowedCategories: ['PRICE'],
+        priorityMetrics: getPriorityMetrics(['PRICE'], detectedAssets),
+        receiptsOffer: getReceiptsOffer(domain, detectedAssets),
+        reason: 'Implicit data continuation from previous turns',
+      };
+    }
+  }
+  
+  // BLOCK: Default — no data request detected
+  return {
+    state: 'BLOCK',
+    budget: METRIC_BUDGET_BLOCK,
+    allowedCategories: [],
+    priorityMetrics: [],
+    receiptsOffer: 'Want the numbers, or just the vibe?',
+    reason: 'No data request detected — conversation only',
+  };
+}
+
+/**
+ * Get priority metrics based on allowed categories and assets
+ */
+function getPriorityMetrics(categories: MetricCategory[], assets: string[]): string[] {
+  const priority: string[] = [];
+  
+  // 1. Price (rounded) for requested asset or BTC/ETH if market-wide
+  if (categories.includes('PRICE')) {
+    if (assets.length > 0) {
+      priority.push(`${assets[0]} price (rounded)`);
+    } else {
+      priority.push('BTC price (rounded)', 'ETH price (rounded)');
+    }
+    priority.push('24h direction/% (rounded, optional)');
+  }
+  
+  // 2. One positioning/risk anchor if relevant
+  if (categories.includes('DERIVATIVES')) {
+    priority.push('Funding summary (if elevated)');
+    priority.push('Liquidations summary (if notable)');
+  }
+  
+  if (categories.includes('INDICATORS')) {
+    priority.push('Fear & Greed (if extreme)');
+  }
+  
+  if (categories.includes('ONCHAIN')) {
+    priority.push('Exchange flows (if significant)');
+  }
+  
+  return priority;
+}
+
+/**
+ * Get the appropriate receipts offer
+ */
+function getReceiptsOffer(domain: DomainSignal, assets: string[]): string {
+  if (domain === 'MARKET_WIDE') {
+    return 'Want the exact funding/OI/liqs, or just key levels?';
+  }
+  if (assets.length === 1) {
+    return `Want the full ${assets[0]} receipts?`;
+  }
+  return 'Want the detailed metrics?';
+}
+
+// ============================================================================
+// STEP 4 — CLARIFIER GATE (Human Behavior 1)
 // ============================================================================
 
 /**
@@ -834,13 +1156,16 @@ export function classifyVerbosity(
   // Step 2: Select mode
   const mode = selectMode(signals);
   
-  // Step 3: Run clarifier gate (Human Behavior 1)
+  // Step 3: Run metrics gate (No-Unasked-Metrics)
+  const metricsGate = runMetricsGate(signals, mode, conversationHistory);
+  
+  // Step 4: Run clarifier gate (Human Behavior 1)
   const clarifier = runClarifierGate(signals);
   
-  // Step 4: Get continuity anchor (Human Behavior 2)
+  // Step 5: Get continuity anchor (Human Behavior 2)
   const continuity = getContinuityAnchor(signals, mode);
   
-  // Step 5: Check uncertainty (Human Behavior 3)
+  // Step 6: Check uncertainty (Human Behavior 3)
   const uncertainty = getUncertaintyHandling(
     dataContext?.hasDataFreshnessConcern,
     dataContext?.hasPartialData,
@@ -848,14 +1173,21 @@ export function classifyVerbosity(
     dataContext?.hasEstimatedMetrics
   );
   
-  // Step 6: Get hard caps and template
+  // Step 7: Get hard caps and template — override with metrics budget
   const caps = getCaps(mode);
   const template = selectTemplate(signals, mode, clarifier.needed);
   caps.structure = template;
   
-  // Step 7: Get expansion protocol
+  // Apply metrics gate budget to caps (metrics gate takes precedence)
+  caps.maxNumbers = Math.min(caps.maxNumbers, metricsGate.budget.maxNumbers);
+  caps.maxAssets = Math.min(caps.maxAssets, metricsGate.budget.maxTickers);
+  
+  // Step 8: Get expansion protocol
   const depthOffer = getDepthOffer(template, mode);
-  const questionPrompt = getFollowUpQuestion(signals, template, clarifier);
+  // Use receipts offer from metrics gate if available and no clarifier
+  const questionPrompt = clarifier.needed 
+    ? clarifier.question 
+    : (metricsGate.receiptsOffer || getFollowUpQuestion(signals, template, clarifier));
   
   const result: VerbosityClassification = {
     signals,
@@ -868,6 +1200,7 @@ export function classifyVerbosity(
       clarifier,
       continuity,
       uncertainty,
+      metricsGate,
     },
   };
   
@@ -875,8 +1208,9 @@ export function classifyVerbosity(
     message: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
     mode,
     template,
+    metricsGate: metricsGate.state,
+    metricsMaxNumbers: metricsGate.budget.maxNumbers,
     clarifierNeeded: clarifier.needed,
-    clarifierType: clarifier.type,
     continuityAnchor: continuity.anchor,
     uncertaintyPresent: uncertainty.present,
     processingMs: (performance.now() - startTime).toFixed(1),
@@ -891,21 +1225,89 @@ export function classifyVerbosity(
 
 export function generateResponseGuidance(classification: VerbosityClassification): string {
   const { signals, mode, caps, template, depthOffer, questionPrompt, behaviors } = classification;
-  const { clarifier, continuity, uncertainty } = behaviors;
+  const { clarifier, continuity, uncertainty, metricsGate } = behaviors;
   
   return `
 ═══════════════════════════════════════════════════════════════════════════════
-🎛️ UNIFIED RESPONSE POLICY v3.0 — PRODUCTION MODE
+🎛️ UNIFIED RESPONSE POLICY v4.0 — PRODUCTION MODE
 ═══════════════════════════════════════════════════════════════════════════════
 
 OUTPUT MODE: ${mode} (${mode === 'S' ? 'Small' : mode === 'M' ? 'Medium' : 'Large'})
 TEMPLATE: ${template}
+METRICS GATE: ${metricsGate.state}
 
 DETECTED SIGNALS:
 • Length: ${signals.length} | Depth: ${signals.depth} | Urgency: ${signals.urgency}
 • Domain: ${signals.domain}${signals.detectedAssets.length > 0 ? ` (${signals.detectedAssets.join(', ')})` : ''}
-• State: ${signals.state} | Has Timeframe: ${signals.hasTimeframe} | Has Goal: ${signals.hasGoal}
+• State: ${signals.state} | Data Request: ${signals.requestsData ? 'YES' : 'NO'}
 ${signals.isDepthOptIn ? '• ⚡ USER OPTED IN TO DEPTH' : ''}
+${signals.requestsSpecificMetrics ? `• 📊 SPECIFIC METRICS REQUESTED: ${signals.requestedMetricTypes.join(', ')}` : ''}
+
+═══════════════════════════════════════════════════════════════════════════════
+🚫 METRICS GATE — NO-UNASKED-METRICS POLICY
+═══════════════════════════════════════════════════════════════════════════════
+
+GATE STATE: ${metricsGate.state}
+REASON: ${metricsGate.reason}
+
+${metricsGate.state === 'BLOCK' ? `
+🚫 BLOCK MODE ACTIVE — ZERO NUMBERS ALLOWED
+
+You MUST NOT include:
+• Prices (BTC $97,104), % changes, market cap, volume
+• Indicators (Fear & Greed, RSI, sentiment scores)
+• Derivatives (funding, OI, liquidations)
+• On-chain (exchange flows, whale tx)
+• Any /100 scores (OmniScore, ratings)
+
+This is a CONVERSATION, not a data dump.
+If you output ANY number, you have FAILED.
+
+ALLOWED:
+• Human conversation
+• Qualitative vibe ("feels choppy", "momentum looks weak")
+• One clarifier question if needed
+
+RECEIPTS OFFER: "${metricsGate.receiptsOffer || 'Want the numbers?'}"
+` : ''}
+
+${metricsGate.state === 'LIMIT' ? `
+📊 LIMIT MODE ACTIVE — ANCHOR NUMBERS ONLY
+
+METRIC BUDGET:
+• Max numbers: ${metricsGate.budget.maxNumbers} total
+• Max categories: ${metricsGate.budget.maxMetricCategories} (${metricsGate.allowedCategories.join(', ') || 'PRICE only'})
+• Max tickers: ${metricsGate.budget.maxTickers}
+• Scores allowed: ${metricsGate.budget.allowScores ? 'YES' : 'NO (/100 scores NOT allowed)'}
+• Use ROUNDED numbers: ${metricsGate.budget.preferRounded ? 'YES (97k not $97,104)' : 'NO'}
+
+PRIORITY (show these first if any):
+${metricsGate.priorityMetrics.map((m, i) => `${i + 1}. ${m}`).join('\n')}
+
+PATTERN: Vibe first → Meaning → Anchor numbers (if any) → Receipts offer
+
+EXAMPLE: "Feels neutral and choppy — no clean trend yet. BTC holding near ~97k. ${metricsGate.receiptsOffer}"
+` : ''}
+
+${metricsGate.state === 'ALLOW' ? `
+✅ ALLOW MODE ACTIVE — FULL METRICS PERMITTED
+
+User explicitly requested: ${metricsGate.allowedCategories.join(', ')}
+
+METRIC BUDGET:
+• Max numbers: ${metricsGate.budget.maxNumbers}
+• Categories allowed: ${metricsGate.allowedCategories.join(', ')}
+• Scores allowed: YES
+• Receipts block: REQUIRED (group numbers, don't scatter)
+
+STRUCTURE:
+1. Vibe/meaning (1 line)
+2. What matters next (1-2 lines)
+3. RECEIPTS BLOCK (grouped metrics, max 6 lines)
+4. Follow-up question
+
+DO NOT scatter 20 numbers through paragraphs. Group them cleanly.
+` : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
 BEHAVIOR 1 — CLARIFIER GATE
@@ -1030,14 +1432,26 @@ ${clarifier.needed ? `3. GIVE minimal safe default (1 line max)
 QA ACCEPTANCE CHECKS (your response must pass ALL)
 ═══════════════════════════════════════════════════════════════════════════════
 
-□ First line references user's request/asset
-□ Total question marks in response: exactly 1 (or 0 if none needed)
-□ If clarifier needed: gave minimal safe default + clarifier, no data dump
+METRICS GATE CHECKS:
+□ Did user request data? If NO → ZERO numbers in response
+□ If BLOCK mode: contains no prices, %, indicators, or scores
+□ If LIMIT mode: numbers ≤ ${metricsGate.budget.maxNumbers}, rounded, anchor only
+□ If ALLOW mode: metrics grouped in receipts block, not scattered
+□ No /100 scores unless user explicitly asked
+
+BEHAVIOR CHECKS:
+□ First line references user's request/asset (continuity anchor)
+□ Total question marks: exactly 1 (or 0 if none needed)
+□ If clarifier needed: minimal safe default + clarifier only
 □ If uncertainty: disclosed in ≤1 line with action option
+
+STRUCTURE CHECKS:
 □ Line count within ${caps.minLines}-${caps.maxLines}
 □ Number count ≤ ${caps.maxNumbers}
 □ No multiple-choice menus at end
-□ No unsolicited topic introductions (or labeled as "One extra thing:")
+□ No unsolicited topic introductions
+
+MENTAL MODEL: Meaning first. Numbers only when invited. Receipts when requested.
 
 If ANY check fails, your response is NOT production-ready.
 
@@ -1064,6 +1478,7 @@ export const conversationRules = {
   selectMode,
   getCaps,
   selectTemplate,
+  runMetricsGate,
   runClarifierGate,
   getContinuityAnchor,
   getUncertaintyHandling,
