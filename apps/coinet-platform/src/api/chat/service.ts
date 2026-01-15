@@ -1387,6 +1387,298 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
       throw error;
     }
   }
+
+  // ============================================================================
+  // CONVERSATION MANAGEMENT — List, Delete, Update, Archive
+  // ============================================================================
+
+  /**
+   * List all conversations for a user (for sidebar)
+   */
+  async listConversations(
+    userId: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      includeArchived?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    data: {
+      conversations: Array<{
+        id: string;
+        title: string | null;
+        lastMessage: string | null;
+        messageCount: number;
+        createdAt: string;
+        updatedAt: string;
+        isArchived: boolean;
+      }>;
+      total: number;
+      hasMore: boolean;
+    };
+  }> {
+    try {
+      const limit = options?.limit || 50;
+      const offset = options?.offset || 0;
+      const includeArchived = options?.includeArchived || false;
+
+      // Build where clause
+      const whereClause: any = { userId };
+      if (!includeArchived) {
+        whereClause.archivedAt = null;
+      }
+
+      // Get total count
+      const total = await prisma.conversation.count({
+        where: whereClause,
+      });
+
+      // Get conversations with last message
+      const conversations = await prisma.conversation.findMany({
+        where: whereClause,
+        orderBy: { updatedAt: 'desc' },
+        skip: offset,
+        take: limit,
+        include: {
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              content: true,
+              role: true,
+            },
+          },
+          _count: {
+            select: { messages: true },
+          },
+        },
+      });
+
+      const formattedConversations = conversations.map((conv: any) => ({
+        id: conv.id,
+        title: conv.title,
+        lastMessage: conv.messages[0]?.content?.substring(0, 100) || null,
+        messageCount: conv._count.messages,
+        createdAt: conv.createdAt.toISOString(),
+        updatedAt: conv.updatedAt.toISOString(),
+        isArchived: !!conv.archivedAt,
+      }));
+
+      logger.debug('📋 Listed conversations', {
+        userId,
+        count: formattedConversations.length,
+        total,
+      });
+
+      return {
+        success: true,
+        data: {
+          conversations: formattedConversations,
+          total,
+          hasMore: offset + limit < total,
+        },
+      };
+    } catch (error) {
+      logger.error('❌ Failed to list conversations', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a conversation and all its messages
+   */
+  async deleteConversation(
+    userId: string,
+    conversationId: string
+  ): Promise<{ success: boolean }> {
+    try {
+      // Verify conversation belongs to user
+      const conversation = await prisma.conversation.findFirst({
+        where: {
+          id: conversationId,
+          userId,
+        },
+      });
+
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      // Delete conversation (messages will cascade delete)
+      await prisma.conversation.delete({
+        where: { id: conversationId },
+      });
+
+      logger.info('✅ Conversation deleted', { conversationId, userId });
+
+      return { success: true };
+    } catch (error) {
+      logger.error('❌ Failed to delete conversation', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update conversation (title, archive status)
+   */
+  async updateConversation(
+    userId: string,
+    conversationId: string,
+    updates: {
+      title?: string;
+      archived?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    data: {
+      id: string;
+      title: string | null;
+      isArchived: boolean;
+      updatedAt: string;
+    };
+  }> {
+    try {
+      // Verify conversation belongs to user
+      const conversation = await prisma.conversation.findFirst({
+        where: {
+          id: conversationId,
+          userId,
+        },
+      });
+
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      // Build update data
+      const updateData: any = {};
+      if (updates.title !== undefined) {
+        updateData.title = updates.title;
+      }
+      if (updates.archived !== undefined) {
+        updateData.archivedAt = updates.archived ? new Date() : null;
+      }
+
+      // Update conversation
+      const updated = await prisma.conversation.update({
+        where: { id: conversationId },
+        data: updateData,
+      });
+
+      logger.info('✅ Conversation updated', {
+        conversationId,
+        updates: Object.keys(updates),
+      });
+
+      return {
+        success: true,
+        data: {
+          id: updated.id,
+          title: updated.title,
+          isArchived: !!updated.archivedAt,
+          updatedAt: updated.updatedAt.toISOString(),
+        },
+      };
+    } catch (error) {
+      logger.error('❌ Failed to update conversation', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Archive/unarchive a conversation
+   */
+  async archiveConversation(
+    userId: string,
+    conversationId: string,
+    archive: boolean = true
+  ): Promise<{ success: boolean }> {
+    try {
+      await this.updateConversation(userId, conversationId, { archived: archive });
+      
+      logger.info(`✅ Conversation ${archive ? 'archived' : 'unarchived'}`, {
+        conversationId,
+        userId,
+      });
+
+      return { success: true };
+    } catch (error) {
+      logger.error('❌ Failed to archive conversation', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new empty conversation
+   */
+  async createConversation(
+    userId: string,
+    options?: {
+      title?: string;
+      agentId?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    data: {
+      id: string;
+      title: string | null;
+      createdAt: string;
+    };
+  }> {
+    try {
+      const conversation = await prisma.conversation.create({
+        data: {
+          userId,
+          title: options?.title || null,
+          agentId: options?.agentId || null,
+          context: {},
+        },
+      });
+
+      logger.info('✅ New conversation created', {
+        conversationId: conversation.id,
+        userId,
+        hasTitle: !!options?.title,
+      });
+
+      return {
+        success: true,
+        data: {
+          id: conversation.id,
+          title: conversation.title,
+          createdAt: conversation.createdAt.toISOString(),
+        },
+      };
+    } catch (error) {
+      logger.error('❌ Failed to create conversation', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear all conversations for a user (dangerous!)
+   */
+  async clearAllConversations(userId: string): Promise<{ success: boolean; deletedCount: number }> {
+    try {
+      const result = await prisma.conversation.deleteMany({
+        where: { userId },
+      });
+
+      logger.warn('🗑️ All conversations cleared', {
+        userId,
+        deletedCount: result.count,
+      });
+
+      return {
+        success: true,
+        deletedCount: result.count,
+      };
+    } catch (error) {
+      logger.error('❌ Failed to clear conversations', error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

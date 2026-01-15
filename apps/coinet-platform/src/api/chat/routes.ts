@@ -23,7 +23,90 @@ const router: Router = express.Router();
 router.use(requireAuth);
 
 // =============================================================================
-// CHAT ENDPOINTS (all protected)
+// CONVERSATION MANAGEMENT ENDPOINTS
+// =============================================================================
+
+/**
+ * GET /api/chat/conversations
+ * List all conversations for the authenticated user
+ * 
+ * Query params:
+ * - limit: number (default 50)
+ * - offset: number (default 0)
+ * - includeArchived: boolean (default false)
+ * 
+ * @requires Authentication (JWT token in Authorization header)
+ */
+router.get('/conversations', (req: Request, res: Response) => {
+  chatController.listConversations(req, res);
+});
+
+/**
+ * POST /api/chat/conversations
+ * Create a new empty conversation
+ * 
+ * Body:
+ * - title?: string
+ * - agentId?: string
+ * 
+ * @requires Authentication (JWT token in Authorization header)
+ */
+router.post('/conversations', (req: Request, res: Response) => {
+  chatController.createConversation(req, res);
+});
+
+/**
+ * DELETE /api/chat/conversations
+ * Clear ALL conversations for the user (dangerous!)
+ * 
+ * Body:
+ * - confirm: "DELETE_ALL_CONVERSATIONS" (required)
+ * 
+ * @requires Authentication (JWT token in Authorization header)
+ */
+router.delete('/conversations', (req: Request, res: Response) => {
+  chatController.clearAllConversations(req, res);
+});
+
+/**
+ * DELETE /api/chat/conversations/:conversationId
+ * Delete a single conversation and all its messages
+ * 
+ * @requires Authentication (JWT token in Authorization header)
+ */
+router.delete('/conversations/:conversationId', (req: Request, res: Response) => {
+  chatController.deleteConversation(req, res);
+});
+
+/**
+ * PATCH /api/chat/conversations/:conversationId
+ * Update a conversation (title, archive status)
+ * 
+ * Body:
+ * - title?: string
+ * - archived?: boolean
+ * 
+ * @requires Authentication (JWT token in Authorization header)
+ */
+router.patch('/conversations/:conversationId', (req: Request, res: Response) => {
+  chatController.updateConversation(req, res);
+});
+
+/**
+ * POST /api/chat/conversations/:conversationId/archive
+ * Archive/unarchive a conversation
+ * 
+ * Body:
+ * - archive?: boolean (default true)
+ * 
+ * @requires Authentication (JWT token in Authorization header)
+ */
+router.post('/conversations/:conversationId/archive', (req: Request, res: Response) => {
+  chatController.archiveConversation(req, res);
+});
+
+// =============================================================================
+// CHAT MESSAGE ENDPOINTS
 // =============================================================================
 
 /**

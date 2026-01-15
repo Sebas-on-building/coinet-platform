@@ -292,6 +292,279 @@ export class ChatController {
       });
     }
   }
+
+  // ============================================================================
+  // CONVERSATION MANAGEMENT ENDPOINTS
+  // ============================================================================
+
+  /**
+   * GET /api/chat/conversations
+   * List all conversations for the authenticated user
+   */
+  async listConversations(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
+    try {
+      const userId = getUserId(req);
+      
+      // Parse query params
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const includeArchived = req.query.includeArchived === 'true';
+
+      const response = await chatService.listConversations(userId, {
+        limit,
+        offset,
+        includeArchived,
+      });
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error('❌ Failed to list conversations', error, { requestId });
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'LIST_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to list conversations',
+        },
+        requestId,
+      });
+    }
+  }
+
+  /**
+   * POST /api/chat/conversations
+   * Create a new empty conversation
+   */
+  async createConversation(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
+    try {
+      const userId = getUserId(req);
+      const { title, agentId } = req.body;
+
+      const response = await chatService.createConversation(userId, {
+        title,
+        agentId,
+      });
+
+      res.status(201).json(response);
+    } catch (error) {
+      logger.error('❌ Failed to create conversation', error, { requestId });
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'CREATE_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to create conversation',
+        },
+        requestId,
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/chat/conversations/:conversationId
+   * Delete a conversation and all its messages
+   */
+  async deleteConversation(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
+    try {
+      const userId = getUserId(req);
+      const { conversationId } = req.params;
+
+      if (!conversationId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'conversationId is required',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      const response = await chatService.deleteConversation(userId, conversationId);
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error('❌ Failed to delete conversation', error, { requestId });
+
+      if (error instanceof Error && error.message === 'Conversation not found') {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Conversation not found',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to delete conversation',
+        },
+        requestId,
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/chat/conversations/:conversationId
+   * Update a conversation (title, archive status)
+   */
+  async updateConversation(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
+    try {
+      const userId = getUserId(req);
+      const { conversationId } = req.params;
+      const { title, archived } = req.body;
+
+      if (!conversationId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'conversationId is required',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      const response = await chatService.updateConversation(userId, conversationId, {
+        title,
+        archived,
+      });
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error('❌ Failed to update conversation', error, { requestId });
+
+      if (error instanceof Error && error.message === 'Conversation not found') {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Conversation not found',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'UPDATE_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to update conversation',
+        },
+        requestId,
+      });
+    }
+  }
+
+  /**
+   * POST /api/chat/conversations/:conversationId/archive
+   * Archive a conversation
+   */
+  async archiveConversation(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
+    try {
+      const userId = getUserId(req);
+      const { conversationId } = req.params;
+      const archive = req.body.archive !== false; // Default to true
+
+      if (!conversationId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'conversationId is required',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      const response = await chatService.archiveConversation(userId, conversationId, archive);
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error('❌ Failed to archive conversation', error, { requestId });
+
+      if (error instanceof Error && error.message === 'Conversation not found') {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Conversation not found',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'ARCHIVE_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to archive conversation',
+        },
+        requestId,
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/chat/conversations
+   * Clear all conversations for the user (dangerous!)
+   */
+  async clearAllConversations(req: Request, res: Response): Promise<void> {
+    const requestId = getRequestId(req);
+
+    try {
+      const userId = getUserId(req);
+      
+      // Require explicit confirmation
+      const { confirm } = req.body;
+      if (confirm !== 'DELETE_ALL_CONVERSATIONS') {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'CONFIRMATION_REQUIRED',
+            message: 'Must send { confirm: "DELETE_ALL_CONVERSATIONS" } to clear all conversations',
+          },
+          requestId,
+        });
+        return;
+      }
+
+      const response = await chatService.clearAllConversations(userId);
+
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error('❌ Failed to clear conversations', error, { requestId });
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'CLEAR_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to clear conversations',
+        },
+        requestId,
+      });
+    }
+  }
 }
 
 // Export singleton instance
