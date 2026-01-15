@@ -37,9 +37,11 @@ interface Message {
 
 interface ChatInterfaceProps {
   activeAgent?: CustomAgent | null;
+  conversationId?: string | null;
+  onConversationChange?: (conversationId: string | null) => void;
 }
 
-export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
+export function ChatInterface({ activeAgent, conversationId, onConversationChange }: ChatInterfaceProps) {
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -49,7 +51,12 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  
+  // Use prop conversationId if provided, otherwise manage internally
+  const currentConversationId = conversationId ?? null;
+  const setCurrentConversationId = (id: string | null) => {
+    onConversationChange?.(id);
+  };
   
   // Get trading data using the hook
   const tradingData = useTradingData('1D');
@@ -191,6 +198,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   // Load conversation history when conversationId changes
   useEffect(() => {
     if (currentConversationId) {
+      // Load existing conversation
       apiClient.getConversationHistory(currentConversationId)
         .then((response) => {
           if (response.success) {
@@ -209,6 +217,9 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
         .catch((error) => {
           console.error('Failed to load conversation history:', error);
         });
+    } else {
+      // New chat - clear messages
+      setMessages([]);
     }
   }, [currentConversationId]);
 

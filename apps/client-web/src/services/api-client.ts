@@ -93,6 +93,58 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+// ============================================================================
+// CONVERSATION MANAGEMENT TYPES
+// ============================================================================
+
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  lastMessage: string | null;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  isArchived: boolean;
+}
+
+export interface ListConversationsResponse {
+  success: boolean;
+  data: {
+    conversations: ConversationSummary[];
+    total: number;
+    hasMore: boolean;
+  };
+}
+
+export interface CreateConversationRequest {
+  title?: string;
+  agentId?: string;
+}
+
+export interface CreateConversationResponse {
+  success: boolean;
+  data: {
+    id: string;
+    title: string | null;
+    createdAt: string;
+  };
+}
+
+export interface UpdateConversationRequest {
+  title?: string;
+  archived?: boolean;
+}
+
+export interface UpdateConversationResponse {
+  success: boolean;
+  data: {
+    id: string;
+    title: string | null;
+    isArchived: boolean;
+    updatedAt: string;
+  };
+}
+
 class ApiClient {
   private baseURL: string;
 
@@ -261,6 +313,136 @@ class ApiClient {
    */
   async healthCheck(): Promise<{ ok: boolean; service: string }> {
     const response = await fetch(`${this.baseURL}/api/health`);
+    return response.json();
+  }
+
+  // ============================================================================
+  // CONVERSATION MANAGEMENT
+  // ============================================================================
+
+  /**
+   * List all conversations for the current user (for sidebar)
+   */
+  async listConversations(options?: {
+    limit?: number;
+    offset?: number;
+    includeArchived?: boolean;
+  }): Promise<ListConversationsResponse> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', options.limit.toString());
+    if (options?.offset) params.set('offset', options.offset.toString());
+    if (options?.includeArchived) params.set('includeArchived', 'true');
+
+    const url = `${this.baseURL}/api/chat/conversations${params.toString() ? '?' + params.toString() : ''}`;
+    
+    const response = await fetch(url, {
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Create a new empty conversation
+   */
+  async createConversation(request?: CreateConversationRequest): Promise<CreateConversationResponse> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+
+    const response = await fetch(`${this.baseURL}/api/chat/conversations`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(request || {}),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Delete a conversation and all its messages
+   */
+  async deleteConversation(conversationId: string): Promise<{ success: boolean }> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+
+    const response = await fetch(`${this.baseURL}/api/chat/conversations/${conversationId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Update a conversation (title, archive status)
+   */
+  async updateConversation(
+    conversationId: string,
+    updates: UpdateConversationRequest
+  ): Promise<UpdateConversationResponse> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+
+    const response = await fetch(`${this.baseURL}/api/chat/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Archive/unarchive a conversation
+   */
+  async archiveConversation(conversationId: string, archive: boolean = true): Promise<{ success: boolean }> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+
+    const response = await fetch(`${this.baseURL}/api/chat/conversations/${conversationId}/archive`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ archive }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
+    }
+
     return response.json();
   }
 }
