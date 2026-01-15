@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Copy, Bot, User, MoreHorizontal, RotateCcw, Settings, TrendingUp, Search, Target } from "lucide-react";
+import { Copy, User, MoreHorizontal, RotateCcw, Settings, TrendingUp, Search, Target } from "lucide-react";
+import coinetLogo from "@/assets/coinet-logo.png";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -547,8 +548,8 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                     isMobile ? "gap-3 max-w-full" : "gap-6 max-w-5xl mx-auto"
                   )}>
                     {message.type === 'assistant' && (
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 md:w-5 md:h-5 text-primary-foreground" />
+                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0 p-1.5 md:p-2">
+                        <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
                       </div>
                     )}
                     
