@@ -471,17 +471,6 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                     "flex gap-3 max-w-full",
                     message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
                   )}>
-                    {/* Avatar */}
-                    {message.type === 'user' ? (
-                      <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium bg-primary text-primary-foreground">
-                        You
-                      </div>
-                    ) : (
-                      <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-primary/80 p-0.5">
-                        <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
-                      </div>
-                    )}
-                    
                      {/* Message Content */}
                     <div className={cn(
                       "flex-1 min-w-0 space-y-2",

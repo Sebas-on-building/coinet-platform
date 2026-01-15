@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Copy, User, MoreHorizontal, RotateCcw, Settings, TrendingUp, Search, Target } from "lucide-react";
-import coinetLogo from "@/assets/coinet-logo.png";
+import { Copy, MoreHorizontal, RotateCcw, Settings, TrendingUp, Search, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -547,12 +546,6 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                     message.type === 'user' ? 'justify-end' : 'justify-start',
                     isMobile ? "gap-3 max-w-full" : "gap-6 max-w-5xl mx-auto"
                   )}>
-                    {message.type === 'assistant' && (
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0 p-0.5">
-                        <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
-                      </div>
-                    )}
-                    
                      <div className={`max-w-[90%] sm:max-w-[85%] lg:max-w-[75%] ${message.type === 'user' ? 'order-first' : ''}`}>
                        {/* Charts rendered OUTSIDE the message bubble for better visibility */}
                        {message.charts && message.charts.length > 0 && message.type === 'assistant' && (
@@ -604,12 +597,6 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                          />
                        )}
                      </div>
-                    
-                    {message.type === 'user' && (
-                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                        <User className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
