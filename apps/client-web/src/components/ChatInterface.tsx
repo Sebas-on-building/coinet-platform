@@ -548,7 +548,7 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                     isMobile ? "gap-3 max-w-full" : "gap-6 max-w-5xl mx-auto"
                   )}>
                     {message.type === 'assistant' && (
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0 p-1.5 md:p-2">
+                      <div className="w-9 h-9 md:w-11 md:h-11 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0 p-1 md:p-1.5">
                         <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
                       </div>
                     )}
