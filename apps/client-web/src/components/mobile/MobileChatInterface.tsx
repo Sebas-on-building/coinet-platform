@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Bot, Mic, Send, MoreVertical, MessageSquare, Volume2, Sparkles, Plus } from 'lucide-react';
+import { Mic, Send, MoreVertical, MessageSquare, Volume2, Sparkles, Plus } from 'lucide-react';
+import coinetLogo from "@/assets/coinet-logo.png";
 import { SoundWaveIcon } from './SoundWaveIcon';
 import { toast } from '@/hooks/use-toast';
 import { MessageActions, CompactMessageActions } from '@/components/ui/message-actions';
@@ -435,8 +436,8 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
               /* Welcome State with Suggested Prompts */
               <div className="flex flex-col items-center justify-center h-full min-h-[30vh] space-y-6">
                 <div className="text-center space-y-4">
-                  <div className="w-12 h-12 mx-auto bg-accent rounded-full flex items-center justify-center">
-                    <Bot className="w-6 h-6 text-foreground" />
+                  <div className="w-12 h-12 mx-auto bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center p-1">
+                    <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
                   </div>
                   <h2 className="text-2xl font-medium text-foreground">
                     How can I help you today?
@@ -471,14 +472,15 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                     message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
                   )}>
                     {/* Avatar */}
-                    <div className={cn(
-                      "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium",
-                      message.type === 'user' 
-                        ? "bg-primary text-primary-foreground" 
-                        : "bg-accent text-foreground"
-                    )}>
-                      {message.type === 'user' ? 'You' : 'AI'}
-                    </div>
+                    {message.type === 'user' ? (
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium bg-primary text-primary-foreground">
+                        You
+                      </div>
+                    ) : (
+                      <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-primary/80 p-0.5">
+                        <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
+                      </div>
+                    )}
                     
                      {/* Message Content */}
                     <div className={cn(
