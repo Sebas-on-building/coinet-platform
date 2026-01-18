@@ -334,13 +334,13 @@ export function formatSourceProtocolResponse(response: SourceProtocolResponse): 
 }
 
 // ============================================================================
-// NORMAL TALK MODE v2.0 — 10 CHAT RULES
+// NORMAL TALK MODE v2.1 — 11 CHAT RULES
 // ============================================================================
 // 
 // These are the hard rules that make Coinet sound like a real person chatting,
 // not like a support bot or a report generator.
 //
-// THE 10 RULES:
+// THE 11 RULES:
 // 1. HUMAN FIRST: Respond to the person, then the topic
 // 2. MEANING FIRST: Start with what it means, numbers only if needed
 // 3. NO MENUS: No "Want A or B?" questions as default
@@ -351,6 +351,7 @@ export function formatSourceProtocolResponse(response: SourceProtocolResponse): 
 // 8. CONTEXT STICKY: Remember what we were talking about
 // 9. HONEST UNCERTAINTY: Brief, not apologetic
 // 10. MIRROR TONE: Match the user's energy
+// 11. MIRROR LANGUAGE: Always respond in the user's language
 //
 // ============================================================================
 
@@ -1122,10 +1123,16 @@ export interface MetricsGate {
 }
 
 /**
+ * Detected language of user message
+ */
+export type DetectedLanguage = 'en' | 'de' | 'mixed' | 'unknown';
+
+/**
  * All extracted signals from a message
  */
 export interface MessageSignals {
   rawMessage: string;              // Original message for anti-bot processing
+  detectedLanguage: DetectedLanguage; // Language to mirror in response
   length: LengthSignal;
   depth: DepthSignal;
   urgency: UrgencySignal;
@@ -1546,6 +1553,73 @@ function detectsOmniScoreRequest(message: string): boolean {
 }
 
 /**
+ * Detect the language of a message
+ * Returns 'de' for German, 'en' for English, 'mixed' for both, 'unknown' otherwise
+ */
+export function detectLanguage(message: string, conversationHistory?: { role: string; content: string }[]): DetectedLanguage {
+  const text = message.toLowerCase();
+  
+  // German indicators (common words, umlauts, specific phrases)
+  const germanIndicators = [
+    /\b(?:ich|du|er|sie|es|wir|ihr|und|oder|aber|wenn|weil|dass|nicht|kein|mein|dein|sein|haben|werden|können|müssen|sollen|wollen)\b/,
+    /\b(?:was|wie|wo|wann|warum|wer|welche|dieser|jetzt|hier|dort|auch|noch|schon|gerade|eigentlich|vielleicht|übrigens)\b/,
+    /\b(?:guten|morgen|abend|tag|hallo|tschüss|danke|bitte|ja|nein|okay|alles|klar|verstanden|genau)\b/,
+    /\b(?:markt|preis|kurs|handel|kaufen|verkaufen|halten|überblick|analyse|meinung)\b/,
+    /[äöüß]/,  // German umlauts and ß
+    /\b(?:grad|bisschen|halt|echt|mega|krass|geil|nice)\b/,  // Colloquial German
+  ];
+  
+  // English indicators (common words)
+  const englishIndicators = [
+    /\b(?:the|a|an|is|are|was|were|have|has|had|will|would|could|should|can|may|might)\b/,
+    /\b(?:what|how|where|when|why|who|which|this|that|these|those|here|there|also|still|already|actually|maybe)\b/,
+    /\b(?:market|price|trade|trading|buy|sell|hold|overview|analysis|opinion|think|want|need|looking)\b/,
+    /\b(?:please|thanks|thank|yes|no|okay|sure|right|good|great|nice)\b/,
+  ];
+  
+  let germanScore = 0;
+  let englishScore = 0;
+  
+  for (const pattern of germanIndicators) {
+    if (pattern.test(text)) germanScore++;
+  }
+  
+  for (const pattern of englishIndicators) {
+    if (pattern.test(text)) englishScore++;
+  }
+  
+  // Also check conversation history for language context
+  if (conversationHistory && conversationHistory.length > 0) {
+    const recentUserMessages = conversationHistory
+      .filter(m => m.role === 'user')
+      .slice(-3)
+      .map(m => m.content.toLowerCase())
+      .join(' ');
+    
+    for (const pattern of germanIndicators) {
+      if (pattern.test(recentUserMessages)) germanScore += 0.5;
+    }
+    for (const pattern of englishIndicators) {
+      if (pattern.test(recentUserMessages)) englishScore += 0.5;
+    }
+  }
+  
+  // Determine language
+  if (germanScore > 0 && englishScore > 0 && Math.abs(germanScore - englishScore) < 2) {
+    return 'mixed';
+  }
+  if (germanScore > englishScore) {
+    return 'de';
+  }
+  if (englishScore > germanScore) {
+    return 'en';
+  }
+  
+  // Default to English for short messages without clear indicators
+  return 'en';
+}
+
+/**
  * Extract all signals from a message
  */
 export function extractSignals(
@@ -1556,6 +1630,9 @@ export function extractSignals(
   const depth = extractDepthSignal(message);
   const urgency = extractUrgencySignal(message);
   const { domain, assets } = extractDomainSignal(message);
+  
+  // Detect language for mirroring
+  const detectedLanguage = detectLanguage(message, conversationHistory);
   
   // Determine conversation state from history
   let state: StateSignal = 'STATE_NEW';
@@ -1585,6 +1662,7 @@ export function extractSignals(
   
   return {
     rawMessage: message,
+    detectedLanguage,
     length,
     depth,
     urgency,
@@ -2967,6 +3045,12 @@ DIE 10 REGELN
    User locker → du lockerer. User ernst → du klarer.
    Aber immer "normal".
 
+1️⃣1️⃣ SPRACHE SPIEGELN
+   IMMER in der Sprache des Users antworten.
+   User schreibt Deutsch → du antwortest Deutsch.
+   User schreibt Englisch → du antwortest Englisch.
+   User mischt → du kannst auch mixen (aber konsistent bleiben).
+
 ═══════════════════════════════════════════════════════════════════════════════
 🚫 HARD BANNED (nie benutzen)
 ═══════════════════════════════════════════════════════════════════════════════
@@ -2989,8 +3073,27 @@ Für Markt-Beschreibung:
 Für Follow-up Fragen:
 • "${naturalQuestion}"
 
-Response Size: ${size} (${size === 'S' ? '1-3 Sätze' : size === 'M' ? '2-5 Sätze' : 'kann länger sein'})
+Response Size: ${size} (${size === 'S' ? '1-3 sentences' : size === 'M' ? '2-5 sentences' : 'can be longer'})
 Numbers Budget: ${metricBudget.maxNumbers} max
+
+═══════════════════════════════════════════════════════════════════════════════
+🌐 LANGUAGE: MIRROR THE USER
+═══════════════════════════════════════════════════════════════════════════════
+
+DETECTED LANGUAGE: ${signals.detectedLanguage.toUpperCase()}
+
+${signals.detectedLanguage === 'de' ? `
+🇩🇪 User schreibt DEUTSCH → Antworte auf DEUTSCH.
+Beispiel: "Hey — was geht?" / "Grad eher seitwärts."
+` : signals.detectedLanguage === 'en' ? `
+🇬🇧 User writes ENGLISH → Respond in ENGLISH.
+Example: "Hey — what's up?" / "Sideways right now, nothing clear."
+` : signals.detectedLanguage === 'mixed' ? `
+🌐 User MIXES languages → You can mix too, but stay consistent.
+Match their energy and style.
+` : `
+🌐 Language unclear → Default to English, but match if user switches.
+`}
 
 ═══════════════════════════════════════════════════════════════════════════════
 📋 BEISPIELE
@@ -3046,7 +3149,8 @@ export const conversationRules = {
   getContinuityAnchor,
   getUncertaintyHandling,
   generateGuidance: generateResponseGuidance,
-  // Anti-bot system exports
+  // Normal Talk Mode exports
+  detectLanguage,
   classifyUserIntent,
   determineResponseSize,
   selectResponseShape,
