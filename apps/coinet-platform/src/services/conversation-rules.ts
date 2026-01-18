@@ -1,24 +1,29 @@
 /**
- * 🎛️ Unified Response Policy v4.0
+ * 🎛️ Unified Response Policy v6.0 — ANTI-BOT HUMAN RESPONSE ENGINE
  * 
  * Production-ready policy layer that combines:
  * 1. Verbosity & Structure Controller (Mode S/M/L, hard caps, templates)
  * 2. Human Conversation Behaviors (clarifier gate, continuity, uncertainty)
  * 3. No-Unasked-Metrics Gate (BLOCK/LIMIT/ALLOW, metric budgets)
+ * 4. Greeting Cooldown + Variation Bank (30 variants, no repeats)
+ * 5. Topic Persistence (MARKET_MODE, PRODUCT_MODE, SOCIAL_MODE)
+ * 6. Anti-Bot Template System (phrase cooldowns, shape rotation, self-check)
+ * 
+ * PRIME DIRECTIVE: Sound like a real person. Never sound like a reusable script.
  * 
  * EXECUTION FLOW (every turn):
  * 1. Extract signals from message (LEN, DEPTH, URGENT, STATE, DOMAIN)
- * 2. Select output mode (S/M/L) with deterministic rules
- * 3. Run Metrics Gate — determine if numbers are allowed (BLOCK/LIMIT/ALLOW)
- * 4. Run Clarifier Gate — ask ONE question if genuinely needed
- * 5. Apply Continuity Anchoring — first line must reference user's request
- * 6. Check Uncertainty — inject micro-pattern if data is uncertain
- * 7. Apply hard caps and metric budget
- * 8. End with exactly ONE question (clarifier OR receipts offer, never both)
+ * 2. Classify user intent (SOCIAL, DATA_REQUEST, EXPLAIN, ADVICE, PRODUCT)
+ * 3. Run greeting cooldown + topic persistence
+ * 4. Select output mode (S/M/L) and response shape
+ * 5. Run Metrics Gate — determine if numbers are allowed
+ * 6. Run Clarifier Gate — ask ONE question if genuinely needed
+ * 7. Apply phrase cooldowns + lexical rotation
+ * 8. Run self-check validation (rewrite if botty)
  * 
- * CORE PRINCIPLE: Meaning first. Numbers only when invited. Receipts when requested.
+ * CORE PRINCIPLE: Meaning first. Numbers only when invited. Sound human always.
  * 
- * @version 4.0.0 - Added No-Unasked-Metrics Gate
+ * @version 6.0.0 - Added Anti-Bot Template System
  */
 
 import { logger } from '../utils/logger';
@@ -66,6 +71,921 @@ export type ClarifierType =
   | 'GOAL'       // "Looking for entries or just direction?"
   | 'SCOPE'      // "Whole market or one coin?"
   | 'NONE';      // No clarifier needed
+
+// ============================================================================
+// GREETING COOLDOWN + VARIATION BANK TYPES
+// ============================================================================
+
+/**
+ * Greeting tone categories for variation bank
+ */
+export type GreetingTone = 'neutral' | 'fast' | 'friendly' | 'market_context' | 'continuation';
+
+/**
+ * Greeting variation entry
+ */
+export interface GreetingVariant {
+  id: string;
+  text: string;
+  tone: GreetingTone;
+  hasQuestion: boolean;
+  /** If true, this is a micro-ack for when user greets within cooldown */
+  isMicroAck: boolean;
+}
+
+/**
+ * Greeting cooldown state
+ */
+export interface GreetingCooldownState {
+  shouldUseFullGreeting: boolean;
+  lastGreetingTurnCount: number;
+  suggestedGreeting: GreetingVariant;
+  recentlyUsedIds: string[];
+  turnsWithinCooldown: boolean;
+  reason: string;
+}
+
+/**
+ * Greeting cooldown configuration
+ */
+export const GREETING_COOLDOWN_TURNS = 3;
+export const GREETING_REUSE_COOLDOWN = 5;
+
+// ============================================================================
+// TOPIC PERSISTENCE (CONVERSATION MODE MEMORY) TYPES
+// ============================================================================
+
+/**
+ * Conversation mode - sticky topic context
+ */
+export type ConversationMode = 
+  | 'MARKET_MODE'   // User is asking about coins, prices, market analysis
+  | 'PRODUCT_MODE'  // User is asking about Coinet, how it works, data sources
+  | 'SOCIAL_MODE'   // Pure greeting/chat with no topic
+  | 'NONE';         // No mode established yet
+
+/**
+ * Topic persistence state
+ */
+export interface TopicPersistenceState {
+  currentMode: ConversationMode;
+  modeConfidence: number;        // 0-1, how confident we are in this mode
+  turnsSinceModeSet: number;     // How many turns since this mode was established
+  shouldAskIntent: boolean;      // Whether to ask "markets or something else?"
+  contextCarryPhrase: string | null;  // Phrase to carry context forward
+  reason: string;
+}
+
+// ============================================================================
+// SOURCE PROTOCOL TYPES
+// ============================================================================
+
+/**
+ * Data freshness levels
+ */
+export type DataFreshness = 'live' | 'near_realtime' | 'delayed' | 'estimated';
+
+/**
+ * Data source provider info
+ */
+export interface DataSourceProvider {
+  name: string;
+  backup?: string;
+  freshness: DataFreshness;
+  freshnessDescription: string;
+}
+
+/**
+ * Source protocol layer
+ */
+export interface SourceProtocol {
+  dataType: string;
+  humanDescription: string;
+  providers: DataSourceProvider[];
+}
+
+/**
+ * Complete source protocol response
+ */
+export interface SourceProtocolResponse {
+  layers: SourceProtocol[];
+  summary: string;
+  caveat: string | null;
+}
+
+// ============================================================================
+// GREETING VARIATION BANK — 30 VARIANTS
+// ============================================================================
+
+/**
+ * Full greeting variants (for first greeting or after cooldown expires)
+ */
+export const GREETING_VARIANTS_FULL: GreetingVariant[] = [
+  // Neutral (6)
+  { id: 'n1', text: "Hey — what's up?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n2', text: "Hey — what do you need?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n3', text: "Yo — what's on your mind?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n4', text: "Hey — what are you looking at?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n5', text: "What's up — what can I help with?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n6', text: "Yo — what do you want to know?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  
+  // Fast (6)
+  { id: 'f1', text: "Yo — what do you need?", tone: 'fast', hasQuestion: true, isMicroAck: false },
+  { id: 'f2', text: "What's up?", tone: 'fast', hasQuestion: true, isMicroAck: false },
+  { id: 'f3', text: "Hey — shoot.", tone: 'fast', hasQuestion: false, isMicroAck: false },
+  { id: 'f4', text: "Yo — go ahead.", tone: 'fast', hasQuestion: false, isMicroAck: false },
+  { id: 'f5', text: "What do you need?", tone: 'fast', hasQuestion: true, isMicroAck: false },
+  { id: 'f6', text: "Hey — what's the move?", tone: 'fast', hasQuestion: true, isMicroAck: false },
+  
+  // Friendly (6)
+  { id: 'fr1', text: "Hey 👋 what's on your mind?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr2', text: "Yo — good to see you. What's up?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr3', text: "Hey — what can I do for you?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr4', text: "What's good — what are you thinking about?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr5', text: "Hey 👋 what's the play today?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr6', text: "Yo — what do you want to look at?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  
+  // Market context (6)
+  { id: 'm1', text: "Yo — want a quick pulse or a coin check?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm2', text: "Hey — markets or something specific?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm3', text: "What's up — you here for markets?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm4', text: "Yo — quick vibe or deep dive?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm5', text: "Hey — want a pulse or something specific?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm6', text: "What do you need — market overview or a coin?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+];
+
+/**
+ * Micro-ack variants (for when user greets within cooldown period)
+ * These are shorter and carry context forward
+ */
+export const GREETING_VARIANTS_MICRO: GreetingVariant[] = [
+  // Continuation - market mode active
+  { id: 'c1', text: "Yo 👋 still on market stuff?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c2', text: "Back — want another pulse?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c3', text: "Hey — same coin or something new?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c4', text: "Yo — still looking at markets?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c5', text: "What's up — continuing from before?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c6', text: "Back again — what do you want to look at?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+];
+
+// ============================================================================
+// SOURCE PROTOCOL — NAMED FEEDS + FRESHNESS
+// ============================================================================
+
+/**
+ * Production data sources with REAL provider names
+ * Layer 1: Data type (plain language)
+ * Layer 2: Exact providers (named) — NO VAGUE HAND-WAVING
+ * Layer 3: Freshness + confidence
+ * 
+ * HARD RULE: If you can't name the provider, say "internal aggregation"
+ * and offer to show the configured feed list.
+ */
+export const SOURCE_PROTOCOL_DATA: SourceProtocol[] = [
+  {
+    dataType: 'PRICE',
+    humanDescription: 'Prices, volume, market cap',
+    providers: [
+      { name: 'CoinGecko', backup: 'CoinMarketCap + DexScreener (for DEX tokens)', freshness: 'near_realtime', freshnessDescription: 'Updates every 1-2 minutes' },
+    ],
+  },
+  {
+    dataType: 'DERIVATIVES',
+    humanDescription: 'Funding rates, open interest, liquidations',
+    providers: [
+      { name: 'Coinglass', backup: 'Binance Futures + OKX + Bybit (free APIs)', freshness: 'near_realtime', freshnessDescription: 'Updates every 1-5 minutes' },
+    ],
+  },
+  {
+    dataType: 'ONCHAIN',
+    humanDescription: 'Exchange flows, whale moves, TVL',
+    providers: [
+      { name: 'DeFiLlama (TVL/fees)', backup: 'Internal aggregation via RPC providers', freshness: 'near_realtime', freshnessDescription: 'Updates every 5-15 minutes' },
+    ],
+  },
+  {
+    dataType: 'GOVERNANCE',
+    humanDescription: 'Voting, proposals, DAO activity',
+    providers: [
+      { name: 'Snapshot.org', freshness: 'near_realtime', freshnessDescription: 'Updates with each proposal/vote' },
+    ],
+  },
+  {
+    dataType: 'SECURITY',
+    humanDescription: 'Contract audits, honeypot detection, token safety',
+    providers: [
+      { name: 'GoPlus Security', freshness: 'near_realtime', freshnessDescription: 'Scanned on request' },
+    ],
+  },
+  {
+    dataType: 'SENTIMENT',
+    humanDescription: 'Social buzz, community sentiment',
+    providers: [
+      { name: 'LunarCrush', backup: 'X/Twitter signals + internal classifier', freshness: 'near_realtime', freshnessDescription: 'Aggregated hourly' },
+    ],
+  },
+  {
+    dataType: 'DEV_ACTIVITY',
+    humanDescription: 'GitHub commits, development momentum',
+    providers: [
+      { name: 'GitHub Events API', freshness: 'delayed', freshnessDescription: 'Aggregated daily' },
+    ],
+  },
+  {
+    dataType: 'NEWS',
+    humanDescription: 'News headlines, event detection',
+    providers: [
+      { name: 'CryptoPanic', backup: 'CoinGecko News + Messari + RSS feeds (CoinDesk, Decrypt)', freshness: 'near_realtime', freshnessDescription: 'Updates every 15-30 minutes' },
+    ],
+  },
+];
+
+/**
+ * Generate a concrete source protocol response
+ */
+export function generateSourceProtocolResponse(asset?: string): SourceProtocolResponse {
+  const assetContext = asset ? ` for ${asset}` : '';
+  
+  return {
+    layers: SOURCE_PROTOCOL_DATA,
+    summary: `Here's where my data comes from${assetContext}:`,
+    caveat: 'If you want the exact signal list we use for QS and OS scoring, I can show you that too.',
+  };
+}
+
+/**
+ * Format source protocol as human-readable response
+ */
+export function formatSourceProtocolResponse(response: SourceProtocolResponse): string {
+  let output = response.summary + '\n\n';
+  
+  for (const layer of response.layers) {
+    const provider = layer.providers[0];
+    const backup = provider.backup ? ` (backup: ${provider.backup})` : '';
+    output += `• **${layer.humanDescription}**: ${provider.name}${backup} — ${provider.freshnessDescription}\n`;
+  }
+  
+  if (response.caveat) {
+    output += `\n${response.caveat}`;
+  }
+  
+  return output;
+}
+
+// ============================================================================
+// ANTI-BOT TEMPLATE SYSTEM v1.0 — HUMAN RESPONSE ENGINE
+// ============================================================================
+// 
+// Prime directive: Sound like a real person. Never sound like a reusable script.
+// Prioritize conversational flow over "showing metrics." Be concise by default.
+//
+// This system prevents the "template bot" issue through:
+// 1. Phrase cooldowns (hard bans on repeated phrases)
+// 2. Shape rotation (never same structure twice)
+// 3. Lexical rotation (controlled synonym variation)
+// 4. Self-check validation (rewrite if botty)
+// ============================================================================
+
+/**
+ * User intent classification (choose exactly 1)
+ */
+export type UserIntent =
+  | 'SOCIAL'        // hey/yo/sup/emoji
+  | 'DATA_REQUEST'  // overview/update/price/metrics
+  | 'EXPLAIN'       // why did it move / what does X mean
+  | 'ADVICE'        // should I buy/sell/entries
+  | 'PRODUCT';      // how Coinet works / sources / bugs
+
+/**
+ * Response size classification
+ */
+export type ResponseSize = 'S' | 'M' | 'L';
+
+/**
+ * Response shape - rotate to avoid sounding templated
+ */
+export type ResponseShape =
+  | 'ONE_LINER_QUESTION'    // Shape 1: anchor + core (1 line) + question
+  | 'VIBE_WHY_QUESTION'     // Shape 2: anchor + vibe + why (1-2 lines) + question
+  | 'TWO_BULLETS_QUESTION'  // Shape 3: anchor + 2 bullets + question
+  | 'DRIVER_FIRST'          // Shape 4: anchor + main driver + 1-2 supports + question
+  | 'ADVICE_GUARDRAIL';     // Shape 5: anchor + safe guidance + risk + ask timeframe
+
+/**
+ * Meaning block types for response composition
+ */
+export interface MeaningBlocks {
+  anchor: string;           // Block A: 1 short line reflecting user message
+  corePoint: string;        // Block B: single most useful conclusion
+  support?: string;         // Block C: 1-3 lines of detail (optional)
+  nextStep: string;         // Block D: exactly ONE question
+}
+
+/**
+ * Anti-bot state for tracking cooldowns and rotations
+ */
+export interface AntiBotState {
+  recentPhrases: string[];      // Last 30 phrases used (for cooldown)
+  recentShapes: ResponseShape[]; // Last 5 shapes used (for rotation)
+  recentAnchors: string[];       // Last 5 anchors used
+  recentConnectors: string[];    // Last 5 connectors used
+  lastResponseLength: number;    // For jitter calculation
+}
+
+/**
+ * Self-check validation result
+ */
+export interface SelfCheckResult {
+  passed: boolean;
+  failures: string[];
+  suggestions: string[];
+}
+
+// ============================================================================
+// PHRASE COOLDOWN BLACKLIST — BANNED BOT PHRASES
+// ============================================================================
+
+/**
+ * Phrases that are BANNED if used in last N turns.
+ * These are the most common "bot giveaways" in Coinet responses.
+ */
+export const PHRASE_COOLDOWN_LIST: { phrase: string; cooldownTurns: number }[] = [
+  // Opener cooldowns (ban for 5 turns)
+  { phrase: 'Got you', cooldownTurns: 5 },
+  { phrase: 'Got it', cooldownTurns: 5 },
+  { phrase: 'Yo —', cooldownTurns: 5 },
+  { phrase: 'Hey —', cooldownTurns: 5 },
+  { phrase: 'Alright —', cooldownTurns: 5 },
+  { phrase: 'Sure —', cooldownTurns: 5 },
+  { phrase: 'Keeping it short', cooldownTurns: 8 },
+  { phrase: 'Quick pulse', cooldownTurns: 8 },
+  { phrase: 'Fast snapshot', cooldownTurns: 8 },
+  
+  // Connector cooldowns (ban for 5 turns)
+  { phrase: 'neutral and choppy', cooldownTurns: 5 },
+  { phrase: 'feels choppy', cooldownTurns: 5 },
+  { phrase: 'still sideways', cooldownTurns: 5 },
+  { phrase: 'messy tape', cooldownTurns: 5 },
+  { phrase: 'no clean direction', cooldownTurns: 5 },
+  { phrase: 'balanced and range', cooldownTurns: 5 },
+  { phrase: 'range-bound', cooldownTurns: 5 },
+  { phrase: 'leverage is the risk', cooldownTurns: 5 },
+  
+  // Closer cooldowns (ban for 5 turns)
+  { phrase: 'want the receipts', cooldownTurns: 5 },
+  { phrase: 'want receipts', cooldownTurns: 5 },
+  { phrase: 'You here for markets', cooldownTurns: 8 },
+  { phrase: 'markets or something else', cooldownTurns: 8 },
+  { phrase: 'entries or direction', cooldownTurns: 5 },
+  { phrase: 'entries or just direction', cooldownTurns: 5 },
+  { phrase: 'levels or entries', cooldownTurns: 5 },
+  { phrase: 'quick vibe or deep dive', cooldownTurns: 8 },
+  { phrase: 'quick pulse or', cooldownTurns: 8 },
+  
+  // Generic bot phrases (ban for 10 turns)
+  { phrase: 'Let me know if', cooldownTurns: 10 },
+  { phrase: 'Feel free to', cooldownTurns: 10 },
+  { phrase: 'Happy to help', cooldownTurns: 10 },
+  { phrase: 'I\'d be happy to', cooldownTurns: 10 },
+  { phrase: 'Let\'s dive into', cooldownTurns: 10 },
+  { phrase: 'Great question', cooldownTurns: 10 },
+  { phrase: 'Absolutely', cooldownTurns: 10 },
+];
+
+/**
+ * N-gram size for repetition blocking
+ * Don't reuse any 4-word sequence from last 10 turns
+ */
+export const NGRAM_BLOCK_SIZE = 4;
+export const NGRAM_BLOCK_TURNS = 10;
+
+// ============================================================================
+// LEXICAL ROTATION TABLES — CONTROLLED SYNONYM VARIATION
+// ============================================================================
+
+/**
+ * Acknowledgement variations (rotate, never same twice in a row)
+ */
+export const ACKNOWLEDGEMENT_BANK = [
+  'Alright',
+  'Sure',
+  'Okay',
+  'Yep',
+  'Makes sense',
+  'Cool',
+  'Got it',
+  'On it',
+  'Heard',
+];
+
+/**
+ * "Quick framing" variations
+ */
+export const QUICK_FRAMING_BANK = [
+  'fast read',
+  'quick snapshot',
+  'here\'s where it\'s at',
+  'short version',
+  'quick take',
+  '30-sec take',
+  'where things stand',
+  'the rundown',
+];
+
+/**
+ * Chop/sideways market phrasing variations
+ */
+export const CHOP_PHRASING_BANK = [
+  'range-y',
+  'messy tape',
+  'sideways',
+  'no clean direction',
+  'chop mode',
+  'range behavior',
+  'coiling',
+  'consolidating',
+  'grinding',
+  'stuck in a range',
+];
+
+/**
+ * "Ask for depth" variations
+ */
+export const DEPTH_ASK_BANK = [
+  'Want the numbers?',
+  'Want the data behind it?',
+  'Want the full breakdown?',
+  'Want the metrics?',
+  'Want the receipts?',
+  'Need the details?',
+  'Want me to go deeper?',
+  'Want the data dump?',
+];
+
+/**
+ * Follow-up question variations (context-aware)
+ */
+export const FOLLOWUP_QUESTIONS: Record<UserIntent, string[]> = {
+  SOCIAL: [
+    'What\'s on your mind?',
+    'What do you need?',
+    'What are you looking at today?',
+    'What can I help with?',
+  ],
+  DATA_REQUEST: [
+    'What are you trading?',
+    'Which coin?',
+    'Want levels or just the vibe?',
+    'Need the numbers or just direction?',
+    'BTC only or whole market?',
+  ],
+  EXPLAIN: [
+    'Want me to break it down further?',
+    'Does that answer it?',
+    'Want the data behind that?',
+    'Need more detail on any part?',
+  ],
+  ADVICE: [
+    'What\'s your timeframe?',
+    'Scalp or swing?',
+    'What\'s your risk tolerance?',
+    'How much are you looking to deploy?',
+  ],
+  PRODUCT: [
+    'Want me to list the exact feeds?',
+    'Need more detail on that?',
+    'Anything specific about how it works?',
+  ],
+};
+
+// ============================================================================
+// RESPONSE SHAPE DEFINITIONS
+// ============================================================================
+
+/**
+ * Shape templates with structure rules
+ */
+export const RESPONSE_SHAPES: Record<ResponseShape, {
+  blocks: ('anchor' | 'corePoint' | 'support' | 'nextStep')[];
+  maxLines: number;
+  bulletAllowed: boolean;
+  description: string;
+}> = {
+  ONE_LINER_QUESTION: {
+    blocks: ['anchor', 'corePoint', 'nextStep'],
+    maxLines: 3,
+    bulletAllowed: false,
+    description: 'Anchor + core point (1 line) + question. Best for S responses.',
+  },
+  VIBE_WHY_QUESTION: {
+    blocks: ['anchor', 'corePoint', 'support', 'nextStep'],
+    maxLines: 6,
+    bulletAllowed: false,
+    description: 'Anchor + vibe/core + why (1-2 lines) + question. Default for M.',
+  },
+  TWO_BULLETS_QUESTION: {
+    blocks: ['anchor', 'support', 'nextStep'],
+    maxLines: 6,
+    bulletAllowed: true,
+    description: 'Anchor + 2 bullets max + question. Good for M.',
+  },
+  DRIVER_FIRST: {
+    blocks: ['anchor', 'corePoint', 'support', 'nextStep'],
+    maxLines: 8,
+    bulletAllowed: false,
+    description: 'Anchor + main driver + 1-2 supports + question. For EXPLAIN intent.',
+  },
+  ADVICE_GUARDRAIL: {
+    blocks: ['anchor', 'corePoint', 'support', 'nextStep'],
+    maxLines: 6,
+    bulletAllowed: false,
+    description: 'Anchor + safe guidance + risk framing + ask timeframe. For ADVICE intent.',
+  },
+};
+
+// ============================================================================
+// ANTI-BOT FUNCTIONS
+// ============================================================================
+
+/**
+ * Classify user intent from message
+ */
+export function classifyUserIntent(message: string): UserIntent {
+  const lower = message.toLowerCase().trim();
+  
+  // SOCIAL: greetings and short social messages
+  if (/^(?:hey|hi|yo|sup|hello|what'?s up|👋|gm|gn)\s*[!?.]*$/i.test(lower)) {
+    return 'SOCIAL';
+  }
+  if (lower.length <= 5 && /^[hey|hi|yo|sup]/i.test(lower)) {
+    return 'SOCIAL';
+  }
+  
+  // PRODUCT: asking about Coinet itself
+  if (/\b(?:coinet|sources?|where\s+(?:do|does)|how\s+(?:do|does)\s+(?:you|this|it)|data\s+(?:from|sources?)|your\s+(?:data|feeds?|apis?))\b/i.test(lower)) {
+    return 'PRODUCT';
+  }
+  
+  // ADVICE: decision-making questions
+  if (/\b(?:should\s+i|worth\s+(?:buying|selling)|good\s+(?:entry|time)|buy\s+(?:now|here)|sell\s+(?:now|here)|advice|recommend|suggestion|what\s+(?:do\s+you\s+think|would\s+you\s+do))\b/i.test(lower)) {
+    return 'ADVICE';
+  }
+  
+  // EXPLAIN: why/what questions about movements
+  if (/\b(?:why\s+(?:did|is|are|was)|what\s+(?:happened|caused|drove)|explain|how\s+come|what\s+does\s+\w+\s+mean)\b/i.test(lower)) {
+    return 'EXPLAIN';
+  }
+  
+  // DATA_REQUEST: asking for data, updates, overview
+  if (/\b(?:overview|update|price|chart|levels?|metrics?|pulse|snapshot|market|btc|eth|sol|omniscore|qs|os)\b/i.test(lower)) {
+    return 'DATA_REQUEST';
+  }
+  
+  // Default to DATA_REQUEST for crypto-related queries
+  return 'DATA_REQUEST';
+}
+
+/**
+ * Determine response size based on intent and message
+ */
+export function determineResponseSize(intent: UserIntent, message: string, isDepthOptIn: boolean): ResponseSize {
+  // L: Only if user explicitly asked for depth
+  if (isDepthOptIn) {
+    return 'L';
+  }
+  
+  const lower = message.toLowerCase();
+  
+  // L triggers: explicit depth requests
+  if (/\b(?:deep\s+dive|full\s+breakdown|detailed|comprehensive|everything|all\s+the)\b/i.test(lower)) {
+    return 'L';
+  }
+  
+  // S: social or very short messages
+  if (intent === 'SOCIAL') {
+    return 'S';
+  }
+  if (message.length < 15) {
+    return 'S';
+  }
+  
+  // S: vague or minimal requests
+  if (/^(?:thoughts|views?|take|opinion|how\s+is|what'?s)\s*[a-z]*\s*\??$/i.test(lower)) {
+    return 'S';
+  }
+  
+  // Default to M for everything else
+  return 'M';
+}
+
+/**
+ * Select response shape based on intent, size, and rotation history
+ */
+export function selectResponseShape(
+  intent: UserIntent,
+  size: ResponseSize,
+  recentShapes: ResponseShape[] = []
+): ResponseShape {
+  // Get candidates based on intent and size
+  let candidates: ResponseShape[];
+  
+  if (size === 'S') {
+    candidates = ['ONE_LINER_QUESTION'];
+  } else if (intent === 'EXPLAIN') {
+    candidates = ['DRIVER_FIRST', 'VIBE_WHY_QUESTION'];
+  } else if (intent === 'ADVICE') {
+    candidates = ['ADVICE_GUARDRAIL'];
+  } else {
+    // DATA_REQUEST, PRODUCT, etc.
+    candidates = ['VIBE_WHY_QUESTION', 'TWO_BULLETS_QUESTION', 'ONE_LINER_QUESTION'];
+  }
+  
+  // Filter out recently used shapes
+  const lastShape = recentShapes[recentShapes.length - 1];
+  const available = candidates.filter(s => s !== lastShape);
+  
+  // Return a different shape than last time
+  if (available.length > 0) {
+    return available[Math.floor(Math.random() * available.length)];
+  }
+  
+  return candidates[0];
+}
+
+/**
+ * Select a connector from bank, avoiding recent ones
+ */
+export function selectFromBank(bank: string[], recentUsed: string[] = []): string {
+  // Filter out recently used
+  const available = bank.filter(item => !recentUsed.slice(-5).includes(item));
+  
+  if (available.length > 0) {
+    return available[Math.floor(Math.random() * available.length)];
+  }
+  
+  // Fallback to random from full bank
+  return bank[Math.floor(Math.random() * bank.length)];
+}
+
+/**
+ * Check if a phrase is on cooldown
+ */
+export function isPhraseOnCooldown(phrase: string, recentPhrases: string[]): boolean {
+  const lowerPhrase = phrase.toLowerCase();
+  
+  for (const { phrase: banned, cooldownTurns } of PHRASE_COOLDOWN_LIST) {
+    if (lowerPhrase.includes(banned.toLowerCase())) {
+      // Check if this phrase appears in recent history within cooldown window
+      const recentWindow = recentPhrases.slice(-cooldownTurns);
+      if (recentWindow.some(p => p.toLowerCase().includes(banned.toLowerCase()))) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Extract n-grams from text for repetition checking
+ */
+export function extractNgrams(text: string, n: number): Set<string> {
+  const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  const ngrams = new Set<string>();
+  
+  for (let i = 0; i <= words.length - n; i++) {
+    ngrams.add(words.slice(i, i + n).join(' '));
+  }
+  
+  return ngrams;
+}
+
+/**
+ * Check for n-gram repetition
+ */
+export function hasNgramRepetition(
+  newText: string,
+  recentTexts: string[],
+  ngramSize: number = NGRAM_BLOCK_SIZE,
+  lookbackTurns: number = NGRAM_BLOCK_TURNS
+): boolean {
+  const newNgrams = extractNgrams(newText, ngramSize);
+  const recentWindow = recentTexts.slice(-lookbackTurns);
+  
+  for (const recent of recentWindow) {
+    const recentNgrams = extractNgrams(recent, ngramSize);
+    for (const ngram of newNgrams) {
+      if (recentNgrams.has(ngram)) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Run self-check validation on a draft response
+ */
+export function runSelfCheck(
+  draftResponse: string,
+  state: AntiBotState,
+  expectedShape: ResponseShape
+): SelfCheckResult {
+  const failures: string[] = [];
+  const suggestions: string[] = [];
+  
+  // 1. Check for repeated opener from last 5 turns
+  const firstLine = draftResponse.split('\n')[0] || '';
+  for (const recentAnchor of state.recentAnchors.slice(-5)) {
+    if (firstLine.toLowerCase().includes(recentAnchor.toLowerCase().slice(0, 10))) {
+      failures.push('Repeated opener from last 5 turns');
+      suggestions.push(`Rewrite opener. Avoid: "${recentAnchor.slice(0, 20)}..."`);
+      break;
+    }
+  }
+  
+  // 2. Check for 4-word sequence repetition from last 10 turns
+  if (hasNgramRepetition(draftResponse, state.recentPhrases, 4, 10)) {
+    failures.push('Repeated 4-word sequence from last 10 turns');
+    suggestions.push('Rewrite to use different phrasing');
+  }
+  
+  // 3. Check shape differs from previous
+  const lastShape = state.recentShapes[state.recentShapes.length - 1];
+  if (lastShape === expectedShape && state.recentShapes.length > 0) {
+    failures.push('Same shape as previous response');
+    suggestions.push('Use a different response structure');
+  }
+  
+  // 4. Check for exactly one question
+  const questionMarks = (draftResponse.match(/\?/g) || []).length;
+  if (questionMarks === 0) {
+    failures.push('No question at end');
+    suggestions.push('Add exactly one follow-up question');
+  } else if (questionMarks > 2) {
+    failures.push('Too many questions');
+    suggestions.push('Reduce to exactly one question');
+  }
+  
+  // 5. Check for bot phrases on cooldown
+  for (const { phrase } of PHRASE_COOLDOWN_LIST) {
+    if (draftResponse.toLowerCase().includes(phrase.toLowerCase())) {
+      if (isPhraseOnCooldown(phrase, state.recentPhrases)) {
+        failures.push(`Phrase on cooldown: "${phrase}"`);
+        suggestions.push(`Replace "${phrase}" with alternative`);
+      }
+    }
+  }
+  
+  // 6. Check for "news anchor" phrases
+  const newsAnchorPhrases = [
+    'Let\'s dive into',
+    'I\'d like to discuss',
+    'It\'s important to note',
+    'In conclusion',
+    'To summarize',
+    'Moving forward',
+  ];
+  for (const phrase of newsAnchorPhrases) {
+    if (draftResponse.includes(phrase)) {
+      failures.push(`"News anchor" phrase detected: "${phrase}"`);
+      suggestions.push('Rewrite in casual DM style');
+    }
+  }
+  
+  return {
+    passed: failures.length === 0,
+    failures,
+    suggestions,
+  };
+}
+
+/**
+ * Get metric budget based on intent
+ */
+export function getIntentMetricBudget(intent: UserIntent): { maxNumbers: number; allowScores: boolean } {
+  switch (intent) {
+    case 'SOCIAL':
+      return { maxNumbers: 0, allowScores: false };
+    case 'DATA_REQUEST':
+      return { maxNumbers: 5, allowScores: true };
+    case 'EXPLAIN':
+      return { maxNumbers: 3, allowScores: false };
+    case 'ADVICE':
+      return { maxNumbers: 0, allowScores: false }; // No numbers unless user asked for levels
+    case 'PRODUCT':
+      return { maxNumbers: 0, allowScores: false };
+    default:
+      return { maxNumbers: 3, allowScores: false };
+  }
+}
+
+/**
+ * Generate anti-bot guidance for the AI
+ */
+export function generateAntiBotGuidance(
+  message: string,
+  conversationHistory?: { role: string; content: string }[]
+): string {
+  const intent = classifyUserIntent(message);
+  const isDepthOptIn = /\b(?:deep|full|detailed|comprehensive|breakdown|everything)\b/i.test(message);
+  const size = determineResponseSize(intent, message, isDepthOptIn);
+  
+  // Build state from conversation history
+  const recentAssistant = conversationHistory
+    ?.filter(m => m.role === 'assistant')
+    .map(m => m.content)
+    .slice(-30) || [];
+  
+  const state: AntiBotState = {
+    recentPhrases: recentAssistant,
+    recentShapes: [], // Would need to be tracked externally
+    recentAnchors: recentAssistant.map(t => t.split('\n')[0] || ''),
+    recentConnectors: [],
+    lastResponseLength: recentAssistant[recentAssistant.length - 1]?.length || 0,
+  };
+  
+  const shape = selectResponseShape(intent, size, state.recentShapes);
+  const shapeConfig = RESPONSE_SHAPES[shape];
+  const metricBudget = getIntentMetricBudget(intent);
+  
+  // Select fresh connectors
+  const freshAck = selectFromBank(ACKNOWLEDGEMENT_BANK, state.recentAnchors.slice(-5));
+  const freshChop = selectFromBank(CHOP_PHRASING_BANK, state.recentPhrases.slice(-5));
+  const freshDepthAsk = selectFromBank(DEPTH_ASK_BANK, state.recentPhrases.slice(-5));
+  const freshFollowup = selectFromBank(FOLLOWUP_QUESTIONS[intent] || FOLLOWUP_QUESTIONS.DATA_REQUEST, state.recentPhrases.slice(-5));
+  
+  return `
+═══════════════════════════════════════════════════════════════════════════════
+🎭 ANTI-BOT TEMPLATE SYSTEM — HUMAN RESPONSE ENGINE
+═══════════════════════════════════════════════════════════════════════════════
+
+PRIME DIRECTIVE: Sound like a real person. Never sound like a reusable script.
+
+CLASSIFICATION:
+• Intent: ${intent}
+• Response Size: ${size}
+• Shape: ${shape} — ${shapeConfig.description}
+
+SHAPE STRUCTURE (${shape}):
+${shapeConfig.blocks.map((b, i) => `${i + 1}. ${b.toUpperCase()}`).join('\n')}
+Max lines: ${shapeConfig.maxLines}
+Bullets allowed: ${shapeConfig.bulletAllowed ? 'YES (max 2)' : 'NO'}
+
+═══════════════════════════════════════════════════════════════════════════════
+🚫 PHRASE COOLDOWN — THESE ARE BANNED RIGHT NOW
+═══════════════════════════════════════════════════════════════════════════════
+
+DO NOT USE (on cooldown from recent responses):
+${PHRASE_COOLDOWN_LIST.slice(0, 15).map(p => `• "${p.phrase}"`).join('\n')}
+
+FRESH ALTERNATIVES TO USE INSTEAD:
+• Acknowledgement: "${freshAck}"
+• Chop/sideways: "${freshChop}"
+• Depth ask: "${freshDepthAsk}"
+• Follow-up: "${freshFollowup}"
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 METRIC BUDGET FOR ${intent}
+═══════════════════════════════════════════════════════════════════════════════
+
+Max numbers: ${metricBudget.maxNumbers}
+Scores allowed (/100): ${metricBudget.allowScores ? 'YES' : 'NO'}
+
+${metricBudget.maxNumbers === 0 ? `
+🚫 NO NUMBERS ALLOWED for this intent.
+Keep it qualitative only.
+` : `
+✅ You may use up to ${metricBudget.maxNumbers} numbers.
+Round to clean values (85k not 84,732).
+`}
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 VARIATION REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. OPENER: Must be different from last 5. Use: "${freshAck}" or similar.
+2. SHAPE: Using ${shape}. Must differ from previous response.
+3. CONNECTORS: Rotate. Don't reuse any word sequence from last 10 turns.
+4. LENGTH JITTER: ${size === 'M' ? 'Vary between 4-8 lines' : size === 'S' ? '1-3 lines only' : '8-15 lines allowed'}
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ SELF-CHECK BEFORE SENDING (must pass ALL)
+═══════════════════════════════════════════════════════════════════════════════
+
+□ Opener is different from last 5 turns
+□ No 4-word sequences repeated from last 10 turns
+□ Shape differs from previous response
+□ Numbers within budget (${metricBudget.maxNumbers} max)
+□ Exactly 1 question at the end
+□ Sounds like a DM, not a report
+
+If ANY check fails → REWRITE with different shape + different connectors.
+
+═══════════════════════════════════════════════════════════════════════════════
+`;
+}
 
 /**
  * Uncertainty types - what kind of data uncertainty exists
@@ -130,6 +1050,7 @@ export interface MetricsGate {
  * All extracted signals from a message
  */
 export interface MessageSignals {
+  rawMessage: string;              // Original message for anti-bot processing
   length: LengthSignal;
   depth: DepthSignal;
   urgency: UrgencySignal;
@@ -147,6 +1068,9 @@ export interface MessageSignals {
   requestsData: boolean;           // User explicitly wants data/metrics
   requestsSpecificMetrics: boolean; // User asked for specific metric types
   requestedMetricTypes: MetricCategory[];
+  // For source protocol
+  requestsSources: boolean;        // User asks about data sources
+  requestsOmniScore: boolean;      // User asks for OmniScore specifically
 }
 
 /**
@@ -199,6 +1123,10 @@ export interface HumanBehaviors {
     actionOffer: string | null;
   };
   metricsGate: MetricsGate;
+  // New: Greeting cooldown
+  greetingCooldown: GreetingCooldownState;
+  // New: Topic persistence
+  topicPersistence: TopicPersistenceState;
 }
 
 /**
@@ -509,6 +1437,40 @@ function detectsSpecificMetrics(message: string): {
 }
 
 /**
+ * Check if user is asking about data sources
+ */
+function detectsSourcesRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  const sourcePatterns = [
+    /\bsources?\b/,
+    /\bwhere\s+(?:does?|do)\s+(?:you|your|the)\s+(?:data|info|information)\b/,
+    /\bwhere\s+(?:is|are)\s+(?:the\s+)?(?:data|prices?|metrics?)\s+(?:from|coming)\b/,
+    /\b(?:data|info|information)\s+(?:sources?|providers?|feeds?)\b/,
+    /\bhow\s+(?:do\s+you|does\s+coinet)\s+(?:get|fetch|pull)\s+(?:data|prices?)\b/,
+    /\bwhat\s+(?:data|feeds?|apis?)\s+(?:do\s+you|does\s+coinet)\s+use\b/,
+    /\bsources?\s+and\s+data\b/,
+    /\bdata\s+and\s+sources?\b/,
+  ];
+  return sourcePatterns.some(p => p.test(lower));
+}
+
+/**
+ * Check if user is asking for OmniScore specifically
+ */
+function detectsOmniScoreRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  const omniPatterns = [
+    /\bomniscore\b/,
+    /\bomni\s*score\b/,
+    /\b(?:qs|os)\s*(?:score|breakdown)?\b/,
+    /\bquality\s*score\b/,
+    /\bopportunity\s*score\b/,
+    /\bfull\s+(?:qs|os|scores?|metrics?|breakdown)\b/,
+  ];
+  return omniPatterns.some(p => p.test(lower));
+}
+
+/**
  * Extract all signals from a message
  */
 export function extractSignals(
@@ -542,7 +1504,12 @@ export function extractSignals(
   const dataRequest = detectsDataRequest(message);
   const specificMetrics = detectsSpecificMetrics(message);
   
+  // Detect source and omniscore requests
+  const sourcesRequest = detectsSourcesRequest(message);
+  const omniScoreRequest = detectsOmniScoreRequest(message);
+  
   return {
+    rawMessage: message,
     length,
     depth,
     urgency,
@@ -558,6 +1525,208 @@ export function extractSignals(
     requestsData: dataRequest || specificMetrics.requested,
     requestsSpecificMetrics: specificMetrics.requested,
     requestedMetricTypes: specificMetrics.types,
+    requestsSources: sourcesRequest,
+    requestsOmniScore: omniScoreRequest,
+  };
+}
+
+// ============================================================================
+// STEP 1B — GREETING COOLDOWN + VARIATION BANK
+// ============================================================================
+
+/**
+ * Determine greeting cooldown state and select appropriate variant.
+ * 
+ * Rules:
+ * - If greeting within last N turns → use micro-ack + context carry
+ * - Never reuse same variant within 5 turns
+ * - Select variant based on current conversation mode
+ */
+export function runGreetingCooldown(
+  signals: MessageSignals,
+  conversationHistory?: { role: string; content: string }[],
+  recentGreetingIds: string[] = []
+): GreetingCooldownState {
+  // Default state
+  const defaultGreeting = GREETING_VARIANTS_FULL[0];
+  
+  if (!signals.isGreeting) {
+    return {
+      shouldUseFullGreeting: false,
+      lastGreetingTurnCount: -1,
+      suggestedGreeting: defaultGreeting,
+      recentlyUsedIds: recentGreetingIds,
+      turnsWithinCooldown: false,
+      reason: 'Not a greeting message',
+    };
+  }
+  
+  // Count turns since last greeting from assistant
+  let turnsSinceLastGreeting = 999;
+  if (conversationHistory && conversationHistory.length > 0) {
+    for (let i = conversationHistory.length - 1; i >= 0; i--) {
+      const turn = conversationHistory[i];
+      if (turn.role === 'assistant') {
+        // Check if this was a greeting response
+        const isGreetingResponse = /^(?:hey|yo|what'?s up|sup)/i.test(turn.content.trim());
+        if (isGreetingResponse) {
+          turnsSinceLastGreeting = conversationHistory.length - 1 - i;
+          break;
+        }
+      }
+    }
+  }
+  
+  const withinCooldown = turnsSinceLastGreeting <= GREETING_COOLDOWN_TURNS;
+  
+  // Determine conversation mode for context-aware greeting
+  const topicPersistence = runTopicPersistence(signals, conversationHistory);
+  
+  // Select appropriate variant
+  let selectedGreeting: GreetingVariant;
+  
+  if (withinCooldown) {
+    // Use micro-ack variant
+    const availableMicro = GREETING_VARIANTS_MICRO.filter(
+      v => !recentGreetingIds.includes(v.id)
+    );
+    selectedGreeting = availableMicro.length > 0 
+      ? availableMicro[Math.floor(Math.random() * availableMicro.length)]
+      : GREETING_VARIANTS_MICRO[0];
+  } else {
+    // Use full greeting variant based on mode
+    let toneFilter: GreetingTone = 'neutral';
+    if (topicPersistence.currentMode === 'MARKET_MODE') {
+      toneFilter = 'market_context';
+    } else if (signals.urgency === 'URGENT') {
+      toneFilter = 'fast';
+    }
+    
+    // Filter by tone and exclude recently used
+    const availableFull = GREETING_VARIANTS_FULL.filter(
+      v => (v.tone === toneFilter || v.tone === 'neutral') && !recentGreetingIds.includes(v.id)
+    );
+    
+    selectedGreeting = availableFull.length > 0
+      ? availableFull[Math.floor(Math.random() * availableFull.length)]
+      : GREETING_VARIANTS_FULL[Math.floor(Math.random() * GREETING_VARIANTS_FULL.length)];
+  }
+  
+  return {
+    shouldUseFullGreeting: !withinCooldown,
+    lastGreetingTurnCount: turnsSinceLastGreeting,
+    suggestedGreeting: selectedGreeting,
+    recentlyUsedIds: [...recentGreetingIds.slice(-GREETING_REUSE_COOLDOWN + 1), selectedGreeting.id],
+    turnsWithinCooldown: withinCooldown,
+    reason: withinCooldown 
+      ? `Greeting within cooldown (${turnsSinceLastGreeting} turns ago) — using micro-ack`
+      : `Full greeting OK (${turnsSinceLastGreeting} turns since last)`,
+  };
+}
+
+// ============================================================================
+// STEP 1C — TOPIC PERSISTENCE (CONVERSATION MODE MEMORY)
+// ============================================================================
+
+/**
+ * Determine and maintain conversation mode.
+ * 
+ * Modes:
+ * - MARKET_MODE: User asking about coins, prices, market analysis
+ * - PRODUCT_MODE: User asking about Coinet, how it works, data sources
+ * - SOCIAL_MODE: Pure greeting/chat with no topic
+ * - NONE: No mode established yet
+ * 
+ * Sticky behavior: Mode persists for ~10-15 turns or until user changes topic
+ */
+export function runTopicPersistence(
+  signals: MessageSignals,
+  conversationHistory?: { role: string; content: string }[]
+): TopicPersistenceState {
+  // Default state for new conversations
+  if (!conversationHistory || conversationHistory.length === 0) {
+    return {
+      currentMode: 'NONE',
+      modeConfidence: 0,
+      turnsSinceModeSet: 0,
+      shouldAskIntent: true,
+      contextCarryPhrase: null,
+      reason: 'New conversation — no mode established',
+    };
+  }
+  
+  // Scan recent history to determine mode
+  const recentTurns = conversationHistory.slice(-10);
+  let marketSignals = 0;
+  let productSignals = 0;
+  let lastModeSetTurn = 0;
+  
+  for (let i = 0; i < recentTurns.length; i++) {
+    const turn = recentTurns[i];
+    if (turn.role === 'user') {
+      const content = turn.content.toLowerCase();
+      
+      // Market signals
+      if (/\b(?:btc|eth|sol|bitcoin|ethereum|solana|market|price|chart|levels?|trade|trading|funding|oi|liquidations?)\b/.test(content)) {
+        marketSignals++;
+        lastModeSetTurn = i;
+      }
+      
+      // Explicitly market-related commands
+      if (/\b(?:omniscore|pulse|overview|update|what'?s\s+(?:btc|eth|sol|the\s+market))\b/.test(content)) {
+        marketSignals += 2;
+        lastModeSetTurn = i;
+      }
+      
+      // Product signals
+      if (/\b(?:coinet|sources?|data|how\s+(?:do|does)\s+you|where\s+(?:does?|do)\s+(?:the|your))\b/.test(content)) {
+        productSignals++;
+        lastModeSetTurn = i;
+      }
+    }
+  }
+  
+  const turnsSinceModeSet = recentTurns.length - lastModeSetTurn;
+  
+  // Determine current mode
+  let currentMode: ConversationMode = 'NONE';
+  let modeConfidence = 0;
+  
+  if (marketSignals > productSignals && marketSignals >= 1) {
+    currentMode = 'MARKET_MODE';
+    modeConfidence = Math.min(1, marketSignals * 0.3);
+  } else if (productSignals > marketSignals && productSignals >= 1) {
+    currentMode = 'PRODUCT_MODE';
+    modeConfidence = Math.min(1, productSignals * 0.3);
+  } else if (signals.isGreeting && conversationHistory.length <= 2) {
+    currentMode = 'SOCIAL_MODE';
+    modeConfidence = 0.5;
+  }
+  
+  // If current message is greeting, determine if we should ask intent
+  const shouldAskIntent = signals.isGreeting && (
+    currentMode === 'NONE' || 
+    currentMode === 'SOCIAL_MODE' ||
+    turnsSinceModeSet > 10  // Mode is stale
+  );
+  
+  // Generate context carry phrase for when mode is active
+  let contextCarryPhrase: string | null = null;
+  if (signals.isGreeting && currentMode === 'MARKET_MODE' && !shouldAskIntent) {
+    contextCarryPhrase = 'still on market stuff?';
+  } else if (signals.isGreeting && currentMode === 'PRODUCT_MODE' && !shouldAskIntent) {
+    contextCarryPhrase = 'more questions about how this works?';
+  }
+  
+  return {
+    currentMode,
+    modeConfidence,
+    turnsSinceModeSet,
+    shouldAskIntent,
+    contextCarryPhrase,
+    reason: shouldAskIntent 
+      ? `No strong mode detected or mode is stale — ask intent`
+      : `${currentMode} active (confidence: ${(modeConfidence * 100).toFixed(0)}%) — carry context forward`,
   };
 }
 
@@ -1100,14 +2269,33 @@ export function getDepthOffer(template: StructureTemplate, mode: OutputMode): st
   return offers[template] || null;
 }
 
+/**
+ * Get context-aware follow-up question.
+ * 
+ * Instead of generic questions, use context from:
+ * - What the user just asked about (asset, topic)
+ * - What type of response we gave (omniscore, market update, etc.)
+ * - Current conversation mode
+ */
 export function getFollowUpQuestion(
   signals: MessageSignals, 
   template: StructureTemplate,
-  clarifier: { needed: boolean; question: string | null }
+  clarifier: { needed: boolean; question: string | null },
+  topicPersistence?: TopicPersistenceState
 ): string | null {
   // If clarifier is active, that's the question — no depth offer
   if (clarifier.needed && clarifier.question) {
     return clarifier.question;
+  }
+  
+  // Greeting with active mode should carry context
+  if (template === 'GREETING' && topicPersistence) {
+    if (topicPersistence.currentMode === 'MARKET_MODE' && !topicPersistence.shouldAskIntent) {
+      return topicPersistence.contextCarryPhrase || 'Want a quick pulse or check a coin?';
+    }
+    if (topicPersistence.shouldAskIntent) {
+      return 'You here for markets or something else?';
+    }
   }
   
   if (template === 'GREETING') {
@@ -1118,20 +2306,34 @@ export function getFollowUpQuestion(
     return 'Which coin are you watching?';
   }
   
-  const questions: Record<StructureTemplate, string> = {
+  // Context-aware questions based on what was requested
+  const asset = signals.detectedAssets[0] || 'this';
+  
+  // OmniScore-specific follow-up
+  if (signals.requestsOmniScore) {
+    return `Want the top drivers + top risks, or key ${asset} levels?`;
+  }
+  
+  // Source request follow-up
+  if (signals.requestsSources) {
+    return 'Want me to list the exact signals used for QS and OS?';
+  }
+  
+  // Context-aware questions by template
+  const contextQuestions: Record<StructureTemplate, string> = {
     GREETING: 'You here for markets or something else?',
     CLARIFIER_ONLY: '',  // Clarifier question is already set
-    PRICE_CHECK: 'Want levels or just the number?',
-    MARKET_OVERVIEW: 'What are you trading today?',
-    WHY_MOVE: 'Want the data-backed breakdown?',
+    PRICE_CHECK: `Want ${asset} levels or just the vibe?`,
+    MARKET_OVERVIEW: 'Want levels or catalysts?',
+    WHY_MOVE: `Want the exact drivers for ${asset}?`,
     DECISION_HELP: 'What\'s your timeframe?',
     DEEP_ANALYSIS: 'What\'s your timeframe and risk tolerance?',
-    META_RESPONSE: 'Want me to recalculate?',
-    GENERIC_SMALL: 'Quick take or deep dive?',
-    GENERIC_MEDIUM: 'Want levels + setups?',
+    META_RESPONSE: 'Want me to show you the exact feed list?',
+    GENERIC_SMALL: 'Quick take or more detail?',
+    GENERIC_MEDIUM: `Want ${asset} levels + scenarios?`,
   };
   
-  return questions[template] || null;
+  return contextQuestions[template] || null;
 }
 
 // ============================================================================
@@ -1146,18 +2348,46 @@ export function classifyVerbosity(
     hasPartialData?: boolean;
     hasConflictingData?: boolean;
     hasEstimatedMetrics?: boolean;
-  }
+  },
+  recentGreetingIds?: string[]
 ): VerbosityClassification {
   const startTime = performance.now();
   
   // Step 1: Extract signals
   const signals = extractSignals(message, conversationHistory);
   
+  // Step 1B: Run greeting cooldown (new)
+  const greetingCooldown = runGreetingCooldown(signals, conversationHistory, recentGreetingIds);
+  
+  // Step 1C: Run topic persistence (new)
+  const topicPersistence = runTopicPersistence(signals, conversationHistory);
+  
   // Step 2: Select mode
   const mode = selectMode(signals);
   
   // Step 3: Run metrics gate (No-Unasked-Metrics)
-  const metricsGate = runMetricsGate(signals, mode, conversationHistory);
+  // Special handling for OmniScore: use LIMIT by default to avoid data dumps
+  let metricsGate = runMetricsGate(signals, mode, conversationHistory);
+  
+  // Override for OmniScore: default to LIMIT unless user explicitly asks for full breakdown
+  if (signals.requestsOmniScore && !signals.isDepthOptIn) {
+    // OmniScore requested but no depth opt-in → use LIMIT mode
+    // Show 1-line conclusion + 2 supporting points, offer full breakdown
+    metricsGate = {
+      ...metricsGate,
+      state: 'LIMIT',
+      budget: {
+        maxNumbers: 3,  // Score + maybe 2 supporting numbers
+        maxMetricCategories: 1,
+        maxTickers: 1,
+        allowScores: true,  // Allow the main score only
+        preferRounded: true,
+        requireReceiptsBlock: false,
+      },
+      receiptsOffer: 'Want the full QS/OS breakdown or just levels + risks?',
+      reason: 'OmniScore requested — LIMIT mode (1-line conclusion + offer)',
+    };
+  }
   
   // Step 4: Run clarifier gate (Human Behavior 1)
   const clarifier = runClarifierGate(signals);
@@ -1182,12 +2412,13 @@ export function classifyVerbosity(
   caps.maxNumbers = Math.min(caps.maxNumbers, metricsGate.budget.maxNumbers);
   caps.maxAssets = Math.min(caps.maxAssets, metricsGate.budget.maxTickers);
   
-  // Step 8: Get expansion protocol
+  // Step 8: Get expansion protocol with context-aware questions
   const depthOffer = getDepthOffer(template, mode);
   // Use receipts offer from metrics gate if available and no clarifier
+  // Pass topic persistence for context-aware greeting questions
   const questionPrompt = clarifier.needed 
     ? clarifier.question 
-    : (metricsGate.receiptsOffer || getFollowUpQuestion(signals, template, clarifier));
+    : (metricsGate.receiptsOffer || getFollowUpQuestion(signals, template, clarifier, topicPersistence));
   
   const result: VerbosityClassification = {
     signals,
@@ -1201,6 +2432,8 @@ export function classifyVerbosity(
       continuity,
       uncertainty,
       metricsGate,
+      greetingCooldown,
+      topicPersistence,
     },
   };
   
@@ -1213,6 +2446,8 @@ export function classifyVerbosity(
     clarifierNeeded: clarifier.needed,
     continuityAnchor: continuity.anchor,
     uncertaintyPresent: uncertainty.present,
+    greetingCooldown: greetingCooldown.turnsWithinCooldown ? 'MICRO_ACK' : 'FULL',
+    topicMode: topicPersistence.currentMode,
     processingMs: (performance.now() - startTime).toFixed(1),
   });
   
@@ -1225,11 +2460,11 @@ export function classifyVerbosity(
 
 export function generateResponseGuidance(classification: VerbosityClassification): string {
   const { signals, mode, caps, template, depthOffer, questionPrompt, behaviors } = classification;
-  const { clarifier, continuity, uncertainty, metricsGate } = behaviors;
+  const { clarifier, continuity, uncertainty, metricsGate, greetingCooldown, topicPersistence } = behaviors;
   
   return `
 ═══════════════════════════════════════════════════════════════════════════════
-🎛️ UNIFIED RESPONSE POLICY v4.0 — PRODUCTION MODE
+🎛️ UNIFIED RESPONSE POLICY v6.0 — ANTI-BOT HUMAN ENGINE
 ═══════════════════════════════════════════════════════════════════════════════
 
 OUTPUT MODE: ${mode} (${mode === 'S' ? 'Small' : mode === 'M' ? 'Medium' : 'Large'})
@@ -1242,6 +2477,67 @@ DETECTED SIGNALS:
 • State: ${signals.state} | Data Request: ${signals.requestsData ? 'YES' : 'NO'}
 ${signals.isDepthOptIn ? '• ⚡ USER OPTED IN TO DEPTH' : ''}
 ${signals.requestsSpecificMetrics ? `• 📊 SPECIFIC METRICS REQUESTED: ${signals.requestedMetricTypes.join(', ')}` : ''}
+${signals.requestsSources ? '• 📋 SOURCES REQUEST DETECTED' : ''}
+${signals.requestsOmniScore ? '• 🎯 OMNISCORE REQUEST DETECTED' : ''}
+
+═══════════════════════════════════════════════════════════════════════════════
+👋 GREETING COOLDOWN + VARIATION BANK
+═══════════════════════════════════════════════════════════════════════════════
+${signals.isGreeting ? `
+COOLDOWN STATUS: ${greetingCooldown.turnsWithinCooldown ? '⚠️ WITHIN COOLDOWN' : '✅ COOLDOWN EXPIRED'}
+REASON: ${greetingCooldown.reason}
+
+${greetingCooldown.turnsWithinCooldown ? `
+🚫 DO NOT use a full greeting script again.
+✅ USE THIS MICRO-ACK: "${greetingCooldown.suggestedGreeting.text}"
+
+The user just greeted within ${GREETING_COOLDOWN_TURNS} turns. Do NOT repeat:
+• "Yo — what's up. You here for markets or something else?"
+• Any full greeting variant
+
+INSTEAD, use a micro-ack that carries context forward.
+` : `
+✅ FULL GREETING OK
+SUGGESTED VARIANT: "${greetingCooldown.suggestedGreeting.text}"
+TONE: ${greetingCooldown.suggestedGreeting.tone}
+
+You may use a full greeting since cooldown has expired.
+DO NOT reuse recently used variants: ${greetingCooldown.recentlyUsedIds.join(', ') || 'none'}
+`}` : `
+Not a greeting message — greeting cooldown not applicable.
+`}
+
+═══════════════════════════════════════════════════════════════════════════════
+🧠 TOPIC PERSISTENCE (CONVERSATION MODE MEMORY)
+═══════════════════════════════════════════════════════════════════════════════
+
+CURRENT MODE: ${topicPersistence.currentMode}
+CONFIDENCE: ${(topicPersistence.modeConfidence * 100).toFixed(0)}%
+TURNS SINCE MODE SET: ${topicPersistence.turnsSinceModeSet}
+REASON: ${topicPersistence.reason}
+
+${topicPersistence.currentMode === 'MARKET_MODE' && !topicPersistence.shouldAskIntent ? `
+🎯 MARKET_MODE ACTIVE — DO NOT ask "markets or something else?"
+
+The user has been asking about markets/coins. If they greet, assume continuation:
+✅ "${topicPersistence.contextCarryPhrase || 'still on market stuff?'}"
+🚫 "You here for markets or something else?"
+` : ''}
+
+${topicPersistence.currentMode === 'PRODUCT_MODE' && !topicPersistence.shouldAskIntent ? `
+🎯 PRODUCT_MODE ACTIVE — DO NOT ask about markets
+
+The user has been asking about Coinet/how it works. If they greet, assume continuation:
+✅ "${topicPersistence.contextCarryPhrase || 'more questions about how this works?'}"
+🚫 "You here for markets or something else?"
+` : ''}
+
+${topicPersistence.shouldAskIntent ? `
+❓ INTENT UNCLEAR — Ask about intent
+
+No strong mode detected, or mode is stale. It's OK to ask:
+✅ "You here for markets or something else?"
+` : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
 🚫 METRICS GATE — NO-UNASKED-METRICS POLICY
@@ -1307,6 +2603,66 @@ STRUCTURE:
 4. Follow-up question
 
 DO NOT scatter 20 numbers through paragraphs. Group them cleanly.
+` : ''}
+
+${signals.requestsOmniScore && !signals.isDepthOptIn ? `
+═══════════════════════════════════════════════════════════════════════════════
+🎯 OMNISCORE RESPONSE PROTOCOL — LIMIT MODE
+═══════════════════════════════════════════════════════════════════════════════
+
+User asked for OmniScore but did NOT opt into full breakdown.
+
+✅ DEFAULT RESPONSE FORMAT:
+1. ONE LINE CONCLUSION — verdict + profile (e.g., "BTC is Elite right now")
+2. TWO SUPPORTING POINTS — why (fundamentals + momentum, not raw numbers)
+3. OFFER — "Want the full QS/OS breakdown or just levels + risks?"
+
+🚫 DO NOT DUMP:
+• OmniScore 93.9/100, QS 98.4/100, OS 94.2/100
+• Target Zone, NRG +37
+• Every sub-score and component
+
+EXAMPLE:
+"BTC is Elite right now — strong fundamentals and strong momentum, so it's not a weak setup. Want the quick drivers + risks, or the full QS/OS numbers?"
+
+Only show full breakdown if user says "full metrics" / "yes" / "breakdown" / "numbers".
+` : ''}
+
+${signals.requestsSources ? `
+═══════════════════════════════════════════════════════════════════════════════
+📋 SOURCE PROTOCOL — CONCRETE DATA SOURCES
+═══════════════════════════════════════════════════════════════════════════════
+
+User asked about data sources. DO NOT be vague.
+
+✅ REQUIRED FORMAT (3 layers):
+
+**Layer 1 — What data types:**
+prices, volume, derivatives, on-chain, dev activity, sentiment, news
+
+**Layer 2 — Exact providers (named):**
+• Price/volume: CoinGecko (backup: exchange APIs)
+• Derivatives (funding/OI/liqs): Coinglass
+• On-chain: Internal aggregation (RPC providers)
+• Social/Sentiment: X/Twitter signals + internal classifier
+• Dev activity: GitHub Events API
+• News: News aggregators + internal classifier
+
+**Layer 3 — Freshness:**
+• "Live" (seconds)
+• "Near-real-time" (1-5 minutes)
+• "Delayed" (hours)
+
+🚫 FORBIDDEN:
+• "proprietary engine"
+• "12 signals"
+• Vague hand-waving
+
+✅ EXAMPLE RESPONSE:
+"For BTC: price/volume comes from CoinGecko (with exchange backups). Derivatives (funding/OI/liqs) come from Coinglass. On-chain signals come from our internal aggregation layer. Sentiment is from X + our classifier. If you want, I can list the exact signals we use for QS and OS."
+
+If you CAN'T name the real provider, say:
+"This module is currently using internal aggregation; I can show you the exact feed list we have configured if you want."
 ` : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1455,7 +2811,95 @@ MENTAL MODEL: Meaning first. Numbers only when invited. Receipts when requested.
 
 If ANY check fails, your response is NOT production-ready.
 
+${generateAntiBotGuidanceSection(signals, continuity, mode)}
+
 ═══════════════════════════════════════════════════════════════════════════════
+`;
+}
+
+/**
+ * Generate the anti-bot section of the guidance
+ */
+function generateAntiBotGuidanceSection(
+  signals: MessageSignals,
+  continuity: { anchor: ContinuityAnchor; phrase: string },
+  mode: OutputMode
+): string {
+  const intent = classifyUserIntent(signals.rawMessage || '');
+  const isDepthOptIn = signals.isDepthOptIn;
+  const size = determineResponseSize(intent, signals.rawMessage || '', isDepthOptIn);
+  const shape = selectResponseShape(intent, size, []);
+  const shapeConfig = RESPONSE_SHAPES[shape];
+  const metricBudget = getIntentMetricBudget(intent);
+  
+  // Select fresh connectors (without state, use random)
+  const freshAck = ACKNOWLEDGEMENT_BANK[Math.floor(Math.random() * ACKNOWLEDGEMENT_BANK.length)];
+  const freshChop = CHOP_PHRASING_BANK[Math.floor(Math.random() * CHOP_PHRASING_BANK.length)];
+  const freshDepthAsk = DEPTH_ASK_BANK[Math.floor(Math.random() * DEPTH_ASK_BANK.length)];
+  const followupBank = FOLLOWUP_QUESTIONS[intent] || FOLLOWUP_QUESTIONS.DATA_REQUEST;
+  const freshFollowup = followupBank[Math.floor(Math.random() * followupBank.length)];
+  
+  return `
+═══════════════════════════════════════════════════════════════════════════════
+🎭 ANTI-BOT TEMPLATE SYSTEM — SOUND LIKE A HUMAN
+═══════════════════════════════════════════════════════════════════════════════
+
+PRIME DIRECTIVE: Sound like a real person. Never sound like a reusable script.
+
+CLASSIFICATION:
+• Intent: ${intent}
+• Response Size: ${size}
+• Shape: ${shape}
+
+SHAPE STRUCTURE (use this):
+${shapeConfig.blocks.map((b, i) => `${i + 1}. ${b.toUpperCase()}`).join('\n')}
+Max lines: ${shapeConfig.maxLines} | Bullets: ${shapeConfig.bulletAllowed ? 'max 2' : 'NO'}
+
+═══════════════════════════════════════════════════════════════════════════════
+🚫 PHRASE COOLDOWN — THESE ARE BANNED
+═══════════════════════════════════════════════════════════════════════════════
+
+DO NOT USE these overused phrases:
+• "Got you" / "Got it" (use "${freshAck}" instead)
+• "Quick pulse" / "quick snapshot" (vary with "${QUICK_FRAMING_BANK[Math.floor(Math.random() * QUICK_FRAMING_BANK.length)]}")
+• "neutral and choppy" / "feels choppy" (use "${freshChop}")
+• "want the receipts" (use "${freshDepthAsk}")
+• "You here for markets or something else?" (only if NO mode detected)
+• "entries or direction" / "levels or entries"
+• "Let me know if" / "Feel free to" / "Happy to help"
+• "Let's dive into" / "Great question" / "Absolutely"
+
+FRESH ALTERNATIVES FOR THIS RESPONSE:
+• Acknowledgement: "${freshAck}"
+• Chop description: "${freshChop}"
+• Depth ask: "${freshDepthAsk}"
+• Follow-up: "${freshFollowup}"
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 VARIATION REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. OPENER: Different from last 5. Start with: "${freshAck}" or similar.
+2. SHAPE: Using ${shape}. Must differ from previous response structure.
+3. NO 4-WORD REPEATS: Don't reuse any 4-word sequence from recent turns.
+4. LENGTH JITTER: ${size === 'M' ? '4-8 lines' : size === 'S' ? '1-3 lines' : '8-15 lines'}
+5. ONE QUESTION: End with exactly 1 question, not a menu of options.
+
+METRIC BUDGET: ${metricBudget.maxNumbers} numbers max. ${metricBudget.allowScores ? 'Scores OK.' : 'NO /100 scores.'}
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ ANTI-BOT SELF-CHECK (before sending)
+═══════════════════════════════════════════════════════════════════════════════
+
+□ Opener is fresh (not used in last 5 responses)
+□ No banned phrases from cooldown list
+□ Shape differs from previous response
+□ No repeated 4-word sequences
+□ Numbers within budget (${metricBudget.maxNumbers} max)
+□ Exactly 1 question at end (not a menu)
+□ Sounds like a DM from a friend, not a report
+
+If it sounds like a bot → REWRITE with different opener + shape.
 `;
 }
 
@@ -1483,6 +2927,22 @@ export const conversationRules = {
   getContinuityAnchor,
   getUncertaintyHandling,
   generateGuidance: generateResponseGuidance,
+  // Anti-bot system exports
+  classifyUserIntent,
+  determineResponseSize,
+  selectResponseShape,
+  selectFromBank,
+  isPhraseOnCooldown,
+  runSelfCheck,
+  generateAntiBotGuidance,
+  // Banks for external use
+  PHRASE_COOLDOWN_LIST,
+  ACKNOWLEDGEMENT_BANK,
+  QUICK_FRAMING_BANK,
+  CHOP_PHRASING_BANK,
+  DEPTH_ASK_BANK,
+  FOLLOWUP_QUESTIONS,
+  RESPONSE_SHAPES,
 };
 
 export default conversationRules;
