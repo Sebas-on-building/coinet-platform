@@ -179,53 +179,54 @@ export interface SourceProtocolResponse {
 
 /**
  * Full greeting variants (for first greeting or after cooldown expires)
+ * These should sound like a friend texting, not a support bot.
  */
 export const GREETING_VARIANTS_FULL: GreetingVariant[] = [
-  // Neutral (6)
+  // Simple/Neutral (6) - just acknowledge, no structure
   { id: 'n1', text: "Hey — what's up?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
-  { id: 'n2', text: "Hey — what do you need?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
-  { id: 'n3', text: "Yo — what's on your mind?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n2', text: "Hey, what do you need?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n3', text: "Yo, what's going on?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
   { id: 'n4', text: "Hey — what are you looking at?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
-  { id: 'n5', text: "What's up — what can I help with?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
-  { id: 'n6', text: "Yo — what do you want to know?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n5', text: "What's up?", tone: 'neutral', hasQuestion: true, isMicroAck: false },
+  { id: 'n6', text: "Hey 👋", tone: 'neutral', hasQuestion: false, isMicroAck: false },
   
-  // Fast (6)
-  { id: 'f1', text: "Yo — what do you need?", tone: 'fast', hasQuestion: true, isMicroAck: false },
+  // Fast/Direct (6) - minimal, get to the point
+  { id: 'f1', text: "Yo, what do you need?", tone: 'fast', hasQuestion: true, isMicroAck: false },
   { id: 'f2', text: "What's up?", tone: 'fast', hasQuestion: true, isMicroAck: false },
   { id: 'f3', text: "Hey — shoot.", tone: 'fast', hasQuestion: false, isMicroAck: false },
-  { id: 'f4', text: "Yo — go ahead.", tone: 'fast', hasQuestion: false, isMicroAck: false },
+  { id: 'f4', text: "Yo.", tone: 'fast', hasQuestion: false, isMicroAck: false },
   { id: 'f5', text: "What do you need?", tone: 'fast', hasQuestion: true, isMicroAck: false },
-  { id: 'f6', text: "Hey — what's the move?", tone: 'fast', hasQuestion: true, isMicroAck: false },
+  { id: 'f6', text: "Hey, what's going on?", tone: 'fast', hasQuestion: true, isMicroAck: false },
   
-  // Friendly (6)
+  // Friendly (6) - warm but still natural
   { id: 'fr1', text: "Hey 👋 what's on your mind?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
-  { id: 'fr2', text: "Yo — good to see you. What's up?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
-  { id: 'fr3', text: "Hey — what can I do for you?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
-  { id: 'fr4', text: "What's good — what are you thinking about?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
-  { id: 'fr5', text: "Hey 👋 what's the play today?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
-  { id: 'fr6', text: "Yo — what do you want to look at?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr2', text: "Yo — what's up?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr3', text: "Hey — what's going on?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr4', text: "What's good?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr5', text: "Hey 👋 what are you looking at?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
+  { id: 'fr6', text: "Yo — anything specific?", tone: 'friendly', hasQuestion: true, isMicroAck: false },
   
-  // Market context (6)
-  { id: 'm1', text: "Yo — want a quick pulse or a coin check?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
-  { id: 'm2', text: "Hey — markets or something specific?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
-  { id: 'm3', text: "What's up — you here for markets?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
-  { id: 'm4', text: "Yo — quick vibe or deep dive?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
-  { id: 'm5', text: "Hey — want a pulse or something specific?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
-  { id: 'm6', text: "What do you need — market overview or a coin?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  // Market context (6) - only use when MARKET_MODE is active, still natural
+  { id: 'm1', text: "Hey — which coin?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm2', text: "Yo — what are you trading?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm3', text: "Hey, what are you watching?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm4', text: "What coin?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm5', text: "Hey — BTC or something else?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
+  { id: 'm6', text: "Yo, anything specific?", tone: 'market_context', hasQuestion: true, isMicroAck: false },
 ];
 
 /**
  * Micro-ack variants (for when user greets within cooldown period)
- * These are shorter and carry context forward
+ * Short, carry context forward, no menu questions
  */
 export const GREETING_VARIANTS_MICRO: GreetingVariant[] = [
-  // Continuation - market mode active
-  { id: 'c1', text: "Yo 👋 still on market stuff?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
-  { id: 'c2', text: "Back — want another pulse?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
-  { id: 'c3', text: "Hey — same coin or something new?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  // Continuation - keep it simple
+  { id: 'c1', text: "Yo 👋 what's up?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c2', text: "Hey — what do you need?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c3', text: "What's going on?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
   { id: 'c4', text: "Yo — still looking at markets?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
-  { id: 'c5', text: "What's up — continuing from before?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
-  { id: 'c6', text: "Back again — what do you want to look at?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c5', text: "Hey, what's up?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
+  { id: 'c6', text: "Back — which coin?", tone: 'continuation', hasQuestion: true, isMicroAck: true },
 ];
 
 // ============================================================================
@@ -478,85 +479,152 @@ export const ACKNOWLEDGEMENT_BANK = [
   'Heard',
 ];
 
+// ============================================================================
+// BANNED BOT PHRASES — HARD BLACKLIST (never use these)
+// ============================================================================
+
 /**
- * "Quick framing" variations
+ * These phrases are COMPLETELY BANNED. If they appear in a draft → rewrite.
+ * They are the most obvious "AI assistant" giveaways.
  */
-export const QUICK_FRAMING_BANK = [
-  'fast read',
-  'quick snapshot',
-  'here\'s where it\'s at',
-  'short version',
-  'quick take',
-  '30-sec take',
-  'where things stand',
-  'the rundown',
+export const BANNED_BOT_PHRASES = [
+  // Menu questions (the worst offenders)
+  'Want levels or just the vibe',
+  'Want X or Y',
+  'Want the receipts',
+  'entries or direction',
+  'entries or just direction',
+  'levels or entries',
+  'quick pulse or',
+  'quick vibe or deep dive',
+  'You here for markets or something else',
+  'markets or something else',
+  
+  // Overused Coinet catchphrases
+  'quick pulse',
+  'the receipts',
+  'neutral and choppy',
+  'feels choppy',
+  'the vibe',
+  'just the vibe',
+  
+  // Generic AI phrases
+  'Let me know if',
+  'Feel free to',
+  'Happy to help',
+  'I\'d be happy to',
+  'Let\'s dive into',
+  'Great question',
+  'Absolutely',
+  'Certainly',
+  'I understand',
+  'That\'s a great',
+  
+  // Salesy CTAs
+  'Would you like me to',
+  'Shall I',
+  'Do you want me to',
+  'If you\'d like',
+  'I can also',
 ];
 
 /**
- * Chop/sideways market phrasing variations
+ * Natural sentence starters (not bot-like)
  */
-export const CHOP_PHRASING_BANK = [
-  'range-y',
-  'messy tape',
-  'sideways',
-  'no clean direction',
-  'chop mode',
-  'range behavior',
-  'coiling',
-  'consolidating',
-  'grinding',
-  'stuck in a range',
+export const NATURAL_STARTERS = [
+  'Right now',
+  'At the moment',
+  'Currently',
+  'Looks like',
+  'So far',
+  'From what I see',
+  'Honestly',
+  'To be real',
+  'The short version:',
+  'Here\'s the deal:',
+  'Basically',
+  'In short',
 ];
 
 /**
- * "Ask for depth" variations
+ * Natural market descriptions (replace "neutral and choppy")
  */
-export const DEPTH_ASK_BANK = [
-  'Want the numbers?',
-  'Want the data behind it?',
-  'Want the full breakdown?',
-  'Want the metrics?',
-  'Want the receipts?',
-  'Need the details?',
-  'Want me to go deeper?',
-  'Want the data dump?',
+export const MARKET_DESCRIPTION_BANK = [
+  'sideways, nothing clear yet',
+  'grinding without a real trend',
+  'range-bound, no breakout yet',
+  'quiet, no strong move either way',
+  'consolidating, waiting for a trigger',
+  'stuck between levels',
+  'not much happening',
+  'coiling up, could go either way',
+  'holding but without conviction',
+  'mixed signals, no clear direction',
 ];
 
 /**
- * Follow-up question variations (context-aware)
+ * Natural depth offers (replace "want the receipts")
  */
-export const FOLLOWUP_QUESTIONS: Record<UserIntent, string[]> = {
+export const DEPTH_OFFER_BANK = [
+  'I can go deeper if you want.',
+  'There\'s more detail if you need it.',
+  'Let me know if you want the full picture.',
+  'I can break it down more.',
+  'Happy to expand on that.',
+  'More specifics if that helps.',
+];
+
+/**
+ * NATURAL follow-up questions (NOT menus, NOT bot-like)
+ * These are questions a real person would ask in a chat.
+ */
+export const NATURAL_FOLLOWUP_QUESTIONS: Record<UserIntent, string[]> = {
   SOCIAL: [
-    'What\'s on your mind?',
+    'What\'s up?',
+    'What are you looking at?',
+    'Anything specific?',
     'What do you need?',
-    'What are you looking at today?',
-    'What can I help with?',
   ],
   DATA_REQUEST: [
-    'What are you trading?',
-    'Which coin?',
-    'Want levels or just the vibe?',
-    'Need the numbers or just direction?',
-    'BTC only or whole market?',
+    // Natural, not menu-style
+    'Which coin are you watching?',
+    'What are you trading right now?',
+    'Anything specific you want to check?',
+    'BTC or something else?',
+    'What\'s on your radar?',
+    'Any particular coin?',
   ],
   EXPLAIN: [
-    'Want me to break it down further?',
-    'Does that answer it?',
-    'Want the data behind that?',
-    'Need more detail on any part?',
+    'Does that make sense?',
+    'Clear enough?',
+    'Need me to go deeper?',
+    'Anything else on that?',
   ],
   ADVICE: [
     'What\'s your timeframe?',
-    'Scalp or swing?',
-    'What\'s your risk tolerance?',
-    'How much are you looking to deploy?',
+    'How long are you planning to hold?',
+    'What size are you thinking?',
+    'How much risk are you comfortable with?',
   ],
   PRODUCT: [
-    'Want me to list the exact feeds?',
-    'Need more detail on that?',
-    'Anything specific about how it works?',
+    'Anything specific you want to know?',
+    'What part are you curious about?',
+    'Need more detail?',
   ],
 };
+
+// Keep old exports for backwards compatibility but mark as deprecated
+/** @deprecated Use NATURAL_FOLLOWUP_QUESTIONS instead */
+export const FOLLOWUP_QUESTIONS = NATURAL_FOLLOWUP_QUESTIONS;
+
+/** @deprecated Use MARKET_DESCRIPTION_BANK instead */
+export const CHOP_PHRASING_BANK = MARKET_DESCRIPTION_BANK;
+
+/** @deprecated Use DEPTH_OFFER_BANK instead */
+export const DEPTH_ASK_BANK = DEPTH_OFFER_BANK;
+
+/** @deprecated Use NATURAL_STARTERS instead */
+export const QUICK_FRAMING_BANK = NATURAL_STARTERS;
 
 // ============================================================================
 // RESPONSE SHAPE DEFINITIONS
@@ -2828,78 +2896,170 @@ function generateAntiBotGuidanceSection(
   const intent = classifyUserIntent(signals.rawMessage || '');
   const isDepthOptIn = signals.isDepthOptIn;
   const size = determineResponseSize(intent, signals.rawMessage || '', isDepthOptIn);
-  const shape = selectResponseShape(intent, size, []);
-  const shapeConfig = RESPONSE_SHAPES[shape];
   const metricBudget = getIntentMetricBudget(intent);
   
-  // Select fresh connectors (without state, use random)
-  const freshAck = ACKNOWLEDGEMENT_BANK[Math.floor(Math.random() * ACKNOWLEDGEMENT_BANK.length)];
-  const freshChop = CHOP_PHRASING_BANK[Math.floor(Math.random() * CHOP_PHRASING_BANK.length)];
-  const freshDepthAsk = DEPTH_ASK_BANK[Math.floor(Math.random() * DEPTH_ASK_BANK.length)];
-  const followupBank = FOLLOWUP_QUESTIONS[intent] || FOLLOWUP_QUESTIONS.DATA_REQUEST;
-  const freshFollowup = followupBank[Math.floor(Math.random() * followupBank.length)];
+  // Select natural alternatives
+  const naturalStarter = NATURAL_STARTERS[Math.floor(Math.random() * NATURAL_STARTERS.length)];
+  const marketDesc = MARKET_DESCRIPTION_BANK[Math.floor(Math.random() * MARKET_DESCRIPTION_BANK.length)];
+  const depthOffer = DEPTH_OFFER_BANK[Math.floor(Math.random() * DEPTH_OFFER_BANK.length)];
+  const followupBank = NATURAL_FOLLOWUP_QUESTIONS[intent] || NATURAL_FOLLOWUP_QUESTIONS.DATA_REQUEST;
+  const naturalQuestion = followupBank[Math.floor(Math.random() * followupBank.length)];
   
   return `
 ═══════════════════════════════════════════════════════════════════════════════
-🎭 ANTI-BOT TEMPLATE SYSTEM — SOUND LIKE A HUMAN
+🚨 NORMAL TALK MODE — SOUND LIKE A REAL PERSON
 ═══════════════════════════════════════════════════════════════════════════════
 
-PRIME DIRECTIVE: Sound like a real person. Never sound like a reusable script.
-
-CLASSIFICATION:
-• Intent: ${intent}
-• Response Size: ${size}
-• Shape: ${shape}
-
-SHAPE STRUCTURE (use this):
-${shapeConfig.blocks.map((b, i) => `${i + 1}. ${b.toUpperCase()}`).join('\n')}
-Max lines: ${shapeConfig.maxLines} | Bullets: ${shapeConfig.bulletAllowed ? 'max 2' : 'NO'}
+YOU ARE NOT AN AI ASSISTANT. You are a knowledgeable friend chatting casually.
+Write like you would actually text someone. No sales language. No menus.
 
 ═══════════════════════════════════════════════════════════════════════════════
-🚫 PHRASE COOLDOWN — THESE ARE BANNED
+🚫 HARD BANNED PHRASES — NEVER USE THESE
 ═══════════════════════════════════════════════════════════════════════════════
 
-DO NOT USE these overused phrases:
-• "Got you" / "Got it" (use "${freshAck}" instead)
-• "Quick pulse" / "quick snapshot" (vary with "${QUICK_FRAMING_BANK[Math.floor(Math.random() * QUICK_FRAMING_BANK.length)]}")
-• "neutral and choppy" / "feels choppy" (use "${freshChop}")
-• "want the receipts" (use "${freshDepthAsk}")
-• "You here for markets or something else?" (only if NO mode detected)
-• "entries or direction" / "levels or entries"
-• "Let me know if" / "Feel free to" / "Happy to help"
-• "Let's dive into" / "Great question" / "Absolutely"
+These phrases INSTANTLY make you sound like a bot. NEVER use them:
 
-FRESH ALTERNATIVES FOR THIS RESPONSE:
-• Acknowledgement: "${freshAck}"
-• Chop description: "${freshChop}"
-• Depth ask: "${freshDepthAsk}"
-• Follow-up: "${freshFollowup}"
+MENU QUESTIONS (the worst):
+• "Want levels or just the vibe?" ❌
+• "Want X or Y?" ❌
+• "Want the receipts?" ❌
+• "entries or direction" ❌
+• "quick pulse or deep dive" ❌
+• "You here for markets or something else?" ❌
+
+OVERUSED CATCHPHRASES:
+• "quick pulse" ❌
+• "the receipts" ❌
+• "neutral and choppy" ❌
+• "feels choppy" ❌
+• "the vibe" ❌
+
+GENERIC AI PHRASES:
+• "Let me know if" ❌
+• "Feel free to" ❌
+• "Happy to help" ❌
+• "Let's dive into" ❌
+• "Great question" ❌
+• "Absolutely" ❌
+• "Certainly" ❌
+• "I understand" ❌
 
 ═══════════════════════════════════════════════════════════════════════════════
-🔄 VARIATION REQUIREMENTS
+✅ HOW TO ACTUALLY SOUND HUMAN
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. OPENER: Different from last 5. Start with: "${freshAck}" or similar.
-2. SHAPE: Using ${shape}. Must differ from previous response structure.
-3. NO 4-WORD REPEATS: Don't reuse any 4-word sequence from recent turns.
-4. LENGTH JITTER: ${size === 'M' ? '4-8 lines' : size === 'S' ? '1-3 lines' : '8-15 lines'}
-5. ONE QUESTION: End with exactly 1 question, not a menu of options.
+RULE 1: ANSWER FIRST, QUESTION OPTIONAL
 
-METRIC BUDGET: ${metricBudget.maxNumbers} numbers max. ${metricBudget.allowScores ? 'Scores OK.' : 'NO /100 scores.'}
+Structure: Give the answer → then maybe ask something natural.
+NOT: Structure → CTA → Menu
+
+✅ GOOD: "Right now it's sideways, nothing clear yet. BTC holding but no real push."
+         "Which coin are you watching?"
+
+❌ BAD:  "Got you — quick pulse. Feels neutral and choppy."
+         "Want levels or just the vibe?"
+
+RULE 2: NATURAL QUESTIONS ONLY
+
+Instead of menus, ask like a friend would:
+
+❌ "Want levels or just the vibe?" 
+✅ "Which coin are you watching?"
+✅ "What are you trading right now?"
+✅ "Anything specific?"
+✅ "${naturalQuestion}"
+
+RULE 3: VARY YOUR LANGUAGE
+
+For market state, rotate through natural descriptions:
+• "${marketDesc}"
+• "quiet, no strong move either way"
+• "holding but without conviction"
+• "mixed signals, no clear direction"
+
+For starters, use natural openers:
+• "${naturalStarter}"
+• "Looks like"
+• "So far"
+• "Here's the deal:"
+
+RULE 4: KEEP IT SHORT BY DEFAULT
+
+Size for this message: ${size}
+${size === 'S' ? '• 1-3 sentences max. Just answer and maybe ask.' : ''}
+${size === 'M' ? '• 2-5 sentences. Give context, then ask naturally.' : ''}
+${size === 'L' ? '• Can go longer, but still write like a person, not a report.' : ''}
 
 ═══════════════════════════════════════════════════════════════════════════════
-✅ ANTI-BOT SELF-CHECK (before sending)
+📝 HUMAN REWRITE PASS — RUN THIS BEFORE SENDING
 ═══════════════════════════════════════════════════════════════════════════════
 
-□ Opener is fresh (not used in last 5 responses)
-□ No banned phrases from cooldown list
-□ Shape differs from previous response
-□ No repeated 4-word sequences
-□ Numbers within budget (${metricBudget.maxNumbers} max)
-□ Exactly 1 question at end (not a menu)
-□ Sounds like a DM from a friend, not a report
+Before you send your response, check and fix:
 
-If it sounds like a bot → REWRITE with different opener + shape.
+1. REMOVE any "menu questions" (Want A or B?)
+   → Replace with a single natural question
+
+2. REMOVE any phrase from the BANNED list above
+   → Rewrite in your own words
+
+3. REMOVE any "salesy" helper language
+   → Just answer directly
+
+4. SHORTEN sentences that feel "AI-ish"
+   → If it sounds like a report, make it casual
+
+5. ADD natural fillers (sparingly):
+   → "honestly", "basically", "right now", "so far"
+   → But don't overdo it
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 EXAMPLES: SAME MESSAGE, BOT vs HUMAN
+═══════════════════════════════════════════════════════════════════════════════
+
+User: "market update"
+
+❌ BOT VERSION:
+"Got you — quick pulse. Market feels neutral and choppy right now. 
+BTC holding steady. Want levels or just the vibe?"
+
+✅ HUMAN VERSION:
+"Right now it's sideways, nothing super clear. BTC's holding around 97k 
+but no real push either direction. What are you watching?"
+
+---
+
+User: "btc"
+
+❌ BOT VERSION:
+"On BTC — quick pulse. Trading at $97,104, neutral momentum.
+Want the full breakdown or just key levels?"
+
+✅ HUMAN VERSION:
+"BTC's at about 97k, grinding sideways. No strong move yet.
+Anything specific you want to check?"
+
+---
+
+User: "hey"
+
+❌ BOT VERSION:
+"Yo 👋 what's up. You here for markets or something else?"
+
+✅ HUMAN VERSION:
+"Hey — what's up?"
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ FINAL CHECK
+═══════════════════════════════════════════════════════════════════════════════
+
+Before sending, verify:
+□ No phrases from BANNED list
+□ No menu questions (Want A or B?)
+□ Sounds like a text from a friend, not an AI assistant
+□ Question at end is natural (or no question is fine too)
+□ Numbers only if needed (budget: ${metricBudget.maxNumbers} max)
+
+If it sounds like a bot → REWRITE completely.
 `;
 }
 
