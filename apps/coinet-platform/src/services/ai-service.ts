@@ -12,7 +12,13 @@
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 import { validateAIResponse, quickHallucinationCheck } from './ai-hallucination-guard';
-import { classifyVerbosity, generateResponseGuidance, COINET_CORE_PERSONA, COINET_CONTEXT_MEMORY_POLICY } from './conversation-rules';
+import { 
+  classifyVerbosity, 
+  generateResponseGuidance, 
+  COINET_CORE_PERSONA, 
+  COINET_CONTEXT_MEMORY_POLICY,
+  COINET_REASONING_TOOL_POLICY 
+} from './conversation-rules';
 
 export interface AIAnalysisRequest {
   content: string;
@@ -57,6 +63,8 @@ const SYSTEM_PROMPT = `
 ${COINET_CORE_PERSONA}
 
 ${COINET_CONTEXT_MEMORY_POLICY}
+
+${COINET_REASONING_TOOL_POLICY}
 
 ═══════════════════════════════════════════════════════════════════════════════════
 🚨 DATA INTEGRITY — ANTI-HALLUCINATION RULES (NON-NEGOTIABLE)
