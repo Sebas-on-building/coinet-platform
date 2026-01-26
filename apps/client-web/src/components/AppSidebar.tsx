@@ -1,16 +1,16 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { 
   MessageSquare, 
   Bot, 
   Bell,
   BellRing,
   Pin,
-  Plus,
-  Trash2,
-  Loader2
+  Crown,
+  ChevronDown
 } from "lucide-react";
 import coinetLogo from "@/assets/coinet-logo.png";
 import { useLocation } from "react-router-dom";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,9 +28,8 @@ import {
   useSidebar,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { apiClient, ConversationSummary } from "@/services/api-client";
-import { useToast } from "@/hooks/use-toast";
 
 // Core navigation - Simplified to 3 primary actions
 const coreFeatures = [
@@ -39,109 +38,138 @@ const coreFeatures = [
   { id: "alerts", label: "Alerts", icon: Bell },
 ];
 
+// Mock recent chats data with timestamps (newest first)
+const mockRecentChats = [
+  {
+    id: "chat-1",
+    title: "Bitcoin Price Analysis",
+    timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
+    preview: "What's the current trend for BTC?",
+    unread: true,
+    pinned: false
+  },
+  {
+    id: "chat-2", 
+    title: "Market Sentiment Review",
+    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+    preview: "Analyzing social sentiment signals",
+    unread: false,
+    pinned: true
+  },
+  {
+    id: "chat-3",
+    title: "Portfolio Optimization",
+    timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+    preview: "How to rebalance my crypto portfolio?",
+    unread: true,
+    pinned: false
+  },
+  {
+    id: "chat-4",
+    title: "Ethereum DeFi Analysis", 
+    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+    preview: "Exploring yield farming opportunities",
+    unread: false,
+    pinned: false
+  },
+  {
+    id: "chat-5",
+    title: "Trading Strategy Discussion",
+    timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
+    preview: "Building automated trading alerts",
+    unread: false,
+    pinned: true
+  },
+  {
+    id: "chat-6",
+    title: "NFT Market Trends",
+    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
+    preview: "Current NFT floor price analysis",
+    unread: false,
+    pinned: false
+  },
+  {
+    id: "chat-7",
+    title: "Altcoin Research",
+    timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
+    preview: "Investigating promising altcoins",
+    unread: false,
+    pinned: false
+  }
+];
+
 interface AppSidebarProps {
   activeItem: string;
   onItemClick: (itemId: string) => void;
   onNavigate?: (path: string) => void;
   showNotifications?: boolean;
   onToggleNotifications?: () => void;
-  // New: conversation management
-  selectedConversationId?: string | null;
-  onSelectConversation?: (conversationId: string | null) => void;
 }
 
-export function AppSidebar({ 
-  activeItem, 
-  onItemClick, 
-  onNavigate, 
-  showNotifications = false, 
-  onToggleNotifications,
-  selectedConversationId,
-  onSelectConversation
-}: AppSidebarProps) {
+export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotifications = false, onToggleNotifications }: AppSidebarProps) {
   const { state } = useSidebar();
   const location = useLocation();
-  const { toast } = useToast();
-  
-  // Conversation state
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [pinnedChats, setPinnedChats] = useState<string[]>(() => {
     const stored = localStorage.getItem('pinnedChats');
-    return stored ? JSON.parse(stored) : [];
+    return stored ? JSON.parse(stored) : mockRecentChats.filter(chat => chat.pinned).map(chat => chat.id);
   });
   const [hoveredChat, setHoveredChat] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Fetch conversations on mount
+  // Debounce search query (300ms)
   useEffect(() => {
-    fetchConversations();
-  }, []);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
 
-  const fetchConversations = async () => {
-    setIsLoadingConversations(true);
-    try {
-      const response = await apiClient.listConversations({ limit: 50 });
-      if (response.success) {
-        setConversations(response.data.conversations);
-      }
-    } catch (error) {
-      console.error('Failed to fetch conversations:', error);
-      // Don't show error toast on initial load - user might not be logged in yet
-    } finally {
-      setIsLoadingConversations(false);
-    }
-  };
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Filter and organize recent chats (pinned first, then by date)
   const { pinnedChats: filteredPinned, regularChats: filteredRegular } = useMemo(() => {
-    const pinned = conversations.filter(chat => pinnedChats.includes(chat.id));
-    const regular = conversations.filter(chat => !pinnedChats.includes(chat.id));
+    let chats = mockRecentChats;
+    
+    if (debouncedSearchQuery.trim()) {
+      chats = chats.filter(chat => 
+        chat.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        chat.preview.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+      );
+    }
+    
+    const pinned = chats.filter(chat => pinnedChats.includes(chat.id));
+    const regular = chats.filter(chat => !pinnedChats.includes(chat.id));
     
     return { pinnedChats: pinned, regularChats: regular };
-  }, [conversations, pinnedChats]);
+  }, [debouncedSearchQuery, pinnedChats]);
 
   const handleItemClick = (itemId: string) => {
-    // When clicking "Chat" in nav, start a new conversation
-    if (itemId === 'chat') {
-      onSelectConversation?.(null);
-    }
     onItemClick(itemId);
   };
 
   const handleChatClick = (chatId: string) => {
-    // Select the conversation and switch to chat view
-    onSelectConversation?.(chatId);
-    onItemClick("chat");
+    // Handle individual chat selection
+    console.log("Selected chat:", chatId);
+    onItemClick("recent-chats");
   };
 
-  const handleNewChat = () => {
-    // Clear selected conversation to start fresh
-    onSelectConversation?.(null);
-    onItemClick("chat");
-  };
-
-  const handleDeleteConversation = async (chatId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await apiClient.deleteConversation(chatId);
-      setConversations(prev => prev.filter(c => c.id !== chatId));
-      // If we deleted the currently selected conversation, clear selection
-      if (selectedConversationId === chatId) {
-        onSelectConversation?.(null);
-      }
-      toast({
-        title: "Chat deleted",
-        description: "Conversation removed successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete conversation",
-        variant: "destructive",
-      });
+  const formatTimeAgo = (timestamp: Date) => {
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - timestamp.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes}m ago`;
+    } else if (diffInMinutes < 1440) {
+      return `${Math.floor(diffInMinutes / 60)}h ago`;
+    } else {
+      return `${Math.floor(diffInMinutes / 1440)}d ago`;
     }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
   };
 
   const togglePin = (chatId: string, e: React.MouseEvent) => {
@@ -255,31 +283,17 @@ export function AppSidebar({
         {/* Recent Chats Section */}
         {state !== "collapsed" && (
           <SidebarGroup className="flex-1 pt-4">
-            <div className="flex items-center justify-between px-4 pb-2">
-              <SidebarGroupLabel className="text-xs text-muted-foreground font-normal p-0">
-                Recent
-              </SidebarGroupLabel>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 rounded-md hover:bg-accent"
-                onClick={handleNewChat}
-                title="New chat"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
+            <SidebarGroupLabel className="text-xs text-muted-foreground font-normal px-4 pb-2">
+              Recent
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="flex-1">
                 <SidebarMenu>
-                  {isLoadingConversations ? (
+                  {filteredPinned.length === 0 && filteredRegular.length === 0 ? (
                     <div className="px-4 py-8 text-center">
-                      <Loader2 className="w-4 h-4 animate-spin mx-auto text-muted-foreground" />
-                    </div>
-                  ) : filteredPinned.length === 0 && filteredRegular.length === 0 ? (
-                    <div className="px-4 py-8 text-center">
-                      <p className="text-xs text-muted-foreground">No recent chats</p>
-                      <p className="text-xs text-muted-foreground/70 mt-1">Start a new conversation</p>
+                      <p className="text-xs text-muted-foreground">
+                        {searchQuery ? "No chats found" : "No recent chats"}
+                      </p>
                     </div>
                   ) : (
                     <>
@@ -292,34 +306,18 @@ export function AppSidebar({
                             onMouseLeave={() => setHoveredChat(null)}
                           >
                             <SidebarMenuButton 
-                              className={cn(
-                                "h-9 w-full justify-start gap-2 hover:bg-accent transition-colors px-2 pr-14",
-                                selectedConversationId === chat.id && "bg-accent"
-                              )}
+                              className="h-9 w-full justify-start gap-2 hover:bg-accent transition-colors px-2 pr-8"
                               onClick={() => handleChatClick(chat.id)}
                             >
                               <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                              <span className="truncate text-sm">{chat.title || 'New Chat'}</span>
+                              <span className="truncate text-sm">{chat.title}</span>
                             </SidebarMenuButton>
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                              <button
-                                className="p-1 hover:opacity-70 transition-opacity opacity-100"
-                                onClick={(e) => togglePin(chat.id, e)}
-                                title="Unpin"
-                              >
-                                <Pin className="w-3.5 h-3.5 fill-current text-primary" />
-                              </button>
-                              <button
-                                className={cn(
-                                  "p-1 hover:text-destructive transition-all",
-                                  hoveredChat === chat.id ? 'opacity-100' : 'opacity-0'
-                                )}
-                                onClick={(e) => handleDeleteConversation(chat.id, e)}
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                            <button
+                              className="absolute right-3 top-1/2 -translate-y-1/2 p-0 hover:opacity-70 transition-opacity opacity-100"
+                              onClick={(e) => togglePin(chat.id, e)}
+                            >
+                              <Pin className="w-3.5 h-3.5 fill-current text-primary" />
+                            </button>
                           </div>
                         </SidebarMenuItem>
                       ))}
@@ -333,34 +331,20 @@ export function AppSidebar({
                             onMouseLeave={() => setHoveredChat(null)}
                           >
                             <SidebarMenuButton 
-                              className={cn(
-                                "h-9 w-full justify-start gap-2 hover:bg-accent transition-colors px-2 pr-14",
-                                selectedConversationId === chat.id && "bg-accent"
-                              )}
+                              className="h-9 w-full justify-start gap-2 hover:bg-accent transition-colors px-2 pr-8"
                               onClick={() => handleChatClick(chat.id)}
                             >
                               <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                              <span className="truncate text-sm">{chat.title || 'New Chat'}</span>
+                              <span className="truncate text-sm">{chat.title}</span>
                             </SidebarMenuButton>
-                            <div className={cn(
-                              "absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 transition-opacity",
-                              hoveredChat === chat.id ? 'opacity-100' : 'opacity-0'
-                            )}>
-                              <button
-                                className="p-1 hover:opacity-70 transition-opacity"
-                                onClick={(e) => togglePin(chat.id, e)}
-                                title="Pin"
-                              >
-                                <Pin className="w-3.5 h-3.5 text-muted-foreground" />
-                              </button>
-                              <button
-                                className="p-1 hover:text-destructive transition-colors"
-                                onClick={(e) => handleDeleteConversation(chat.id, e)}
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                            <button
+                              className={`absolute right-3 top-1/2 -translate-y-1/2 p-0 hover:opacity-70 transition-opacity ${
+                                hoveredChat === chat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                              }`}
+                              onClick={(e) => togglePin(chat.id, e)}
+                            >
+                              <Pin className="w-3.5 h-3.5 text-primary" />
+                            </button>
                           </div>
                         </SidebarMenuItem>
                       ))}

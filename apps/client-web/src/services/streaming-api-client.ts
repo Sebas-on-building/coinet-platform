@@ -6,7 +6,6 @@
  */
 
 import { API_BASE_URL } from '@/utils/api-config';
-import { TokenStorage } from '@/components/auth/AuthProvider';
 
 export interface StreamChunk {
   type: 'token' | 'source' | 'chart' | 'metadata' | 'complete' | 'error';
@@ -51,17 +50,12 @@ export class StreamingApiClient {
 
     let fullResponse = '';
 
-    const token = TokenStorage.getToken();
-    if (!token) {
-      throw new Error('Please log in to continue.');
-    }
-
     try {
       const response = await fetch(`${this.baseURL}/api/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'X-User-Id': this.getUserId(),
           'Accept': 'text/event-stream',
         },
         body: JSON.stringify({
@@ -78,12 +72,7 @@ export class StreamingApiClient {
       });
 
       if (!response.ok) {
-        if (response.status === 401) {
-          TokenStorage.clearToken();
-          throw new Error('Please log in to continue.');
-        }
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const reader = response.body?.getReader();
@@ -209,6 +198,17 @@ export class StreamingApiClient {
     console.log('🛑 All streams cancelled');
   }
 
+  /**
+   * Get user ID
+   */
+  private getUserId(): string {
+    const stored = localStorage.getItem('coinet_user_id');
+    if (stored) return stored;
+
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('coinet_user_id', userId);
+    return userId;
+  }
 }
 
 // Export singleton

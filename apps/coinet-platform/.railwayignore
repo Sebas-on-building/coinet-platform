@@ -1,17 +1,3 @@
-# Railway ignore file to suppress Docker security warnings
-# Railway is using Nixpacks, so Dockerfiles are not used for this service
+# Railway ignore file
+# This ensures Railway builds from the root of apps/coinet-platform, not src/
 
-# Ignore root Dockerfile (not used by this service)
-/Dockerfile
-../Dockerfile
-
-# Ignore other service Dockerfiles (not relevant to this build)
-../services/**/Dockerfile
-../ai-services/**/Dockerfile
-../apps/**/Dockerfile
-
-# Ignore Dockerfiles in parent directories
-../../Dockerfile
-
-# Note: Railway uses Nixpacks builder configured in railway.json
-# These Dockerfiles are for other services and don't affect this build

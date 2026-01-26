@@ -10,7 +10,6 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,7 +33,6 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/auth" element={<AuthPage />} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/" element={
                   <ProtectedRoute>
                     <Index />

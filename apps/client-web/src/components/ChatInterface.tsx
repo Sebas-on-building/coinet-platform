@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Copy, MoreHorizontal, RotateCcw, Settings, TrendingUp, Search, Target } from "lucide-react";
+import { Copy, Bot, User, MoreHorizontal, RotateCcw, Settings, TrendingUp, Search, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -33,16 +33,13 @@ interface Message {
   timestamp: number;
   isRead?: boolean;
   sources?: Source[];
-  userFeedback?: 'positive' | 'negative' | null;
 }
 
 interface ChatInterfaceProps {
   activeAgent?: CustomAgent | null;
-  conversationId?: string | null;
-  onConversationChange?: (conversationId: string | null) => void;
 }
 
-export function ChatInterface({ activeAgent, conversationId, onConversationChange }: ChatInterfaceProps) {
+export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -52,12 +49,7 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  
-  // Use prop conversationId if provided, otherwise manage internally
-  const currentConversationId = conversationId ?? null;
-  const setCurrentConversationId = (id: string | null) => {
-    onConversationChange?.(id);
-  };
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   
   // Get trading data using the hook
   const tradingData = useTradingData('1D');
@@ -199,7 +191,6 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
   // Load conversation history when conversationId changes
   useEffect(() => {
     if (currentConversationId) {
-      // Load existing conversation
       apiClient.getConversationHistory(currentConversationId)
         .then((response) => {
           if (response.success) {
@@ -218,9 +209,6 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
         .catch((error) => {
           console.error('Failed to load conversation history:', error);
         });
-    } else {
-      // New chat - clear messages
-      setMessages([]);
     }
   }, [currentConversationId]);
 
@@ -301,23 +289,6 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
     } catch (error) {
       console.error('Chat API error:', error);
       
-      // Handle authentication errors
-      if (error instanceof Error && (
-        error.message.includes('Please log in') || 
-        error.message.includes('AUTH_MISSING_TOKEN') ||
-        error.message.includes('AUTH_INVALID_TOKEN') ||
-        error.message.includes('AUTH_EXPIRED_TOKEN')
-      )) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to continue.",
-          variant: "destructive",
-        });
-        // Redirect to login page
-        window.location.href = '/auth';
-        return;
-      }
-      
       // Provide more helpful error messages
       let errorMessage = "Failed to generate response. Please try again.";
       if (error instanceof Error) {
@@ -346,47 +317,6 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
       title: "Copied",
       description: "Message copied to clipboard",
     });
-  };
-
-  const handleFeedback = async (messageId: string, feedback: 'positive' | 'negative') => {
-    try {
-      // Update local state immediately for responsiveness
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, userFeedback: feedback }
-            : msg
-        )
-      );
-
-      // Submit feedback to backend
-      await apiClient.submitFeedback({
-        messageId,
-        type: feedback === 'positive' ? 'THUMBS_UP' : 'THUMBS_DOWN',
-      });
-
-      toast({
-        title: feedback === 'positive' ? "Thanks!" : "Feedback noted",
-        description: feedback === 'positive' 
-          ? "Glad this helped." 
-          : "We'll use this to improve.",
-      });
-    } catch (error) {
-      console.error('Failed to submit feedback', error);
-      // Revert on error
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, userFeedback: null }
-            : msg
-        )
-      );
-      toast({
-        title: "Error",
-        description: "Failed to submit feedback",
-        variant: "destructive",
-      });
-    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -588,6 +518,12 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                     message.type === 'user' ? 'justify-end' : 'justify-start',
                     isMobile ? "gap-3 max-w-full" : "gap-6 max-w-5xl mx-auto"
                   )}>
+                    {message.type === 'assistant' && (
+                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0">
+                        <Bot className="w-4 h-4 md:w-5 md:h-5 text-primary-foreground" />
+                      </div>
+                    )}
+                    
                      <div className={`max-w-[90%] sm:max-w-[85%] lg:max-w-[75%] ${message.type === 'user' ? 'order-first' : ''}`}>
                        {/* Charts rendered OUTSIDE the message bubble for better visibility */}
                        {message.charts && message.charts.length > 0 && message.type === 'assistant' && (
@@ -619,12 +555,10 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                            messageType={message.type}
                            timestamp={message.timestamp}
                            isRead={message.isRead}
-                           userFeedback={message.userFeedback}
                            onCopy={copyMessage}
                            onRegenerate={message.type === 'assistant' ? () => regenerateMessage(message.id) : undefined}
                            onExport={exportMessage}
                            onDelete={deleteMessage}
-                           onFeedback={message.type === 'assistant' ? handleFeedback : undefined}
                          />
                        </div>
                        
@@ -641,6 +575,12 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                          />
                        )}
                      </div>
+                    
+                    {message.type === 'user' && (
+                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                        <User className="w-5 h-5 text-muted-foreground" />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

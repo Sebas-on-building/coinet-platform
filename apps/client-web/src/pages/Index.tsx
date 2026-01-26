@@ -38,9 +38,6 @@ const Index = () => {
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const { activeAgent, setActiveAgent } = useCustomAgents();
-  
-  // Conversation management
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
 
   // Enable keyboard accessibility and shortcuts
   useKeyboardAccessibility();
@@ -169,11 +166,7 @@ const Index = () => {
               {isMobile ? (
                 <MobileChatInterface className="h-full" />
               ) : (
-                <ChatInterface 
-                  activeAgent={activeAgent} 
-                  conversationId={selectedConversationId}
-                  onConversationChange={setSelectedConversationId}
-                />
+                <ChatInterface activeAgent={activeAgent} />
               )}
             </ErrorBoundary>
           </PageTransition>
@@ -238,8 +231,6 @@ const Index = () => {
               onNavigate={navigate}
               showNotifications={showNotifications}
               onToggleNotifications={() => setShowNotifications(!showNotifications)}
-              selectedConversationId={selectedConversationId}
-              onSelectConversation={setSelectedConversationId}
             />
           </nav>
           

@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Mic, Send, MoreVertical, MessageSquare, Volume2, Sparkles, Plus } from 'lucide-react';
-import coinetLogo from "@/assets/coinet-logo.png";
+import { Bot, Mic, Send, MoreVertical, MessageSquare, Volume2, Sparkles, Plus } from 'lucide-react';
 import { SoundWaveIcon } from './SoundWaveIcon';
 import { toast } from '@/hooks/use-toast';
 import { MessageActions, CompactMessageActions } from '@/components/ui/message-actions';
@@ -51,7 +50,6 @@ interface Message {
   isRead?: boolean;
   charts?: any[];
   sources?: Source[];
-  userFeedback?: 'positive' | 'negative' | null;
 }
 
 interface MobileChatInterfaceProps {
@@ -230,23 +228,6 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
       triggerHaptic('success');
     } catch (error) {
       console.error('Chat API error:', error);
-      
-      // Handle authentication errors
-      if (error instanceof Error && (
-        error.message.includes('Please log in') || 
-        error.message.includes('AUTH_MISSING_TOKEN') ||
-        error.message.includes('AUTH_INVALID_TOKEN') ||
-        error.message.includes('AUTH_EXPIRED_TOKEN')
-      )) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to continue.",
-          variant: "destructive",
-        });
-        // Redirect to login page
-        window.location.href = '/auth';
-        return;
-      }
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to generate response. Please try again.",
@@ -283,46 +264,6 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
   const copyMessage = (content: string) => {
     navigator.clipboard.writeText(content);
     toast({ title: "Copied", description: "Message copied to clipboard." });
-  };
-
-  const handleFeedback = async (messageId: string, feedback: 'positive' | 'negative') => {
-    try {
-      // Update local state immediately
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, userFeedback: feedback }
-            : msg
-        )
-      );
-
-      // Submit feedback to backend
-      await apiClient.submitFeedback({
-        messageId,
-        type: feedback === 'positive' ? 'THUMBS_UP' : 'THUMBS_DOWN',
-      });
-
-      toast({
-        title: feedback === 'positive' ? "Thanks!" : "Feedback noted",
-        description: feedback === 'positive' 
-          ? "Glad this helped." 
-          : "We'll use this to improve.",
-      });
-    } catch (error) {
-      console.error('Failed to submit feedback', error);
-      // Revert on error
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, userFeedback: null }
-            : msg
-        )
-      );
-      toast({
-        title: "Error",
-        description: "Failed to submit feedback",
-      });
-    }
   };
 
   const regenerateMessage = async (messageId: string) => {
@@ -366,26 +307,9 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
       toast({ title: "Response regenerated", description: "Generated a new response" });
     } catch (error) {
       console.error('Regenerate API error:', error);
-      
-      // Handle authentication errors
-      if (error instanceof Error && (
-        error.message.includes('Please log in') || 
-        error.message.includes('AUTH_MISSING_TOKEN') ||
-        error.message.includes('AUTH_INVALID_TOKEN') ||
-        error.message.includes('AUTH_EXPIRED_TOKEN')
-      )) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to continue.",
-          variant: "destructive",
-        });
-        window.location.href = '/auth';
-        return;
-      }
-      
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to regenerate response",
+        description: "Failed to regenerate response",
         variant: "destructive",
       });
     } finally {
@@ -477,8 +401,8 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
               /* Welcome State with Suggested Prompts */
               <div className="flex flex-col items-center justify-center h-full min-h-[30vh] space-y-6">
                 <div className="text-center space-y-4">
-                  <div className="w-12 h-12 mx-auto bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center p-1">
-                    <img src={coinetLogo} alt="Coinet AI" className="w-full h-full object-contain" />
+                  <div className="w-12 h-12 mx-auto bg-accent rounded-full flex items-center justify-center">
+                    <Bot className="w-6 h-6 text-foreground" />
                   </div>
                   <h2 className="text-2xl font-medium text-foreground">
                     How can I help you today?
@@ -512,6 +436,16 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                     "flex gap-3 max-w-full",
                     message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
                   )}>
+                    {/* Avatar */}
+                    <div className={cn(
+                      "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium",
+                      message.type === 'user' 
+                        ? "bg-primary text-primary-foreground" 
+                        : "bg-accent text-foreground"
+                    )}>
+                      {message.type === 'user' ? 'You' : 'AI'}
+                    </div>
+                    
                      {/* Message Content */}
                     <div className={cn(
                       "flex-1 min-w-0 space-y-2",
@@ -546,12 +480,10 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                           messageType={message.type}
                           timestamp={message.timestampMs}
                           isRead={message.isRead}
-                          userFeedback={message.userFeedback}
                           onCopy={copyMessage}
                           onRegenerate={message.type === 'assistant' ? () => regenerateMessage(message.id) : undefined}
                           onExport={exportMessage}
                           onDelete={deleteMessage}
-                          onFeedback={message.type === 'assistant' ? handleFeedback : undefined}
                           className="scale-90"
                         />
                       </div>
