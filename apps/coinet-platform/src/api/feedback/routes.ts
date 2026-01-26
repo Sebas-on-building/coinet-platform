@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { feedbackController } from './controller';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth } from '../../middleware/requireAuth';
 
 const router = Router();
 
