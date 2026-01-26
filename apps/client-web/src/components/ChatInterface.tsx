@@ -33,6 +33,7 @@ interface Message {
   timestamp: number;
   isRead?: boolean;
   sources?: Source[];
+  userFeedback?: 'positive' | 'negative' | null;
 }
 
 interface ChatInterfaceProps {
@@ -347,6 +348,47 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
     });
   };
 
+  const handleFeedback = async (messageId: string, feedback: 'positive' | 'negative') => {
+    try {
+      // Update local state immediately for responsiveness
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, userFeedback: feedback }
+            : msg
+        )
+      );
+
+      // Submit feedback to backend
+      await apiClient.submitFeedback({
+        messageId,
+        type: feedback === 'positive' ? 'THUMBS_UP' : 'THUMBS_DOWN',
+      });
+
+      toast({
+        title: feedback === 'positive' ? "Thanks!" : "Feedback noted",
+        description: feedback === 'positive' 
+          ? "Glad this helped." 
+          : "We'll use this to improve.",
+      });
+    } catch (error) {
+      console.error('Failed to submit feedback', error);
+      // Revert on error
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, userFeedback: null }
+            : msg
+        )
+      );
+      toast({
+        title: "Error",
+        description: "Failed to submit feedback",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     setAttachedFiles(prev => [...prev, ...files]);
@@ -577,10 +619,12 @@ export function ChatInterface({ activeAgent, conversationId, onConversationChang
                            messageType={message.type}
                            timestamp={message.timestamp}
                            isRead={message.isRead}
+                           userFeedback={message.userFeedback}
                            onCopy={copyMessage}
                            onRegenerate={message.type === 'assistant' ? () => regenerateMessage(message.id) : undefined}
                            onExport={exportMessage}
                            onDelete={deleteMessage}
+                           onFeedback={message.type === 'assistant' ? handleFeedback : undefined}
                          />
                        </div>
                        

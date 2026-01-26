@@ -91,6 +91,7 @@ export interface ChatMessage {
   charts?: ChartConfig[];
   confidence?: number;
   createdAt: string;
+  userFeedback?: 'positive' | 'negative' | 'neutral' | null;
 }
 
 // ============================================================================
@@ -436,6 +437,39 @@ class ApiClient {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ archive }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.error?.message || error.message || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  // ============================================================================
+  // RLHF FEEDBACK SYSTEM
+  // ============================================================================
+
+  /**
+   * Submit feedback on an AI message (for RLHF)
+   */
+  async submitFeedback(params: {
+    messageId: string;
+    type: 'THUMBS_UP' | 'THUMBS_DOWN' | 'TOO_LONG' | 'TOO_SHORT' | 'WRONG_DATA' | 'BAD_TONE' | 'REPETITIVE' | 'HELPFUL' | 'PERFECT';
+    category?: string;
+    severity?: string;
+    reason?: string;
+  }): Promise<{ success: boolean; feedbackId: string }> {
+    const token = TokenStorage.getToken();
+    if (!token) {
+      throw new Error('Please log in to continue.');
+    }
+
+    const response = await fetch(`${this.baseURL}/api/feedback/submit`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(params),
     });
 
     if (!response.ok) {

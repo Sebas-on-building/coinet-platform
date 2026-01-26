@@ -13,6 +13,7 @@ import { logger } from './utils/logger';
 import chatRoutes from './api/chat/routes';
 import retentionRoutes from './api/retention/routes';
 import authRoutes from './api/auth/routes';
+import feedbackRoutes from './api/feedback/routes';
 import { symbolDetector } from './services/symbol-detector';
 import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
 import { getWhaleContextForAI } from './services/whale-data';
@@ -453,6 +454,7 @@ app.get('/api/keys', async (_req: Request, res: Response) => {
 // API routes
 app.use('/api/chat', chatRoutes);
 app.use('/api/retention', retentionRoutes);
+app.use('/api/feedback', feedbackRoutes); // RLHF feedback system
 app.use('/auth', authRoutes);
 app.use('/users', authRoutes); // Also handle /users/me via same router
 

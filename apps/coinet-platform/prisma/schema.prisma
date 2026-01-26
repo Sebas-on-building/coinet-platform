@@ -64,6 +64,11 @@ model Message {
   // User actions
   regeneratedFrom String? // If regenerated, reference to original message
   userFeedback    MessageFeedback?
+  feedbackReason  String? // Why user gave this feedback
+  feedbackAt      DateTime? // When feedback was given
+
+  // RLHF detailed feedback
+  feedbackEntries FeedbackEntry[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -74,7 +79,45 @@ model Message {
   // Indexes
   @@index([conversationId, createdAt(sort: Asc)])
   @@index([conversationId])
+  @@index([userFeedback]) // For feedback analysis
   @@map("messages")
+}
+
+// ============================================================================
+// RLHF FEEDBACK TRACKING
+// ============================================================================
+
+model FeedbackEntry {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+
+  // Feedback type
+  type     FeedbackType
+  category FeedbackCategory?
+  severity FeedbackSeverity @default(MINOR)
+
+  // Feedback details
+  reason   String? // User's optional comment
+  context  Json? // Session context when feedback was given
+
+  // AI response metadata at time of feedback
+  responseMetadata Json? // Mode, template, metrics used, etc.
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  // Relationships
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([messageId])
+  @@index([userId])
+  @@index([type])
+  @@index([category])
+  @@index([createdAt(sort: Desc)])
+  @@map("feedback_entries")
 }
 
 enum MessageRole {
@@ -87,6 +130,37 @@ enum MessageFeedback {
   positive
   negative
   neutral
+}
+
+// Detailed feedback types for RLHF
+enum FeedbackType {
+  THUMBS_UP
+  THUMBS_DOWN
+  TOO_LONG
+  TOO_SHORT
+  WRONG_DATA
+  BAD_TONE
+  REPETITIVE
+  HELPFUL
+  PERFECT
+}
+
+// Feedback categories for analysis
+enum FeedbackCategory {
+  CONTENT_QUALITY      // Answer quality, accuracy
+  TONE_STYLE          // Voice, naturalness, bot-like
+  DATA_ACCURACY       // Wrong numbers, hallucination
+  RESPONSE_LENGTH     // Too verbose or too short
+  HELPFULNESS         // Actually useful or not
+  CONTEXT_AWARENESS   // Remembered context or reset
+  QUESTION_QUALITY    // Follow-up questions
+}
+
+// Severity for prioritizing improvements
+enum FeedbackSeverity {
+  CRITICAL  // User explicitly reported wrong data
+  MAJOR     // Bad tone, unhelpful, too long
+  MINOR     // Small preference, nitpick
 }
 
 // ============================================================================
@@ -294,14 +368,15 @@ model User {
   lastLoginAt DateTime?
 
   // Relationships
-  preferences   UserPreferences?
-  memories      UserMemory[]
-  portfolio     UserPortfolio[]
-  watchlist     UserWatchlist[]
-  conversations Conversation[]
-  agents        Agent[]
-  alerts        Alert[]
-  sessions      Session[]
+  preferences     UserPreferences?
+  memories        UserMemory[]
+  portfolio       UserPortfolio[]
+  watchlist       UserWatchlist[]
+  conversations   Conversation[]
+  agents          Agent[]
+  alerts          Alert[]
+  sessions        Session[]
+  feedbackEntries FeedbackEntry[]
 
   // Timestamps
   createdAt DateTime @default(now())

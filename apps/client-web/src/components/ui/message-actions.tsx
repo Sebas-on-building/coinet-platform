@@ -1,4 +1,4 @@
-import { Copy, RotateCcw, Download, Share2, Trash2, CheckCheck, Check } from "lucide-react"
+import { Copy, RotateCcw, Download, Share2, Trash2, CheckCheck, Check, ThumbsUp, ThumbsDown } from "lucide-react"
 import { Button } from "./button"
 import { cn } from "@/lib/utils"
 import {
@@ -16,10 +16,12 @@ interface MessageActionsProps {
   messageType: "user" | "assistant"
   timestamp: number
   isRead?: boolean
+  userFeedback?: 'positive' | 'negative' | null
   onCopy: (content: string) => void
   onRegenerate?: () => void
   onExport?: (messageId: string) => void
   onDelete?: (messageId: string) => void
+  onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void
   className?: string
 }
 
@@ -29,10 +31,12 @@ export function MessageActions({
   messageType,
   timestamp,
   isRead = true,
+  userFeedback,
   onCopy,
   onRegenerate,
   onExport,
   onDelete,
+  onFeedback,
   className
 }: MessageActionsProps) {
   const formatTime = (timestamp: number) => {
@@ -62,6 +66,40 @@ export function MessageActions({
           </div>
         )}
       </div>
+
+      {/* Feedback Buttons (Assistant only) */}
+      {messageType === "assistant" && onFeedback && (
+        <div className="flex items-center gap-1 mr-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onFeedback(messageId, 'positive')}
+            className={cn(
+              "h-7 w-7 p-0 rounded-lg transition-colors",
+              userFeedback === 'positive'
+                ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                : "hover:bg-muted"
+            )}
+            title="Helpful response"
+          >
+            <ThumbsUp className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onFeedback(messageId, 'negative')}
+            className={cn(
+              "h-7 w-7 p-0 rounded-lg transition-colors",
+              userFeedback === 'negative'
+                ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                : "hover:bg-muted"
+            )}
+            title="Not helpful"
+          >
+            <ThumbsDown className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
 
       {/* Quick Copy Button */}
       <Button

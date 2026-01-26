@@ -51,6 +51,11 @@ import { logger } from '../../utils/logger';
 import { generateMockResponse } from './mock-ai-response';
 import { classifyIntent, getResponseFormatInstructions, IntentClassification } from '../../services/intent-classifier';
 import { executeHandler, HandlerResult, DataSourceConfig } from '../../services/intent-handlers';
+import { 
+  enrichMessageWithTokenContext, 
+  messageContainsTokenRef,
+  TokenContext 
+} from '../../services/token-context';
 import {
   ChatMessageRequest,
   ChatMessageResponse,
@@ -159,7 +164,25 @@ export class ChatService {
       // 4.5. Fetch live context based on INTENT (optimized data fetching)
       let liveContextStr: string | undefined;
       let handlerResult: HandlerResult | null = null;
+      let tokenContextResult: { hasTokenContext: boolean; tokenContext: TokenContext | null; injectionText: string | null } | null = null;
+      
       try {
+        // 🎯 ENTITY-DRIVEN ENRICHMENT: Detect and enrich token entities FIRST
+        // This happens regardless of intent classification
+        if (messageContainsTokenRef(request.message)) {
+          logger.info('🎯 Token reference detected, enriching with token context');
+          tokenContextResult = await enrichMessageWithTokenContext(request.message);
+          
+          if (tokenContextResult.hasTokenContext) {
+            logger.info('🎯 Token context built', {
+              isResolved: tokenContextResult.tokenContext?.isResolved,
+              needsClarification: tokenContextResult.tokenContext?.needsClarification,
+              modulesAvailable: tokenContextResult.tokenContext?.coverage.available.join(', '),
+              symbol: tokenContextResult.tokenContext?.resolved?.symbol,
+            });
+          }
+        }
+        
         // Detect coins mentioned in the message for targeted news
         const detectedCoins = await symbolDetector.detectCoins(request.message);
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
@@ -271,6 +294,24 @@ export class ChatService {
             hasPreferences: !!userContext.preferences.riskTolerance,
             watchlistSize: userContext.watchlist.length
           });
+        }
+        
+        // 0.5 🎯 TOKEN CONTEXT INJECTION (Entity-Driven Enrichment)
+        // This takes priority over general market data when user mentions a specific token
+        if (tokenContextResult?.hasTokenContext && tokenContextResult.injectionText) {
+          contextParts.push(tokenContextResult.injectionText);
+          logger.info('🎯 Token context injected', {
+            symbol: tokenContextResult.tokenContext?.resolved?.symbol,
+            chain: tokenContextResult.tokenContext?.resolved?.chain,
+            modulesAvailable: tokenContextResult.tokenContext?.coverage.available,
+            needsClarification: tokenContextResult.tokenContext?.needsClarification,
+          });
+          
+          // If token context needs clarification, skip some other data fetching
+          // to keep the response focused on asking for the missing info
+          if (tokenContextResult.tokenContext?.needsClarification) {
+            logger.info('🎯 Token needs clarification - response will ask for address/chain');
+          }
         }
         
         // 1. Add market data (prefer Enterprise Pipeline with Cache - Step 1.4.1 + 1.4.2)
