@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
+import { useUser } from '@clerk/nextjs';
 import { useTheme } from 'next-themes';
 import {
   ArrowPathIcon,
@@ -69,7 +69,7 @@ const AdvancedChartContainer: React.FC<AdvancedChartContainerProps> = ({
   className,
   onRealtimeUpdate
 }) => {
-  const { data: session } = useSession();
+  const { user } = useUser();
   const { resolvedTheme } = useTheme();
 
   // State for chart configuration
@@ -91,9 +91,9 @@ const AdvancedChartContainer: React.FC<AdvancedChartContainerProps> = ({
   const [isChartTypeDropdownOpen, setIsChartTypeDropdownOpen] = useState(false);
   const [isTimeframeDropdownOpen, setIsTimeframeDropdownOpen] = useState(false);
 
-  // Load saved chart configuration when session changes
+  // Load saved chart configuration when user changes
   useEffect(() => {
-    if (!session?.user) return;
+    if (!user) return;
 
     const loadSavedConfig = async () => {
       try {
@@ -124,11 +124,11 @@ const AdvancedChartContainer: React.FC<AdvancedChartContainerProps> = ({
     };
 
     loadSavedConfig();
-  }, [session, timeframe, onTimeframeChange]);
+  }, [user, timeframe, onTimeframeChange]);
 
   // Save chart configuration when it changes
   const saveChartConfig = useCallback(async () => {
-    if (!session?.user) return;
+    if (!user) return;
 
     const config: Partial<ChartConfig> = {
       symbol,
@@ -161,7 +161,7 @@ const AdvancedChartContainer: React.FC<AdvancedChartContainerProps> = ({
       console.error('Error saving chart configuration:', error);
     }
   }, [
-    session,
+    user,
     symbol,
     timeframe,
     chartType,
@@ -174,14 +174,14 @@ const AdvancedChartContainer: React.FC<AdvancedChartContainerProps> = ({
 
   // Debounced save of chart configuration
   useEffect(() => {
-    if (!session?.user) return;
+    if (!user) return;
 
     const timer = setTimeout(() => {
       saveChartConfig();
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [timeframe, chartType, indicators, showVolume, showGrid, saveChartConfig, session]);
+  }, [timeframe, chartType, indicators, showVolume, showGrid, saveChartConfig, user]);
 
   // Handle indicator actions
   const handleToggleIndicator = (id: string, active: boolean) => {
