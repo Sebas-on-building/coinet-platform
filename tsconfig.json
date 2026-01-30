@@ -37,7 +37,7 @@
         "./src/types/*"
       ],
       "@/services/*": [
-        "./services/*"
+        "./src/services/*"
       ],
       "@coinet/*": [
         "./packages/*/src"
