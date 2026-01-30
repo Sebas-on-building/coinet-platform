@@ -103,7 +103,7 @@ async function callGrokApi(
   options: GrokPass1Options
 ): Promise<GrokApiResponse> {
   const apiKey = options.grokApiKey || process.env.GROK_API_KEY || process.env.XAI_API_KEY;
-  const model = options.grokModel || 'grok-3-mini';
+  const model = options.grokModel || 'grok-4-fast-non-reasoning';
   const baseUrl = options.grokBaseUrl || 'https://api.x.ai/v1';
   const timeoutMs = options.timeoutMs || DEFAULT_ENFORCEMENT_OPTIONS.timeoutMs;
 

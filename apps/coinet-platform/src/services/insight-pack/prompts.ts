@@ -55,7 +55,7 @@ export type ControlledTopic = typeof CONTROLLED_TOPICS[number];
 // CANONICAL INSIGHT SCHEMA (v1)
 // ============================================================================
 
-const CANONICAL_SCHEMA = `{
+export const CANONICAL_SCHEMA = `{
   "meta": {
     "version": "${INSIGHT_PACK_VERSION}",
     "engine": "grok|gemini",
@@ -665,18 +665,4 @@ export const COMMON_EVIDENCE_PATHS = {
   ],
 };
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  GROK_SYSTEM_PROMPT,
-  GEMINI_SYSTEM_PROMPT,
-  CANONICAL_SCHEMA,
-  buildUserMessage,
-  buildGeminiUserMessage,
-  buildRetryPrompt,
-  SCHEMA_SUMMARY,
-  COMMON_EVIDENCE_PATHS,
-  CONTROLLED_TOPICS,
-};
+// All exports are inline (export const, export function, export interface)

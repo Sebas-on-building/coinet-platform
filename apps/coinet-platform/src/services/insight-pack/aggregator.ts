@@ -830,15 +830,4 @@ function calculateFinalConfidence(
   return confidence;
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  normalizeTopic,
-  TOPIC_SYNONYMS,
-  MODULE_TRUST_WEIGHTS,
-  calculateTrustScore,
-  calculateDisagreement,
-  calculateFinalConfidence,
-};
+// All exports are inline (export function, export const, export type)

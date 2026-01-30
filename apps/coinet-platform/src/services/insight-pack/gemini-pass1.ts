@@ -101,7 +101,7 @@ async function callGeminiApi(
   const apiKey = options.geminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
   const model = options.geminiModel || 'gemini-2.5-flash';
   const baseUrl = options.geminiBaseUrl || 'https://generativelanguage.googleapis.com/v1beta';
-  const timeoutMs = options.timeoutMs || 2200;  // Slightly longer for Gemini
+  const timeoutMs = options.timeoutMs || 15000;  // 15s for LLM API calls
 
   if (!apiKey) {
     return {

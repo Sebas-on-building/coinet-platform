@@ -196,9 +196,9 @@ export async function executeDualEnginePass1(
   // DUAL mode: Run both in parallel
   logger.info('🔄 Dual Engine: Starting parallel execution');
 
-  // Create timeout-wrapped promises
-  const grokTimeoutMs = options.grokTimeoutMs || 1800;
-  const geminiTimeoutMs = options.geminiTimeoutMs || 2200;
+  // Create timeout-wrapped promises (generous timeouts for LLM APIs)
+  const grokTimeoutMs = options.grokTimeoutMs || 15000;    // 15s for Grok
+  const geminiTimeoutMs = options.geminiTimeoutMs || 15000; // 15s for Gemini
 
   const grokPromise = executeWithTimeout(
     executeGrokPass1(commonInput as GrokPass1Input, options.grokOptions),

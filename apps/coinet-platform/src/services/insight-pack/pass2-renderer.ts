@@ -464,14 +464,4 @@ export function validateRenderedOutput(output: string): {
   };
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  PASS2_SYSTEM_PROMPT,
-  buildPass2UserMessage,
-  executePass2Renderer,
-  renderFallback,
-  validateRenderedOutput,
-};
+// All exports are inline (export const, export function, export interface)

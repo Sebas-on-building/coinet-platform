@@ -433,6 +433,4 @@ export function detectUserTalk(text: string): { clean: boolean; violations: stri
 
 export {
   InsightPackV1Schema as InsightPackSchema,
-  NUMERIC_LITERAL_PATTERNS,
-  USER_TALK_PATTERNS,
 };
