@@ -45,10 +45,6 @@ export default {
     // Temporarily ignore TypeScript errors to get auth working
     ignoreBuildErrors: true,
   },
-  eslint: {
-    // Temporarily ignore ESLint errors during build
-    ignoreDuringBuilds: true,
-  },
   // Disable Turbopack, use webpack for more lenient builds
   // turbopack: {
   //   root: process.cwd(),
