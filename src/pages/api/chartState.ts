@@ -6,8 +6,7 @@
  */
 
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from './auth/[...nextauth]';
+import { getAuth } from '@clerk/nextjs/server';
 import { PrismaClient } from '@prisma/client';
 import { ChartConfig } from '@/lib/indicators/types';
 import { z } from 'zod';
@@ -63,15 +62,13 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Get the authenticated user
-  const session = await getServerSession(req, res, authOptions);
+  // Get the authenticated user from Clerk
+  const { userId } = getAuth(req);
 
   // If user is not authenticated, return 401
-  if (!session?.user?.email) {
+  if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-
-  const userId = (session.user as any).id;
 
   // Handle different HTTP methods
   switch (req.method) {

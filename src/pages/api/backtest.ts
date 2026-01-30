@@ -6,8 +6,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from './auth/[...nextauth]';
+import { getAuth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { fetchHistoricalData, runBacktest, BacktestConfig, BacktestResult } from '@/lib/backtester';
 
@@ -47,8 +46,8 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Get authenticated user if authentication is enabled
-  const session = await getServerSession(req, res, authOptions);
+  // Get authenticated user from Clerk
+  const { userId } = getAuth(req);
 
   // Validate input
   const parseResult = BacktestRequestSchema.safeParse(req.body);
