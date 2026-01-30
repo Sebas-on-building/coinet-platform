@@ -6,7 +6,7 @@ import {
 } from "@/services/onChainNewsService";
 import { VerifiedNewsItem } from "@/components/news/VerifiedNewsItem";
 import { ProjectNewsManager } from "@/components/news/ProjectNewsManager";
-import { Suspense } from "react";
+import React, { Suspense } from "react";
 import { SkeletonLoader } from '@/design-system/components/atoms/SkeletonLoader';
 import { ErrorMessage } from '@/design-system/components/atoms/ErrorMessage';
 import { FocusTrap } from '@/design-system/components/organisms/FocusTrap';
