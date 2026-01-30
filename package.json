@@ -5,8 +5,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "turbo build",
-    "dev": "next dev --webpack",
+    "build": "next build",
+    "build:turbo": "turbo build",
+    "start": "next start",
+    "dev": "next dev",
     "dev:all": "turbo dev",
     "lint": "turbo lint",
     "test": "turbo test",
