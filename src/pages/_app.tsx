@@ -2,31 +2,34 @@ import '../styles/globals.css';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { AppProps } from 'next/app';
 import { AuthUIProvider } from "@/contexts/AuthUIContext";
-import { AccountLinkingModal } from "@/components/auth/AccountLinkingModal";
-import { SessionProvider, useSession } from "next-auth/react";
+import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/router";
 import React from "react";
 
+// Public routes that don't require authentication
+const publicRoutes = ['/auth/signin', '/auth/signup', '/', '/sign-in', '/sign-up'];
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { data: session, status } = useSession();
   const router = useRouter();
-  React.useEffect(() => {
-    if (status === "unauthenticated" && router.pathname !== "/auth/signin") {
-      router.replace("/auth/signin");
-    }
-  }, [status, router]);
-  if (status === "loading")
-    return (
-      <div className="min-h-screen flex items-center justify-center text-lg">
-        Loading...
-      </div>
-    );
-  return <>{children}</>;
+  const isPublicRoute = publicRoutes.some(route => router.pathname.startsWith(route));
+
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
+
+  return (
+    <>
+      <SignedIn>{children}</SignedIn>
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+    </>
+  );
 }
 
 export default function App({ Component, pageProps, router }: AppProps) {
   return (
-    <SessionProvider session={pageProps.session}>
+    <ClerkProvider>
       <AuthUIProvider>
         <AuthGuard>
           <div className="min-h-screen font-sans bg-background text-text flex items-center justify-center">
@@ -43,9 +46,8 @@ export default function App({ Component, pageProps, router }: AppProps) {
               </motion.div>
             </AnimatePresence>
           </div>
-          <AccountLinkingModal onConfirm={() => window.location.reload()} />
         </AuthGuard>
       </AuthUIProvider>
-    </SessionProvider>
+    </ClerkProvider>
   );
 }

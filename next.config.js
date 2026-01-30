@@ -19,7 +19,7 @@ export default {
           // Content Security Policy
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://clerk.accounts.dev; style-src 'self' 'unsafe-inline'; img-src * data: blob:; connect-src * https://*.clerk.accounts.dev; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.clerk.accounts.dev;"
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://clerk.accounts.dev; style-src 'self' 'unsafe-inline'; img-src * data: blob:; connect-src * https://*.clerk.accounts.dev wss://*.clerk.accounts.dev; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://*.clerk.accounts.dev; worker-src 'self' blob:; child-src 'self' blob: https://*.clerk.accounts.dev;"
           },
           // Prevent clickjacking
           { key: 'X-Frame-Options', value: 'DENY' },

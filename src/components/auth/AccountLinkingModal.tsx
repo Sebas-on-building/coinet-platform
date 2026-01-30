@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConfettiBurst } from "../ui/ConfettiBurst";
 import { CheckmarkSuccess } from "../ui/CheckmarkSuccess";
@@ -8,15 +8,8 @@ import { SoundFeedback } from "../ui/SoundFeedback";
 
 interface AccountLinkingModalProps {
   onConfirm: () => void;
-}
-
-// Extend session user type for custom properties
-interface LinkingSessionUser {
-  name?: string | null;
-  email?: string | null;
-  image?: string | null;
-  provider?: string;
   needsLinkingConfirmation?: boolean;
+  provider?: string;
 }
 
 const providerIcons: Record<string, JSX.Element> = {
@@ -62,10 +55,11 @@ const providerIcons: Record<string, JSX.Element> = {
 
 export const AccountLinkingModal: React.FC<AccountLinkingModalProps> = ({
   onConfirm,
+  needsLinkingConfirmation = false,
+  provider,
 }) => {
-  const { data: session } = useSession();
-  const user = session?.user as LinkingSessionUser | undefined;
-  const provider = user?.provider;
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [showConfetti, setShowConfetti] = useState(false);
   const [showCheckmark, setShowCheckmark] = useState(false);
   const [shake, setShake] = useState(false);
@@ -74,13 +68,13 @@ export const AccountLinkingModal: React.FC<AccountLinkingModalProps> = ({
   >(null);
 
   useEffect(() => {
-    if (user?.needsLinkingConfirmation) {
+    if (needsLinkingConfirmation) {
       setPlaySound("link");
       // analytics.track('account_linking_modal_shown', { provider });
     }
-  }, [user?.needsLinkingConfirmation, provider]);
+  }, [needsLinkingConfirmation, provider]);
 
-  if (!user?.needsLinkingConfirmation) return null;
+  if (!needsLinkingConfirmation) return null;
 
   const handleConfirm = () => {
     setShowConfetti(true);
@@ -131,9 +125,9 @@ export const AccountLinkingModal: React.FC<AccountLinkingModalProps> = ({
             </p>
             <div className="flex gap-4 items-center">
               {provider && providerIcons[provider]}
-              {user?.email && (
+              {user?.primaryEmailAddress?.emailAddress && (
                 <span className="text-gray-700 dark:text-gray-200 font-semibold">
-                  {user.email}
+                  {user.primaryEmailAddress.emailAddress}
                 </span>
               )}
             </div>

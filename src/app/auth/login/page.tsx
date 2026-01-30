@@ -2,73 +2,81 @@
 
 import React from 'react';
 import { SignIn } from '@clerk/nextjs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <div className="w-full max-w-[440px] space-y-6">
-        {/* Minimal Logo Header */}
-        <div className="flex items-center justify-center space-x-2">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <span className="text-2xl font-bold text-white">C</span>
-          </div>
-          <span className="text-xl font-semibold text-foreground">Coinet AI</span>
+    <div className="w-full max-w-md">
+      {/* Mobile logo */}
+      <div className="flex lg:hidden items-center justify-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl">
+          <span className="text-2xl font-bold text-white">C</span>
         </div>
-
-        {/* Auth Card */}
-        <Card className="border-border/40 shadow-lg bg-card">
-          <CardHeader className="space-y-1 pb-6">
-            <CardTitle className="text-2xl font-bold">Sign in</CardTitle>
-            <CardDescription className="text-base">
-              Sign in to your account
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <SignIn
-              appearance={{
-                elements: {
-                  rootBox: 'w-full',
-                  card: 'shadow-none border-0 bg-transparent',
-                  headerTitle: 'hidden',
-                  headerSubtitle: 'hidden',
-                  socialButtonsBlockButton: 'h-12 border border-border bg-transparent hover:bg-accent rounded-md transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] w-full',
-                  socialButtonsBlockButtonText: 'font-medium',
-                  dividerLine: 'bg-border/20',
-                  dividerText: 'text-xs uppercase text-muted-foreground font-medium bg-card px-4',
-                  formFieldLabel: 'text-sm font-medium',
-                  formFieldInput: 'h-12 rounded-md border-input bg-background focus-visible:ring-2 focus-visible:ring-primary',
-                  formButtonPrimary: 'h-12 w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]',
-                  footerActionLink: 'text-primary hover:text-primary/90 font-semibold transition-colors',
-                  footerActionText: 'text-muted-foreground',
-                },
-                layout: {
-                  socialButtonsPlacement: 'top',
-                  showOptionalFields: false,
-                },
-              }}
-              routing="path"
-              path="/auth/login"
-              signUpUrl="/auth/register"
-              forceRedirectUrl="/dashboard"
-              fallbackRedirectUrl="/dashboard"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <div className="text-center text-sm text-muted-foreground">
-          By continuing, you agree to our{' '}
-          <Link href="/terms" className="underline hover:text-foreground transition-colors">
-            Terms of Service
-          </Link>
-          {' '}and{' '}
-          <Link href="/privacy" className="underline hover:text-foreground transition-colors">
-            Privacy Policy
-          </Link>
+        <span className="text-2xl font-bold text-white">Coinet</span>
+      </div>
+      
+      {/* Auth Card */}
+      <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-3xl p-8 shadow-2xl">
+        <div className="space-y-2 mb-8">
+          <h2 className="text-3xl font-bold text-white">Welcome back</h2>
+          <p className="text-slate-400">
+            Sign in to access your dashboard
+          </p>
         </div>
+        
+        <SignIn
+          appearance={{
+            elements: {
+              rootBox: 'w-full',
+              card: 'shadow-none border-0 bg-transparent p-0 m-0',
+              headerTitle: 'hidden',
+              headerSubtitle: 'hidden',
+              socialButtonsBlockButton: 
+                'h-12 bg-slate-800/80 border border-slate-600/50 text-white hover:bg-slate-700 hover:border-slate-500 rounded-xl transition-all duration-200 w-full font-medium',
+              socialButtonsBlockButtonText: 'font-medium text-slate-200',
+              socialButtonsProviderIcon: 'w-5 h-5',
+              dividerLine: 'bg-slate-600/50',
+              dividerText: 'text-xs uppercase text-slate-400 font-medium px-4 bg-slate-900/80',
+              formFieldLabel: 'text-sm font-medium text-slate-300 mb-2',
+              formFieldInput: 
+                'h-12 rounded-xl border-slate-600/50 bg-slate-800/80 text-white placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all',
+              formButtonPrimary: 
+                'h-12 w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-blue-500/25',
+              footerActionLink: 'text-blue-400 hover:text-blue-300 font-semibold transition-colors',
+              footerActionText: 'text-slate-400',
+              footer: 'bg-transparent',
+              formFieldInputShowPasswordButton: 'text-slate-400 hover:text-white',
+              identityPreviewEditButton: 'text-blue-400 hover:text-blue-300',
+              formResendCodeLink: 'text-blue-400 hover:text-blue-300',
+              alert: 'bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl',
+              alertText: 'text-red-400',
+              formFieldError: 'text-red-400 text-sm mt-1',
+              otpCodeFieldInput: 'bg-slate-800/80 border-slate-600/50 text-white rounded-lg',
+            },
+            layout: {
+              socialButtonsPlacement: 'top',
+              showOptionalFields: false,
+            },
+          }}
+          routing="path"
+          path="/auth/login"
+          signUpUrl="/auth/register"
+          forceRedirectUrl="/dashboard"
+          fallbackRedirectUrl="/dashboard"
+        />
+      </div>
+      
+      {/* Footer */}
+      <div className="text-center text-sm text-slate-500 mt-8">
+        By continuing, you agree to our{' '}
+        <Link href="/terms" className="text-slate-400 hover:text-white underline underline-offset-2 transition-colors">
+          Terms
+        </Link>
+        {' '}and{' '}
+        <Link href="/privacy" className="text-slate-400 hover:text-white underline underline-offset-2 transition-colors">
+          Privacy Policy
+        </Link>
       </div>
     </div>
   );
-} 
+}
