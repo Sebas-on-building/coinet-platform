@@ -26,7 +26,7 @@ import {
 } from './types';
 import {
   GEMINI_SYSTEM_PROMPT,
-  buildUserMessage,
+  buildGeminiUserMessage,
   buildRetryPrompt,
   UserMessageParams,
 } from './prompts';
@@ -81,45 +81,6 @@ export interface GeminiPass1Options extends Partial<EnforcementOptions> {
   geminiModel?: string;
   geminiBaseUrl?: string;
 }
-
-// ============================================================================
-// GEMINI-SPECIFIC SYSTEM PROMPT ADDITIONS
-// ============================================================================
-
-const GEMINI_ROLE_ADDITIONS = `
-═══════════════════════════════════════════════════════════════════════════════
-GEMINI PASS-1B ROLE (Counter-Thesis Engine)
-═══════════════════════════════════════════════════════════════════════════════
-
-You are the **second opinion** in a dual-engine research system.
-Your specific role is:
-
-1. COUNTER-THESIS
-   • Look for alternative explanations that Grok might miss
-   • Challenge the obvious narrative
-   • Consider bearish angles if bullish seems obvious (and vice versa)
-
-2. COVERAGE COMPLETION
-   • Heavily weight modules that might be overlooked:
-     - news.data.items (specific headlines)
-     - sentiment.data.label and sentiment.data.score
-     - onchain.data.whale_net_flow_24h
-   • If key modules are missing, make that prominent in unknowns
-
-3. MACRO FRAMING
-   • If market_snapshot is available, frame the token in macro context
-   • Reference BTC dominance, fear/greed, altcoin season if relevant
-
-4. EXPLICIT GAPS
-   • Be more aggressive about listing unknowns
-   • Note specific evidence you wish you had
-
-You must still follow ALL the same rules:
-  • JSON-only output
-  • Evidence pointers required
-  • No numbers in text
-  • Analytical language only
-`;
 
 // ============================================================================
 // GEMINI API CALL
@@ -315,10 +276,10 @@ export async function executeGeminiPass1(
     };
   }
 
-  // Build combined system prompt with Gemini role additions
-  const fullSystemPrompt = GEMINI_SYSTEM_PROMPT + GEMINI_ROLE_ADDITIONS;
+  // Use Gemini system prompt (already includes counter-thesis role)
+  const fullSystemPrompt = GEMINI_SYSTEM_PROMPT;
 
-  // Build initial prompt
+  // Build initial prompt with Gemini-specific focus areas
   const userMessageParams: UserMessageParams = {
     userMessage: input.userMessage,
     intent: input.intent,
@@ -335,9 +296,9 @@ export async function executeGeminiPass1(
   while (attempt <= maxRetries) {
     attempt++;
 
-    // Build prompt (with errors for retries)
+    // Build prompt (with errors for retries) - use Gemini-specific message builder
     const userPrompt = attempt === 1
-      ? buildUserMessage(userMessageParams)
+      ? buildGeminiUserMessage(userMessageParams)
       : buildRetryPrompt(
           userMessageParams,
           {
@@ -502,5 +463,4 @@ export function createMissingGeminiInsightPack(
 export {
   validateEvidencePackForPass1,
   callGeminiApi,
-  GEMINI_ROLE_ADDITIONS,
 };

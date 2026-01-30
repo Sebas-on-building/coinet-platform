@@ -179,7 +179,6 @@ export {
 export {
   executeGeminiPass1,
   createMissingGeminiInsightPack,
-  GEMINI_ROLE_ADDITIONS,
   type GeminiPass1Input,
   type GeminiPass1Result,
   type GeminiPass1Failure,
@@ -237,6 +236,8 @@ export {
 
 export {
   GEMINI_SYSTEM_PROMPT,
+  CANONICAL_SCHEMA,
+  buildGeminiUserMessage,
   COMMON_EVIDENCE_PATHS,
   CONTROLLED_TOPICS,
   type ControlledTopic,
