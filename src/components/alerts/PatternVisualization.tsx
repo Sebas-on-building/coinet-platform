@@ -21,7 +21,7 @@ import {
   Switch,
   Select
 } from '@chakra-ui/react';
-import { PlayIcon, PauseIcon, RefreshIcon } from '@chakra-ui/icons';
+import { Play as PlayIcon, Pause as PauseIcon, RefreshCw as RefreshIcon } from 'lucide-react';
 
 interface PatternState {
   patternId: string;

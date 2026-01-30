@@ -13,7 +13,7 @@ import {
   Card,
   CardBody
 } from '@chakra-ui/react';
-import { AddIcon, DeleteIcon } from '@chakra-ui/icons';
+import { Plus as AddIcon, Trash2 as DeleteIcon } from 'lucide-react';
 import type {
   ASTNode,
   SignalConditionNode,

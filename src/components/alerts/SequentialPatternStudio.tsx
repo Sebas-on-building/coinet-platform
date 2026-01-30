@@ -30,7 +30,7 @@ import {
   Tab,
   TabPanel
 } from '@chakra-ui/react';
-import { AddIcon, DeleteIcon, ViewIcon } from '@chakra-ui/icons';
+import { Plus as AddIcon, Trash2 as DeleteIcon, Eye as ViewIcon } from 'lucide-react';
 
 interface SequentialPattern {
   id: string;

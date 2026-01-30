@@ -25,7 +25,7 @@ import {
   Collapse,
   IconButton
 } from '@chakra-ui/react';
-import { ChevronDownIcon, ChevronUpIcon, InfoIcon } from '@chakra-ui/icons';
+import { ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon, Info as InfoIcon } from 'lucide-react';
 
 interface SignalSelectorProps {
   availableSignals: string[];
