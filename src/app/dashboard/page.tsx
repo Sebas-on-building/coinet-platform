@@ -2,9 +2,6 @@
 "use client";
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import dynamic from "next/dynamic";
-import { WidthProvider, Responsive } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
 import { widgetRegistry } from "@/components/dashboard/widgets/registry";
 import { motion, AnimatePresence } from "framer-motion";
 import MarketMoversPanel from "@/components/dashboard/MarketMoversPanel";
@@ -40,8 +37,6 @@ import { FocusTrap } from '@/design-system/components/organisms/FocusTrap';
 import { RippleButton } from '../../components/ui/Button/RippleButton';
 import { AnimatedCard } from '../../components/ui/Card/AnimatedCard';
 import { AnimatedModal } from '../../components/ui/Modal/AnimatedModal';
-
-const ResponsiveGridLayout = WidthProvider(Responsive);
 
 function WidgetConfigModal({
   widget,
