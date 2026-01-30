@@ -43,7 +43,6 @@
     "pnpm": ">=8.0.0"
   },
   "dependencies": {
-    "@chakra-ui/icons": "^2.2.4",
     "@chakra-ui/react": "^3.31.0",
     "@clerk/nextjs": "^6.36.5",
     "@emotion/react": "^11.14.0",

@@ -24,7 +24,7 @@ import {
   Switch,
   Tooltip
 } from '@chakra-ui/react';
-import { EditIcon, DeleteIcon, ViewIcon } from '@chakra-ui/icons';
+import { Edit as EditIcon, Trash2 as DeleteIcon, Eye as ViewIcon } from 'lucide-react';
 
 interface AlertRule {
   id: string;
