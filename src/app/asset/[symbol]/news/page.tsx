@@ -6,9 +6,8 @@ import {
 } from "@/services/onChainNewsService";
 import { VerifiedNewsItem } from "@/components/news/VerifiedNewsItem";
 import { ProjectNewsManager } from "@/components/news/ProjectNewsManager";
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import { SkeletonLoader } from '@/design-system/components/atoms/SkeletonLoader';
-import { ErrorMessage } from '@/design-system/components/atoms/ErrorMessage';
 import { FocusTrap } from '@/design-system/components/organisms/FocusTrap';
 import { A11yAnnouncer } from '@/design-system/components/atoms/A11yAnnouncer';
 import { NetworkStatusBanner } from '@/design-system/components/organisms/NetworkStatusBanner';
@@ -57,23 +56,6 @@ async function getVerifiedNews() {
   }
 }
 
-// ErrorBoundary for widgets
-class ErrorBoundary extends React.Component<{ children: React.ReactNode, fallback: React.ReactNode }, { hasError: boolean }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
-
 export default async function AssetNewsPage({ params }: PageParams) {
   const { symbol } = params;
 
@@ -91,28 +73,20 @@ export default async function AssetNewsPage({ params }: PageParams) {
         </FocusTrap>
       </Suspense>
 
-      <ErrorBoundary
-        fallback={<ErrorMessage message="Failed to load verified news" code={500} />}
-      >
-        <Suspense fallback={<SkeletonLoader variant="rect" width="100%" height={120} />}>
-          <FocusTrap>
-            <VerifiedNewsItem news={await getVerifiedNews()} />
-          </FocusTrap>
-        </Suspense>
-      </ErrorBoundary>
+      <Suspense fallback={<SkeletonLoader variant="rect" width="100%" height={120} />}>
+        <FocusTrap>
+          <VerifiedNewsItem news={await getVerifiedNews()} />
+        </FocusTrap>
+      </Suspense>
 
-      <ErrorBoundary
-        fallback={<ErrorMessage message="Failed to load project news manager" code={500} />}
-      >
-        <Suspense fallback={<SkeletonLoader variant="rect" width="100%" height={120} />}>
-          <FocusTrap>
-            <ProjectNewsManager
-              projectAddress="0xProjectAddress"
-              privateKey="privateKey"
-            />
-          </FocusTrap>
-        </Suspense>
-      </ErrorBoundary>
+      <Suspense fallback={<SkeletonLoader variant="rect" width="100%" height={120} />}>
+        <FocusTrap>
+          <ProjectNewsManager
+            projectAddress="0xProjectAddress"
+            privateKey="privateKey"
+          />
+        </FocusTrap>
+      </Suspense>
     </div>
   );
 }
