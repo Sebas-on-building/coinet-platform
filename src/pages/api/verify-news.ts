@@ -33,7 +33,7 @@ class NewsVerificationService {
     try {
       const response = await this.openai.completions.create({
         model: "gpt-3.5-turbo-instruct",
-        prompt: `Analyze if the following text is AI-generated:\n${text}\n\nProvide a score between 0 and 1:",
+        prompt: `Analyze if the following text is AI-generated:\n${text}\n\nProvide a score between 0 and 1:`,
         max_tokens: 100
       });
       return {
