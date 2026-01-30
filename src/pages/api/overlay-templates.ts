@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from './auth/[...nextauth]';
+import { getAuth } from '@clerk/nextjs/server';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -51,14 +50,16 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Get user session for authentication
-  const session = await getServerSession(req, res, authOptions);
-  const user = session?.user as User | undefined;
+  // Get user from Clerk
+  const { userId } = getAuth(req);
 
   // Most endpoints require authentication
-  if (!user && req.method !== 'GET') {
+  if (!userId && req.method !== 'GET') {
     return res.status(401).json({ error: 'Authentication required' });
   }
+
+  // Create user object from Clerk userId
+  const user: User | undefined = userId ? { id: userId } : undefined;
 
   // Handle different HTTP methods
   switch (req.method) {

@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
-import { PrismaClient } from "../../../generated/prisma-client";
+import { getAuth } from "@clerk/nextjs/server";
+import { PrismaClient } from "@prisma/client";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Parser as Json2csvParser } from "json2csv";
 
@@ -14,14 +13,8 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
-  const session = await getServerSession(req, res, authOptions);
-  if (!session || !session.user?.email) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-  });
-  if (!user) {
+  const { userId } = getAuth(req);
+  if (!userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   if (req.method === "POST" && req.query.action === "revoke") {
@@ -30,7 +23,7 @@ export default async function handler(
     const consent = await prisma.consent.findUnique({
       where: { id: consentId },
     });
-    if (!consent || consent.userId !== user.id)
+    if (!consent || consent.userId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     const updated = await prisma.consent.update({
       where: { id: consentId },
@@ -45,7 +38,7 @@ export default async function handler(
     const consent = await prisma.consent.findUnique({
       where: { id: consentId },
     });
-    if (!consent || consent.userId !== user.id)
+    if (!consent || consent.userId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     let perScopeStatus: PerScopeStatus = (consent.perScopeStatus || {}) as PerScopeStatus;
     if (typeof perScopeStatus === "string")
@@ -74,7 +67,7 @@ export default async function handler(
     });
     await prisma.auditLog.create({
       data: {
-        userId: user.id,
+        userId: userId,
         event: "SCOPE_REVOKE",
         provider: consent.provider,
         scopes: scope,
@@ -91,7 +84,7 @@ export default async function handler(
     const consent = await prisma.consent.findUnique({
       where: { id: consentId },
     });
-    if (!consent || consent.userId !== user.id)
+    if (!consent || consent.userId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     let perScopeStatus: PerScopeStatus = (consent.perScopeStatus || {}) as PerScopeStatus;
     if (typeof perScopeStatus === "string")
@@ -107,7 +100,7 @@ export default async function handler(
     });
     await prisma.auditLog.create({
       data: {
-        userId: user.id,
+        userId: userId,
         event: "SCOPE_RESTORE",
         provider: consent.provider,
         scopes: scope,
@@ -120,15 +113,15 @@ export default async function handler(
   if (req.method === "GET" && req.query.action === "export") {
     const type = req.query.type || "json";
     const consents = await prisma.consent.findMany({
-      where: { userId: user.id },
+      where: { userId: userId },
     });
     const auditLogs = await prisma.auditLog.findMany({
-      where: { userId: user.id },
+      where: { userId: userId },
     });
 
     await prisma.auditLog.create({
       data: {
-        userId: user.id,
+        userId: userId,
         event: "EXPORT",
         provider: null,
         scopes: null,
@@ -167,7 +160,7 @@ export default async function handler(
   }
   // Default: GET all consents
   const consents = await prisma.consent.findMany({
-    where: { userId: user.id },
+    where: { userId: userId },
   });
   return res.status(200).json(consents);
 }

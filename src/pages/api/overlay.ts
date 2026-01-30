@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from './auth/[...nextauth]';
+import { getAuth } from '@clerk/nextjs/server';
 import { cachedFetch, clearCacheItem } from '@/lib/cache';
 import { fetchGlassnodeSeries } from '@/lib/datasources/glassnode';
 import { fetchFredSeries } from '@/lib/datasources/fred';
@@ -71,9 +70,9 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Get user session for authentication
-  const session = await getServerSession(req, res, authOptions);
-  const user = session?.user as User | undefined;
+  // Get user from Clerk
+  const { userId } = getAuth(req);
+  const user: User | undefined = userId ? { id: userId } : undefined;
 
   try {
     // Parse and validate request body
@@ -89,7 +88,7 @@ export default async function handler(
 
     // Check subscription requirements for certain data sources
     // This is a simplified example - in a real app, you'd have more robust subscription logic
-    if (!user && seriesRequests.some(s => s.source === 'glassnode' || s.source === 'fred')) {
+    if (!userId && seriesRequests.some(s => s.source === 'glassnode' || s.source === 'fred')) {
       return res.status(401).json({
         error: 'Authentication required',
         message: 'You must be logged in to access this data source'

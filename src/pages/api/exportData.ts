@@ -6,8 +6,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from './auth/[...nextauth]';
+import { getAuth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { fetchHistoricalData } from '@/lib/backtester';
@@ -38,8 +37,8 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Get authenticated user if authentication is enabled
-  const session = await getServerSession(req, res, authOptions);
+  // Get authenticated user from Clerk
+  const { userId } = getAuth(req);
 
   // Validate query parameters
   const parseResult = ExportQuerySchema.safeParse(req.query);
