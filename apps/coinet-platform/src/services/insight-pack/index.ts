@@ -241,3 +241,21 @@ export {
   CONTROLLED_TOPICS,
   type ControlledTopic,
 } from './prompts';
+
+// ============================================================================
+// PASS-2 RENDERER
+// ============================================================================
+
+export {
+  PASS2_SYSTEM_PROMPT,
+  buildPass2UserMessage,
+  executePass2Renderer,
+  renderFallback,
+  validateRenderedOutput,
+  type Pass2Input,
+  type Pass2Result,
+  type Pass2Failure,
+  type Pass2Output,
+  type Pass2Options,
+  type Pass2UserMessageParams,
+} from './pass2-renderer';
