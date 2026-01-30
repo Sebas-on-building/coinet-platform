@@ -171,3 +171,73 @@ export {
   type Pass1MissingEvent,
   type InsightPackMetrics,
 } from './observability';
+
+// ============================================================================
+// GEMINI PASS-1B ORCHESTRATOR
+// ============================================================================
+
+export {
+  executeGeminiPass1,
+  createMissingGeminiInsightPack,
+  GEMINI_ROLE_ADDITIONS,
+  type GeminiPass1Input,
+  type GeminiPass1Result,
+  type GeminiPass1Failure,
+  type GeminiPass1Output,
+  type GeminiPass1Options,
+} from './gemini-pass1';
+
+// ============================================================================
+// DUAL ENGINE ORCHESTRATOR
+// ============================================================================
+
+export {
+  executeDualEnginePass1,
+  determineResearchMode,
+  getValidInsightPacks,
+  canAggregate,
+  getSingleInsightPack,
+  extractTelemetry,
+  DUAL_ENGINE_INTENTS,
+  MINIMUM_COVERAGE_MODULES,
+  DUAL_ENGINE_TIERS,
+  type ResearchMode,
+  type Pass1Status,
+  type DualEngineInput,
+  type DualEngineResult,
+  type DualEngineOptions,
+  type DualEngineTelemetry,
+} from './dual-engine';
+
+// ============================================================================
+// AGGREGATOR
+// ============================================================================
+
+export {
+  aggregateInsightPacks,
+  normalizeTopic,
+  calculateDisagreement,
+  calculateFinalConfidence,
+  FinalInsightObjectSchema,
+  TOPIC_SYNONYMS,
+  MODULE_TRUST_WEIGHTS,
+  type FinalInsightObject,
+  type AgreementTag,
+  type DisagreementLevel,
+  type MergedDriver,
+  type MergedRisk,
+  type MergedScenarios,
+  type MergedUnknown,
+  type AggregatorInput,
+} from './aggregator';
+
+// ============================================================================
+// PROMPTS (Additional exports)
+// ============================================================================
+
+export {
+  GEMINI_SYSTEM_PROMPT,
+  COMMON_EVIDENCE_PATHS,
+  CONTROLLED_TOPICS,
+  type ControlledTopic,
+} from './prompts';
