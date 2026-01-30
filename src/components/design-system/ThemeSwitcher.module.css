@@ -1,0 +1,30 @@
+/* Theme Switcher Module Styles */
+.themeSwitcher {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.button {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border-color, #e2e8f0);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.button:hover {
+  background: var(--hover-bg, #f1f5f9);
+}
+
+.icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.active {
+  background: var(--active-bg, #3b82f6);
+  color: white;
+  border-color: var(--active-bg, #3b82f6);
+}
