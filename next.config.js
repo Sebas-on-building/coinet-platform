@@ -8,8 +8,6 @@ export default {
       { protocol: 'https', hostname: 'img.clerk.com' },
       { protocol: 'https', hostname: 'images.clerk.dev' },
     ],
-    // Keep domains for backward compatibility
-    domains: ["coinet.co", "randomuser.me", "img.clerk.com", "images.clerk.dev"],
   },
   async headers() {
     return [
@@ -49,12 +47,22 @@ export default {
   // turbopack: {
   //   root: process.cwd(),
   // },
-  // Keep webpack for compatibility, but Turbopack will be used
-  webpack: (config) => {
+  // Webpack configuration
+  webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
     };
+    
+    // Suppress OpenTelemetry/Prisma instrumentation warning (harmless dynamic require)
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      {
+        module: /@opentelemetry\/instrumentation/,
+        message: /Critical dependency/,
+      },
+    ];
+    
     return config;
   },
 }; 
