@@ -13,11 +13,22 @@
  * ║   5. Compute coverage map + quality score                                     ║
  * ║   6. Assemble and validate final Evidence Pack                                ║
  * ║                                                                               ║
+ * ║   CACHING:                                                                    ║
+ * ║   - Uses TTL cache with LRU eviction                                          ║
+ * ║   - Dogpile protection prevents concurrent duplicate fetches                  ║
+ * ║   - Cache key: module:chain:address:timeframe                                 ║
+ * ║                                                                               ║
  * ║   @version 1.0.0                                                              ║
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
 import { logger } from '../../utils/logger';
+import {
+  getCache,
+  getSingleFlight,
+  buildCacheKey,
+  CachedValue,
+} from './cache';
 import {
   EvidencePack,
   EvidencePackBuildOptions,
@@ -51,6 +62,66 @@ import { computeCoverage, generateCoverageSummary } from './coverage';
 
 const DEFAULT_GLOBAL_TIMEOUT_MS = 1500;
 const DEFAULT_PER_MODULE_TIMEOUT_MS = 800;
+
+// ============================================================================
+// CACHE-AWARE FETCH WRAPPER
+// ============================================================================
+
+interface CachedFetchResult<T> {
+  data: T;
+  fromCache: boolean;
+  freshnessSeconds: number;
+}
+
+/**
+ * Wrap a module fetch with caching and dogpile protection.
+ */
+async function cachedModuleFetch<T>(
+  moduleName: string,
+  cacheKeyParams: { chain?: string; address?: string | null; symbol?: string },
+  fetcher: () => Promise<T>,
+  timeoutMs: number
+): Promise<CachedFetchResult<T>> {
+  const cache = getCache();
+  const singleFlight = getSingleFlight();
+  
+  const cacheKey = buildCacheKey({
+    module: moduleName,
+    ...cacheKeyParams,
+  });
+
+  // Check cache first
+  const cached = await cache.get<T>(cacheKey);
+  if (cached) {
+    const freshnessSeconds = Math.floor(Date.now() / 1000) - cached.cached_at_unix;
+    logger.debug('Cache hit', { module: moduleName, freshnessSeconds });
+    return {
+      data: cached.value,
+      fromCache: true,
+      freshnessSeconds,
+    };
+  }
+
+  // Use single-flight to prevent dogpile
+  try {
+    const data = await singleFlight.do(cacheKey, async () => {
+      const result = await fetcher();
+      // Cache the result
+      const ttl = MODULE_TTL_SECONDS[moduleName] || 300;
+      await cache.set(cacheKey, result, ttl);
+      return result;
+    });
+
+    return {
+      data,
+      fromCache: false,
+      freshnessSeconds: 0,
+    };
+  } catch (error) {
+    // Don't cache errors, but still throw
+    throw error;
+  }
+}
 
 // ============================================================================
 // MODULE FETCHERS (to be implemented with actual data sources)

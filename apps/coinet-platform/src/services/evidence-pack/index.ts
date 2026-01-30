@@ -174,6 +174,49 @@ export {
 } from './types';
 
 // ============================================================================
+// INTEGRATION
+// ============================================================================
+
+export {
+  prepareForPass1,
+  buildGrokInput,
+  buildClarifierResponse,
+  extractSessionState,
+  applyClarificationResponse,
+  isEvidencePackEnabled,
+  mapIntent,
+  type PipelineInput,
+  type PipelineResult,
+  type Pass1ReadyResult,
+  type Pass1ClarifierResult,
+  type Pass1FailureResult,
+  type Pass1PreparationResult,
+  type GrokPass1InputWithEvidence,
+} from './integration';
+
+// ============================================================================
+// CACHE
+// ============================================================================
+
+export {
+  initializeCache,
+  getCache,
+  getSingleFlight,
+  getCacheStats,
+  clearCache,
+  buildCacheKey,
+  parseCacheKey,
+  createCachedFetcher,
+  InMemoryLRUCache,
+  SingleFlight,
+  type CacheStore,
+  type CachedValue,
+  type CacheStats,
+  type CacheKeyParams,
+  type CachedFetcherOptions,
+} from './cache';
+
+// ============================================================================
 // CONVENIENCE RE-EXPORTS
 // ============================================================================
 
@@ -181,6 +224,8 @@ import { buildEvidencePack, shouldBuildEvidencePack } from './builder';
 import { resolveTokenEntities } from './resolver';
 import { computeCoverage, generateCoverageSummary } from './coverage';
 import { getStats } from './observability';
+import { initializeCache, getCacheStats } from './cache';
+import { prepareForPass1, isEvidencePackEnabled } from './integration';
 import { 
   EvidencePack,
   EvidencePackBuildOptions,
@@ -232,10 +277,14 @@ export function getEvidencePackHealth(): {
 // Default export for convenience
 export default {
   build: buildEvidencePack,
+  prepareForPass1,
   needsEvidence,
   resolveTokens: resolveTokenEntities,
   computeCoverage,
   generateSummary: generateCoverageSummary,
   getHealth: getEvidencePackHealth,
   getVersion,
+  initCache: initializeCache,
+  getCacheStats,
+  isEnabled: isEvidencePackEnabled,
 };
