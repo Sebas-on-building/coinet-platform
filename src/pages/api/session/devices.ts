@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { listUserDevices } from '../../utils/sessionUtils';
-import { t } from '../../utils/i18n';
+import { listUserDevices } from '../../../utils/sessionUtils';
+import { t } from '../../../utils/i18n';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: t('error.method_not_allowed') });
