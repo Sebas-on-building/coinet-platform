@@ -1,0 +1,40 @@
+{
+  "light": {
+    "background": "#ffffff",
+    "foreground": "#0f172a",
+    "card": "#f8fafc",
+    "cardForeground": "#0f172a",
+    "primary": "#3b82f6",
+    "primaryForeground": "#ffffff",
+    "secondary": "#64748b",
+    "secondaryForeground": "#ffffff",
+    "muted": "#f1f5f9",
+    "mutedForeground": "#64748b",
+    "accent": "#8b5cf6",
+    "accentForeground": "#ffffff",
+    "destructive": "#ef4444",
+    "destructiveForeground": "#ffffff",
+    "border": "#e2e8f0",
+    "input": "#e2e8f0",
+    "ring": "#3b82f6"
+  },
+  "dark": {
+    "background": "#0f172a",
+    "foreground": "#f8fafc",
+    "card": "#1e293b",
+    "cardForeground": "#f8fafc",
+    "primary": "#3b82f6",
+    "primaryForeground": "#ffffff",
+    "secondary": "#475569",
+    "secondaryForeground": "#f8fafc",
+    "muted": "#1e293b",
+    "mutedForeground": "#94a3b8",
+    "accent": "#8b5cf6",
+    "accentForeground": "#ffffff",
+    "destructive": "#ef4444",
+    "destructiveForeground": "#ffffff",
+    "border": "#334155",
+    "input": "#334155",
+    "ring": "#3b82f6"
+  }
+}
