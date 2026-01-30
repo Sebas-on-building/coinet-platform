@@ -1,0 +1,41 @@
+/* Widget Canvas Module Styles */
+.canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+  background: var(--canvas-bg, #f8fafc);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.gridOverlay {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(to right, var(--grid-color, #e2e8f0) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-color, #e2e8f0) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+.dropZone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--drop-border, #94a3b8);
+  border-radius: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.dropZone.active {
+  opacity: 1;
+}
+
+.placeholder {
+  color: var(--placeholder-color, #64748b);
+  font-size: 0.875rem;
+}
