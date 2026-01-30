@@ -321,9 +321,21 @@ export function buildCacheKey(params: CacheKeyParams): string {
  */
 export function parseCacheKey(key: string): CacheKeyParams {
   const parts = key.split(':');
+  
+  // Market-level keys: module:market:timeframe (3 parts)
+  // Token-level keys: module:chain:address:timeframe (4 parts)
+  if (parts[1] === 'market') {
+    return {
+      module: parts[0],
+      chain: undefined,
+      address: undefined,
+      timeframe: parts[2] || 'snapshot',
+    };
+  }
+  
   return {
     module: parts[0],
-    chain: parts[1] !== 'market' ? parts[1] : undefined,
+    chain: parts[1],
     address: parts[2] !== 'unknown' ? parts[2] : undefined,
     timeframe: parts[3] || 'snapshot',
   };

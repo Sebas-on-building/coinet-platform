@@ -67,11 +67,11 @@ describe('InMemoryLRUCache', () => {
 
   describe('TTL Expiration', () => {
     it('should return null for expired values', async () => {
-      // Set with very short TTL
+      // Set with very short TTL (1 second)
       await cache.set('key1', 'test', 1);
 
-      // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      // Wait for expiration (2+ seconds to account for Unix timestamp precision)
+      await new Promise(resolve => setTimeout(resolve, 2100));
 
       const result = await cache.get('key1');
       expect(result).toBeNull();

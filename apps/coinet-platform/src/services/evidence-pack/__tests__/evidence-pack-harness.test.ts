@@ -728,39 +728,33 @@ describe('Evidence Pack Test Harness', () => {
     it('CRITERIA 2: Coverage map is correct in 100% of tests', () => {
       const NOW_UNIX = Math.floor(Date.now() / 1000);
       
-      // Test all scenarios
-      const scenarios = [
-        { modules: { dexscreener: 'ok', security: 'ok' }, expectedAvailable: 2 },
-        { modules: { dexscreener: 'ok', security: 'missing' }, expectedMissing: 1 },
-        { modules: { dexscreener: 'stale', security: 'ok' }, expectedStale: 1 },
-        { modules: { dexscreener: 'error', security: 'ok' }, expectedErrors: 1 },
-      ];
+      // Test specific module states are correctly classified
+      const evidence = {
+        dexscreener: createDexScreenerEvidence('ok'),
+        security: createSecurityEvidence('missing'),
+        sentiment: createSentimentEvidence('stale'),
+        news: createNewsEvidence('error'),
+      };
 
-      for (const scenario of scenarios) {
-        const evidence: any = {};
-        for (const [mod, status] of Object.entries(scenario.modules)) {
-          if (mod === 'dexscreener') {
-            evidence[mod] = createDexScreenerEvidence(status as any);
-          } else if (mod === 'security') {
-            evidence[mod] = createSecurityEvidence(status as any);
-          }
-        }
+      const { coverage } = computeCoverage(evidence, 'TOKEN_ANALYSIS', true, NOW_UNIX);
 
-        const { coverage } = computeCoverage(evidence, 'TOKEN_ANALYSIS', true, NOW_UNIX);
-
-        if (scenario.expectedAvailable !== undefined) {
-          expect(coverage.available.length).toBe(scenario.expectedAvailable);
-        }
-        if (scenario.expectedMissing !== undefined) {
-          expect(coverage.missing.length).toBe(scenario.expectedMissing);
-        }
-        if (scenario.expectedStale !== undefined) {
-          expect(coverage.stale.length).toBe(scenario.expectedStale);
-        }
-        if (scenario.expectedErrors !== undefined) {
-          expect(coverage.errors.length).toBe(scenario.expectedErrors);
-        }
-      }
+      // OK modules should be in available
+      expect(coverage.available).toContain('dexscreener');
+      
+      // Missing modules should be in missing
+      expect(coverage.missing).toContain('security');
+      
+      // Stale modules should be in stale AND available (they have data)
+      expect(coverage.stale).toContain('sentiment');
+      expect(coverage.available).toContain('sentiment');
+      
+      // Error modules should be in errors
+      expect(coverage.errors).toContain('news');
+      expect(coverage.available).not.toContain('news');
+      
+      // All modules should have freshness_seconds
+      expect(coverage.freshness_seconds).toHaveProperty('dexscreener');
+      expect(coverage.freshness_seconds).toHaveProperty('sentiment');
     });
 
     it('CRITERIA 3: Ambiguous ticker triggers exactly ONE clarifier', () => {

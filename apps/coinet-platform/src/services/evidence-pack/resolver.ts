@@ -59,6 +59,9 @@ const PATTERNS = {
   // $TICKER format
   TICKER: /\$([A-Za-z][A-Za-z0-9]{1,10})/g,
   
+  // Major asset names without $ (BTC, ETH, SOL, etc.)
+  MAJOR_ASSET: /\b(BTC|BITCOIN|ETH|ETHEREUM|SOL|SOLANA|BNB|XRP|ADA|DOGE|AVAX|DOT|MATIC|POL|LINK|UNI|AAVE)\b/gi,
+  
   // EVM address (0x...)
   EVM_ADDRESS: /\b(0x[a-fA-F0-9]{40})\b/g,
   
@@ -104,6 +107,20 @@ export function extractEntities(message: string): ExtractedEntities {
   const tickerMatches = message.matchAll(PATTERNS.TICKER);
   for (const match of tickerMatches) {
     const ticker = match[1].toUpperCase();
+    if (!entities.tickers.includes(ticker)) {
+      entities.tickers.push(ticker);
+    }
+  }
+
+  // Extract major assets without $ prefix (BTC, ETH, SOL, etc.)
+  const majorMatches = message.matchAll(PATTERNS.MAJOR_ASSET);
+  for (const match of majorMatches) {
+    let ticker = match[1].toUpperCase();
+    // Normalize names to symbols
+    if (ticker === 'BITCOIN') ticker = 'BTC';
+    if (ticker === 'ETHEREUM') ticker = 'ETH';
+    if (ticker === 'SOLANA') ticker = 'SOL';
+    
     if (!entities.tickers.includes(ticker)) {
       entities.tickers.push(ticker);
     }

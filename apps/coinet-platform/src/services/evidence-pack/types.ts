@@ -632,12 +632,4 @@ export function getModulesForIntent(intent: EvidenceIntent, hasToken: boolean): 
   }
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  TokenEvidencePackSchema,
-  MarketEvidencePackSchema,
-  CombinedEvidencePackSchema,
-};
+// Note: All schemas are exported inline where defined
