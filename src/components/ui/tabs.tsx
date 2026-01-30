@@ -49,4 +49,7 @@ const TabsContent = React.forwardRef<
 ))
 TabsContent.displayName = TabsPrimitive.Content.displayName
 
-export { Tabs, TabsList, TabsTrigger, TabsContent }
+// Tabs2 alias for backward compatibility
+const Tabs2 = Tabs;
+
+export { Tabs, Tabs2, TabsList, TabsTrigger, TabsContent }
