@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GetServerSideProps } from 'next';
-import { getSession, useSession } from 'next-auth/react';
+import { useUser } from '@clerk/nextjs';
+import { getAuth } from '@clerk/nextjs/server';
 import Head from 'next/head';
 import { PlusIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
@@ -24,7 +25,7 @@ const DEFAULT_SERIES: SeriesConfig[] = [
 ];
 
 const OverlayChartsPage: React.FC<OverlayChartsPageProps> = ({ initialTemplates }) => {
-  const { data: session } = useSession();
+  const { user } = useUser();
   const { showToast } = useToast();
 
   // State for templates and current chart
@@ -39,12 +40,12 @@ const OverlayChartsPage: React.FC<OverlayChartsPageProps> = ({ initialTemplates 
   const [templateName, setTemplateName] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
 
-  // Load templates when session changes
+  // Load templates when user changes
   useEffect(() => {
-    if (session) {
+    if (user) {
       fetchTemplates();
     }
-  }, [session]);
+  }, [user]);
 
   // Fetch user's templates
   const fetchTemplates = async () => {
@@ -70,7 +71,7 @@ const OverlayChartsPage: React.FC<OverlayChartsPageProps> = ({ initialTemplates 
 
   // Save current chart as a template
   const saveTemplate = async () => {
-    if (!session) {
+    if (!user) {
       showToast('Please sign in to save templates', 'warning');
       return;
     }
@@ -229,7 +230,7 @@ const OverlayChartsPage: React.FC<OverlayChartsPageProps> = ({ initialTemplates 
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <p className="text-sm">
-                    {session ? 'No saved templates yet' : 'Sign in to save templates'}
+                    {user ? 'No saved templates yet' : 'Sign in to save templates'}
                   </p>
                 </div>
               )}
@@ -464,7 +465,7 @@ const OverlayChartsPage: React.FC<OverlayChartsPageProps> = ({ initialTemplates 
             </div>
 
             {/* Save template panel */}
-            {session && (
+            {user && (
               <div className="bg-white dark:bg-gray-900 rounded-xl shadow-md border border-gray-200 dark:border-gray-800 p-4">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Save Template</h3>
 
@@ -515,9 +516,9 @@ const OverlayChartsPage: React.FC<OverlayChartsPageProps> = ({ initialTemplates 
 
 // Server-side props to get initial templates
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const session = await getSession(context);
+  const { userId } = getAuth(context.req);
 
-  if (!session) {
+  if (!userId) {
     return {
       props: {
         initialTemplates: []
