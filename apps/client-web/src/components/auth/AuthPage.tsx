@@ -14,7 +14,7 @@ export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("signin");
   const navigate = useNavigate();
-  const { user, signIn, signUp, signInWithGoogle, signInWithGithub } = useAuth();
+  const { user, signIn, signUp, signInWithGoogle, signInWithGithub, setDemoMode } = useAuth();
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -113,6 +113,12 @@ export function AuthPage() {
       await signInWithGithub();
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDemoMode = () => {
+    if (setDemoMode) {
+      setDemoMode(true);
     }
   };
 
@@ -313,6 +319,24 @@ export function AuthPage() {
                 GitHub
               </Button>
             </div>
+
+            {/* Demo Mode Section */}
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border/20" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-4 text-muted-foreground font-medium">Development</span>
+              </div>
+            </div>
+
+            <Button
+              onClick={handleDemoMode}
+              disabled={isLoading}
+              className="w-full h-12 bg-primary/80 hover:bg-primary text-primary-foreground transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] font-medium"
+            >
+              🚀 Enter Demo Mode
+            </Button>
 
           </CardContent>
         </Card>
