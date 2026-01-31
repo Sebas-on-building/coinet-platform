@@ -5,8 +5,14 @@ import { toast } from "sonner";
 // Get Clerk publishable key from environment
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
+// Validate Clerk key format
 if (!CLERK_PUBLISHABLE_KEY) {
-  console.warn("Missing VITE_CLERK_PUBLISHABLE_KEY - auth will not work");
+  console.error("❌ Missing VITE_CLERK_PUBLISHABLE_KEY - auth will not work");
+} else if (!CLERK_PUBLISHABLE_KEY.startsWith('pk_test_') && !CLERK_PUBLISHABLE_KEY.startsWith('pk_live_')) {
+  console.error("❌ Invalid VITE_CLERK_PUBLISHABLE_KEY format. Should start with 'pk_test_' or 'pk_live_'");
+  console.error("Current key:", CLERK_PUBLISHABLE_KEY.substring(0, 50) + "...");
+} else if (CLERK_PUBLISHABLE_KEY.length < 50) {
+  console.error("❌ VITE_CLERK_PUBLISHABLE_KEY appears truncated. Expected length ~100+ characters, got:", CLERK_PUBLISHABLE_KEY.length);
 }
 
 interface UserProfile {
