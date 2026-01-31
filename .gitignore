@@ -228,3 +228,41 @@ Arbeit/
 services/alchemy-whales/.env
 services/alchemy-whales/.turbo/
 services/alchemy-whales/dist/
+
+# ========================================
+# Cleanup Patterns (Added 2026-01-31)
+# ========================================
+# Cleanup logs
+cleanup-log-*.txt
+cleanup-log-*.log
+
+# Test output files
+junit*.xml
+test-results/
+coverage/
+
+# Temporary fix files
+*_FIX.sh
+*_FIX.md
+final_fix.sh
+fix_commit.sh
+
+# Duplicate files (numbered)
+* [0-9].*
+* [0-9][0-9].*
+
+# Backup directories
+backups/cleanup-*/
+
+# Output logs
+*.log
+output.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files (keep .example)
+.env.local
+.env.*.local

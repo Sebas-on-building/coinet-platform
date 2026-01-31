@@ -188,6 +188,9 @@ export class AuthenticationMiddleware {
 
   /**
    * Authenticate using API key
+   * 
+   * SECURITY: This method requires proper database-backed API key authentication.
+   * Demo keys are NOT allowed in production environments.
    */
   private authenticateAPIKey(req: Request): {
     authenticated: boolean;
@@ -203,41 +206,74 @@ export class AuthenticationMiddleware {
       };
     }
 
-    // In a real implementation, you would:
-    // 1. Hash the provided API key
-    // 2. Look up the hashed key in the database
-    // 3. Verify the key belongs to an active user
-    // 4. Extract user information
+    // SECURITY CHECK: Prevent demo keys in production
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isDemoKey = apiKey.startsWith('demo-api-key') || 
+                     apiKey === 'demo-api-key-1' || 
+                     apiKey === 'demo-api-key-2';
 
-    // For demo purposes, we'll use a simple lookup
-    const demoApiKeys: Record<string, AuthenticatedUser> = {
-      'demo-api-key-1': {
-        id: 'demo-user-1',
-        email: 'demo@example.com',
-        role: 'user',
-        permissions: ['read:signals', 'write:alerts'],
-        tier: 'premium',
-      },
-      'demo-api-key-2': {
-        id: 'demo-user-2',
-        email: 'trader@example.com',
-        role: 'trader',
-        permissions: ['read:signals', 'write:alerts', 'read:portfolio'],
-        tier: 'vip',
-      },
-    };
-
-    const user = demoApiKeys[apiKey];
-    if (!user) {
+    if (isDemoKey && isProduction) {
+      this.logger.error('SECURITY VIOLATION: Demo API key attempted in production', {
+        apiKey: apiKey.substring(0, 10) + '...',
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
       return {
         authenticated: false,
-        reason: 'Invalid API key',
+        reason: 'Invalid API key: Demo keys are not allowed in production',
       };
     }
 
+    // TODO: Implement proper database-backed API key authentication
+    // This should:
+    // 1. Hash the provided API key using bcrypt
+    // 2. Look up the hashed key in the database (ApiKey table)
+    // 3. Verify the key belongs to an active user
+    // 4. Check key expiration and rate limits
+    // 5. Extract user information from the database
+    // 
+    // See services/user/src/middleware/auth.ts for reference implementation
+    // that uses Prisma to query the ApiKey model.
+
+    if (isDemoKey && !isProduction) {
+      // Only allow demo keys in development with warning
+      this.logger.warn('Using demo API key in development mode', {
+        apiKey: apiKey.substring(0, 10) + '...',
+        environment: process.env.NODE_ENV,
+      });
+      
+      // Return minimal demo user for development only
+      return {
+        authenticated: true,
+        user: {
+          id: 'demo-user-dev',
+          email: 'demo@example.com',
+          role: 'user',
+          permissions: ['read:signals'],
+          tier: 'free',
+          metadata: {
+            isDemo: true,
+            warning: 'This is a demo key. Use proper API key authentication in production.',
+          },
+        },
+      };
+    }
+
+    // For production, require proper database authentication
+    if (isProduction) {
+      this.logger.error('API key authentication not fully implemented', {
+        message: 'Database-backed API key authentication required for production',
+      });
+      return {
+        authenticated: false,
+        reason: 'API key authentication requires database implementation',
+      };
+    }
+
+    // Development fallback: reject unknown keys
     return {
-      authenticated: true,
-      user,
+      authenticated: false,
+      reason: 'Invalid API key. In development, only demo keys are accepted. Implement database authentication for production.',
     };
   }
 
