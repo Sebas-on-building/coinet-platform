@@ -1,12 +1,28 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { UserProfile } from "@/types/database";
+import { createContext, useContext, useState } from "react";
+import { ClerkProvider, useUser, useAuth as useClerkAuth, useSignIn, useSignUp } from "@clerk/clerk-react";
 import { toast } from "sonner";
 
+// Get Clerk publishable key from environment
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+if (!CLERK_PUBLISHABLE_KEY) {
+  console.warn("Missing VITE_CLERK_PUBLISHABLE_KEY - auth will not work");
+}
+
+interface UserProfile {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: any | null;
+  session: any | null;
   profile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -20,320 +36,278 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+function AuthProviderInner({ children }: { children: React.ReactNode }) {
+  const { user, isLoaded, isSignedIn } = useUser();
+  const { signOut: clerkSignOut } = useClerkAuth();
+  const { signIn: clerkSignIn, setActive: setSignInActive } = useSignIn();
+  const { signUp: clerkSignUp, setActive: setSignUpActive } = useSignUp();
   const [demoMode, setDemoModeState] = useState(false);
+  const [demoUser, setDemoUser] = useState<any>(null);
 
-  // Initialize auth state
-  useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          // Fetch user profile
-          setTimeout(async () => {
-            await fetchUserProfile(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-        }
-        
-        setLoading(false);
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      }
-      
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-        
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching profile:', error);
-        return;
-      }
-      
-      setProfile(data);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    }
-  };
+  const profile: UserProfile | null = user ? {
+    id: user.id,
+    first_name: user.firstName,
+    last_name: user.lastName,
+    email: user.primaryEmailAddress?.emailAddress || null,
+    avatar_url: user.imageUrl,
+    bio: null,
+    created_at: user.createdAt?.toISOString() || new Date().toISOString(),
+    updated_at: user.updatedAt?.toISOString() || new Date().toISOString(),
+  } : null;
 
   const signIn = async (email: string, password: string) => {
     try {
-      setLoading(true);
+      if (!clerkSignIn) return { error: new Error("Sign in not available") };
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const result = await clerkSignIn.create({
+        identifier: email,
+        password: password,
       });
-      
-      if (error) {
-        toast.error("Authentication failed", {
-          description: error.message
-        });
-        return { error };
-      }
-      
-      if (data.user) {
+
+      if (result.status === 'complete') {
+        await setSignInActive({ session: result.createdSessionId });
         toast.success("Welcome back!");
-        // Redirect will happen automatically via auth state change
+        return { error: null };
       }
       
       return { error: null };
-    } catch (error) {
-      const err = error as Error;
-      toast.error("Sign in failed", {
-        description: err.message
-      });
-      return { error: err };
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      const message = error.errors?.[0]?.message || error.message || "Sign in failed";
+      toast.error("Authentication failed", { description: message });
+      return { error: new Error(message) };
     }
   };
 
   const signUp = async (email: string, password: string, metadata?: any) => {
     try {
-      setLoading(true);
+      if (!clerkSignUp) return { error: new Error("Sign up not available") };
       
-      const redirectUrl = `${window.location.origin}/`;
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: metadata
-        }
+      const result = await clerkSignUp.create({
+        emailAddress: email,
+        password: password,
+        firstName: metadata?.display_name || undefined,
       });
-      
-      if (error) {
-        toast.error("Registration failed", {
-          description: error.message
-        });
-        return { error };
-      }
-      
-      if (data.user && !data.session) {
+
+      if (result.status === 'complete') {
+        await setSignUpActive({ session: result.createdSessionId });
+        toast.success("Welcome to Coinet AI!");
+        return { error: null };
+      } else {
         toast.success("Registration successful!", {
           description: "Please check your email to verify your account."
         });
-      } else if (data.session) {
-        toast.success("Welcome to Coinet AI!");
+        return { error: null };
       }
-      
-      return { error: null };
-    } catch (error) {
-      const err = error as Error;
-      toast.error("Registration failed", {
-        description: err.message
-      });
-      return { error: err };
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      const message = error.errors?.[0]?.message || error.message || "Registration failed";
+      toast.error("Registration failed", { description: message });
+      return { error: new Error(message) };
     }
   };
 
   const signOut = async () => {
     try {
-      setLoading(true);
+      if (demoMode) {
+        setDemoModeState(false);
+        setDemoUser(null);
+        toast.success("Demo mode deactivated");
+        window.location.href = '/auth';
+        return;
+      }
       
-      // Clear local state first
-      setUser(null);
-      setSession(null);
-      setProfile(null);
-      
-      // Sign out from Supabase
-      await supabase.auth.signOut({ scope: 'global' });
-      
+      await clerkSignOut();
       toast.success("Signed out successfully");
-      
-      // Redirect to auth page
       window.location.href = '/auth';
     } catch (error) {
       console.error('Sign out error:', error);
       toast.error("Sign out failed");
-    } finally {
-      setLoading(false);
     }
   };
 
   const signInWithGoogle = async () => {
     try {
-      setLoading(true);
+      if (!clerkSignIn) return { error: new Error("Sign in not available") };
       
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`
-        }
+      await clerkSignIn.authenticateWithRedirect({
+        strategy: 'oauth_google',
+        redirectUrl: '/sso-callback',
+        redirectUrlComplete: '/',
       });
-      
-      if (error) {
-        toast.error("Google sign in failed", {
-          description: error.message
-        });
-        return { error };
-      }
       
       return { error: null };
-    } catch (error) {
-      const err = error as Error;
-      toast.error("Google sign in failed", {
-        description: err.message
-      });
-      return { error: err };
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      toast.error("Google sign in failed");
+      return { error: error as Error };
     }
   };
 
   const signInWithGithub = async () => {
     try {
-      setLoading(true);
+      if (!clerkSignIn) return { error: new Error("Sign in not available") };
       
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: {
-          redirectTo: `${window.location.origin}/`
-        }
+      await clerkSignIn.authenticateWithRedirect({
+        strategy: 'oauth_github',
+        redirectUrl: '/sso-callback',
+        redirectUrlComplete: '/',
       });
-      
-      if (error) {
-        toast.error("GitHub sign in failed", {
-          description: error.message
-        });
-        return { error };
-      }
       
       return { error: null };
-    } catch (error) {
-      const err = error as Error;
-      toast.error("GitHub sign in failed", {
-        description: err.message
-      });
-      return { error: err };
-    } finally {
-      setLoading(false);
+    } catch (error: any) {
+      toast.error("GitHub sign in failed");
+      return { error: error as Error };
     }
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     try {
-      if (!user) {
-        throw new Error("No authenticated user");
-      }
+      if (!user) throw new Error("No authenticated user");
       
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          ...updates,
-          updated_at: new Date().toISOString()
-        });
-        
-      if (error) {
-        toast.error("Profile update failed", {
-          description: error.message
-        });
-        return { error };
-      }
-      
-      // Refresh profile
-      await fetchUserProfile(user.id);
+      await user.update({
+        firstName: updates.first_name || undefined,
+        lastName: updates.last_name || undefined,
+      });
       
       toast.success("Profile updated successfully");
       return { error: null };
-    } catch (error) {
-      const err = error as Error;
-      toast.error("Profile update failed", {
-        description: err.message
-      });
-      return { error: err };
+    } catch (error: any) {
+      toast.error("Profile update failed", { description: error.message });
+      return { error: error as Error };
     }
   };
 
   const setDemoMode = (enabled: boolean) => {
     setDemoModeState(enabled);
     if (enabled) {
-      // Create a mock user for demo mode
-      // Valid UUID format for demo user (deterministic)
       const DEMO_USER_UUID = '00000000-0000-0000-0000-000000000001';
       
       const mockUser = {
         id: DEMO_USER_UUID,
-        email: 'demo@coinet.ai',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        email_confirmed_at: new Date().toISOString(),
-        user_metadata: {
-          name: 'Demo User'
-        },
-        app_metadata: {},
-        aud: 'authenticated'
-      } as unknown as User;
-      
-      const mockSession = {
-        user: mockUser,
-        access_token: 'demo-token',
-        refresh_token: 'demo-refresh',
-        expires_at: Date.now() + 3600000,
-        expires_in: 3600,
-        token_type: 'bearer'
-      } as Session;
+        firstName: 'Demo',
+        lastName: 'User',
+        primaryEmailAddress: { emailAddress: 'demo@coinet.ai' },
+        imageUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-      setUser(mockUser);
-      setSession(mockSession);
-      setProfile({
-        id: DEMO_USER_UUID,
-        first_name: 'Demo',
-        last_name: 'User',
-        email: 'demo@coinet.ai',
-        avatar_url: null,
-        bio: 'Demo account for testing',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-      setLoading(false);
-      
+      setDemoUser(mockUser);
       toast.success("Demo mode activated! 🚀");
+    } else {
+      setDemoUser(null);
     }
   };
 
-  const value = {
-    user: demoMode ? user : user,
-    session: demoMode ? session : session,
-    profile,
-    loading,
+  const effectiveUser = demoMode ? demoUser : user;
+  const effectiveProfile = demoMode ? {
+    id: '00000000-0000-0000-0000-000000000001',
+    first_name: 'Demo',
+    last_name: 'User',
+    email: 'demo@coinet.ai',
+    avatar_url: null,
+    bio: 'Demo account for testing',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  } : profile;
+
+  const value: AuthContextType = {
+    user: effectiveUser,
+    session: isSignedIn || demoMode ? { user: effectiveUser } : null,
+    profile: effectiveProfile,
+    loading: !isLoaded && !demoMode,
     signIn,
     signUp,
     signOut,
     signInWithGoogle,
     signInWithGithub,
     updateProfile,
+    setDemoMode,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  if (!CLERK_PUBLISHABLE_KEY) {
+    // Fallback for missing key - allow demo mode only
+    return (
+      <AuthProviderFallback>
+        {children}
+      </AuthProviderFallback>
+    );
+  }
+
+  return (
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <AuthProviderInner>
+        {children}
+      </AuthProviderInner>
+    </ClerkProvider>
+  );
+}
+
+// Fallback provider when Clerk key is missing (demo mode only)
+function AuthProviderFallback({ children }: { children: React.ReactNode }) {
+  const [demoMode, setDemoModeState] = useState(false);
+  const [demoUser, setDemoUser] = useState<any>(null);
+
+  const setDemoMode = (enabled: boolean) => {
+    setDemoModeState(enabled);
+    if (enabled) {
+      setDemoUser({
+        id: '00000000-0000-0000-0000-000000000001',
+        firstName: 'Demo',
+        lastName: 'User',
+        primaryEmailAddress: { emailAddress: 'demo@coinet.ai' },
+      });
+      toast.success("Demo mode activated! 🚀");
+    } else {
+      setDemoUser(null);
+    }
+  };
+
+  const value: AuthContextType = {
+    user: demoUser,
+    session: demoMode ? { user: demoUser } : null,
+    profile: demoMode ? {
+      id: '00000000-0000-0000-0000-000000000001',
+      first_name: 'Demo',
+      last_name: 'User',
+      email: 'demo@coinet.ai',
+      avatar_url: null,
+      bio: 'Demo account',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    } : null,
+    loading: false,
+    signIn: async () => {
+      toast.error("Please configure Clerk to enable authentication");
+      return { error: new Error("Clerk not configured") };
+    },
+    signUp: async () => {
+      toast.error("Please configure Clerk to enable authentication");
+      return { error: new Error("Clerk not configured") };
+    },
+    signOut: async () => {
+      setDemoModeState(false);
+      setDemoUser(null);
+      window.location.href = '/auth';
+    },
+    signInWithGoogle: async () => {
+      toast.error("Please configure Clerk to enable Google sign in");
+      return { error: new Error("Clerk not configured") };
+    },
+    signInWithGithub: async () => {
+      toast.error("Please configure Clerk to enable GitHub sign in");
+      return { error: new Error("Clerk not configured") };
+    },
+    updateProfile: async () => {
+      toast.error("Please configure Clerk to enable profile updates");
+      return { error: new Error("Clerk not configured") };
+    },
     setDemoMode,
   };
 

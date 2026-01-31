@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import SSOCallback from "./pages/SSOCallback";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +34,7 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/auth" element={<AuthPage />} />
+                <Route path="/sso-callback" element={<SSOCallback />} />
                 <Route path="/" element={
                   <ProtectedRoute>
                     <Index />
