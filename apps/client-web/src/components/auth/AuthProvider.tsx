@@ -57,7 +57,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      if (!clerkSignIn) return { error: new Error("Sign in not available") };
+      if (!isLoaded || !clerkSignIn) return { error: new Error("Sign in not available") };
       
       const signInAttempt = await clerkSignIn.create({
         identifier: email,
@@ -80,7 +80,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, metadata?: any) => {
     try {
-      if (!clerkSignUp) return { error: new Error("Sign up not available") };
+      if (!isLoaded || !clerkSignUp) return { error: new Error("Sign up not available") };
       
       const signUpAttempt = await clerkSignUp.create({
         emailAddress: email,
@@ -126,7 +126,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      if (!clerkSignIn) return { error: new Error("Sign in not available") };
+      if (!isLoaded || !clerkSignIn) return { error: new Error("Sign in not available") };
       
       await clerkSignIn.authenticateWithRedirect({
         strategy: 'oauth_google',
@@ -143,7 +143,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signInWithGithub = async () => {
     try {
-      if (!clerkSignIn) return { error: new Error("Sign in not available") };
+      if (!isLoaded || !clerkSignIn) return { error: new Error("Sign in not available") };
       
       await clerkSignIn.authenticateWithRedirect({
         strategy: 'oauth_github',

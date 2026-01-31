@@ -47,11 +47,7 @@ export function AuthPage() {
     
     try {
       const { error } = await signIn(signInForm.email, signInForm.password);
-      
-      if (!error) {
-        // Redirect will happen automatically via auth state change
-        navigate("/");
-      }
+      // Redirect will happen automatically via useEffect watching user state
     } finally {
       setIsLoading(false);
     }
