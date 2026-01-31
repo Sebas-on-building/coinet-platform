@@ -44,7 +44,8 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const [demoMode, setDemoModeState] = useState(false);
   const [demoUser, setDemoUser] = useState<any>(null);
   
-  const isLoaded = userLoaded && signInLoaded && signUpLoaded;
+  // All Clerk hooks must be loaded before auth operations
+  const isLoaded = userLoaded && signInLoaded !== undefined && signUpLoaded !== undefined;
 
   const profile: UserProfile | null = user ? {
     id: user.id,
@@ -268,6 +269,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (!CLERK_PUBLISHABLE_KEY) {
+    console.error("VITE_CLERK_PUBLISHABLE_KEY is missing! Auth will not work.");
     // Fallback for missing key - allow demo mode only
     return (
       <AuthProviderFallback>
@@ -277,7 +279,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider 
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      afterSignInUrl="/"
+      afterSignUpUrl="/"
+    >
       <AuthProviderInner>
         {children}
       </AuthProviderInner>
