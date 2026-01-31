@@ -56,9 +56,9 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      if (!clerk.client) return { error: new Error("Clerk not initialized") };
+      if (!clerk) return { error: new Error("Clerk not initialized") };
       
-      const signInAttempt = await clerk.client.signIn.create({
+      const signInAttempt = await clerk.signIn.create({
         identifier: email,
         password: password,
       });
@@ -79,9 +79,9 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, metadata?: any) => {
     try {
-      if (!clerk.client) return { error: new Error("Clerk not initialized") };
+      if (!clerk) return { error: new Error("Clerk not initialized") };
       
-      const signUpAttempt = await clerk.client.signUp.create({
+      const signUpAttempt = await clerk.signUp.create({
         emailAddress: email,
         password: password,
         firstName: metadata?.display_name || undefined,
@@ -125,7 +125,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      if (!clerk.client) return { error: new Error("Clerk not initialized") };
+      if (!clerk) return { error: new Error("Clerk not initialized") };
       
       await clerk.authenticateWithRedirect({
         strategy: 'oauth_google',
@@ -142,7 +142,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signInWithGithub = async () => {
     try {
-      if (!clerk.client) return { error: new Error("Clerk not initialized") };
+      if (!clerk) return { error: new Error("Clerk not initialized") };
       
       await clerk.authenticateWithRedirect({
         strategy: 'oauth_github',
