@@ -1,5 +1,5 @@
 import { createContext, useContext, useState } from "react";
-import { ClerkProvider, useUser, useAuth as useClerkAuth, useClerk } from "@clerk/clerk-react";
+import { ClerkProvider, useUser, useAuth as useClerkAuth, useSignIn, useSignUp } from "@clerk/clerk-react";
 import { toast } from "sonner";
 
 // Get Clerk publishable key from environment
@@ -39,7 +39,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const { user, isLoaded, isSignedIn } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
-  const clerk = useClerk();
+  const { signIn: clerkSignIn, setActive: setSignInActive } = useSignIn();
+  const { signUp: clerkSignUp, setActive: setSignUpActive } = useSignUp();
   const [demoMode, setDemoModeState] = useState(false);
   const [demoUser, setDemoUser] = useState<any>(null);
 
@@ -56,15 +57,15 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      if (!clerk) return { error: new Error("Clerk not initialized") };
+      if (!clerkSignIn) return { error: new Error("Sign in not available") };
       
-      const signInAttempt = await clerk.signIn.create({
+      const signInAttempt = await clerkSignIn.create({
         identifier: email,
         password: password,
       });
 
       if (signInAttempt.status === 'complete') {
-        await clerk.setActive({ session: signInAttempt.createdSessionId });
+        await setSignInActive({ session: signInAttempt.createdSessionId });
         toast.success("Welcome back!");
         return { error: null };
       }
@@ -79,16 +80,16 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, metadata?: any) => {
     try {
-      if (!clerk) return { error: new Error("Clerk not initialized") };
+      if (!clerkSignUp) return { error: new Error("Sign up not available") };
       
-      const signUpAttempt = await clerk.signUp.create({
+      const signUpAttempt = await clerkSignUp.create({
         emailAddress: email,
         password: password,
         firstName: metadata?.display_name || undefined,
       });
 
       if (signUpAttempt.status === 'complete') {
-        await clerk.setActive({ session: signUpAttempt.createdSessionId });
+        await setSignUpActive({ session: signUpAttempt.createdSessionId });
         toast.success("Welcome to Coinet AI!");
         return { error: null };
       } else {
@@ -125,9 +126,9 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      if (!clerk) return { error: new Error("Clerk not initialized") };
+      if (!clerkSignIn) return { error: new Error("Sign in not available") };
       
-      await clerk.authenticateWithRedirect({
+      await clerkSignIn.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: '/sso-callback',
         redirectUrlComplete: '/',
@@ -142,9 +143,9 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signInWithGithub = async () => {
     try {
-      if (!clerk) return { error: new Error("Clerk not initialized") };
+      if (!clerkSignIn) return { error: new Error("Sign in not available") };
       
-      await clerk.authenticateWithRedirect({
+      await clerkSignIn.authenticateWithRedirect({
         strategy: 'oauth_github',
         redirectUrl: '/sso-callback',
         redirectUrlComplete: '/',

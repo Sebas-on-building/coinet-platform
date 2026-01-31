@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/components/auth/AuthProvider';
 import type { AdvancedAlert, AlertTrigger, SignalSource, AlertTemplate, MarketContext, ContextPack, SignalType } from '@/types/advancedAlerts';
 import { 
   dbAlertToAdvancedAlert, 
@@ -11,6 +12,7 @@ import {
 } from '@/lib/typeAdapters';
 
 export function useAdvancedAlerts() {
+  const { user } = useAuth();
   const [alerts, setAlerts] = useState<AdvancedAlert[]>([]);
   const [triggers, setTriggers] = useState<AlertTrigger[]>([]);
   const [signalSources, setSignalSources] = useState<SignalSource[]>([]);
@@ -21,8 +23,7 @@ export function useAdvancedAlerts() {
   // ====== ALERT MANAGEMENT ======
 
   const fetchAlerts = async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (!data.user || error) {
+    if (!user?.id) {
       setError('User not authenticated');
       return;
     }
@@ -30,7 +31,7 @@ export function useAdvancedAlerts() {
     const { data: alertsData, error: alertsError } = await supabase
       .from('alerts')
       .select('*')
-      .eq('user_id', data.user.id);
+      .eq('user_id', user.id);
 
     if (alertsError) {
       console.error('Error fetching alerts:', alertsError);
@@ -42,8 +43,7 @@ export function useAdvancedAlerts() {
   };
 
   const createAlert = async (alertData: Omit<AdvancedAlert, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'trigger_count' | 'success_rate' | 'false_positive_count'>) => {
-    const { data, error } = await supabase.auth.getUser();
-    if (!data.user || error) {
+    if (!user?.id) {
       setError('User not authenticated');
       return;
     }
@@ -52,7 +52,7 @@ export function useAdvancedAlerts() {
     try {
       const fullAlertData = {
         ...alertData,
-        user_id: data.user.id,
+        user_id: user.id,
         trigger_count: 0,
         success_rate: 0.0,
         false_positive_count: 0

@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 
 export default function SSOCallback() {
@@ -9,7 +7,10 @@ export default function SSOCallback() {
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-muted-foreground">Completing sign in...</p>
       </div>
-      <AuthenticateWithRedirectCallback />
+      <AuthenticateWithRedirectCallback 
+        redirectUrl="/"
+        redirectUrlComplete="/"
+      />
     </div>
   );
 }
