@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { ClerkProvider, useUser, useAuth as useClerkAuth, useSignIn, useSignUp } from "@clerk/clerk-react";
 import { toast } from "sonner";
 
@@ -45,13 +45,34 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const { user, isLoaded: userLoaded, isSignedIn } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
-  const { signIn: clerkSignIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn();
-  const { signUp: clerkSignUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp();
+  const signInHook = useSignIn();
+  const signUpHook = useSignUp();
   const [demoMode, setDemoModeState] = useState(false);
   const [demoUser, setDemoUser] = useState<any>(null);
   
+  const clerkSignIn = signInHook?.signIn;
+  const setSignInActive = signInHook?.setActive;
+  const signInLoaded = signInHook?.isLoaded ?? false;
+  
+  const clerkSignUp = signUpHook?.signUp;
+  const setSignUpActive = signUpHook?.setActive;
+  const signUpLoaded = signUpHook?.isLoaded ?? false;
+  
   // All Clerk hooks must be loaded before auth operations
-  const isLoaded = userLoaded && signInLoaded !== undefined && signUpLoaded !== undefined;
+  const isLoaded = userLoaded && signInLoaded && signUpLoaded;
+  
+  // Debug logging
+  useEffect(() => {
+    console.log("🔍 Auth Debug:", {
+      userLoaded,
+      signInLoaded,
+      signUpLoaded,
+      isLoaded,
+      hasClerkSignIn: !!clerkSignIn,
+      hasClerkSignUp: !!clerkSignUp,
+      clerkKey: CLERK_PUBLISHABLE_KEY ? `${CLERK_PUBLISHABLE_KEY.substring(0, 20)}...` : "MISSING"
+    });
+  }, [userLoaded, signInLoaded, signUpLoaded, isLoaded, clerkSignIn, clerkSignUp]);
 
   const profile: UserProfile | null = user ? {
     id: user.id,
