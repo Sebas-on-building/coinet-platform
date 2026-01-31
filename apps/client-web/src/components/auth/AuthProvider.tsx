@@ -70,9 +70,28 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
       isLoaded,
       hasClerkSignIn: !!clerkSignIn,
       hasClerkSignUp: !!clerkSignUp,
-      clerkKey: CLERK_PUBLISHABLE_KEY ? `${CLERK_PUBLISHABLE_KEY.substring(0, 20)}...` : "MISSING"
+      clerkKey: CLERK_PUBLISHABLE_KEY ? `${CLERK_PUBLISHABLE_KEY.substring(0, 20)}...` : "MISSING",
+      clerkKeyLength: CLERK_PUBLISHABLE_KEY?.length || 0,
+      signInHook: signInHook ? "exists" : "null",
+      signUpHook: signUpHook ? "exists" : "null",
     });
-  }, [userLoaded, signInLoaded, signUpLoaded, isLoaded, clerkSignIn, clerkSignUp]);
+    
+    // Log full hook objects for debugging
+    if (signInHook) {
+      console.log("📝 SignIn Hook:", {
+        isLoaded: signInHook.isLoaded,
+        hasSignIn: !!signInHook.signIn,
+        hasSetActive: !!signInHook.setActive,
+      });
+    }
+    if (signUpHook) {
+      console.log("📝 SignUp Hook:", {
+        isLoaded: signUpHook.isLoaded,
+        hasSignUp: !!signUpHook.signUp,
+        hasSetActive: !!signUpHook.setActive,
+      });
+    }
+  }, [userLoaded, signInLoaded, signUpLoaded, isLoaded, clerkSignIn, clerkSignUp, signInHook, signUpHook]);
 
   const profile: UserProfile | null = user ? {
     id: user.id,
