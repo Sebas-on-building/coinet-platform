@@ -47,7 +47,16 @@ export function AuthPage() {
     
     try {
       const { error } = await signIn(signInForm.email, signInForm.password);
+      if (error) {
+        console.error("Sign in error:", error);
+        // Error toast is already shown in AuthProvider
+      } else {
+        console.log("✅ Sign in successful, waiting for redirect...");
+      }
       // Redirect will happen automatically via useEffect watching user state
+    } catch (err) {
+      console.error("Unexpected sign in error:", err);
+      toast.error("An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +87,11 @@ export function AuthPage() {
         display_name: signUpForm.displayName
       });
       
-      if (!error) {
+      if (error) {
+        console.error("Sign up error:", error);
+        // Error toast is already shown in AuthProvider
+      } else {
+        console.log("✅ Sign up successful");
         // Switch to sign in tab after successful registration
         setActiveTab("signin");
         // Reset form
@@ -89,6 +102,9 @@ export function AuthPage() {
           displayName: "",
         });
       }
+    } catch (err) {
+      console.error("Unexpected sign up error:", err);
+      toast.error("An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
