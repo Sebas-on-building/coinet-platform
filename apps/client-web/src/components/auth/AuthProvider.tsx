@@ -37,12 +37,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function AuthProviderInner({ children }: { children: React.ReactNode }) {
-  const { user, isLoaded, isSignedIn } = useUser();
+  const { user, isLoaded: userLoaded, isSignedIn } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
-  const { signIn: clerkSignIn, setActive: setSignInActive } = useSignIn();
-  const { signUp: clerkSignUp, setActive: setSignUpActive } = useSignUp();
+  const { signIn: clerkSignIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn();
+  const { signUp: clerkSignUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp();
   const [demoMode, setDemoModeState] = useState(false);
   const [demoUser, setDemoUser] = useState<any>(null);
+  
+  const isLoaded = userLoaded && signInLoaded && signUpLoaded;
 
   const profile: UserProfile | null = user ? {
     id: user.id,
@@ -57,7 +59,20 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      if (!isLoaded || !clerkSignIn) return { error: new Error("Sign in not available") };
+      if (!isLoaded) {
+        console.warn("Clerk not loaded yet");
+        return { error: new Error("Please wait, authentication is loading...") };
+      }
+      
+      if (!clerkSignIn) {
+        console.error("clerkSignIn is null/undefined");
+        return { error: new Error("Sign in not available. Please refresh the page.") };
+      }
+      
+      if (!setSignInActive) {
+        console.error("setSignInActive is null/undefined");
+        return { error: new Error("Sign in not available. Please refresh the page.") };
+      }
       
       const signInAttempt = await clerkSignIn.create({
         identifier: email,
@@ -70,8 +85,14 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
         return { error: null };
       }
       
+      // Handle other statuses (e.g., needs verification)
+      if (signInAttempt.status === 'needs_first_factor') {
+        return { error: new Error("Please verify your email address") };
+      }
+      
       return { error: null };
     } catch (error: any) {
+      console.error("Sign in error:", error);
       const message = error.errors?.[0]?.message || error.message || "Sign in failed";
       toast.error("Authentication failed", { description: message });
       return { error: new Error(message) };
@@ -80,7 +101,20 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, metadata?: any) => {
     try {
-      if (!isLoaded || !clerkSignUp) return { error: new Error("Sign up not available") };
+      if (!isLoaded) {
+        console.warn("Clerk not loaded yet");
+        return { error: new Error("Please wait, authentication is loading...") };
+      }
+      
+      if (!clerkSignUp) {
+        console.error("clerkSignUp is null/undefined");
+        return { error: new Error("Sign up not available. Please refresh the page.") };
+      }
+      
+      if (!setSignUpActive) {
+        console.error("setSignUpActive is null/undefined");
+        return { error: new Error("Sign up not available. Please refresh the page.") };
+      }
       
       const signUpAttempt = await clerkSignUp.create({
         emailAddress: email,
@@ -93,12 +127,14 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
         toast.success("Welcome to Coinet AI!");
         return { error: null };
       } else {
+        // Email verification required
         toast.success("Registration successful!", {
           description: "Please check your email to verify your account."
         });
         return { error: null };
       }
     } catch (error: any) {
+      console.error("Sign up error:", error);
       const message = error.errors?.[0]?.message || error.message || "Registration failed";
       toast.error("Registration failed", { description: message });
       return { error: new Error(message) };
@@ -213,7 +249,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
     user: effectiveUser,
     session: isSignedIn || demoMode ? { user: effectiveUser } : null,
     profile: effectiveProfile,
-    loading: !isLoaded && !demoMode,
+    loading: (!isLoaded || !userLoaded) && !demoMode,
     signIn,
     signUp,
     signOut,
