@@ -50,13 +50,14 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const [demoMode, setDemoModeState] = useState(false);
   const [demoUser, setDemoUser] = useState<any>(null);
   
-  const clerkSignIn = signInHook?.signIn;
-  const setSignInActive = signInHook?.setActive;
-  const signInLoaded = signInHook?.isLoaded ?? false;
+  // Extract values from hooks - they return objects with signIn/signUp properties
+  const clerkSignIn = signInHook.signIn;
+  const setSignInActive = signInHook.setActive;
+  const signInLoaded = signInHook.isLoaded;
   
-  const clerkSignUp = signUpHook?.signUp;
-  const setSignUpActive = signUpHook?.setActive;
-  const signUpLoaded = signUpHook?.isLoaded ?? false;
+  const clerkSignUp = signUpHook.signUp;
+  const setSignUpActive = signUpHook.setActive;
+  const signUpLoaded = signUpHook.isLoaded;
   
   // All Clerk hooks must be loaded before auth operations
   const isLoaded = userLoaded && signInLoaded && signUpLoaded;
