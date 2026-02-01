@@ -70,10 +70,18 @@ if (CLERK_SECRET_KEY) {
 // =============================================================================
 
 /**
- * Authentication middleware
- * Validates the request and attaches user info
+ * Wrapper to handle async middleware in Express
  */
-export async function requireAuth(
+function asyncMiddleware(fn: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(next);
+  };
+}
+
+/**
+ * Internal async authentication handler
+ */
+async function requireAuthAsync(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -87,10 +95,10 @@ export async function requireAuth(
       req.userId = authResult.user?.id;
       req.isAuthenticated = true;
       req.authMethod = authResult.method;
-      logger.debug('Auth success', { 
+      logger.info('Auth success', { 
         userId: req.userId, 
         method: req.authMethod,
-        email: req.user?.email 
+        path: req.path 
       });
       return next();
     }
@@ -110,6 +118,11 @@ export async function requireAuth(
       reason: authResult.reason,
       ip: req.ip,
       path: req.path,
+      headers: {
+        hasAuth: !!req.headers.authorization,
+        hasUserId: !!req.headers['x-user-id'],
+        hasApiKey: !!req.headers['x-api-key'],
+      }
     });
     
     res.status(401).json({
@@ -127,10 +140,15 @@ export async function requireAuth(
 }
 
 /**
- * Optional authentication middleware
- * Attaches user info if available, but allows unauthenticated requests
+ * Authentication middleware (wrapped for Express compatibility)
+ * Validates the request and attaches user info
  */
-export async function optionalAuth(
+export const requireAuth = asyncMiddleware(requireAuthAsync);
+
+/**
+ * Internal async optional authentication handler
+ */
+async function optionalAuthAsync(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -161,6 +179,12 @@ export async function optionalAuth(
     next();
   }
 }
+
+/**
+ * Optional authentication middleware (wrapped for Express compatibility)
+ * Attaches user info if available, but allows unauthenticated requests
+ */
+export const optionalAuth = asyncMiddleware(optionalAuthAsync);
 
 // =============================================================================
 // AUTHENTICATION EXTRACTION
