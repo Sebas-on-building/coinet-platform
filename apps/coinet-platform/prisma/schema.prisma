@@ -780,8 +780,65 @@ model Referral {
 }
 
 // =============================================================================
+// CHAT & CONVERSATIONS
+// =============================================================================
+
+model Conversation {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String?
+  agentId   String?
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages  Message[]
+  agent     Agent?    @relation(fields: [agentId], references: [id])
+
+  @@index([userId])
+  @@index([agentId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  metadata       Json?    @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model Agent {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  systemPrompt String?
+  capabilities Json?    @default("[]")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  conversations Conversation[]
+
+  @@map("agents")
+}
+
+// =============================================================================
 // ENUMS
 // =============================================================================
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
 
 enum UserRole {
   ADMIN
