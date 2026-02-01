@@ -9,7 +9,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { prisma } from './db/client';
-// Build trigger: v3 - intent classifier fix
+// Build trigger: v4 - message schema fix
 import { logger } from './utils/logger';
 import chatRoutes from './api/chat/routes';
 import retentionRoutes from './api/retention/routes';
