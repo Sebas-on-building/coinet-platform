@@ -30,6 +30,11 @@ export interface AuthenticatedRequest extends Request {
   userId?: string;
   isAuthenticated?: boolean;
   authMethod?: 'clerk' | 'apiKey' | 'demo' | 'anonymous';
+  // For compatibility with chat controller
+  auth?: {
+    userId: string;
+    user: AuthenticatedUser;
+  };
 }
 
 // =============================================================================
@@ -91,11 +96,16 @@ async function requireAuthAsync(
     // Try to extract authentication from various sources
     const authResult = await extractAuth(req);
     
-    if (authResult.authenticated) {
+    if (authResult.authenticated && authResult.user) {
       req.user = authResult.user;
-      req.userId = authResult.user?.id;
+      req.userId = authResult.user.id;
       req.isAuthenticated = true;
       req.authMethod = authResult.method;
+      // For compatibility with chat controller
+      req.auth = {
+        userId: authResult.user.id,
+        user: authResult.user,
+      };
       logger.info('Auth success', { 
         userId: req.userId, 
         method: req.authMethod,
@@ -157,16 +167,24 @@ async function optionalAuthAsync(
   try {
     const authResult = await extractAuth(req);
     
-    if (authResult.authenticated) {
+    if (authResult.authenticated && authResult.user) {
       req.user = authResult.user;
-      req.userId = authResult.user?.id;
+      req.userId = authResult.user.id;
       req.isAuthenticated = true;
       req.authMethod = authResult.method;
+      req.auth = {
+        userId: authResult.user.id,
+        user: authResult.user,
+      };
     } else {
       req.user = ANONYMOUS_USER;
       req.userId = ANONYMOUS_USER.id;
       req.isAuthenticated = false;
       req.authMethod = 'anonymous';
+      req.auth = {
+        userId: ANONYMOUS_USER.id,
+        user: ANONYMOUS_USER,
+      };
     }
     
     next();
@@ -177,6 +195,10 @@ async function optionalAuthAsync(
     req.userId = ANONYMOUS_USER.id;
     req.isAuthenticated = false;
     req.authMethod = 'anonymous';
+    req.auth = {
+      userId: ANONYMOUS_USER.id,
+      user: ANONYMOUS_USER,
+    };
     next();
   }
 }
