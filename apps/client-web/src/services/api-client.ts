@@ -93,9 +93,42 @@ export interface ChatMessage {
 
 class ApiClient {
   private baseURL: string;
+  private authToken: string | null = null;
+  private userId: string | null = null;
 
   constructor() {
     this.baseURL = API_BASE_URL;
+  }
+
+  /**
+   * Set authentication context from Clerk
+   */
+  setAuth(userId: string | null, token: string | null) {
+    this.userId = userId;
+    this.authToken = token;
+    console.log('🔐 Auth set:', { userId: userId ? userId.substring(0, 10) + '...' : null, hasToken: !!token });
+  }
+
+  /**
+   * Get auth headers for requests
+   */
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+    
+    if (this.userId) {
+      headers['X-User-Id'] = this.userId;
+    } else {
+      // Fallback to localStorage for demo mode
+      headers['X-User-Id'] = this.getLegacyUserId();
+    }
+    
+    return headers;
   }
 
   /**
@@ -109,10 +142,7 @@ class ApiClient {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': this.getUserId(),
-        },
+        headers: this.getAuthHeaders(),
         credentials: 'include', // Include credentials for CORS
         mode: 'cors', // Explicitly set CORS mode
         body: JSON.stringify(request),
@@ -163,9 +193,7 @@ class ApiClient {
    */
   async getConversationHistory(conversationId: string): Promise<ConversationHistoryResponse> {
     const response = await fetch(`${this.baseURL}/api/chat/history/${conversationId}`, {
-      headers: {
-        'X-User-Id': this.getUserId(),
-      },
+      headers: this.getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -185,10 +213,7 @@ class ApiClient {
   ): Promise<ChatMessageResponse> {
     const response = await fetch(`${this.baseURL}/api/chat/regenerate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': this.getUserId(),
-      },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
         conversationId,
         messageId,
@@ -209,9 +234,7 @@ class ApiClient {
   async deleteMessage(conversationId: string, messageId: string): Promise<void> {
     const response = await fetch(`${this.baseURL}/api/chat/message/${messageId}?conversationId=${conversationId}`, {
       method: 'DELETE',
-      headers: {
-        'X-User-Id': this.getUserId(),
-      },
+      headers: this.getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -221,9 +244,9 @@ class ApiClient {
   }
 
   /**
-   * Get user ID from storage or generate one
+   * Get user ID from storage or generate one (legacy fallback for demo mode)
    */
-  private getUserId(): string {
+  private getLegacyUserId(): string {
     // Check localStorage for stored user ID
     const stored = localStorage.getItem('coinet_user_id');
     if (stored) {

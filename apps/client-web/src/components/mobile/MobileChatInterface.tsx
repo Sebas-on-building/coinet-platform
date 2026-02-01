@@ -17,6 +17,7 @@ import { OmniScoreQuadrantBoard, QuadrantProject } from '@/components/OmniScoreQ
 import { SourceCitation, Source } from '@/components/SourceCitation';
 import { SourcesPanel } from '@/components/SourcesPanel';
 import { apiClient } from '@/services/api-client';
+import { useAuthenticatedApi } from '@/hooks/useAuthenticatedApi';
 
 const suggestedPrompts = [
   {
@@ -57,6 +58,9 @@ interface MobileChatInterfaceProps {
 }
 
 export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
+  // Sync Clerk auth with API client
+  useAuthenticatedApi();
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);

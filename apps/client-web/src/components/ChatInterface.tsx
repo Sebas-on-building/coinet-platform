@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SourceCitation, Source } from "@/components/SourceCitation";
 import { SourcesPanel } from "@/components/SourcesPanel";
 import { apiClient } from "@/services/api-client";
+import { useAuthenticatedApi } from "@/hooks/useAuthenticatedApi";
 import { OmniScoreQuadrantBoard, QuadrantProject } from "@/components/OmniScoreQuadrantBoard";
 
 interface Message {
@@ -40,6 +41,9 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
+  // Sync Clerk auth with API client
+  useAuthenticatedApi();
+  
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
