@@ -58,12 +58,13 @@ const clerkClient = CLERK_SECRET_KEY
   ? createClerkClient({ secretKey: CLERK_SECRET_KEY })
   : null;
 
-// Log Clerk configuration status
+// Log Clerk configuration status at startup
 if (CLERK_SECRET_KEY) {
-  logger.info('✅ Clerk backend configured with secret key');
+  logger.info('✅ Clerk backend configured with secret key (v2)');
 } else {
-  logger.warn('⚠️ CLERK_SECRET_KEY not set - Clerk token validation disabled');
+  logger.warn('⚠️ CLERK_SECRET_KEY not set - Clerk token validation disabled, X-User-Id and demo mode still work');
 }
+logger.info('🔐 Auth middleware loaded - supports: Clerk JWT, API keys, X-User-Id (demo mode)');
 
 // =============================================================================
 // MIDDLEWARE
