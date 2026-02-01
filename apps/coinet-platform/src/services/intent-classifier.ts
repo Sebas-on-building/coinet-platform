@@ -41,6 +41,10 @@ export interface IntentClassification {
   suggestedDepth: 'minimal' | 'quick' | 'standard' | 'deep';
   requiresLiveData: boolean;
   dataSources: string[];    // Which data sources to query
+  responseShape?: 'concise' | 'detailed' | 'structured';
+  metadata: {
+    processingTimeMs: number;
+  };
 }
 
 // =============================================================================
@@ -182,6 +186,7 @@ const TIMEFRAME_PATTERNS: Record<string, RegExp> = {
  * Classify user message intent
  */
 export function classifyIntent(message: string): IntentClassification {
+  const startTime = Date.now();
   const lowerMessage = message.toLowerCase().trim();
   
   // Extract entities
@@ -220,6 +225,8 @@ export function classifyIntent(message: string): IntentClassification {
     bestConfidence = 0.5;
   }
   
+  const processingTime = Date.now() - startTime;
+  
   const classification: IntentClassification = {
     intent: bestIntent,
     confidence: bestConfidence,
@@ -231,6 +238,10 @@ export function classifyIntent(message: string): IntentClassification {
     suggestedDepth: getSuggestedDepth(bestIntent, message),
     requiresLiveData: requiresLiveData(bestIntent),
     dataSources: getDataSources(bestIntent, tokens),
+    responseShape: getResponseShape(bestIntent),
+    metadata: {
+      processingTimeMs: processingTime,
+    },
   };
   
   logger.debug('Intent classified', { 
@@ -239,6 +250,18 @@ export function classifyIntent(message: string): IntentClassification {
   });
   
   return classification;
+}
+
+/**
+ * Get response shape based on intent
+ */
+function getResponseShape(intent: IntentType): 'concise' | 'detailed' | 'structured' {
+  const conciseIntents: IntentType[] = ['price_check', 'greeting', 'gratitude'];
+  const structuredIntents: IntentType[] = ['comparison', 'market_overview', 'portfolio_query'];
+  
+  if (conciseIntents.includes(intent)) return 'concise';
+  if (structuredIntents.includes(intent)) return 'structured';
+  return 'detailed';
 }
 
 /**
