@@ -328,8 +328,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider 
       publishableKey={CLERK_PUBLISHABLE_KEY}
-      afterSignInUrl="/"
-      afterSignUpUrl="/"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
     >
       <AuthProviderInner>
         {children}
