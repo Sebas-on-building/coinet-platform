@@ -35,7 +35,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, metadata?: any) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
-  signInWithGithub: () => Promise<{ error: Error | null }>;
+  signInWithApple: () => Promise<{ error: Error | null }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>;
   setDemoMode?: (enabled: boolean) => void;
 }
@@ -225,19 +225,19 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signInWithGithub = async () => {
+  const signInWithApple = async () => {
     try {
       if (!isLoaded || !clerkSignIn) return { error: new Error("Sign in not available") };
       
       await clerkSignIn.authenticateWithRedirect({
-        strategy: 'oauth_github',
+        strategy: 'oauth_apple',
         redirectUrl: '/sso-callback',
         redirectUrlComplete: '/',
       });
       
       return { error: null };
     } catch (error: any) {
-      toast.error("GitHub sign in failed");
+      toast.error("Apple sign in failed");
       return { error: error as Error };
     }
   };
@@ -302,7 +302,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
     signUp,
     signOut,
     signInWithGoogle,
-    signInWithGithub,
+    signInWithApple,
     updateProfile,
     setDemoMode,
   };
