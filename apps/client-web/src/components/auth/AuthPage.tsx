@@ -131,6 +131,8 @@ export function AuthPage() {
   const handleDemoMode = () => {
     if (setDemoMode) {
       setDemoMode(true);
+      // Navigate immediately - don't wait for state update
+      navigate("/");
     }
   };
 

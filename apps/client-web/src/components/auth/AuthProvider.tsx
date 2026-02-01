@@ -260,6 +260,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
   };
 
   const setDemoMode = (enabled: boolean) => {
+    console.log("🎮 Setting demo mode:", enabled);
     setDemoModeState(enabled);
     if (enabled) {
       const DEMO_USER_UUID = '00000000-0000-0000-0000-000000000001';
