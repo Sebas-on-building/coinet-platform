@@ -1103,6 +1103,15 @@ export class AIService {
     const grokApiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
     
+    // Log which keys are detected (without exposing the actual key)
+    logger.info('🔑 AI Service key detection:', {
+      hasXaiKey: !!process.env.XAI_API_KEY,
+      hasGrokKey: !!process.env.GROK_API_KEY,
+      hasOpenaiKey: !!process.env.OPENAI_API_KEY,
+      xaiKeyLength: process.env.XAI_API_KEY?.length || 0,
+      openaiKeyLength: process.env.OPENAI_API_KEY?.length || 0,
+    });
+    
     if (grokApiKey) {
       this.client = new OpenAI({ 
         apiKey: grokApiKey,
@@ -1110,14 +1119,14 @@ export class AIService {
       });
       this.provider = 'grok';
       this.isConfigured = true;
-      logger.info('✅ Grok (xAI) AI Service initialized');
+      logger.info('✅ Grok (xAI) AI Service initialized', { keyLength: grokApiKey.length });
     } else if (openaiApiKey) {
       this.client = new OpenAI({ apiKey: openaiApiKey });
       this.provider = 'openai';
       this.isConfigured = true;
-      logger.info('✅ OpenAI AI Service initialized (fallback)');
+      logger.info('✅ OpenAI AI Service initialized', { keyLength: openaiApiKey.length });
     } else {
-      logger.warn('⚠️ No AI API key configured (XAI_API_KEY or OPENAI_API_KEY) - AI will use fallback responses');
+      logger.error('❌ No AI API key configured! Add XAI_API_KEY or OPENAI_API_KEY to Railway environment variables');
     }
   }
 
