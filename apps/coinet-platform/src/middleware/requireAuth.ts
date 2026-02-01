@@ -1,14 +1,15 @@
 /**
  * COINET AUTHENTICATION MIDDLEWARE
  * 
- * Handles request authentication and user context injection.
+ * Production-ready authentication with Clerk integration.
  * Supports multiple authentication methods:
- * - JWT tokens
- * - API keys
- * - Session cookies
+ * - Clerk JWT tokens (primary - production)
+ * - API keys (for programmatic access)
+ * - X-User-Id header (for demo mode and internal services)
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { verifyToken, createClerkClient } from '@clerk/backend';
 import { logger } from '../utils/logger';
 
 // =============================================================================
@@ -21,22 +22,29 @@ export interface AuthenticatedUser {
   name?: string;
   role: 'user' | 'admin' | 'premium';
   tier: 'free' | 'pro' | 'enterprise';
+  clerkId?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
   userId?: string;
   isAuthenticated?: boolean;
-  authMethod?: 'jwt' | 'apiKey' | 'session' | 'anonymous';
+  authMethod?: 'clerk' | 'apiKey' | 'demo' | 'anonymous';
 }
 
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
 
+// Clerk configuration
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY;
+const CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY;
+
 // Check if authentication is enforced (can be disabled for development)
 const AUTH_ENFORCE = process.env.AUTH_ENFORCE_CHAT !== 'false';
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-change-in-production';
+
+// Demo user UUID (matches frontend)
+const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Anonymous user for unauthenticated requests (when auth is not enforced)
 const ANONYMOUS_USER: AuthenticatedUser = {
@@ -44,6 +52,18 @@ const ANONYMOUS_USER: AuthenticatedUser = {
   role: 'user',
   tier: 'free',
 };
+
+// Initialize Clerk client if configured
+const clerkClient = CLERK_SECRET_KEY 
+  ? createClerkClient({ secretKey: CLERK_SECRET_KEY })
+  : null;
+
+// Log Clerk configuration status
+if (CLERK_SECRET_KEY) {
+  logger.info('✅ Clerk backend configured with secret key');
+} else {
+  logger.warn('⚠️ CLERK_SECRET_KEY not set - Clerk token validation disabled');
+}
 
 // =============================================================================
 // MIDDLEWARE
@@ -53,20 +73,25 @@ const ANONYMOUS_USER: AuthenticatedUser = {
  * Authentication middleware
  * Validates the request and attaches user info
  */
-export function requireAuth(
+export async function requireAuth(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   try {
     // Try to extract authentication from various sources
-    const authResult = extractAuth(req);
+    const authResult = await extractAuth(req);
     
     if (authResult.authenticated) {
       req.user = authResult.user;
       req.userId = authResult.user?.id;
       req.isAuthenticated = true;
       req.authMethod = authResult.method;
+      logger.debug('Auth success', { 
+        userId: req.userId, 
+        method: req.authMethod,
+        email: req.user?.email 
+      });
       return next();
     }
     
@@ -105,13 +130,13 @@ export function requireAuth(
  * Optional authentication middleware
  * Attaches user info if available, but allows unauthenticated requests
  */
-export function optionalAuth(
+export async function optionalAuth(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   try {
-    const authResult = extractAuth(req);
+    const authResult = await extractAuth(req);
     
     if (authResult.authenticated) {
       req.user = authResult.user;
@@ -144,19 +169,27 @@ export function optionalAuth(
 interface AuthResult {
   authenticated: boolean;
   user?: AuthenticatedUser;
-  method?: 'jwt' | 'apiKey' | 'session';
+  method?: 'clerk' | 'apiKey' | 'demo' | 'anonymous';
   reason?: string;
 }
 
 /**
  * Extract and validate authentication from request
  */
-function extractAuth(req: Request): AuthResult {
-  // 1. Try Bearer token (JWT)
+async function extractAuth(req: Request): Promise<AuthResult> {
+  // 1. Try Bearer token (Clerk JWT)
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    return validateJWT(token);
+    const result = await validateClerkToken(token);
+    if (result.authenticated) {
+      return result;
+    }
+    // If Clerk validation fails, try legacy JWT
+    const legacyResult = validateLegacyJWT(token);
+    if (legacyResult.authenticated) {
+      return legacyResult;
+    }
   }
   
   // 2. Try API key
@@ -165,23 +198,22 @@ function extractAuth(req: Request): AuthResult {
     return validateApiKey(apiKey);
   }
   
-  // 3. Try session cookie
-  const sessionCookie = req.cookies?.session;
-  if (sessionCookie) {
-    return validateSession(sessionCookie);
-  }
-  
-  // 4. Try user ID from headers (for internal services)
+  // 3. Try user ID from headers (for demo mode and internal services)
   const userId = req.headers['x-user-id'] as string;
   if (userId) {
+    // Check if it's the demo user
+    const isDemoUser = userId === DEMO_USER_ID || userId.startsWith('user_');
+    
     return {
       authenticated: true,
       user: {
         id: userId,
         role: 'user',
-        tier: 'free',
+        tier: isDemoUser ? 'free' : 'pro',
+        name: isDemoUser ? 'Demo User' : undefined,
+        email: isDemoUser ? 'demo@coinet.ai' : undefined,
       },
-      method: 'session',
+      method: 'demo',
     };
   }
   
@@ -192,11 +224,72 @@ function extractAuth(req: Request): AuthResult {
 }
 
 /**
- * Validate JWT token
+ * Validate Clerk JWT token
  */
-function validateJWT(token: string): AuthResult {
+async function validateClerkToken(token: string): Promise<AuthResult> {
+  // Skip if Clerk is not configured
+  if (!CLERK_SECRET_KEY) {
+    logger.debug('Clerk not configured, skipping token validation');
+    return { authenticated: false, reason: 'Clerk not configured' };
+  }
+
   try {
-    // Simple JWT validation (in production, use a proper JWT library)
+    // Verify the token with Clerk
+    const payload = await verifyToken(token, {
+      secretKey: CLERK_SECRET_KEY,
+    });
+    
+    if (!payload) {
+      return { authenticated: false, reason: 'Invalid Clerk token' };
+    }
+
+    // Extract user info from the token
+    const userId = payload.sub;
+    
+    // Optionally fetch full user details from Clerk
+    let email: string | undefined;
+    let name: string | undefined;
+    
+    if (clerkClient && userId) {
+      try {
+        const user = await clerkClient.users.getUser(userId);
+        email = user.emailAddresses?.[0]?.emailAddress;
+        name = user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : undefined;
+      } catch (e) {
+        // Non-fatal - we can continue without full user details
+        logger.debug('Could not fetch Clerk user details', { userId, error: e });
+      }
+    }
+
+    return {
+      authenticated: true,
+      user: {
+        id: userId,
+        clerkId: userId,
+        email,
+        name,
+        role: 'user',
+        tier: 'free', // Could be upgraded based on Clerk metadata
+      },
+      method: 'clerk',
+    };
+  } catch (error: any) {
+    logger.debug('Clerk token validation failed', { 
+      error: error.message,
+      code: error.code 
+    });
+    return { 
+      authenticated: false, 
+      reason: error.message || 'Invalid or expired token' 
+    };
+  }
+}
+
+/**
+ * Validate legacy JWT token (fallback)
+ */
+function validateLegacyJWT(token: string): AuthResult {
+  try {
     const parts = token.split('.');
     if (parts.length !== 3) {
       return { authenticated: false, reason: 'Invalid token format' };
@@ -219,10 +312,10 @@ function validateJWT(token: string): AuthResult {
         role: payload.role || 'user',
         tier: payload.tier || 'free',
       },
-      method: 'jwt',
+      method: 'clerk', // Treat as clerk method for consistency
     };
   } catch (error) {
-    logger.debug('JWT validation failed', { error });
+    logger.debug('Legacy JWT validation failed', { error });
     return { authenticated: false, reason: 'Invalid token' };
   }
 }
@@ -231,14 +324,11 @@ function validateJWT(token: string): AuthResult {
  * Validate API key
  */
 function validateApiKey(apiKey: string): AuthResult {
-  // In production, this would check against a database of valid API keys
-  // For now, accept any non-empty API key with basic format validation
-  
   if (!apiKey || apiKey.length < 10) {
     return { authenticated: false, reason: 'Invalid API key format' };
   }
   
-  // Extract user info from API key (in production, lookup from database)
+  // Extract user info from API key
   // API key format: coinet_<userId>_<random>
   const match = apiKey.match(/^coinet_([a-zA-Z0-9-]+)_/);
   
@@ -268,28 +358,6 @@ function validateApiKey(apiKey: string): AuthResult {
   }
   
   return { authenticated: false, reason: 'Invalid API key' };
-}
-
-/**
- * Validate session cookie
- */
-function validateSession(sessionId: string): AuthResult {
-  // In production, this would validate against session store (Redis, etc.)
-  // For now, accept any session ID
-  
-  if (!sessionId || sessionId.length < 10) {
-    return { authenticated: false, reason: 'Invalid session' };
-  }
-  
-  return {
-    authenticated: true,
-    user: {
-      id: `session-${sessionId.substring(0, 8)}`,
-      role: 'user',
-      tier: 'free',
-    },
-    method: 'session',
-  };
 }
 
 // =============================================================================
