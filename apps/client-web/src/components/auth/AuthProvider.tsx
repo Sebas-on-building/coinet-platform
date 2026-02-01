@@ -389,8 +389,8 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
       toast.error("Please configure Clerk to enable Google sign in");
       return { error: new Error("Clerk not configured") };
     },
-    signInWithGithub: async () => {
-      toast.error("Please configure Clerk to enable GitHub sign in");
+    signInWithApple: async () => {
+      toast.error("Please configure Clerk to enable Apple sign in");
       return { error: new Error("Clerk not configured") };
     },
     updateProfile: async () => {
