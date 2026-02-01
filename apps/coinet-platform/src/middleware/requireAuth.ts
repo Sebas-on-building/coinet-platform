@@ -93,8 +93,24 @@ async function requireAuthAsync(
   next: NextFunction
 ): Promise<void> {
   try {
+    // Log incoming auth headers for debugging
+    logger.info('🔐 Auth check starting', {
+      path: req.path,
+      hasAuthorization: !!req.headers.authorization,
+      hasXUserId: !!req.headers['x-user-id'],
+      xUserId: req.headers['x-user-id'],
+      hasApiKey: !!req.headers['x-api-key'],
+    });
+
     // Try to extract authentication from various sources
     const authResult = await extractAuth(req);
+    
+    logger.info('🔐 Auth extraction result', {
+      authenticated: authResult.authenticated,
+      method: authResult.method,
+      reason: authResult.reason,
+      userId: authResult.user?.id,
+    });
     
     if (authResult.authenticated && authResult.user) {
       req.user = authResult.user;
@@ -120,6 +136,10 @@ async function requireAuthAsync(
       req.userId = ANONYMOUS_USER.id;
       req.isAuthenticated = false;
       req.authMethod = 'anonymous';
+      req.auth = {
+        userId: ANONYMOUS_USER.id,
+        user: ANONYMOUS_USER,
+      };
       logger.debug('Anonymous access allowed (AUTH_ENFORCE_CHAT=false)');
       return next();
     }
