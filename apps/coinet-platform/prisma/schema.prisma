@@ -790,14 +790,14 @@ model Conversation {
   agentId   String?
   archived  Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   messages  Message[]
   agent     Agent?    @relation(fields: [agentId], references: [id])
 
   @@index([userId])
   @@index([agentId])
-  @@map("conversations")
+  @@map("chat_conversations")
 }
 
 model Message {
@@ -807,27 +807,27 @@ model Message {
   content        String
   metadata       Json?    @default("{}")
   createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime @default(now()) @updatedAt
 
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
-  @@map("messages")
+  @@map("chat_messages")
 }
 
 model Agent {
   id          String   @id @default(uuid())
   name        String
   description String?
-  systemPrompt String?
+  systemPrompt String?  @map("system_prompt")
   capabilities Json?    @default("[]")
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 
   conversations Conversation[]
 
-  @@map("agents")
+  @@map("chat_agents")
 }
 
 // =============================================================================
