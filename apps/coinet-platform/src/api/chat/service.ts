@@ -187,6 +187,16 @@ export class ChatService {
         const detectedCoins = await symbolDetector.detectCoins(request.message);
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
         
+        // 🚨 CRITICAL FIX: Always fetch at least basic market data, even for simple greetings
+        // This prevents empty context which causes generic AI responses
+        if (coinSymbols.length === 0 && request.message.toLowerCase().trim() === 'hey') {
+          // For simple "hey" greeting, default to BTC to ensure we have SOME context
+          coinSymbols.push('BTC');
+          logger.debug('🎯 Simple greeting detected, defaulting to BTC for context', {
+            message: request.message,
+          });
+        }
+        
         // 🎯 Execute intent handler to determine what data to fetch
         handlerResult = await executeHandler(
           request.message,
@@ -252,10 +262,14 @@ export class ChatService {
           ? trackFetch('whaleContext', getWhaleContextForAI(), true).then(r => r || { isAvailable: false, contextForAI: null, monitoredChains: [], capabilities: [] })
           : Promise.resolve({ isAvailable: false, contextForAI: null, monitoredChains: [], capabilities: [] });
         
+        // 🚨 CRITICAL FIX: Always fetch market data, even if intent handler says not to
+        // This ensures AI always has SOME context to work with
+        const shouldFetchMarketData = ds.fetchMarketData || coinSymbols.length > 0 || request.message.toLowerCase().trim() === 'hey';
+        
         const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal] = await Promise.all([
           trackFetch('userContext', buildUserContextForAI(userId), true),
-          trackFetch('marketData', fetchPricesForMessage(request.message), ds.fetchMarketData),
-          trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), ds.fetchEnterpriseData && coinSymbols.length > 0),
+          trackFetch('marketData', fetchPricesForMessage(request.message), shouldFetchMarketData),
+          trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), (ds.fetchEnterpriseData && coinSymbols.length > 0) || coinSymbols.length > 0),
           whaleContextPromise,
           trackFetch('enrichedNews', getEnrichedNewsForCoins(coinSymbols), ds.fetchNews),
           trackFetch('sentiment', getMarketSentiment(), ds.fetchSentiment),
@@ -1138,16 +1152,32 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
         
         // Add a warning context to inform the AI that data is unavailable
         liveContextStr = `
-⚠️ DATA AVAILABILITY WARNING
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  🚨 CRITICAL: DATA UNAVAILABLE — RESPONSE REQUIREMENTS                        ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
 Market data services are currently unavailable or experiencing issues.
 The user asked: "${request.message}"
 
-CRITICAL INSTRUCTIONS:
-- DO NOT generate generic responses like "I understand you're asking about X. This is a complex topic..."
-- DO NOT ask "What would you like to analyze?" 
-- Instead, acknowledge the data unavailability and provide what you CAN say based on general knowledge
-- Be direct: "I'm having trouble accessing live market data right now. Based on general market knowledge..."
-- If the user asked about a specific coin (like BTC), acknowledge it and explain the limitation
+🚫 ABSOLUTELY FORBIDDEN RESPONSES (INSTANT FAILURE IF USED):
+❌ "I understand you're asking about [X]. This is a complex topic..."
+❌ "What would you like to analyze?"
+❌ "This requires careful analysis of multiple factors..."
+❌ "I'd be happy to help you analyze..."
+❌ Any generic stalling phrases
+
+✅ REQUIRED RESPONSE STYLE:
+- Be DIRECT and HONEST about the data limitation
+- Acknowledge what the user asked about
+- Provide what you CAN say (general knowledge, if applicable)
+- Keep it SHORT and CONVERSATIONAL
+
+EXAMPLE GOOD RESPONSES:
+- "Hey — I'm having trouble pulling live market data right now. Want me to check what I can find?"
+- "BTC? I can't access the live data feeds at the moment. What specifically are you looking for?"
+- "Market data's down right now. What do you need help with?"
+
+Remember: Generic responses = FAILURE. Be direct and helpful.
 `;
       }
       
