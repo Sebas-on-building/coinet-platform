@@ -214,24 +214,79 @@ export class ChatService {
         
         // 🎯 INTENT-AWARE DATA FETCHING
         // Only fetch data sources enabled by the intent handler (optimizes for quick_answer vs deep_analysis)
+        // 🚨 ENHANCED ERROR TRACKING: Wrap each fetch with error tracking to identify failures
+        const dataFetchStartTime = Date.now();
+        const fetchResults: Record<string, { success: boolean; error?: string; duration?: number }> = {};
+        
+        const trackFetch = async <T>(
+          name: string,
+          promise: Promise<T>,
+          enabled: boolean = true
+        ): Promise<T | null> => {
+          if (!enabled) {
+            fetchResults[name] = { success: true, duration: 0 }; // Skipped, not failed
+            return null;
+          }
+          
+          const startTime = Date.now();
+          try {
+            const result = await promise;
+            const duration = Date.now() - startTime;
+            fetchResults[name] = { success: true, duration };
+            return result;
+          } catch (error: any) {
+            const duration = Date.now() - startTime;
+            const errorMsg = error?.message || String(error);
+            fetchResults[name] = { success: false, error: errorMsg, duration };
+            logger.error(`❌ Data fetch failed: ${name}`, {
+              error: errorMsg,
+              duration,
+              stack: error?.stack,
+            });
+            return null;
+          }
+        };
+        
+        // Special handling for whaleContext since it has a default structure
+        const whaleContextPromise = ds.fetchWhaleData
+          ? trackFetch('whaleContext', getWhaleContextForAI(), true).then(r => r || { isAvailable: false, contextForAI: null, monitoredChains: [], capabilities: [] })
+          : Promise.resolve({ isAvailable: false, contextForAI: null, monitoredChains: [], capabilities: [] });
+        
         const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal] = await Promise.all([
-          buildUserContextForAI(userId),  // 🧠 User memory - always fetch for personalization
-          ds.fetchMarketData ? fetchPricesForMessage(request.message) : Promise.resolve(null),
-          ds.fetchEnterpriseData && coinSymbols.length > 0 ? fetchCachedEnterpriseMarketPrices(coinSymbols).catch(() => null) : Promise.resolve(null),
-          ds.fetchWhaleData ? getWhaleContextForAI() : Promise.resolve({ isAvailable: false, contextForAI: null, monitoredChains: [], capabilities: [] }),
-          ds.fetchNews ? getEnrichedNewsForCoins(coinSymbols) : Promise.resolve(null),
-          ds.fetchSentiment ? getMarketSentiment() : Promise.resolve(null),
-          ds.fetchSocial ? getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']) : Promise.resolve(null),
-          ds.fetchInfluencer ? getInfluencerSnapshot() : Promise.resolve(null),
-          ds.fetchSentiment ? calculateCSI() : Promise.resolve(null),
-          ds.fetchSocial ? calculateCompositeSocialScore() : Promise.resolve(null),
-          ds.fetchSocial ? calculateSocialIntelligenceV2() : Promise.resolve(null),
-          ds.fetchNews ? calculateNewsIntelligenceV2() : Promise.resolve(null),
-          (ds.fetchDerivatives || needsPerpsData) ? getPerpsSnapshot(coinSymbols) : Promise.resolve(null),
-          ds.fetchDerivatives ? calculateDerivativesIntelligenceV2() : Promise.resolve(null),
-          ds.fetchDerivatives ? calculateComprehensiveDerivativesIntelligence().catch(() => null) : Promise.resolve(null),
-          ds.fetchDerivatives ? calculateDerivativesIntelligenceFinal().catch(() => null) : Promise.resolve(null),
+          trackFetch('userContext', buildUserContextForAI(userId), true),
+          trackFetch('marketData', fetchPricesForMessage(request.message), ds.fetchMarketData),
+          trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), ds.fetchEnterpriseData && coinSymbols.length > 0),
+          whaleContextPromise,
+          trackFetch('enrichedNews', getEnrichedNewsForCoins(coinSymbols), ds.fetchNews),
+          trackFetch('sentiment', getMarketSentiment(), ds.fetchSentiment),
+          trackFetch('socialIntel', getSocialIntelligence(coinSymbols.length > 0 ? coinSymbols : ['BTC', 'ETH', 'SOL']), ds.fetchSocial),
+          trackFetch('influencerIntel', getInfluencerSnapshot(), ds.fetchInfluencer),
+          trackFetch('csiResult', calculateCSI(), ds.fetchSentiment),
+          trackFetch('cssResult', calculateCompositeSocialScore(), ds.fetchSocial),
+          trackFetch('socialV2Result', calculateSocialIntelligenceV2(), ds.fetchSocial),
+          trackFetch('newsV2Result', calculateNewsIntelligenceV2(), ds.fetchNews),
+          trackFetch('perpsData', getPerpsSnapshot(coinSymbols), ds.fetchDerivatives || needsPerpsData),
+          trackFetch('derivativesV2', calculateDerivativesIntelligenceV2(), ds.fetchDerivatives),
+          trackFetch('comprehensiveDerivatives', calculateComprehensiveDerivativesIntelligence(), ds.fetchDerivatives),
+          trackFetch('derivativesFinal', calculateDerivativesIntelligenceFinal(), ds.fetchDerivatives),
         ]);
+        
+        const dataFetchDuration = Date.now() - dataFetchStartTime;
+        const failedFetches = Object.entries(fetchResults).filter(([_, r]) => !r.success);
+        const successfulFetches = Object.entries(fetchResults).filter(([_, r]) => r.success && r.duration && r.duration > 0);
+        
+        if (failedFetches.length > 0) {
+          logger.warn('⚠️ Some data sources failed during fetch', {
+            failed: failedFetches.map(([name, r]) => ({ name, error: r.error, duration: r.duration })),
+            successful: successfulFetches.length,
+            totalDuration: dataFetchDuration,
+          });
+        } else {
+          logger.info('✅ All enabled data sources fetched successfully', {
+            successful: successfulFetches.length,
+            totalDuration: dataFetchDuration,
+          });
+        }
         
         // Calculate behavioral finance intelligence using derivatives data
         let behavioralFinance = null;
@@ -1012,7 +1067,59 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
           });
         }
       } catch (error: any) {
-        logger.debug('⚠️ Could not fetch live context', { error: error?.message });
+        // 🚨 CRITICAL: Log context fetching failures at ERROR level, not DEBUG
+        // This was causing silent failures where AI received empty context
+        logger.error('❌ CRITICAL: Failed to fetch live context for AI', {
+          error: error?.message,
+          stack: error?.stack,
+          userId,
+          message: request.message.substring(0, 100),
+        });
+        
+        // 🛡️ FALLBACK: Try to fetch at least basic market data even if everything else fails
+        try {
+          const detectedCoins = await symbolDetector.detectCoins(request.message);
+          const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
+          
+          if (coinSymbols.length > 0) {
+            logger.info('🔄 Attempting fallback: Basic market data fetch', { symbols: coinSymbols });
+            
+            // Try to get at least basic market prices
+            const fallbackMarketData = await fetchPricesForMessage(request.message).catch(() => null);
+            
+            if (fallbackMarketData && fallbackMarketData.prices.length > 0) {
+              liveContextStr = formatMarketDataForAI(fallbackMarketData);
+              logger.info('✅ Fallback market data retrieved', {
+                symbols: fallbackMarketData.foundSymbols,
+                count: fallbackMarketData.prices.length,
+              });
+            } else {
+              // Last resort: Use investigation service
+              const primaryCoin = detectedCoins[0];
+              if (primaryCoin) {
+                logger.info('🔄 Last resort: Using investigation service', { symbol: primaryCoin.symbol });
+                const investigation = await investigateProject(
+                  primaryCoin.coinGeckoId || primaryCoin.symbol
+                ).catch(() => null);
+                
+                if (investigation && investigation.hasData) {
+                  liveContextStr = formatInvestigationForAI(investigation);
+                  logger.info('✅ Investigation fallback successful', {
+                    project: investigation.name,
+                    dataQuality: investigation.dataQuality,
+                  });
+                }
+              }
+            }
+          }
+        } catch (fallbackError: any) {
+          logger.error('❌ Fallback context fetch also failed', {
+            error: fallbackError?.message,
+            originalError: error?.message,
+          });
+          // At this point, liveContextStr will be undefined, which is better than crashing
+          // The AI will receive minimal context but can still respond
+        }
       }
       
       // 4.6. Extract memories from user message (background, don't block)
@@ -1021,6 +1128,29 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
       );
 
       // 5. Call AI service (or use mock if unavailable)
+      // 🚨 CRITICAL CHECK: Ensure we have at least some context before calling AI
+      if (!liveContextStr || liveContextStr.trim().length === 0) {
+        logger.error('❌ CRITICAL: No context data available for AI - this will cause generic responses', {
+          userId,
+          message: request.message.substring(0, 100),
+          detectedCoins: await symbolDetector.detectCoins(request.message).then(c => c.map(cc => cc.symbol)).catch(() => []),
+        });
+        
+        // Add a warning context to inform the AI that data is unavailable
+        liveContextStr = `
+⚠️ DATA AVAILABILITY WARNING
+Market data services are currently unavailable or experiencing issues.
+The user asked: "${request.message}"
+
+CRITICAL INSTRUCTIONS:
+- DO NOT generate generic responses like "I understand you're asking about X. This is a complex topic..."
+- DO NOT ask "What would you like to analyze?" 
+- Instead, acknowledge the data unavailability and provide what you CAN say based on general knowledge
+- Be direct: "I'm having trouble accessing live market data right now. Based on general market knowledge..."
+- If the user asked about a specific coin (like BTC), acknowledge it and explain the limitation
+`;
+      }
+      
       let aiResponse;
       try {
         aiResponse = await aiService.analyze({
@@ -1035,6 +1165,10 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
           },
         });
       } catch (error) {
+        logger.error('❌ AI Service error', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
         logger.warn('⚠️  AI Service unavailable, using mock response');
         aiResponse = generateMockResponse(request.message);
       }
