@@ -70,7 +70,11 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        cd ai-services/ml-service
+        # Install main requirements first (includes fastapi and other core dependencies)
+        pip install -r requirements.txt
+        # Then install test-specific requirements
+        cd src/coinet_ai_ml/fusion
         pip install -r test_requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
@@ -127,7 +131,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        cd ai-services/ml-service
+        # Install main requirements first (includes fastapi and other core dependencies)
+        pip install -r requirements.txt
+        # Then install test-specific requirements
+        cd src/coinet_ai_ml/fusion
         pip install -r test_requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
@@ -163,7 +171,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        cd ai-services/ml-service
+        # Install main requirements first (includes fastapi and other core dependencies)
+        pip install -r requirements.txt
+        # Then install test-specific requirements
+        cd src/coinet_ai_ml/fusion
         pip install -r test_requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
