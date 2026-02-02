@@ -66,7 +66,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential
+        sudo apt-get install -y build-essential libgraphviz-dev
 
     - name: Install Python dependencies
       run: |
@@ -129,6 +129,11 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libgraphviz-dev
+
     - name: Install dependencies
       run: |
         cd ai-services/ml-service
@@ -168,6 +173,11 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libgraphviz-dev
 
     - name: Install dependencies
       run: |
