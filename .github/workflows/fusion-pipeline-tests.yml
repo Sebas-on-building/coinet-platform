@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - 'ai-services/ml-service/src/coinet_ai_ml/fusion/**'
+      - 'ai-services/ml-service/requirements.txt'
+      - 'ai-services/ml-service/src/coinet_ai_ml/fusion/test_requirements.txt'
       - '.github/workflows/fusion-pipeline-tests.yml'
   pull_request:
     paths:
       - 'ai-services/ml-service/src/coinet_ai_ml/fusion/**'
+      - 'ai-services/ml-service/requirements.txt'
+      - 'ai-services/ml-service/src/coinet_ai_ml/fusion/test_requirements.txt'
   schedule:
     # Run daily at 2 AM UTC for regression testing
     - cron: '0 2 * * *'
