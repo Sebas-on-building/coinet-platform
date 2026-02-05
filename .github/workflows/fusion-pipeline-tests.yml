@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - 'ai-services/ml-service/src/coinet_ai_ml/fusion/**'
+      - 'ai-services/ml-service/requirements.txt'
+      - 'ai-services/ml-service/src/coinet_ai_ml/fusion/test_requirements.txt'
       - '.github/workflows/fusion-pipeline-tests.yml'
   pull_request:
     paths:
       - 'ai-services/ml-service/src/coinet_ai_ml/fusion/**'
+      - 'ai-services/ml-service/requirements.txt'
+      - 'ai-services/ml-service/src/coinet_ai_ml/fusion/test_requirements.txt'
   schedule:
     # Run daily at 2 AM UTC for regression testing
     - cron: '0 2 * * *'
@@ -66,11 +70,19 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential
+        sudo apt-get install -y build-essential libgraphviz-dev
 
     - name: Install Python dependencies
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        python -m pip install --upgrade pip
+        cd ai-services/ml-service
+        # Install main requirements first (includes fastapi and other core dependencies)
+        pip install -r requirements.txt
+        # Verify critical dependencies are installed
+        python -c "import fastapi; print(f'fastapi version: {fastapi.__version__}')"
+        python -c "import spacy; print(f'spacy version: {spacy.__version__}')"
+        # Then install test-specific requirements
+        cd src/coinet_ai_ml/fusion
         pip install -r test_requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
@@ -125,9 +137,22 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libgraphviz-dev
+
     - name: Install dependencies
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        python -m pip install --upgrade pip
+        cd ai-services/ml-service
+        # Install main requirements first (includes fastapi and other core dependencies)
+        pip install -r requirements.txt
+        # Verify critical dependencies are installed
+        python -c "import fastapi; print(f'fastapi version: {fastapi.__version__}')"
+        python -c "import spacy; print(f'spacy version: {spacy.__version__}')"
+        # Then install test-specific requirements
+        cd src/coinet_ai_ml/fusion
         pip install -r test_requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
@@ -161,9 +186,22 @@ jobs:
       with:
         python-version: '3.10'
 
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libgraphviz-dev
+
     - name: Install dependencies
       run: |
-        cd ai-services/ml-service/src/coinet_ai_ml/fusion
+        python -m pip install --upgrade pip
+        cd ai-services/ml-service
+        # Install main requirements first (includes fastapi and other core dependencies)
+        pip install -r requirements.txt
+        # Verify critical dependencies are installed
+        python -c "import fastapi; print(f'fastapi version: {fastapi.__version__}')"
+        python -c "import spacy; print(f'spacy version: {spacy.__version__}')"
+        # Then install test-specific requirements
+        cd src/coinet_ai_ml/fusion
         pip install -r test_requirements.txt
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
