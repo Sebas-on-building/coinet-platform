@@ -289,7 +289,7 @@ class MultiModalFusionEngine:
         encoded_features = {}
 
         # Encode market data (visual/charts)
-        if input_data.market_data and aligned_signals['modalities_present'].__contains__('market_data'):
+        if input_data.market_data and 'market_data' in aligned_signals['modalities_present']:
             try:
                 market_features = await self.encoders['market'].encode(input_data.market_data)
                 encoded_features['market'] = market_features
@@ -299,7 +299,7 @@ class MultiModalFusionEngine:
                 encoded_features['market'] = None
 
         # Encode social sentiment (text)
-        if input_data.social_sentiment and aligned_signals['modalities_present'].__contains__('social_sentiment'):
+        if input_data.social_sentiment and 'social_sentiment' in aligned_signals['modalities_present']:
             try:
                 social_features = await self.encoders['social'].encode(input_data.social_sentiment)
                 encoded_features['social'] = social_features
@@ -309,7 +309,7 @@ class MultiModalFusionEngine:
                 encoded_features['social'] = None
 
         # Encode news articles (text)
-        if input_data.news_articles and aligned_signals['modalities_present'].__contains__('news_articles'):
+        if input_data.news_articles and 'news_articles' in aligned_signals['modalities_present']:
             try:
                 news_features = await self.encoders['news'].encode(input_data.news_articles)
                 encoded_features['news'] = news_features
@@ -319,7 +319,7 @@ class MultiModalFusionEngine:
                 encoded_features['news'] = None
 
         # Encode on-chain data (graph)
-        if input_data.onchain_data and aligned_signals['modalities_present'].__contains__('onchain_analytics'):
+        if input_data.onchain_data and ('onchain_analytics' in aligned_signals['modalities_present'] or 'onchain_data' in aligned_signals['modalities_present']):
             try:
                 onchain_features = await self.encoders['onchain'].encode(input_data.onchain_data)
                 encoded_features['onchain'] = onchain_features
@@ -329,7 +329,7 @@ class MultiModalFusionEngine:
                 encoded_features['onchain'] = None
 
         # Encode psychological profile (structured)
-        if input_data.psychological_profile and aligned_signals['modalities_present'].__contains__('psychological_profiles'):
+        if input_data.psychological_profile and ('psychological_profiles' in aligned_signals['modalities_present'] or 'psychological_profile' in aligned_signals['modalities_present']):
             try:
                 psych_features = await self.encoders['psychology'].encode(input_data.psychological_profile)
                 encoded_features['psychology'] = psych_features

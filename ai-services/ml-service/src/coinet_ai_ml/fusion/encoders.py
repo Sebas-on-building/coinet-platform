@@ -831,11 +831,31 @@ class PsychologyEncoder(BaseEncoder):
 
         start_time = datetime.utcnow()
 
-        # Extract psychological components
-        behavioral = input_data.get('behavioral', torch.zeros(self.config['behavioral_features']))
-        emotional = input_data.get('emotional', torch.zeros(self.config['emotional_features']))
-        cognitive = input_data.get('cognitive', torch.zeros(self.config['cognitive_features']))
-        social = input_data.get('social', torch.zeros(self.config['social_features']))
+        # Extract psychological components (support both short and long key names)
+        behavioral = input_data.get('behavioral', input_data.get('behavioral_patterns', torch.zeros(self.config['behavioral_features'])))
+        emotional = input_data.get('emotional', input_data.get('emotional_state', torch.zeros(self.config['emotional_features'])))
+        cognitive = input_data.get('cognitive', input_data.get('cognitive_biases', torch.zeros(self.config['cognitive_features'])))
+        social = input_data.get('social', input_data.get('social_influence', torch.zeros(self.config['social_features'])))
+
+        # Convert dicts to tensors if needed (mock data provides dicts)
+        def _to_tensor(val, size):
+            if isinstance(val, torch.Tensor):
+                return val
+            if isinstance(val, dict):
+                # Extract numeric values from dict, pad/truncate to expected size
+                values = [float(v) for v in val.values() if isinstance(v, (int, float))]
+                if not values:
+                    return torch.zeros(size)
+                t = torch.tensor(values, dtype=torch.float32)
+                if t.shape[0] < size:
+                    t = torch.cat([t, torch.zeros(size - t.shape[0])])
+                return t[:size]
+            return torch.zeros(size)
+
+        behavioral = _to_tensor(behavioral, self.config['behavioral_features'])
+        emotional = _to_tensor(emotional, self.config['emotional_features'])
+        cognitive = _to_tensor(cognitive, self.config['cognitive_features'])
+        social = _to_tensor(social, self.config['social_features'])
 
         # Move to device
         behavioral = behavioral.to(self.device)
