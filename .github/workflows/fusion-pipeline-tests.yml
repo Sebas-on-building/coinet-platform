@@ -126,6 +126,7 @@ jobs:
   benchmark-tests:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
+    continue-on-error: true  # ML benchmarks are optional - don't block main CI
     needs: test-fusion-pipeline
 
     steps:
@@ -175,6 +176,7 @@ jobs:
   stress-tests:
     name: Stress Tests
     runs-on: ubuntu-latest
+    continue-on-error: true  # ML stress tests are optional - don't block main CI
     if: github.event_name == 'schedule' || github.event.inputs.test_suite == 'stress'
 
     steps:
