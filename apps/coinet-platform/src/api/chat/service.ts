@@ -1150,8 +1150,23 @@ ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` 
           detectedCoins: await symbolDetector.detectCoins(request.message).then(c => c.map(cc => cc.symbol)).catch(() => []),
         });
         
-        // Add a warning context to inform the AI that data is unavailable
-        liveContextStr = `
+        // 🚨 LAST RESORT: For "hey" messages, force fetch BTC data one more time
+        if (request.message.toLowerCase().trim() === 'hey') {
+          logger.warn('🔄 Last resort: Force-fetching BTC data for "hey" message');
+          try {
+            const emergencyBtcData = await fetchPricesForMessage('BTC').catch(() => null);
+            if (emergencyBtcData && emergencyBtcData.prices.length > 0) {
+              liveContextStr = formatMarketDataForAI(emergencyBtcData);
+              logger.info('✅ Emergency BTC data retrieved for "hey" message');
+            }
+          } catch (e) {
+            logger.error('❌ Emergency BTC fetch also failed', { error: e?.message });
+          }
+        }
+        
+        // If still empty, add a warning context to inform the AI that data is unavailable
+        if (!liveContextStr || liveContextStr.trim().length === 0) {
+          liveContextStr = `
 ╔═══════════════════════════════════════════════════════════════════════════════╗
 ║  🚨 CRITICAL: DATA UNAVAILABLE — RESPONSE REQUIREMENTS                        ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
