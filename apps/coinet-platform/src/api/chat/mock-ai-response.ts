@@ -45,9 +45,19 @@ export function generateMockResponse(message: string): AIAnalysisResponse {
     keyTopics = ['Technical Indicators', 'Support/Resistance', 'RSI', 'MACD'];
     recommendation = 'Wait for clearer signals';
   } else {
-    thesis = `I understand you're asking about ${symbol}. This is a complex topic that requires careful analysis of multiple factors including market conditions, technical indicators, and fundamental developments.`;
-    keyTopics = ['Market Analysis', 'Risk Assessment', 'Opportunities'];
-    recommendation = 'Further analysis recommended';
+    // For greetings and general messages — be direct and conversational
+    const greetings = ['hey', 'hi', 'hello', 'sup', 'yo', 'what\'s up', 'whats up'];
+    const isGreeting = greetings.some(g => lowerMessage.trim() === g || lowerMessage.startsWith(g + ' '));
+    
+    if (isGreeting) {
+      thesis = `Hey — what's up? I'm having trouble connecting to live market data right now, but I'm here to help. You looking for market analysis, a specific coin, or something else?`;
+      keyTopics = ['Market Overview', 'Portfolio Help', 'Coin Analysis'];
+      recommendation = 'Ask me about any coin or market topic';
+    } else {
+      thesis = `Hey — I'm having trouble accessing live data for ${symbol} right now. My data feeds seem to be down. Want me to try again, or is there something specific I can help with?`;
+      keyTopics = ['Market Analysis', 'Risk Assessment', 'Opportunities'];
+      recommendation = 'Try again or ask a specific question';
+    }
   }
   
   return {

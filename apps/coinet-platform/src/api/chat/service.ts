@@ -1211,11 +1211,12 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
           },
         });
       } catch (error) {
-        logger.error('❌ AI Service error', {
+        logger.error('❌ AI Service error — FALLING BACK TO MOCK (this is why responses are generic!)', {
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
+          hint: 'Check that XAI_API_KEY or OPENAI_API_KEY is set in Railway environment variables',
         });
-        logger.warn('⚠️  AI Service unavailable, using mock response');
+        logger.warn('⚠️  AI Service unavailable, using mock response — user will see fallback text');
         aiResponse = generateMockResponse(request.message);
       }
 
