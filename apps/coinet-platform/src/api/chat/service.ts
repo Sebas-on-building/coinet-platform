@@ -1194,6 +1194,7 @@ EXAMPLE GOOD RESPONSES:
 
 Remember: Generic responses = FAILURE. Be direct and helpful.
 `;
+        }
       }
       
       let aiResponse;
