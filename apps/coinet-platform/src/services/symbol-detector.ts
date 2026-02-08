@@ -96,6 +96,56 @@ const SOLANA_FALSE_POSITIVES = new Set([
   'chainlink', 'uniswap', 'aave', 'compound', 'makerdao', 'sushiswap',
 ]);
 
+/**
+ * 🛡️ ENGLISH STOP WORDS — Common words that must NEVER be matched as coin names/symbols.
+ * Without this, "could you take a look" matches coins named LOOK, COULD, TAKE, etc.
+ */
+const ENGLISH_STOP_WORDS = new Set([
+  // Pronouns & determiners
+  'the', 'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom',
+  'its', 'his', 'her', 'our', 'your', 'their', 'you', 'they', 'she', 'him',
+  // Common verbs
+  'are', 'was', 'were', 'been', 'being', 'have', 'has', 'had', 'having',
+  'does', 'did', 'doing', 'will', 'would', 'shall', 'should', 'may', 'might',
+  'can', 'could', 'must', 'need', 'dare', 'ought', 'used', 'get', 'got',
+  'give', 'gave', 'take', 'took', 'make', 'made', 'come', 'came', 'keep',
+  'let', 'say', 'said', 'tell', 'told', 'ask', 'asked', 'try', 'tried',
+  'want', 'wanted', 'look', 'looked', 'looking', 'find', 'found', 'know',
+  'known', 'think', 'thought', 'see', 'saw', 'seen', 'show', 'shown',
+  'help', 'helped', 'put', 'set', 'run', 'going', 'gone', 'went',
+  // Prepositions & conjunctions
+  'for', 'from', 'with', 'into', 'onto', 'upon', 'about', 'after', 'before',
+  'between', 'through', 'during', 'without', 'within', 'along', 'across',
+  'behind', 'beyond', 'under', 'over', 'above', 'below', 'around',
+  'and', 'but', 'nor', 'yet', 'both', 'either', 'neither', 'not', 'only',
+  // Common adverbs & adjectives
+  'very', 'really', 'just', 'also', 'even', 'still', 'already', 'always',
+  'never', 'often', 'ever', 'much', 'many', 'more', 'most', 'some', 'any',
+  'all', 'each', 'every', 'few', 'other', 'another', 'such', 'own',
+  'good', 'bad', 'best', 'new', 'old', 'big', 'small', 'long', 'high', 'low',
+  'right', 'left', 'real', 'last', 'next', 'first', 'sure', 'well',
+  'current', 'general', 'great', 'little', 'same', 'different',
+  // Common nouns that overlap with coin names
+  'market', 'markets', 'price', 'prices', 'time', 'day', 'way', 'people',
+  'world', 'life', 'work', 'part', 'thing', 'things', 'place', 'case',
+  'point', 'fact', 'kind', 'hand', 'home', 'water', 'money', 'data',
+  'number', 'system', 'state', 'area', 'group', 'level', 'order', 'power',
+  'side', 'head', 'line', 'turn', 'move', 'play', 'change', 'name',
+  'end', 'story', 'plan', 'game', 'call', 'lot', 'pay', 'use', 'bit',
+  // Chat-specific words
+  'hey', 'hello', 'thanks', 'thank', 'please', 'sorry', 'okay', 'yes',
+  'yeah', 'nah', 'nope', 'sure', 'cool', 'nice', 'wow', 'haha',
+  'like', 'just', 'really', 'actually', 'basically', 'probably',
+  // Finance words that aren't coins
+  'bull', 'bear', 'long', 'short', 'buy', 'sell', 'hold', 'trade',
+  'pump', 'dump', 'dip', 'moon', 'crash', 'rally', 'drop', 'rise',
+  'gain', 'loss', 'profit', 'risk', 'fund', 'stock', 'bond', 'yield',
+  'fee', 'fees', 'cost', 'rate', 'cap', 'volume', 'supply', 'demand',
+  'chart', 'trend', 'signal', 'support', 'resistance', 'analysis',
+  'overview', 'situation', 'condition', 'performance', 'forecast',
+  'prediction', 'sentiment', 'indicator', 'momentum', 'liquidity',
+]);
+
 // ============================================================================
 // DEFAULT CONFIGURATION
 // ============================================================================
@@ -336,6 +386,7 @@ export class SymbolDetector {
     const upperMatches = message.match(/\b([A-Z]{2,6})\b/g) || [];
     for (const match of upperMatches) {
       const symbol = match.toLowerCase();
+      if (ENGLISH_STOP_WORDS.has(symbol)) continue; // Skip common English words
       const coin = this.findCoin(symbol);
       if (coin && !seen.has(coin.id)) {
         detected.push({
@@ -353,6 +404,7 @@ export class SymbolDetector {
     const lowerMatches = message.match(/\b([a-z]{2,6})\b/g) || [];
     for (const match of lowerMatches) {
       const symbol = match.toLowerCase();
+      if (ENGLISH_STOP_WORDS.has(symbol)) continue; // Skip common English words
       // Only check if it's in COMMON_COINS to avoid matching random words
       if (COMMON_COINS.has(symbol)) {
         const coin = this.findCoin(symbol);
@@ -369,13 +421,16 @@ export class SymbolDetector {
     }
 
     // Strategy 4: Full names (Bitcoin, Ethereum, Solana)
+    // 🛡️ Only match names from COMMON_COINS to prevent false positives
+    // The full CoinGecko DB has 18,000+ coins with names like "look", "could", "take" etc.
     const words = message.toLowerCase().split(/\s+/);
     for (let i = 0; i < words.length; i++) {
       // Try single word
       const word = words[i].replace(/[^a-z0-9]/g, '');
-      if (word.length >= 3) {
+      if (word.length >= 3 && !ENGLISH_STOP_WORDS.has(word)) {
+        // Only match against well-known coin names, not the entire 18K DB
         const coin = this.findCoinByName(word);
-        if (coin && !seen.has(coin.id)) {
+        if (coin && !seen.has(coin.id) && COMMON_COINS.has(coin.symbol.toLowerCase())) {
           detected.push({
             original: word,
             symbol: coin.symbol.toUpperCase(),
@@ -387,17 +442,20 @@ export class SymbolDetector {
       }
 
       // Try two-word names (e.g., "bitcoin cash", "shiba inu")
+      // Only match well-known coins to prevent false positives from random word pairs
       if (i < words.length - 1) {
         const twoWords = `${words[i]} ${words[i + 1]}`.replace(/[^a-z\s]/g, '');
-        const coin = this.findCoinByName(twoWords);
-        if (coin && !seen.has(coin.id)) {
-          detected.push({
-            original: twoWords,
-            symbol: coin.symbol.toUpperCase(),
-            coinGeckoId: coin.id,
-            confidence: 0.85,
-          });
-          seen.add(coin.id);
+        if (!ENGLISH_STOP_WORDS.has(words[i]) || !ENGLISH_STOP_WORDS.has(words[i + 1])) {
+          const coin = this.findCoinByName(twoWords);
+          if (coin && !seen.has(coin.id) && COMMON_COINS.has(coin.symbol.toLowerCase())) {
+            detected.push({
+              original: twoWords,
+              symbol: coin.symbol.toUpperCase(),
+              coinGeckoId: coin.id,
+              confidence: 0.85,
+            });
+            seen.add(coin.id);
+          }
         }
       }
     }
