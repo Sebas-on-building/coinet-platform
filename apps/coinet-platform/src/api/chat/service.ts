@@ -204,12 +204,12 @@ export class ChatService {
           coinSymbols
         );
         
-        const ds = handlerResult.dataSources; // Data source config from intent handler
+        const ds: Record<string, boolean> = (handlerResult as any)?.dataSources || {}; // Data source config from intent handler
         
         logger.debug('🎯 Intent handler executed', {
           intent: intentClassification.intent,
           enabledSources: Object.entries(ds).filter(([_, v]) => v).map(([k]) => k).join(', '),
-          maxTokens: handlerResult.maxContextTokens,
+          maxTokens: (handlerResult as any)?.maxContextTokens,
         });
         
         // Check if this is a trading/leverage question that needs perps data (override handler if explicit)

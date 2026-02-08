@@ -1195,29 +1195,11 @@ export class AIService {
         }
       } else {
         // LEGACY MODE: Full verbosity classification and guidance
-        const verbosityClass = classifyVerbosity(
-          request.content,
-          request.context?.conversationHistory,
-          request.context?.dataQuality
-        );
+        const verbosityClass = classifyVerbosity(request.content);
         const responseGuidance = generateResponseGuidance(verbosityClass);
         
         logger.debug('🎛️ Response policy applied', {
-          mode: verbosityClass.mode,
-          template: verbosityClass.template,
-          clarifierNeeded: verbosityClass.behaviors.clarifier.needed,
-          clarifierType: verbosityClass.behaviors.clarifier.type,
-          continuityAnchor: verbosityClass.behaviors.continuity.anchor,
-          uncertaintyPresent: verbosityClass.behaviors.uncertainty.present,
-          signals: {
-            length: verbosityClass.signals.length,
-            depth: verbosityClass.signals.depth,
-            domain: verbosityClass.signals.domain,
-          },
-          caps: {
-            maxLines: verbosityClass.caps.maxLines,
-            maxNumbers: verbosityClass.caps.maxNumbers,
-          },
+          verbosity: verbosityClass,
         });
         
         // Inject conversation rules guidance BEFORE market data
