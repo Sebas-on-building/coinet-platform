@@ -18,7 +18,9 @@ Before deploying, ensure these four variables are configured:
 
 **Without these:** Chat broken, COMM v2.1 broken, security risk from permissive CORS.
 
-**Also required:** `JWT_SECRET` (min 32 chars) — no fallback; app will not start without it. Generate: `openssl rand -base64 32`.
+**Legacy JWT:** `JWT_SECRET` is optional — only required when `services/user` or `services/api-gateway` issue HS256 JWTs that `coinet-platform` must also accept. For Clerk-only deployments leave it unset. When set, it must be ≥ 32 characters and **identical** across `coinet-platform`, `services/user`, and `services/api-gateway`. Generate: `openssl rand -base64 32`.
+
+> **How it works:** `requireAuth` first validates the Bearer token with Clerk. If Clerk rejects it *and* `JWT_SECRET` is set, it verifies the token as a legacy HS256 JWT (signature + algorithm + claims checked). If `JWT_SECRET` is absent, legacy JWT verification is skipped entirely — the Clerk path is the only route.
 
 **Config sources:** See `docs/CONFIG_SOURCES.md` for which env example files are canonical and how they relate.
 

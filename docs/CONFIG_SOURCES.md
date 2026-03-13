@@ -37,6 +37,18 @@ When the app runs, variables are typically resolved in this order (highest prior
 
 ---
 
+## Shared Secrets
+
+When `JWT_SECRET` is in use (legacy JWT mode), the **same value** must be set in every service that signs or verifies tokens:
+
+| Service | File |
+|---------|------|
+| `apps/coinet-platform` | `apps/coinet-platform/.env` |
+| `services/user` | `services/user/.env` |
+| `services/api-gateway` | `services/api-gateway/.env` |
+
+A mismatch means tokens issued by one service will be rejected by another.
+
 ## Quick Reference
 
 - **Main platform vars:** `apps/coinet-platform/ENVIRONMENT_AUDIT.md`

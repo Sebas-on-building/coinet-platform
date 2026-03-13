@@ -10,7 +10,9 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, createClerkClient } from '@clerk/backend';
+import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
+import { getJwtSecret } from '../utils/getJwtSecret';
 
 // =============================================================================
 // TYPES
@@ -29,7 +31,7 @@ export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
   userId?: string;
   isAuthenticated?: boolean;
-  authMethod?: 'clerk' | 'apiKey' | 'demo' | 'anonymous';
+  authMethod?: 'clerk' | 'legacy' | 'apiKey' | 'demo' | 'anonymous';
   // For compatibility with chat controller
   auth?: {
     userId: string;
@@ -67,14 +69,28 @@ const clerkClient = CLERK_SECRET_KEY
   ? createClerkClient({ secretKey: CLERK_SECRET_KEY })
   : null;
 
+// Read JWT_SECRET once at startup (null = Clerk-only deployment)
+let LEGACY_JWT_SECRET: string | null;
+try {
+  LEGACY_JWT_SECRET = getJwtSecret();
+} catch (err: any) {
+  logger.error('⛔ JWT_SECRET misconfiguration — legacy JWT disabled', { error: err.message });
+  LEGACY_JWT_SECRET = null;
+}
+
 // Log Clerk configuration status at startup
 if (CLERK_SECRET_KEY) {
   logger.info('✅ Clerk backend configured with secret key (v2)');
 } else {
   logger.warn('⚠️ CLERK_SECRET_KEY not set - Clerk token validation disabled');
 }
+if (LEGACY_JWT_SECRET) {
+  logger.info('✅ Legacy JWT (HS256) verification enabled');
+} else {
+  logger.info('ℹ️  Legacy JWT disabled — JWT_SECRET not set (Clerk-only mode)');
+}
 logger.info('🔐 Auth middleware loaded', {
-  supports: ['Clerk JWT', 'API keys'],
+  supports: ['Clerk JWT', 'API keys', ...(LEGACY_JWT_SECRET ? ['legacy JWT (HS256)'] : [])],
   demoMode: DEMO_MODE_ENABLED ? 'X-User-Id (demo) enabled' : 'X-User-Id disabled (production)',
 });
 
@@ -243,7 +259,7 @@ export const optionalAuth = asyncMiddleware(optionalAuthAsync);
 interface AuthResult {
   authenticated: boolean;
   user?: AuthenticatedUser;
-  method?: 'clerk' | 'apiKey' | 'demo' | 'anonymous';
+  method?: 'clerk' | 'legacy' | 'apiKey' | 'demo' | 'anonymous';
   reason?: string;
 }
 
@@ -251,18 +267,23 @@ interface AuthResult {
  * Extract and validate authentication from request
  */
 async function extractAuth(req: Request): Promise<AuthResult> {
-  // 1. Try Bearer token (Clerk JWT)
+  // 1. Try Bearer token — first Clerk, then legacy HS256 JWT
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    const result = await validateClerkToken(token);
-    if (result.authenticated) {
-      return result;
+
+    // 1a. Clerk JWT (primary — production)
+    const clerkResult = await validateClerkToken(token);
+    if (clerkResult.authenticated) {
+      return clerkResult;
     }
-    // If Clerk validation fails, try legacy JWT
-    const legacyResult = validateLegacyJWT(token);
-    if (legacyResult.authenticated) {
-      return legacyResult;
+
+    // 1b. Legacy HS256 JWT (only when JWT_SECRET is configured)
+    if (LEGACY_JWT_SECRET) {
+      const legacyResult = validateLegacyJWT(token, LEGACY_JWT_SECRET);
+      if (legacyResult.authenticated) {
+        return legacyResult;
+      }
     }
   }
   
@@ -361,37 +382,66 @@ async function validateClerkToken(token: string): Promise<AuthResult> {
 }
 
 /**
- * Validate legacy JWT token (fallback)
+ * Validate a legacy HS256 JWT issued by user-service or api-gateway.
+ *
+ * Security guarantees:
+ *  - Signature verified with HS256 only (no algorithm confusion, no "alg: none").
+ *  - Clock tolerance ≤ 5 seconds for skew; expired tokens are always rejected.
+ *  - Identity claim must be a non-empty string.
+ *  - role / tier are constrained to the allowed set; untrusted values default down.
+ *  - Never logs the raw token.
  */
-function validateLegacyJWT(token: string): AuthResult {
+function validateLegacyJWT(token: string, secret: string): AuthResult {
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      return { authenticated: false, reason: 'Invalid token format' };
+    const payload = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      clockTolerance: 5, // 5 s tolerance for server clock skew
+    }) as Record<string, unknown>;
+
+    // Identity: accept sub (standard), userId (api-gateway), or id (legacy)
+    const rawId = payload.sub ?? payload.userId ?? payload.id;
+    if (!rawId || typeof rawId !== 'string' || rawId.trim() === '') {
+      return { authenticated: false, reason: 'Invalid token: missing identity claim' };
     }
-    
-    // Decode payload (base64)
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-    
-    // Check expiration
-    if (payload.exp && Date.now() >= payload.exp * 1000) {
-      return { authenticated: false, reason: 'Token expired' };
-    }
-    
+    const id = rawId.trim();
+
+    // Constrain role to the known allow-list; default to 'user'
+    const VALID_ROLES: ReadonlyArray<AuthenticatedUser['role']> = ['user', 'admin', 'premium'];
+    const role: AuthenticatedUser['role'] =
+      VALID_ROLES.includes(payload.role as AuthenticatedUser['role'])
+        ? (payload.role as AuthenticatedUser['role'])
+        : 'user';
+
+    // Constrain tier to the known allow-list; default to 'free'
+    const VALID_TIERS: ReadonlyArray<AuthenticatedUser['tier']> = ['free', 'pro', 'enterprise'];
+    const tier: AuthenticatedUser['tier'] =
+      VALID_TIERS.includes(payload.tier as AuthenticatedUser['tier'])
+        ? (payload.tier as AuthenticatedUser['tier'])
+        : 'free';
+
     return {
       authenticated: true,
       user: {
-        id: payload.sub || payload.userId || payload.id,
-        email: payload.email,
-        name: payload.name,
-        role: payload.role || 'user',
-        tier: payload.tier || 'free',
+        id,
+        email: typeof payload.email === 'string' ? payload.email : undefined,
+        name:  typeof payload.name  === 'string' ? payload.name  : undefined,
+        role,
+        tier,
       },
-      method: 'clerk', // Treat as clerk method for consistency
+      method: 'legacy',
     };
-  } catch (error) {
-    logger.debug('Legacy JWT validation failed', { error });
-    return { authenticated: false, reason: 'Invalid token' };
+  } catch (err) {
+    if (err instanceof jwt.TokenExpiredError) {
+      logger.debug('Legacy JWT rejected: expired');
+      return { authenticated: false, reason: 'Token expired' };
+    }
+    if (err instanceof jwt.JsonWebTokenError) {
+      // Covers invalid signature, malformed header, algorithm mismatch, "alg: none"
+      logger.debug('Legacy JWT rejected: invalid', { type: err.name });
+      return { authenticated: false, reason: 'Invalid token' };
+    }
+    // Unexpected error — re-throw so it surfaces as a 500
+    throw err;
   }
 }
 
