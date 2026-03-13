@@ -1,13 +1,29 @@
 import React, { useState } from 'react';
 import tokens from 'src/design-system/tokens';
 
+export interface PluginReviewSubmitPayload {
+  rating: number;
+  text: string;
+}
+
 export interface PluginReviewFormProps {
   pluginId: string;
   theme?: 'light' | 'dark';
   onSubmitted?: () => void;
+  /**
+   * Auth-aware submission callback provided by the host application.
+   * Must add appropriate authentication headers (Bearer token / X-User-Id)
+   * and throw on failure so the form can surface the error.
+   */
+  submitReview: (pluginId: string, payload: PluginReviewSubmitPayload) => Promise<void>;
 }
 
-export const PluginReviewForm: React.FC<PluginReviewFormProps> = ({ pluginId, theme = 'light', onSubmitted }) => {
+export const PluginReviewForm: React.FC<PluginReviewFormProps> = ({
+  pluginId,
+  theme = 'light',
+  onSubmitted,
+  submitReview,
+}) => {
   const [rating, setRating] = useState(0);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,18 +36,13 @@ export const PluginReviewForm: React.FC<PluginReviewFormProps> = ({ pluginId, th
     setError(null);
     setSuccess(false);
     try {
-      const res = await fetch(`/api/plugins/reviews/${pluginId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user': 'demo' },
-        body: JSON.stringify({ rating, text, author: 'Demo User' }),
-      });
-      if (!res.ok) throw new Error('Failed to submit review');
+      await submitReview(pluginId, { rating, text });
       setSuccess(true);
       setText('');
       setRating(0);
       onSubmitted?.();
     } catch (e: any) {
-      setError(e.message);
+      setError(e?.message ?? 'Failed to submit review');
     } finally {
       setLoading(false);
     }
