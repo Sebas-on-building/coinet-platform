@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   createChart,
   ColorType,
@@ -6,20 +6,13 @@ import {
   LineSeries,
   CrosshairMode,
 } from "lightweight-charts";
-import { useEffect, useRef } from "react";
 import { useTheme } from "next-themes";
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface TradingViewChartProps {
   data: { time: number; value: number }[];
   containerHeight?: number;
   ma20?: { time: number; value: number }[];
   anomalies?: { time: number; value: number; pulse?: boolean }[];
-}
-
-function toUnixTime(t: string | number): number {
-  return typeof t === "number" ? t : Math.floor(new Date(t).getTime() / 1000);
 }
 
 export function TradingViewChart({
@@ -32,18 +25,8 @@ export function TradingViewChart({
   const chartRef = useRef<IChartApi | null>(null);
   const [fitTrigger, setFitTrigger] = useState(0);
   const { resolvedTheme } = useTheme();
-  const [chartWidth, setChartWidth] = useState(0);
 
-  // Fit to screen handler
-  const fitToScreen = () => {
-    setFitTrigger((f) => f + 1);
-  };
-
-  useEffect(() => {
-    if (chartContainerRef.current) {
-      setChartWidth(chartContainerRef.current.clientWidth);
-    }
-  }, [containerHeight, data]);
+  const fitToScreen = () => setFitTrigger((f) => f + 1);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -83,9 +66,8 @@ export function TradingViewChart({
     series.setData(data as any);
 
     // Overlay MA20 if provided
-    let maSeries;
     if (ma20) {
-      maSeries = chartRef.current.addSeries(LineSeries, {
+      const maSeries = chartRef.current.addSeries(LineSeries, {
         color: "#3b82f6",
         lineWidth: 2,
         priceLineVisible: false,
@@ -96,19 +78,19 @@ export function TradingViewChart({
       maSeries.setData(ma20 as any);
     }
 
-    // Overlay anomaly markers if provided
-    let anomalySeries;
+    // Overlay anomaly markers on the main series
     if (anomalies && anomalies.length > 0) {
-      anomalySeries = chartRef.current.addSeries(LineSeries, {
-        color: "#f59e42",
-        lineWidth: 1,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-        lastValueVisible: false,
-        lineType: 0,
-      });
-      anomalySeries.setData(anomalies as any);
-      // TODO: Markers for anomalies require CandlestickSeries or custom rendering
+      series.setMarkers(
+        anomalies
+          .map((a) => ({
+            time: a.time as any,
+            position: "aboveBar" as const,
+            color: a.pulse ? "#f59e42" : "#fbbf24",
+            shape: "circle" as const,
+            text: "⚠",
+          }))
+          .sort((a, b) => (a.time as number) - (b.time as number))
+      );
     }
 
     // Show all data by default or on fit trigger
@@ -123,11 +105,6 @@ export function TradingViewChart({
         pinch: true,
         axisDoubleClickReset: true,
       },
-    });
-
-    // Add crosshair and tooltip
-    chartRef.current.subscribeCrosshairMove((param) => {
-      // You can add a custom tooltip here if needed
     });
 
     // Responsive resize
@@ -148,14 +125,6 @@ export function TradingViewChart({
       }
     };
   }, [data, resolvedTheme, containerHeight, fitTrigger, ma20, anomalies]);
-
-  // Helper: get x position for a given time
-  function getX(time: number) {
-    if (!data.length || !chartWidth) return 0;
-    const idx = data.findIndex((d) => d.time === time);
-    if (idx === -1) return 0;
-    return (idx / (data.length - 1)) * chartWidth;
-  }
 
   return (
     <div className="w-full relative">
@@ -179,55 +148,8 @@ export function TradingViewChart({
           position: "relative",
         }}
       >
-        {/* Chart rendered by lightweight-charts */}
+        {/* Chart rendered by lightweight-charts (anomaly markers via setMarkers) */}
       </div>
-      {/* Custom anomaly markers overlay */}
-      {anomalies && anomalies.length > 0 && (
-        <div
-          className="pointer-events-none absolute left-0 top-0 w-full h-full"
-          style={{ height: containerHeight }}
-        >
-          {anomalies.map((a, i) => {
-            const x = getX(a.time);
-            if (x === 0) return null;
-            return (
-              <motion.div
-                key={a.time + i}
-                className="absolute"
-                style={{ left: x - 8, top: containerHeight / 2 - 8 }}
-                initial={a.pulse ? { scale: 0.7, opacity: 0.7 } : false}
-                animate={
-                  a.pulse
-                    ? { scale: [1.2, 1, 1.2], opacity: [1, 0.7, 1] }
-                    : { scale: 1, opacity: 1 }
-                }
-                transition={
-                  a.pulse
-                    ? { duration: 1, repeat: 2, repeatType: "reverse" }
-                    : {}
-                }
-              >
-                <div
-                  className={`w-4 h-4 rounded-full ${a.pulse ? "bg-yellow-400 shadow-lg" : "bg-yellow-300"} border-2 border-yellow-500`}
-                />
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-      {/* Minimap/overview can be added here as a future enhancement */}
     </div>
   );
-}
-
-function normalizeChartData(
-  data: { time: string | number; value: number }[],
-): { time: number; value: number }[] {
-  return data.map((d) => ({
-    ...d,
-    time:
-      typeof d.time === "number"
-        ? d.time
-        : Math.floor(new Date(d.time).getTime() / 1000),
-  }));
 }

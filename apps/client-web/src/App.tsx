@@ -11,6 +11,7 @@ import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import SSOCallback from "./pages/SSOCallback";
+import { PortfolioPage } from "./pages/PortfolioPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,11 @@ const App = () => (
                 <Route path="/" element={
                   <ProtectedRoute>
                     <Index />
+                  </ProtectedRoute>
+                } />
+                <Route path="/portfolio/*" element={
+                  <ProtectedRoute>
+                    <PortfolioPage />
                   </ProtectedRoute>
                 } />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -1,27 +1,96 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { PortfolioHeader } from '../components/portfolio/PortfolioHeader';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { PortfolioList } from '../components/portfolio/PortfolioList';
+import { PortfolioPanel } from '../components/portfolio/PortfolioPanel';
+import { useAuth } from '../components/auth/AuthProvider';
 
-// Temporary stub for PortfolioOverview
-const PortfolioOverview = () => <div>Portfolio Overview (stub)</div>;
+/** Placeholder for features not yet implemented — clear "Coming soon" UX */
+function ComingSoonPanel({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="p-8 rounded-2xl bg-muted/50 border border-border text-center max-w-md mx-auto">
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground">
+        {description ?? 'This feature is in development. Check back soon.'}
+      </p>
+    </div>
+  );
+}
 
-// Temporary stubs for sub-features
-const PortfolioHoldings = () => <div>Portfolio Holdings (stub)</div>;
-const PortfolioPerformance = () => <div>Portfolio Performance (stub)</div>;
-const PortfolioRisk = () => <div>Portfolio Risk (stub)</div>;
-const PortfolioAllocation = () => <div>Portfolio Allocation (stub)</div>;
-const PortfolioHistory = () => <div>Portfolio History (stub)</div>;
+function PortfolioOverview() {
+  const { user } = useAuth();
+  if (!user?.id) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        Sign in to view your portfolios.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-6">
+      <PortfolioList userId={user.id} />
+    </div>
+  );
+}
 
-// <PortfolioPage>: Container component, fetches data and passes to presentational components
+function PortfolioDetailView() {
+  const { portfolioId } = useParams<{ portfolioId: string }>();
+  if (!portfolioId) return <Navigate to="/portfolio" replace />;
+  return <PortfolioPanel portfolioId={portfolioId} />;
+}
+
 export const PortfolioPage = () => (
-  <Routes>
-    <Route path="/" element={<PortfolioOverview />} />
-    <Route path="holdings/*" element={<PortfolioHoldings />} />
-    <Route path="performance/*" element={<PortfolioPerformance />} />
-    <Route path="risk/*" element={<PortfolioRisk />} />
-    <Route path="allocation/*" element={<PortfolioAllocation />} />
-    <Route path="history/*" element={<PortfolioHistory />} />
-    {/* Add more sub-feature routes as needed */}
-    <Route path="*" element={<Navigate to="/" />} />
-  </Routes>
-); 
+  <div className="container py-6 space-y-6">
+    <PortfolioHeader />
+    <Routes>
+      <Route path="/" element={<PortfolioOverview />} />
+      <Route
+        path="holdings/*"
+        element={
+          <ComingSoonPanel
+            title="Holdings"
+            description="View and manage your portfolio holdings. Connect your portfolio to get started."
+          />
+        }
+      />
+      <Route
+        path="performance/*"
+        element={
+          <ComingSoonPanel
+            title="Performance"
+            description="Track portfolio performance over time with charts and metrics."
+          />
+        }
+      />
+      <Route
+        path="risk/*"
+        element={
+          <ComingSoonPanel
+            title="Risk Analysis"
+            description="Portfolio risk analytics and volatility metrics."
+          />
+        }
+      />
+      <Route
+        path="allocation/*"
+        element={
+          <ComingSoonPanel
+            title="Allocation"
+            description="Asset allocation breakdown and rebalancing suggestions."
+          />
+        }
+      />
+      <Route
+        path="history/*"
+        element={
+          <ComingSoonPanel
+            title="History"
+            description="Transaction history and portfolio timeline."
+          />
+        }
+      />
+      <Route path="/:portfolioId" element={<PortfolioDetailView />} />
+      <Route path="*" element={<Navigate to="/portfolio" replace />} />
+    </Routes>
+  </div>
+);

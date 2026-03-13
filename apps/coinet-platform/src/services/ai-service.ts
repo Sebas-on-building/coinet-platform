@@ -1128,6 +1128,7 @@ export class AIService {
       openaiKeyLength: process.env.OPENAI_API_KEY?.length || 0,
     });
     
+    const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     if (grokApiKey) {
       this.client = new OpenAI({ 
         apiKey: grokApiKey,
@@ -1140,7 +1141,7 @@ export class AIService {
       this.client = new OpenAI({ apiKey: openaiApiKey });
       this.provider = 'openai';
       this.isConfigured = true;
-      logger.info('✅ OpenAI AI Service initialized', { keyLength: openaiApiKey.length });
+      logger.info('✅ OpenAI AI Service initialized', { keyLength: openaiApiKey.length, model: openaiModel });
     } else {
       logger.error('❌ No AI API key configured! Add XAI_API_KEY or OPENAI_API_KEY to Railway environment variables');
     }
@@ -1218,12 +1219,15 @@ export class AIService {
         ? (process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning')
         : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
 
+      // GPT-5.2 only supports default temperature (1) - omit for compatibility
+      const isGpt52 = model?.includes('gpt-5.2');
+
       // Call AI with response format for JSON mode
       const response = await this.client.chat.completions.create({
         model,
         messages,
-        temperature: useJsonMode ? 0.5 : 0.7, // Lower temperature for JSON consistency
-        max_tokens: 1500,
+        ...(!isGpt52 && { temperature: useJsonMode ? 0.5 : 0.7 }),
+        max_completion_tokens: 1500,
         ...(useJsonMode && { response_format: { type: 'json_object' } }), // Force JSON output
       });
 
@@ -1277,8 +1281,8 @@ export class AIService {
               messages: [
                 { role: 'system', content: enforcementPrompt },
               ],
-              temperature: 0.3, // Even lower temperature for enforcement
-              max_tokens: 1500,
+              ...(!isGpt52 && { temperature: 0.3 }),
+              max_completion_tokens: 1500,
               response_format: { type: 'json_object' },
             });
             
@@ -1456,6 +1460,7 @@ export class AIService {
       const model = this.provider === 'grok' 
         ? (process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning')
         : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
+      const isGpt52 = model?.includes('gpt-5.2');
 
       const prompt = buildStreamRendererPrompt(jsonContract);
       
@@ -1464,8 +1469,8 @@ export class AIService {
         messages: [
           { role: 'system', content: prompt },
         ],
-        temperature: 0.3, // Low temperature for consistent rendering
-        max_tokens: 800,
+        ...(!isGpt52 && { temperature: 0.3 }),
+        max_completion_tokens: 800,
       });
 
       let rendered = response.choices[0]?.message?.content || '';

@@ -1,37 +1,87 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 import * as cache from '../../../services/cache';
 import { injectDb } from '../../../middleware/dbAndUser';
 
 const router = express.Router();
 router.use(injectDb);
 
+const BCRYPT_ROUNDS = 12;
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.warn('[auth] JWT_SECRET missing or too short (<32 chars). Set JWT_SECRET in production.');
+}
+
+const signupSchema = z.object({
+  username: z.string().min(2).max(64).regex(/^[a-zA-Z0-9_-]+$/, 'Username: letters, numbers, underscore, hyphen only'),
+  email: z.string().email().max(254).transform((e) => e.toLowerCase().trim()),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[a-zA-Z]/, 'Password must contain a letter')
+    .regex(/\d/, 'Password must contain a number'),
+});
+
+const loginSchema = z.object({
+  username: z.string().min(1, 'Username required'),
+  password: z.string().min(1, 'Password required'),
+});
+
 // Register new user
 router.post('/signup', async (req, res) => {
-  const { username, email, password } = req.body;
-  // TODO: Hash password and validate input
-  const [user] = await req.db('users').insert({ username, email, password_hash: password }).returning('*');
-  res.json(user);
+  const parsed = signupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Validation failed' });
+  }
+  const { username, email, password } = parsed.data;
+
+  const existing = await req.db('users').where({ email }).orWhere({ username }).first();
+  if (existing) {
+    return res.status(409).json({ error: 'Email or username already registered' });
+  }
+
+  const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const [user] = await req.db('users').insert({ username, email, password_hash }).returning('*');
+  if (!user) return res.status(500).json({ error: 'Registration failed' });
+  delete (user as Record<string, unknown>).password_hash;
+  res.status(201).json(user);
 });
 
 // Login
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  // TODO: Validate password
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Validation failed' });
+  }
+  const { username, password } = parsed.data;
+
   const user = await req.db('users').where({ username }).first();
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const token = jwt.sign(user, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
-  const refreshToken = jwt.sign(user, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-  await cache.setSession(refreshToken, user, 7 * 24 * 3600);
+
+  const password_hash = user.password_hash ?? user.passwordHash ?? user.password_hash;
+  if (!password_hash || !(await bcrypt.compare(password, String(password_hash)))) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  const secret = JWT_SECRET || 'secret';
+  const payload = { id: user.id, username: user.username, email: user.email };
+  const token = jwt.sign(payload, secret, { expiresIn: '15m' });
+  const refreshToken = jwt.sign(payload, secret, { expiresIn: '7d' });
+  await cache.setSession(refreshToken, payload, 7 * 24 * 3600);
   res.json({ token, refreshToken });
 });
 
 // Refresh JWT
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'refreshToken required' });
   const session = await cache.getSession(refreshToken);
   if (!session) return res.status(401).json({ error: 'Invalid refresh token' });
-  const token = jwt.sign(session, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
+  const secret = JWT_SECRET || 'secret';
+  const token = jwt.sign(session, secret, { expiresIn: '15m' });
   res.json({ token });
 });
 

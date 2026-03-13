@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 
 const COLORS = ["#00ffa3", "#0057ff", "#ffb300", "#ff4d4f", "#7c3aed"];
 
-const mockData = [
+const SAMPLE_DATA = [
   { name: "BTC", value: 40 },
   { name: "SOL", value: 25 },
   { name: "ETH", value: 20 },
@@ -54,10 +54,13 @@ export function PortfolioSummaryWidget() {
       <h3 className="text-2xl font-extrabold text-white mb-6 tracking-tight">
         Portfolio Breakdown
       </h3>
+      <span className="inline-block px-2 py-1 text-xs font-medium text-amber-400 bg-amber-400/10 rounded mb-2">
+        Sample data — connect portfolio for real allocation
+      </span>
       <ResponsiveContainer width="100%" height={220}>
         <PieChart>
           <Pie
-            data={mockData}
+            data={SAMPLE_DATA}
             dataKey="value"
             nameKey="name"
             cx="50%"
@@ -69,7 +72,7 @@ export function PortfolioSummaryWidget() {
             }
             isAnimationActive
           >
-            {mockData.map((entry, index) => (
+            {SAMPLE_DATA.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
                 fill={COLORS[index % COLORS.length]}
@@ -81,7 +84,7 @@ export function PortfolioSummaryWidget() {
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-8 grid grid-cols-2 gap-4">
-        {mockData.map((asset, idx) => {
+        {SAMPLE_DATA.map((asset, idx) => {
           const animatedValue = useCountUp(asset.value);
           return (
             <div key={asset.name} className="flex items-center gap-2">

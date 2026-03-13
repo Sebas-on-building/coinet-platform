@@ -31,23 +31,36 @@ class NewsVerificationService {
 
   private async detectAIGenerated(text: string) {
     try {
-      const response = await this.openai.completions.create({
-        model: "gpt-3.5-turbo-instruct",
-        prompt: `Analyze if the following text is AI-generated:\n${text}\n\nProvide a score between 0 and 1:`,
-        max_tokens: 100
+      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      const isGpt52 = model?.includes('gpt-5.2');
+
+      const response = await this.openai.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: `Analyze if the following text is AI-generated:\n${text}\n\nProvide a score between 0 and 1:`,
+          },
+        ],
+        ...(!isGpt52 && { temperature: 0.3 }),
+        max_completion_tokens: 100,
       });
+
+      const rawText = response.choices[0]?.message?.content?.trim() || '0';
+      const score = parseFloat(rawText.replace(/[^0-9.]/g, '')) || 0;
+
       return {
-        is_ai_generated: parseFloat(response.choices[0].text || "0") > 0.7,
-        confidence: parseFloat(response.choices[0].text || "0"),
-        detection_method: "GPT-3 Analysis",
-        flagged_patterns: []
+        is_ai_generated: score > 0.7,
+        confidence: score,
+        detection_method: "GPT Analysis",
+        flagged_patterns: [],
       };
     } catch (error) {
       return {
         is_ai_generated: false,
         confidence: 0,
         detection_method: "failed",
-        flagged_patterns: []
+        flagged_patterns: [],
       };
     }
   }

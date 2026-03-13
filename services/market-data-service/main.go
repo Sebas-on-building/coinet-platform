@@ -51,7 +51,7 @@ func main() {
 		Providers: map[string]rest.ProviderConfig{
 			"coinmarketcap": {
 				Enabled:   true,
-				APIKey:    getEnvOrDefault("COINMARKETCAP_API_KEY", "demo-key"),
+				APIKey:    getEnvOrDefault("COINMARKETCAP_API_KEY", ""), // Required: set in env for CMC API
 				BaseURL:   "https://pro-api.coinmarketcap.com/v1",
 				RateLimit: 333, // 333 requests per minute (20,000/month tier)
 				Timeout:   10 * time.Second,

@@ -47,13 +47,27 @@ export function useAIAssistant({ context }: { context?: string }) {
         body: JSON.stringify({ prompt, context }),
         signal: abortRef.current.signal,
       });
-      if (!res.body) throw new Error('No response body');
-      const reader = res.body.getReader();
-      let result = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        result += new TextDecoder().decode(value);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const contentType = res.headers.get('content-type') || '';
+      let result: string;
+      if (contentType.includes('application/json')) {
+        const data = await res.json() as { content?: string };
+        result = data.content ?? 'No response.';
+        setResponse(result);
+      } else if (res.body) {
+        const reader = res.body.getReader();
+        result = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          result += new TextDecoder().decode(value);
+          setResponse(result);
+        }
+      } else {
+        result = 'No response.';
         setResponse(result);
       }
       const responseEvent = {

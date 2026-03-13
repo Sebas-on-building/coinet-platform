@@ -564,7 +564,16 @@ class ApiService {
   constructor() {
     this.baseUrl =
       process.env.NEXT_PUBLIC_API_URL || "https://api.coinet.example.com";
-    this.apiKey = process.env.NEXT_PUBLIC_API_KEY || "demo-key";
+    this.apiKey = process.env.NEXT_PUBLIC_API_KEY ?? "";
+  }
+
+  /** Throws if API key is not configured. Prevents sending empty or placeholder credentials. */
+  private ensureApiKey(): void {
+    if (!this.apiKey || this.apiKey.trim() === "") {
+      throw new Error(
+        "NEXT_PUBLIC_API_KEY is not configured. Set it in .env.local to enable API requests."
+      );
+    }
   }
 
   public async get<T>(
@@ -578,6 +587,7 @@ class ApiService {
         return this.getMockData<T>(endpoint);
       }
 
+      this.ensureApiKey();
       const response = await axios.get(`${this.baseUrl}${endpoint}`, {
         params,
         headers: {
@@ -590,12 +600,16 @@ class ApiService {
       return response.data;
     } catch (error) {
       console.error(`API request failed: GET ${endpoint}`, error);
-      // Return mock data on error for graceful degradation
+      // In production: do not return mock data — let caller handle empty/error state
+      if (process.env.NODE_ENV === "production") {
+        throw error;
+      }
       return this.getMockData<T>(endpoint);
     }
   }
 
   public async post<T>(endpoint: string, data: any): Promise<T> {
+    this.ensureApiKey();
     const response = await axios.post(`${this.baseUrl}${endpoint}`, data, {
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -606,6 +620,7 @@ class ApiService {
   }
 
   public async put<T>(endpoint: string, data: any): Promise<T> {
+    this.ensureApiKey();
     const response = await axios.put(`${this.baseUrl}${endpoint}`, data, {
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -616,6 +631,7 @@ class ApiService {
   }
 
   public async delete<T>(endpoint: string): Promise<T> {
+    this.ensureApiKey();
     const response = await axios.delete(`${this.baseUrl}${endpoint}`, {
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

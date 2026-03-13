@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { RealtimeChannel, RealtimeEvent, MarketData, TechnicalIndicator } from "@/types/database";
-import { toast } from "sonner";
+import { MarketData, TechnicalIndicator } from "@/types/database";
 
 interface UseRealtimeDataOptions {
   onMarketUpdate?: (data: MarketData) => void;
@@ -136,21 +135,18 @@ export function useRealtimeData(symbols: string[] = [], options: UseRealtimeData
     if (symbolList.length === 0) return;
 
     try {
-      // TODO: Implement when market_data table is created
-      // const { data, error } = await supabase
-      //   .from('market_data')
-      //   .select('*')
-      //   .in('symbol', symbolList)
-      //   .order('timestamp', { ascending: false });
-      const data = null;
-      const error = null;
+      const { data, error } = await supabase
+        .from('market_data')
+        .select('*')
+        .in('symbol', symbolList)
+        .order('timestamp', { ascending: false });
 
       if (error) throw error;
 
       // Group by symbol and take latest
       const latestData: Record<string, MarketData> = {};
       data?.forEach(item => {
-        if (!latestData[item.symbol] || 
+        if (!latestData[item.symbol] ||
             new Date(item.timestamp) > new Date(latestData[item.symbol].timestamp)) {
           latestData[item.symbol] = item;
         }
@@ -168,15 +164,12 @@ export function useRealtimeData(symbols: string[] = [], options: UseRealtimeData
     if (symbolList.length === 0) return;
 
     try {
-      // TODO: Implement when technical_indicators table is created
-      // const { data, error } = await supabase
-      //   .from('technical_indicators')
-      //   .select('*')
-      //   .in('symbol', symbolList)
-      //   .order('timestamp', { ascending: false })
-      //   .limit(50);
-      const data = null;
-      const error = null;
+      const { data, error } = await supabase
+        .from('technical_indicators')
+        .select('*')
+        .in('symbol', symbolList)
+        .order('timestamp', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
 

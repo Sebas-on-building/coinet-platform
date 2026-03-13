@@ -206,74 +206,39 @@ export class AuthenticationMiddleware {
       };
     }
 
-    // SECURITY CHECK: Prevent demo keys in production
-    const isProduction = process.env.NODE_ENV === 'production';
-    const isDemoKey = apiKey.startsWith('demo-api-key') || 
-                     apiKey === 'demo-api-key-1' || 
-                     apiKey === 'demo-api-key-2';
+    // SECURITY: Demo keys are NEVER accepted — in any environment.
+    // Divine precision: zero tolerance for placeholder or demo credentials.
+    const isDemoKey =
+      apiKey.startsWith('demo-api-key') ||
+      apiKey === 'demo-api-key-1' ||
+      apiKey === 'demo-api-key-2' ||
+      apiKey === 'demo-key' ||
+      apiKey.trim() === '';
 
-    if (isDemoKey && isProduction) {
-      this.logger.error('SECURITY VIOLATION: Demo API key attempted in production', {
-        apiKey: apiKey.substring(0, 10) + '...',
+    if (isDemoKey) {
+      this.logger.warn('Rejected demo/placeholder API key', {
+        keyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : '(empty)',
         ip: req.ip,
-        userAgent: req.headers['user-agent'],
+        path: req.path,
       });
       return {
         authenticated: false,
-        reason: 'Invalid API key: Demo keys are not allowed in production',
+        reason: 'Invalid API key. Demo and placeholder keys are not accepted.',
       };
     }
 
-    // TODO: Implement proper database-backed API key authentication
-    // This should:
-    // 1. Hash the provided API key using bcrypt
-    // 2. Look up the hashed key in the database (ApiKey table)
-    // 3. Verify the key belongs to an active user
-    // 4. Check key expiration and rate limits
-    // 5. Extract user information from the database
-    // 
-    // See services/user/src/middleware/auth.ts for reference implementation
-    // that uses Prisma to query the ApiKey model.
-
-    if (isDemoKey && !isProduction) {
-      // Only allow demo keys in development with warning
-      this.logger.warn('Using demo API key in development mode', {
-        apiKey: apiKey.substring(0, 10) + '...',
-        environment: process.env.NODE_ENV,
-      });
-      
-      // Return minimal demo user for development only
-      return {
-        authenticated: true,
-        user: {
-          id: 'demo-user-dev',
-          email: 'demo@example.com',
-          role: 'user',
-          permissions: ['read:signals'],
-          tier: 'free',
-          metadata: {
-            isDemo: true,
-            warning: 'This is a demo key. Use proper API key authentication in production.',
-          },
-        },
-      };
-    }
-
-    // For production, require proper database authentication
-    if (isProduction) {
-      this.logger.error('API key authentication not fully implemented', {
-        message: 'Database-backed API key authentication required for production',
-      });
-      return {
-        authenticated: false,
-        reason: 'API key authentication requires database implementation',
-      };
-    }
-
-    // Development fallback: reject unknown keys
+    // TODO: Implement proper database-backed API key authentication.
+    // Required steps:
+    // 1. Hash the provided API key (e.g. SHA-256) and look up in ApiKey table
+    // 2. Verify key belongs to an active user, check expiration and rate limits
+    // 3. Extract user from database
+    // See services/user for Prisma ApiKey model reference.
+    this.logger.warn('API key authentication requires database implementation', {
+      message: 'Database-backed API key lookup not yet implemented',
+    });
     return {
       authenticated: false,
-      reason: 'Invalid API key. In development, only demo keys are accepted. Implement database authentication for production.',
+      reason: 'API key authentication requires database implementation',
     };
   }
 

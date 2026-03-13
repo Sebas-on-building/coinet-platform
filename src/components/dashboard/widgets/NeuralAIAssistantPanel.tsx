@@ -2,23 +2,17 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 async function fetchAIResponse(prompt: string): Promise<string> {
-  // Replace with your real OpenAI API key and endpoint
-  const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("/api/ai-assistant", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 128,
-      temperature: 0.7,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
   });
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || "No response.";
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || `HTTP ${response.status}`);
+  }
+  const data = await response.json() as { content?: string };
+  return data.content || "No response.";
 }
 
 export const NeuralAIAssistantPanel: React.FC<{ open?: boolean; context?: string; onClose?: () => void }> = ({ open = true, context, onClose }) => {

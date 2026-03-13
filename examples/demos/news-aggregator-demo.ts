@@ -15,9 +15,14 @@ import { Logger } from './src/utils/Logger';
 async function demoNewsAPIIntegration() {
   console.log('\n📰 === NEWS API INTEGRATION DEMO ===');
 
-  // Initialize NewsAPI client (requires API key)
+  // Initialize NewsAPI client (requires API key — no placeholder credentials)
+  const newsApiKey = process.env.NEWSAPI_KEY;
+  if (!newsApiKey?.trim()) {
+    console.log('⏭️  Skipping NewsAPI demo: NEWSAPI_KEY not set');
+    return;
+  }
   const newsAPIClient = new NewsAPIClient({
-    apiKey: process.env.NEWSAPI_KEY || 'demo-key',
+    apiKey: newsApiKey,
     rateLimit: {
       requestsPerMinute: 1000,
       requestsPerHour: 50
@@ -68,9 +73,14 @@ async function demoNewsAPIIntegration() {
 async function demoReutersAPIIntegration() {
   console.log('\n🏦 === REUTERS API INTEGRATION DEMO ===');
 
-  // Initialize Reuters API client (requires API key)
+  // Initialize Reuters API client (requires API key — no placeholder credentials)
+  const reutersApiKey = process.env.REUTERS_API_KEY;
+  if (!reutersApiKey?.trim()) {
+    console.log('⏭️  Skipping Reuters demo: REUTERS_API_KEY not set');
+    return;
+  }
   const reutersClient = new ReutersAPIClient({
-    apiKey: process.env.REUTERS_API_KEY || 'demo-key',
+    apiKey: reutersApiKey,
     rateLimit: {
       requestsPerMinute: 100,
       requestsPerHour: 1000

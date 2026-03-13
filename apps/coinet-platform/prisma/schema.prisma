@@ -3520,3 +3520,62 @@ model RetentionFailureEvent {
   @@index([tenantId, detectedAt(sort: Desc)])
   @@map("retention_failure_events")
 }
+
+// =============================================================================
+// PROJECT KNOWLEDGE BASE
+// =============================================================================
+// Stores curated research data per project. Used by OmniScore to enrich
+// scoring with team, partnership, audit, and governance context.
+
+model ProjectKnowledge {
+  id                 String    @id @default(uuid())
+  projectId          String    @unique @db.VarChar(100)
+  name               String?   @db.VarChar(200)
+  symbol             String?   @db.VarChar(20)
+  ticker             String?   @db.VarChar(20)
+  aliases            String[]
+  description        String?   @db.Text
+  category           String?   @db.VarChar(100)
+  sector             String?   @db.VarChar(50)
+  teamInfo           Json?
+  partnerships       Json?
+  backers            Json?
+  audits             Json?
+  governanceType     String?   @db.VarChar(100)
+  socialLinks        Json?
+  contractAddresses  Json?
+  researchDepth      String    @default("minimal") @db.VarChar(20)
+  dataQuality        String    @default("low") @db.VarChar(20)
+  sourcesUsed        String[]
+  lastResearchedAt   DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  researchLogs       ProjectResearchLog[]
+
+  @@index([sector])
+  @@index([dataQuality])
+  @@index([lastResearchedAt])
+  @@map("project_knowledge")
+}
+
+model ProjectResearchLog {
+  id             String   @id @default(uuid())
+  projectId      String   @db.VarChar(100)
+  researchType   String   @db.VarChar(50)
+  findings       Json
+  sourcesUsed    String[]
+  confidence     Float    @default(0.5)
+  fieldsUpdated  String[]
+  dataAdded      Boolean  @default(false)
+  dataRefined    Boolean  @default(false)
+  triggeredBy    String?  @db.VarChar(100)
+  userId         String?  @db.VarChar(100)
+  createdAt      DateTime @default(now())
+
+  knowledge      ProjectKnowledge @relation(fields: [projectId], references: [projectId], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([createdAt])
+  @@map("project_research_logs")
+}

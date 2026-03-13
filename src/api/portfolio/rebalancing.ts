@@ -3,23 +3,38 @@ import Joi from 'joi';
 
 const router = Router();
 
-// Get rebalance suggestions
-router.get('/suggestions', async (req, res) => {
-  // TODO: Fetch rebalance suggestions
-  return res.json({ suggestions: [] });
+/**
+ * Rebalancing endpoints require portfolio optimization logic and market data.
+ * Status: NOT IMPLEMENTED — integrate with portfolio optimizer when available.
+ */
+const NOT_IMPLEMENTED = {
+  error: 'Not Implemented',
+  message:
+    'Portfolio rebalancing requires optimization logic and current market prices. Not yet implemented.',
+  documentation: 'https://docs.coinet.ai/portfolio/rebalancing',
+};
+
+// Get rebalance suggestions — requires optimization algorithm
+router.get('/suggestions', async (_req, res) => {
+  return res.status(501).json(NOT_IMPLEMENTED);
 });
 
-// Execute rebalance
+// Execute rebalance — requires order execution and holdings update
 router.post('/execute', async (req, res) => {
   const schema = Joi.object({
-    allocations: Joi.array().items(
-      Joi.object({ symbol: Joi.string().required(), percent: Joi.number().min(0).max(100).required() })
-    ).required(),
+    allocations: Joi.array()
+      .items(
+        Joi.object({
+          symbol: Joi.string().required(),
+          percent: Joi.number().min(0).max(100).required(),
+        })
+      )
+      .required(),
   });
-  const { error, value } = schema.validate(req.body);
+  const { error } = schema.validate(req.body);
   if (error) return res.status(400).json({ error: error.details[0].message });
-  // TODO: Execute rebalance
-  return res.json({ status: 'success', allocations: value.allocations });
+
+  return res.status(501).json(NOT_IMPLEMENTED);
 });
 
-export default router; 
+export default router;

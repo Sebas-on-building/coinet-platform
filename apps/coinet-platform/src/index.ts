@@ -8,6 +8,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { prisma } from './db/client';
 // Build trigger: v4 - message schema fix
 import { logger } from './utils/logger';
@@ -26,8 +27,9 @@ import { logApiKeysStatus, generateApiKeysReport, getGracefulDegradation } from 
 import { initializeCoinIdValidator } from './services/coin-id-validator';
 import { securityHeaders } from './middleware/securityHeaders';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables - app .env overrides root so OPENAI_MODEL etc. are correct when run from monorepo root
+dotenv.config(); // cwd .env first (e.g. root .env)
+dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true }); // app .env wins
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
