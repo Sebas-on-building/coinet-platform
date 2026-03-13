@@ -2,8 +2,9 @@
 
 /**
  * =========================================
- * NEWS AGGREGATOR DEMO
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * NEWS AGGREGATOR DEMO
  * Demonstration of enhanced news API integrations for event detection
  */
 

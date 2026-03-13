@@ -137,7 +137,7 @@ Check: Railway Dashboard → `alchemy-whales` service → Variables tab
 
 ```bash
 XAI_API_KEY=xai-xxxxxxxxxxxxx  # Get from x.ai
-TWITTER_API_KEY=new1_f932b6156e30470a9b00b23c5d4e21ed  # You already have this!
+TWITTER_API_KEY=your_twitter_api_key_here  # From twitterapi.io
 NODE_ENV=production
 CORS_ORIGIN=https://app.coinet.ai
 ```

@@ -5,6 +5,37 @@
 
 ---
 
+## ⚠️ CRITICAL: Production Variables (Set These First)
+
+Before deploying, ensure these four variables are configured:
+
+| Variable | Required | Example |
+|----------|----------|---------|
+| `TWITTER_API_KEY` | ✅ | From twitterapi.io or developer.twitter.com |
+| `XAI_API_KEY` | ✅ | `xai-xxx` from x.ai (or use `OPENAI_API_KEY` as fallback) |
+| `NODE_ENV` | ✅ | `production` for production deployments |
+| `CORS_ORIGIN` | ✅ | `https://app.coinet.ai` (comma-separated for multiple) |
+
+**Without these:** Chat broken, COMM v2.1 broken, security risk from permissive CORS.
+
+**Also required:** `JWT_SECRET` (min 32 chars) — no fallback; app will not start without it. Generate: `openssl rand -base64 32`.
+
+**Config sources:** See `docs/CONFIG_SOURCES.md` for which env example files are canonical and how they relate.
+
+---
+
+## 🔒 Security: API Key Rotation
+
+If any API key was ever committed to version control, exposed in documentation, or shared outside secure channels, **rotate it immediately**:
+
+1. Revoke or regenerate the key in the provider's dashboard (Twitter, xAI, OpenAI, etc.).
+2. Update the new key in your deployment environment (Railway, `.env`, secrets manager).
+3. Never commit real keys to git; use placeholders in examples.
+
+**Check:** Search your git history for any key that may have been committed. If a key like `new1_*` or `sk-*` appeared in docs or code, assume it was compromised and rotate.
+
+---
+
 ## 📊 Current Status
 
 ### ✅ Configured in `.env`
@@ -61,16 +92,15 @@
 - NMI (Narrative Manipulation Index) degraded
 - Peer normalization impossible
 
-**Current Workaround:**
-```typescript
-// twitter-intelligence.ts line 23
-API_KEY: process.env.TWITTER_API_KEY || 'new1_f932b6156e30470a9b00b23c5d4e21ed'
-```
+**Current Behavior:**
+- No hardcoded fallback (production-ready)
+- When `TWITTER_API_KEY` is unset, Twitter API calls return gracefully with "not configured"
+- OmniScore COMM uses fallback logic when Twitter data is unavailable
 
 **Action Required:**
 ```bash
-# Add to Railway
-TWITTER_API_KEY=new1_f932b6156e30470a9b00b23c5d4e21ed
+# Add to Railway (obtain key from twitterapi.io)
+TWITTER_API_KEY=your_twitter_api_key_here
 ```
 
 ---
@@ -131,14 +161,14 @@ NODE_ENV=production
 - No frontend protection
 
 **Current Behavior:**
-```typescript
-// index.ts line 49
-process.env.CORS_ORIGIN  // undefined = allows all
-```
+- When `CORS_ORIGIN` is set: only listed origins + defaults allowed; unknown origins rejected in production
+- When unset in production: logs warning; defaults (app.coinet.ai, localhost) allowed
+- Comma-separated for multiple origins
 
 **Action Required:**
 ```bash
-CORS_ORIGIN=https://coinet.app,https://app.coinet.com
+# Production: restrict to your frontend origins
+CORS_ORIGIN=https://app.coinet.ai,https://coinet.ai
 ```
 
 ---
@@ -173,7 +203,7 @@ REDIS_URL=redis://default:xxxxx@redis.railway.internal:6379
 ```bash
 DATABASE_URL=postgresql://...  # ✅ Already set
 XAI_API_KEY=xai-xxxxxxxxxxxxx  # ❌ ADD THIS
-TWITTER_API_KEY=new1_f932b6156e30470a9b00b23c5d4e21ed  # ❌ ADD THIS
+TWITTER_API_KEY=your_twitter_api_key_here  # From twitterapi.io
 NODE_ENV=production  # ❌ ADD THIS
 PORT=3000  # ✅ Already set
 ```
@@ -207,7 +237,7 @@ CRUNCHBASE_API_KEY=xxxxxxxxxxxxx
 1. **Add Critical Variables** (5 minutes)
    ```bash
    XAI_API_KEY=xai-xxxxxxxxxxxxx
-   TWITTER_API_KEY=new1_f932b6156e30470a9b00b23c5d4e21ed
+   TWITTER_API_KEY=your_twitter_api_key_here
    NODE_ENV=production
    CORS_ORIGIN=https://coinet.app
    ```

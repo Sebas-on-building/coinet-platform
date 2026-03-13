@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
+==========================================
 🚀 MULTI-MODAL FUSION PIPELINE DEMO - DIVINE EXTRAORDINARY PERFECTION
 ======================================================================
 

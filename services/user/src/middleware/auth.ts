@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import { createLogger } from 'winston';
+import { getJwtSecret } from '../getJwtSecret';
 
 const prisma = new PrismaClient();
 const logger = createLogger({
@@ -56,7 +57,7 @@ export const authMiddleware = async (
     try {
       decoded = jwt.verify(
         token, 
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       ) as JWTPayload;
     } catch (jwtError) {
       res.status(401).json({

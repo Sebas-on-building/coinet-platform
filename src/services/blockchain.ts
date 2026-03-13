@@ -137,10 +137,13 @@ class BlockchainDataService {
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
   private cacheLifetime = 30000; // 30 seconds default
 
-  // API Keys (would normally come from env vars)
-  private etherscanKey = "your-etherscan-key";
-  private infuraKey = "your-infura-key";
-  private alchemyKey = "your-alchemy-key";
+  private useDemoMock =
+    process.env.NODE_ENV !== "production" ||
+    process.env.VITE_USE_MOCK_DATA === "true";
+
+  private etherscanKey = process.env.ETHERSCAN_API_KEY || "";
+  private infuraKey = process.env.INFURA_PROJECT_ID || "";
+  private alchemyKey = process.env.ALCHEMY_API_KEY || "";
 
   // WebSocket instance for real-time data
   private wsService: WebSocketService;
@@ -241,9 +244,11 @@ class BlockchainDataService {
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return [];
+    }
+
     try {
-      // In production: real API calls to blockchain providers
-      // For demo, simulate API response with mock data
       const mockTransactions: BlockchainTransaction[] = Array(count)
         .fill(null)
         .map((_, i) => ({
@@ -302,12 +307,21 @@ class BlockchainDataService {
     const cacheKey = `${chain}_gas`;
 
     // Check cache first - gas data has a shorter lifetime
-    const cached = this.getFromCache(cacheKey, 10000); // 10 seconds
+    const cached = this.getFromCache(cacheKey, 10000);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return {
+        slow: { price: 0, estimatedSeconds: 0 },
+        average: { price: 0, estimatedSeconds: 0 },
+        fast: { price: 0, estimatedSeconds: 0 },
+        instant: { price: 0, estimatedSeconds: 0 },
+        baseFee: 0,
+        priorityFee: 0,
+      };
+    }
+
     try {
-      // In production: API calls to gas trackers
-      // For demo, simulate response
       const baseFee = Math.floor(15 + Math.random() * 30);
       const priorityFee = Math.floor(1 + Math.random() * 5);
 
@@ -355,13 +369,25 @@ class BlockchainDataService {
   async getNetworkStats(chain: string = "ethereum"): Promise<NetworkStats> {
     const cacheKey = `${chain}_stats`;
 
-    // Check cache first
-    const cached = this.getFromCache(cacheKey, 60000); // 1 minute
+    const cached = this.getFromCache(cacheKey, 60000);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return {
+        blockHeight: 0,
+        lastBlockTime: 0,
+        avgBlockTime: 0,
+        difficulty: 0,
+        hashRate: "0",
+        pendingTxCount: 0,
+        activeValidators: 0,
+        totalSupply: "0",
+        totalStaked: "0",
+        marketCap: 0,
+      };
+    }
+
     try {
-      // In production: API calls to blockchain nodes
-      // For demo, simulate response
       const stats: NetworkStats = {
         blockHeight: 18150000 + Math.floor(Math.random() * 100),
         lastBlockTime: Math.floor(Date.now() / 1000),
@@ -411,9 +437,11 @@ class BlockchainDataService {
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return [];
+    }
+
     try {
-      // In production: API calls to blockchain analytics providers
-      // For demo, simulate response
       const exchanges = ["binance", "coinbase", "kraken", "ftx", "huobi"];
       const tokens = ["ETH", "USDC", "USDT", "WBTC", "DAI"];
 
@@ -489,12 +517,14 @@ class BlockchainDataService {
     const cacheKey = `${chain}_trending_contracts_${count}`;
 
     // Check cache first
-    const cached = this.getFromCache(cacheKey, 300000); // 5 minutes
+    const cached = this.getFromCache(cacheKey, 300000);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return [];
+    }
+
     try {
-      // In production: API calls to blockchain analytics providers
-      // For demo, simulate response
       const contractNames = [
         "Uniswap V3",
         "OpenSea",
@@ -566,9 +596,21 @@ class BlockchainDataService {
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return {
+        address,
+        transactions: [],
+        tokenBalances: [],
+        totalUsdValue: 0,
+        firstActivity: 0,
+        lastActivity: 0,
+        incomingTxCount: 0,
+        outgoingTxCount: 0,
+        contractInteractions: [],
+      };
+    }
+
     try {
-      // In production: API calls to blockchain explorers/indexers
-      // For demo, simulate response
       const txCount = Math.floor(5 + Math.random() * 20);
 
       const tokens = [
@@ -664,9 +706,18 @@ class BlockchainDataService {
     const cached = this.getFromCache(cacheKey);
     if (cached) return cached;
 
+    if (!this.useDemoMock) {
+      return {
+        token: tokenAddress,
+        symbol: "UNKNOWN",
+        decimals: 18,
+        transfers: [],
+        transferVolume: "0",
+        uniqueAddresses: 0,
+      };
+    }
+
     try {
-      // In production: API calls to blockchain explorers/indexers
-      // For demo, simulate response with mock data
       const tokenSymbol = ["USDC", "USDT", "WETH", "LINK", "DAI"][
         Math.floor(Math.random() * 5)
       ];

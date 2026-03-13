@@ -4,6 +4,7 @@ import { PortfolioHeader } from '../components/portfolio/PortfolioHeader';
 import { PortfolioList } from '../components/portfolio/PortfolioList';
 import { PortfolioPanel } from '../components/portfolio/PortfolioPanel';
 import { useAuth } from '../components/auth/AuthProvider';
+import { useAuthenticatedApi } from '../hooks/useAuthenticatedApi';
 
 /** Placeholder for features not yet implemented — clear "Coming soon" UX */
 function ComingSoonPanel({ title, description }: { title: string; description?: string }) {
@@ -19,6 +20,7 @@ function ComingSoonPanel({ title, description }: { title: string; description?: 
 
 function PortfolioOverview() {
   const { user } = useAuth();
+  useAuthenticatedApi(); // Sync Bearer token + X-User-Id for portfolio API
   if (!user?.id) {
     return (
       <div className="p-8 text-center text-muted-foreground">

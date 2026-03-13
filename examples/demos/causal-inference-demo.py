@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
+==========================================
 🌟 DIVINE CAUSAL INFERENCE DEMONSTRATION
 =======================================
 

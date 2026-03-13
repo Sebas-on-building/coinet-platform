@@ -9,10 +9,12 @@ const router = express.Router();
 router.use(injectDb);
 
 const BCRYPT_ROUNDS = 12;
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET || JWT_SECRET.length < 32) {
-  console.warn('[auth] JWT_SECRET missing or too short (<32 chars). Set JWT_SECRET in production.');
+function getJwtSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 32) {
+    throw new Error('JWT_SECRET must be set in environment (min 32 chars). Generate: openssl rand -base64 32');
+  }
+  return s;
 }
 
 const signupSchema = z.object({
@@ -66,7 +68,7 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
-  const secret = JWT_SECRET || 'secret';
+  const secret = getJwtSecret();
   const payload = { id: user.id, username: user.username, email: user.email };
   const token = jwt.sign(payload, secret, { expiresIn: '15m' });
   const refreshToken = jwt.sign(payload, secret, { expiresIn: '7d' });
@@ -80,8 +82,7 @@ router.post('/refresh', async (req, res) => {
   if (!refreshToken) return res.status(400).json({ error: 'refreshToken required' });
   const session = await cache.getSession(refreshToken);
   if (!session) return res.status(401).json({ error: 'Invalid refresh token' });
-  const secret = JWT_SECRET || 'secret';
-  const token = jwt.sign(session, secret, { expiresIn: '15m' });
+  const token = jwt.sign(session, getJwtSecret(), { expiresIn: '15m' });
   res.json({ token });
 });
 

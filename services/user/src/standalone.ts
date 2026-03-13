@@ -20,6 +20,8 @@ const hashPassword = async (password: string): Promise<string> => {
   return crypto.createHash('sha256').update(password + 'coinet-salt').digest('hex');
 };
 
+import { getJwtSecret } from './getJwtSecret';
+
 const comparePassword = async (password: string, hash: string): Promise<boolean> => {
   const computed = await hashPassword(password);
   return computed === hash;
@@ -394,7 +396,7 @@ coinet_user_verified_users ${Array.from(users.values()).filter((u: any) => u.isV
       const token = authHeader.substring(7);
       
       try {
-        const decoded = verifyJWT(token, process.env.JWT_SECRET || 'fallback-secret');
+        const decoded = verifyJWT(token, getJwtSecret());
         const user = Array.from(users.values()).find((u: any) => u.id === decoded.userId);
         
         if (!user || !user.active) {
@@ -509,7 +511,7 @@ coinet_user_verified_users ${Array.from(users.values()).filter((u: any) => u.isV
 
       const token = createJWT(
         { userId, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       logger.info('User registered successfully', { 
@@ -639,7 +641,7 @@ coinet_user_verified_users ${Array.from(users.values()).filter((u: any) => u.isV
 
       const token = createJWT(
         { userId: user.id, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       logger.info('User logged in successfully', { 
@@ -699,7 +701,7 @@ coinet_user_verified_users ${Array.from(users.values()).filter((u: any) => u.isV
 
     const newToken = createJWT(
       { userId: 'user-id', email: 'user@example.com', role: 'user' },
-      process.env.JWT_SECRET || 'fallback-secret'
+      getJwtSecret()
     );
 
     res.json({

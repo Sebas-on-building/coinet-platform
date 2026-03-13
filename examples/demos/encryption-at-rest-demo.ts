@@ -1,7 +1,8 @@
 /**
  * =========================================
- * ENCRYPTION AT REST DEMO
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * ENCRYPTION AT REST DEMO
  * Comprehensive demonstration of the divine world-class encryption at rest system
  * Shows key management, data encryption, backup encryption, and performance monitoring
  */

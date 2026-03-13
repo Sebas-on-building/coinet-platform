@@ -20,9 +20,13 @@ function authenticateWS(info, cb) {
     logger.warn('Rejected WS: No token');
     return cb(false, 401, 'Token required');
   }
-  // Example: JWT verification (replace with your secret)
+  const secret = process.env.WS_JWT_SECRET || process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    logger.warn('WS_JWT_SECRET or JWT_SECRET must be set (min 32 chars)');
+    return cb(false, 503, 'Auth not configured');
+  }
   try {
-    const payload = jwt.verify(token, process.env.WS_JWT_SECRET || 'supersecret');
+    const payload = jwt.verify(token, secret);
     info.req.user = payload;
     cb(true);
   } catch (err) {

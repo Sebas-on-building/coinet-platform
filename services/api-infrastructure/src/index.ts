@@ -520,7 +520,11 @@ export function loadConfig(): APIInfrastructureConfig {
     // Security configuration
     security: {
       allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['*'],
-      jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
+      jwtSecret: (() => {
+        const s = process.env.JWT_SECRET;
+        if (!s || s.length < 32) throw new Error('JWT_SECRET must be set (min 32 chars)');
+        return s;
+      })(),
       apiKeys: process.env.API_KEYS?.split(',') || [],
       encryptionKey: process.env.ENCRYPTION_KEY || 'your-encryption-key',
     },
@@ -528,7 +532,11 @@ export function loadConfig(): APIInfrastructureConfig {
     // Authentication configuration
     authentication: {
       jwt: {
-        secret: process.env.JWT_SECRET || 'your-secret-key',
+        secret: (() => {
+          const s = process.env.JWT_SECRET;
+          if (!s || s.length < 32) throw new Error('JWT_SECRET must be set (min 32 chars)');
+          return s;
+        })(),
         expiresIn: process.env.JWT_EXPIRES_IN || '24h',
         issuer: process.env.JWT_ISSUER || 'coinet-api',
         audience: process.env.JWT_AUDIENCE || 'coinet-clients',

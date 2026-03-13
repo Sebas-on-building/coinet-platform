@@ -1,7 +1,8 @@
 /**
  * =========================================
- * ADVANCED ANALYTICS BACKEND VALIDATION
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * ADVANCED ANALYTICS BACKEND VALIDATION
  * Divine world-class validation of all analytics features
  * Demonstrating Elon Musk-level perfection in analytics implementation
  */

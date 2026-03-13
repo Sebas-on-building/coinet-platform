@@ -10,6 +10,14 @@ export const injectDb: RequestHandler = (req, res, next) => {
   next();
 };
 
+function getJwtSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 32) {
+    throw new Error('JWT_SECRET must be set in environment (min 32 chars). Generate: openssl rand -base64 32');
+  }
+  return s;
+}
+
 export const requireAuth: RequestHandler = (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth) {
@@ -18,7 +26,7 @@ export const requireAuth: RequestHandler = (req, res, next) => {
   }
   const token = auth.split(' ')[1];
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+    req.user = jwt.verify(token, getJwtSecret()) as any;
     next();
     return;
   } catch {

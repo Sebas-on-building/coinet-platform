@@ -1,6 +1,14 @@
 # =============================================================================
 # COINET AI - DOCKER COMPOSE DEVELOPMENT ENVIRONMENT
 # =============================================================================
+#
+# ⚠️  PRODUCTION WARNING: This file uses development defaults.
+#     For production, override these via .env or -e:
+#       JWT_SECRET=<openssl rand -base64 32>
+#       NODE_ENV=production
+#     Never use this compose file in production without setting JWT_SECRET.
+#
+# =============================================================================
 
 version: '3.8'
 
@@ -160,7 +168,7 @@ services:
       - PORT=8005
       - DATABASE_URL=postgresql://coinet_user:coinet_password@postgres:5432/coinet_ai_dev
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=coinet-super-secret-jwt-key-for-development
+      - JWT_SECRET=${JWT_SECRET:-coinet-super-secret-jwt-key-for-development}
       - LOG_LEVEL=info
       - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
     depends_on:

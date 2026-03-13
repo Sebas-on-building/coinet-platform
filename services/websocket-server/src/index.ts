@@ -6,7 +6,14 @@ import { IncomingMessage } from 'http';
 dotenv.config();
 
 const wss = new WebSocketServer({ port: 5000 });
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+function getJwtSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 32) {
+    throw new Error('JWT_SECRET must be set in environment (min 32 chars). Generate: openssl rand -base64 32');
+  }
+  return s;
+}
+const JWT_SECRET = getJwtSecret();
 
 const kafka = new Kafka({ brokers: [process.env.KAFKA_BROKER || 'localhost:9092'] });
 const topics = ['market-ticks', 'alerts', 'portfolio-events'];

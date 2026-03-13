@@ -1,7 +1,8 @@
 /**
  * =========================================
- * AI INSIGHTS DEMO
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * AI INSIGHTS DEMO
  * Demonstration of the divine world-class AI insights generation system
  */
 

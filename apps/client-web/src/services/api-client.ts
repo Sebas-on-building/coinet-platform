@@ -260,6 +260,33 @@ class ApiClient {
   }
 
   /**
+   * Fetch JSON from URL with auth headers (for use with SWR, etc.)
+   */
+  async fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+    const fullUrl = url.startsWith('http') ? url : `${this.baseURL}${url}`;
+    return fetch(fullUrl, {
+      ...options,
+      headers: {
+        ...this.getAuthHeaders(),
+        ...(options.headers as Record<string, string>),
+      },
+      credentials: 'include',
+    });
+  }
+
+  /**
+   * GET JSON with auth headers
+   */
+  async getJson<T = unknown>(url: string): Promise<T> {
+    const res = await this.fetchWithAuth(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+      throw new Error((err as { error?: string; message?: string }).error || (err as { message?: string }).message || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  /**
    * Health check
    */
   async healthCheck(): Promise<{ ok: boolean; service: string }> {

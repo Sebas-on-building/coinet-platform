@@ -1,5 +1,10 @@
 import { useEffect } from "react";
 
+/**
+ * CanvasKeyboardShortcuts - Keyboard shortcuts for canvas actions.
+ * Ctrl/Cmd+A: Select all | Ctrl/Cmd+Z: Undo | Ctrl/Cmd+Y: Redo
+ * Delete/Backspace: Delete | Ctrl/Cmd+D: Duplicate
+ */
 export const CanvasKeyboardShortcuts: React.FC<{ onDelete?: () => void; onDuplicate?: () => void; onSelectAll?: () => void; onUndo?: () => void; onRedo?: () => void; }> = ({ onDelete, onDuplicate, onSelectAll, onUndo, onRedo }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

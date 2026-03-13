@@ -19,6 +19,8 @@ interface PriceData {
   updatedAt: Date;
 }
 
+const useSampleData = import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_DATA === "true";
+
 export function RealTimeMarketData({ symbol }: RealTimeMarketDataProps) {
   const [data, setData] = useState<PriceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,10 +29,23 @@ export function RealTimeMarketData({ symbol }: RealTimeMarketDataProps) {
     const fetchPriceData = async () => {
       setLoading(true);
 
-      // In a real implementation, this would fetch from API
-      // Would also set up a WebSocket connection for real-time updates
+      if (!useSampleData) {
+        try {
+          const res = await fetch(`/api/price/${symbol}`);
+          if (res.ok) {
+            const json = await res.json();
+            setData(json);
+          } else {
+            setData(null);
+          }
+        } catch {
+          setData(null);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
 
-      // Mock data for demonstration
       setTimeout(() => {
         const mockData: PriceData = {
           price:
@@ -104,7 +119,7 @@ export function RealTimeMarketData({ symbol }: RealTimeMarketDataProps) {
 
   return (
     <Card className="p-4">
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start flex-wrap gap-2">
         <div>
           <h3 className="text-xl font-medium">{symbol} Price</h3>
           <div className="text-3xl font-bold mt-1">
@@ -127,9 +142,16 @@ export function RealTimeMarketData({ symbol }: RealTimeMarketDataProps) {
           </div>
         </div>
 
-        <Badge variant={data.percentChange >= 0 ? "success" : "danger"}>
-          Real-time
-        </Badge>
+        <div className="flex items-center gap-2">
+          {useSampleData && (
+            <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">
+              Sample
+            </span>
+          )}
+          <Badge variant={data.percentChange >= 0 ? "success" : "danger"}>
+            Real-time
+          </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mt-4">

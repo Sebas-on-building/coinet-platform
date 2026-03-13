@@ -1,4 +1,5 @@
 import { createSlice, createEntityAdapter, createAsyncThunk, PayloadAction, EntityState, Draft, ActionReducerMapBuilder } from '@reduxjs/toolkit';
+import { fetchJson } from './api';
 
 // Entity adapter for normalized state
 const assetsAdapter = createEntityAdapter<{ id: string; symbol: string; amount: number }>();
@@ -6,12 +7,23 @@ const assetsAdapter = createEntityAdapter<{ id: string; symbol: string; amount: 
 export const fetchPortfolio = createAsyncThunk<
   { id: string; symbol: string; amount: number }[],
   string
->('portfolio/fetchPortfolio', async (userId: string) => {
-  // TODO: Replace with real API call
-  return [
-    { id: '1', symbol: 'BTC', amount: 1.5 },
-    { id: '2', symbol: 'ETH', amount: 10 },
-  ];
+>('portfolio/fetchPortfolio', async (_userId: string) => {
+  try {
+    const portfolios = await fetchJson<unknown>('/api/v1/portfolios');
+    const assets: { id: string; symbol: string; amount: number }[] = [];
+    for (const p of Array.isArray(portfolios) ? portfolios : []) {
+      for (const h of p.holdings || []) {
+        assets.push({
+          id: h.id || `${p.id}-${h.symbol}`,
+          symbol: h.symbol,
+          amount: Number(h.quantity) || 0,
+        });
+      }
+    }
+    return assets.length > 0 ? assets : [];
+  } catch {
+    return [];
+  }
 });
 
 interface PortfolioState extends EntityState<{ id: string; symbol: string; amount: number }> {

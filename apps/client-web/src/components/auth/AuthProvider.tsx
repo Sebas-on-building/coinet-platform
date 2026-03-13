@@ -31,6 +31,8 @@ interface AuthContextType {
   session: any | null;
   profile: UserProfile | null;
   loading: boolean;
+  /** Get Clerk session token for API auth (Bearer). Returns null in demo mode or when not signed in. */
+  getToken: () => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, metadata?: any) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -44,7 +46,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function AuthProviderInner({ children }: { children: React.ReactNode }) {
   const { user, isLoaded: userLoaded, isSignedIn } = useUser();
-  const { signOut: clerkSignOut } = useClerkAuth();
+  const { signOut: clerkSignOut, getToken } = useClerkAuth();
   const signInHook = useSignIn();
   const signUpHook = useSignUp();
   const [demoMode, setDemoModeState] = useState(false);
@@ -299,6 +301,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
     session: isSignedIn || demoMode ? { user: effectiveUser } : null,
     profile: effectiveProfile,
     loading: (!isLoaded || !userLoaded) && !demoMode,
+    getToken: async () => (demoMode ? null : (getToken ? await getToken() : null)),
     signIn,
     signUp,
     signOut,
@@ -373,6 +376,7 @@ function AuthProviderFallback({ children }: { children: React.ReactNode }) {
       updated_at: new Date().toISOString()
     } : null,
     loading: false,
+    getToken: async () => null,
     signIn: async () => {
       toast.error("Please configure Clerk to enable authentication");
       return { error: new Error("Clerk not configured") };

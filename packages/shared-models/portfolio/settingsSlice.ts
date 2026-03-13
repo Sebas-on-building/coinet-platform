@@ -4,10 +4,14 @@ export type Settings = { id: string; theme: string; layout: string; notification
 const settingsAdapter = createEntityAdapter<Settings, string>();
 
 export const fetchSettings = createAsyncThunk<Settings[], string>('settings/fetchSettings', async (userId: string) => {
-  // TODO: Replace with real API call
-  return [
-    { id: userId, theme: 'dark', layout: 'grid', notifications: true, language: 'en' },
-  ];
+  const { fetchJson } = await import('./api');
+  try {
+    const data = await fetchJson<Settings | Settings[] | { data?: Settings[] }>('/api/settings/user');
+    const list = Array.isArray(data) ? data : (data as { data?: Settings[] })?.data ?? [data as Settings];
+    return Array.isArray(list) ? list : [{ id: userId, theme: 'dark', layout: 'grid', notifications: true, language: 'en' }];
+  } catch {
+    return [{ id: userId, theme: 'dark', layout: 'grid', notifications: true, language: 'en' }];
+  }
 });
 
 interface SettingsState extends EntityState<Settings, string> {

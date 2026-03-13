@@ -82,8 +82,10 @@ export class TwitterSourceAdapter extends BaseNewsSourceAdapter {
   private apiEndpoint: string =
     "https://api.twitter.com/2/tweets/search/recent";
 
-  // For demo purposes, we'll use mock data instead of actual API calls
-  private useMockData: boolean = true;
+  // Use mock only in dev or when explicitly enabled; never mock in production by default
+  private useMockData: boolean =
+    process.env.NODE_ENV !== "production" ||
+    process.env.TWITTER_USE_MOCK === "true";
 
   constructor(config: TwitterSourceConfig) {
     super(
@@ -541,7 +543,10 @@ export class TwitterSourceAdapter extends BaseNewsSourceAdapter {
         `Error fetching tweets from ${this.sourceConfig.name}:`,
         error,
       );
-      return this.generateMockData(this.sourceConfig.id, count);
+      if (process.env.NODE_ENV !== "production" || process.env.TWITTER_USE_MOCK === "true") {
+        return this.generateMockData(this.sourceConfig.id, count);
+      }
+      return [];
     }
   }
 

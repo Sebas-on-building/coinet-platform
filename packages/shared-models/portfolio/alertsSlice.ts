@@ -3,12 +3,15 @@ import { createSlice, createEntityAdapter, createAsyncThunk, PayloadAction, Enti
 export type Alert = { id: string; type: string; message: string; read: boolean; createdAt: string };
 const alertsAdapter = createEntityAdapter<Alert, string>();
 
-export const fetchAlerts = createAsyncThunk<Alert[], string>('alerts/fetchAlerts', async (userId: string) => {
-  // TODO: Replace with real API call
-  return [
-    { id: '1', type: 'price', message: 'BTC hit $70k', read: false, createdAt: new Date().toISOString() },
-    { id: '2', type: 'news', message: 'ETH ETF approved', read: false, createdAt: new Date().toISOString() },
-  ];
+export const fetchAlerts = createAsyncThunk<Alert[], string>('alerts/fetchAlerts', async (_userId: string) => {
+  const { fetchJson } = await import('./api');
+  try {
+    const data = await fetchJson<{ data?: Alert[]; alerts?: Alert[] } | Alert[]>('/api/v1/alerts');
+    const list = Array.isArray(data) ? data : (data as { data?: Alert[] })?.data ?? (data as { alerts?: Alert[] })?.alerts ?? [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
 });
 
 interface AlertsState extends EntityState<Alert, string> {

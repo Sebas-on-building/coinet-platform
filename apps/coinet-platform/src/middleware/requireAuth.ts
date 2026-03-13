@@ -51,6 +51,10 @@ const AUTH_ENFORCE = process.env.AUTH_ENFORCE_CHAT !== 'false';
 // Demo user UUID (matches frontend)
 const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 
+// Demo mode: only allowed when NODE_ENV !== 'production' OR DEMO_MODE_ENABLED=true
+const DEMO_MODE_ENABLED =
+  process.env.NODE_ENV !== 'production' || process.env.DEMO_MODE_ENABLED === 'true';
+
 // Anonymous user for unauthenticated requests (when auth is not enforced)
 const ANONYMOUS_USER: AuthenticatedUser = {
   id: 'anonymous',
@@ -67,9 +71,12 @@ const clerkClient = CLERK_SECRET_KEY
 if (CLERK_SECRET_KEY) {
   logger.info('✅ Clerk backend configured with secret key (v2)');
 } else {
-  logger.warn('⚠️ CLERK_SECRET_KEY not set - Clerk token validation disabled, X-User-Id and demo mode still work');
+  logger.warn('⚠️ CLERK_SECRET_KEY not set - Clerk token validation disabled');
 }
-logger.info('🔐 Auth middleware loaded - supports: Clerk JWT, API keys, X-User-Id (demo mode)');
+logger.info('🔐 Auth middleware loaded', {
+  supports: ['Clerk JWT', 'API keys'],
+  demoMode: DEMO_MODE_ENABLED ? 'X-User-Id (demo) enabled' : 'X-User-Id disabled (production)',
+});
 
 // =============================================================================
 // MIDDLEWARE
@@ -266,8 +273,9 @@ async function extractAuth(req: Request): Promise<AuthResult> {
   }
   
   // 3. Try user ID from headers (for demo mode and internal services)
+  // Only allowed when NODE_ENV !== 'production' or DEMO_MODE_ENABLED=true
   const userId = req.headers['x-user-id'] as string;
-  if (userId) {
+  if (userId && DEMO_MODE_ENABLED) {
     // Check if it's the demo user
     const isDemoUser = userId === DEMO_USER_ID || userId.startsWith('user_');
     

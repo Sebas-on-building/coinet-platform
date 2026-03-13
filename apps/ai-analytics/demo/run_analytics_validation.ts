@@ -1,7 +1,8 @@
 /**
  * =========================================
- * ANALYTICS VALIDATION DEMO RUNNER
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * ANALYTICS VALIDATION DEMO RUNNER
  * Execute the comprehensive analytics validation
  */
 

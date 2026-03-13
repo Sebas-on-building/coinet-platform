@@ -69,6 +69,9 @@ model User {
   // Flexible metadata for extensibility
   metadata Json?
 
+  // Clerk integration - maps Clerk user ID (user_xxx) to internal User
+  clerkId String? @unique
+
   // =============================================================================
   // RELATIONSHIPS
   // =============================================================================

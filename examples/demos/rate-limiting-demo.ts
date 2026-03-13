@@ -1,7 +1,8 @@
 /**
  * =========================================
- * RATE LIMITING DEMO
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * RATE LIMITING DEMO
  * Comprehensive demonstration of the divine world-class rate limiting system
  * Shows all algorithms, dynamic adjustments, and monitoring capabilities
  */

@@ -12,7 +12,14 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'coinet-super-secret';
+function getJwtSecret() {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 32) {
+    throw new Error('JWT_SECRET must be set in environment (min 32 chars). Generate: openssl rand -base64 32');
+  }
+  return s;
+}
+const JWT_SECRET = getJwtSecret();
 
 async function signup(req, res) {
   try {

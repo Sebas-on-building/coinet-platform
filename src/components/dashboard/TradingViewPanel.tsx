@@ -352,12 +352,15 @@ export function TradingViewPanel() {
   const [crosshairTime, setCrosshairTime] = useState<string | null>(null);
 
   const { data, isLoading, error } = useCryptoOHLCV(asset.value, 30);
+  const isSampleData = !data || data.length === 0;
   const mainData = data && data.length > 0 ? data : mockData;
   const {
     events: assetEvents,
     isLoading: eventsLoading,
     error: eventsError,
   } = useAssetEvents(asset.value);
+  const displayEvents = assetEvents && assetEvents.length > 0 ? assetEvents : (import.meta.env.DEV ? mockEvents : []);
+  const isSampleEvents = !assetEvents || assetEvents.length === 0;
   // Overlay calculations using technicalindicators
   // Moving Average (SMA, period 3)
   const smaValues = SMA.calculate({
@@ -547,15 +550,15 @@ export function TradingViewPanel() {
 
   // Find the closest event to the crosshair time
   const highlightedIndex =
-    crosshairTime && assetEvents && assetEvents.length > 0
-      ? assetEvents.reduce((bestIdx: number, ev: any, idx: number) => {
+    crosshairTime && displayEvents.length > 0
+      ? displayEvents.reduce((bestIdx: number, ev: any, idx: number) => {
           if (!ev.time) return bestIdx;
-          const bestTime = assetEvents[bestIdx]?.time;
+          const bestTime = displayEvents[bestIdx]?.time;
           return Math.abs(
             new Date(ev.time).getTime() - new Date(crosshairTime).getTime(),
           ) <
             Math.abs(
-              new Date(bestTime).getTime() - new Date(crosshairTime).getTime(),
+              new Date(bestTime || "").getTime() - new Date(crosshairTime).getTime(),
             )
             ? idx
             : bestIdx;
@@ -580,6 +583,11 @@ export function TradingViewPanel() {
     >
       {/* Asset selector button */}
       <div className="flex gap-3 mb-4 items-center">
+        {(isSampleData || isSampleEvents) && (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">
+            Sample Data
+          </span>
+        )}
         <span className="text-blue-300 font-mono text-sm">Asset:</span>
         <button
           className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold border-2 transition-all bg-[#23234d] text-blue-200 border-transparent hover:border-blue-400"
@@ -670,9 +678,9 @@ export function TradingViewPanel() {
           >
             <div className="animate-spin rounded-full h-8 w-8 border-t-4 border-b-4 border-[#00ffa3] mx-auto" />
           </motion.div>
-        ) : assetEvents && assetEvents.length > 0 ? (
+        ) : displayEvents.length > 0 ? (
           <ChartEventMarkers
-            events={assetEvents}
+            events={displayEvents}
             xScale={(time) => {
               const idx = mainData.findIndex((d) => d.time === time);
               if (idx === -1) return 0;
@@ -696,8 +704,8 @@ export function TradingViewPanel() {
             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#00ffa3] mx-auto" />
           </motion.div>
         ) : error ? (
-          <div className="text-red-400 text-center">
-            Failed to load data. Showing mock data.
+          <div className="text-amber-400 text-center text-sm">
+            Failed to load live data. Showing sample data.
           </div>
         ) : null}
         <AdvancedChart

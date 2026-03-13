@@ -677,17 +677,19 @@ export class SocialMediaService {
 
   // Future methods for other platforms
   async searchTelegramMessages(params: SearchParams): Promise<SocialPost[]> {
-    // TODO: Implement Telegram integration
-    const startTime = Date.now();
+    const isDev = process.env.NODE_ENV !== 'production';
+    const useMock = process.env.SOCIAL_USE_MOCK === 'true';
+
+    if (!isDev && !useMock) {
+      return [];
+    }
 
     try {
-      // For now, return mock data structure
-      // In production, integrate with Telegram Bot API or MTProto
       const mockData: SocialPost[] = [
         {
           id: 'tg_' + Date.now(),
           platform: 'telegram',
-          content: `Mock Telegram data for ${params.query}`,
+          content: `Sample Telegram data for ${params.query}`,
           author: 'telegram_user',
           timestamp: new Date().toISOString(),
           likes: 0,
@@ -732,16 +734,19 @@ export class SocialMediaService {
   }
 
   async searchDiscordMessages(params: SearchParams): Promise<SocialPost[]> {
-    const startTime = Date.now();
+    const isDev = process.env.NODE_ENV !== 'production';
+    const useMock = process.env.SOCIAL_USE_MOCK === 'true';
+
+    if (!isDev && !useMock) {
+      return [];
+    }
 
     try {
-      // Discord API integration (requires bot token and guild access)
-      // For now, return mock data
       const mockData: SocialPost[] = [
         {
           id: 'discord_' + Date.now(),
           platform: 'discord',
-          content: `Mock Discord data for ${params.query}`,
+          content: `Sample Discord data for ${params.query}`,
           author: 'discord_user',
           timestamp: new Date().toISOString(),
           likes: 0,
@@ -761,18 +766,7 @@ export class SocialMediaService {
           }
         }
       ];
-
-      // this.metrics.incrementCounter('social.discord.search.success'); // Assuming metrics and logger are available
-      // this.metrics.recordHistogram('social.discord.search.duration', Date.now() - startTime);
-
-      // this.logger.info('Discord search completed (mock)', {
-      //   query: params.query,
-      //   resultsCount: mockData.length,
-      //   duration: Date.now() - startTime
-      // });
-
       return mockData;
-
     } catch (error) {
       // this.metrics.incrementCounter('social.discord.search.error'); // Assuming metrics and logger are available
       // this.errorManager.handleError(error as Error, { // Assuming errorManager is available
@@ -785,16 +779,19 @@ export class SocialMediaService {
   }
 
   async searchYouTubeComments(params: SearchParams): Promise<SocialPost[]> {
-    const startTime = Date.now();
+    const isDev = process.env.NODE_ENV !== 'production';
+    const useMock = process.env.SOCIAL_USE_MOCK === 'true';
+
+    if (!isDev && !useMock) {
+      return [];
+    }
 
     try {
-      // YouTube Data API integration
-      // For now, return mock data
       const mockData: SocialPost[] = [
         {
           id: 'youtube_' + Date.now(),
           platform: 'youtube',
-          content: `Mock YouTube comment for ${params.query}`,
+          content: `Sample YouTube comment for ${params.query}`,
           author: 'youtube_user',
           timestamp: new Date().toISOString(),
           likes: 0,
@@ -814,18 +811,7 @@ export class SocialMediaService {
           }
         }
       ];
-
-      // this.metrics.incrementCounter('social.youtube.search.success'); // Assuming metrics and logger are available
-      // this.metrics.recordHistogram('social.youtube.search.duration', Date.now() - startTime);
-
-      // this.logger.info('YouTube search completed (mock)', {
-      //   query: params.query,
-      //   resultsCount: mockData.length,
-      //   duration: Date.now() - startTime
-      // });
-
       return mockData;
-
     } catch (error) {
       // this.metrics.incrementCounter('social.youtube.search.error'); // Assuming metrics and logger are available
       // this.errorManager.handleError(error as Error, { // Assuming errorManager is available
@@ -971,11 +957,14 @@ export class SocialMediaService {
     platforms: string[];
     growth: number; // percentage growth in last 24h
   }>> {
-    const startTime = Date.now();
+    const isDev = process.env.NODE_ENV !== 'production';
+    const useMock = process.env.SOCIAL_USE_MOCK === 'true';
+
+    if (!isDev && !useMock) {
+      return [];
+    }
 
     try {
-      // Mock trending topics for now
-      // In production, this would aggregate trending hashtags/topics from all platforms
       const mockTrending = [
         {
           topic: 'Bitcoin',
@@ -1045,10 +1034,14 @@ export class SocialMediaService {
     post: SocialPost;
     influence_score: number;
   }>> {
-    const startTime = Date.now();
+    const isDev = process.env.NODE_ENV !== 'production';
+    const useMock = process.env.SOCIAL_USE_MOCK === 'true';
+
+    if (!isDev && !useMock) {
+      return [];
+    }
 
     try {
-      // Mock influencer data
       const mockInfluencers = [
         {
           influencer: 'elonmusk',

@@ -2,8 +2,9 @@
 
 /**
  * =========================================
- * DEFI PROTOCOL METRICS DEMO
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * DEFI PROTOCOL METRICS DEMO
  * Comprehensive demonstration of enhanced DeFi protocol metrics collection
  */
 

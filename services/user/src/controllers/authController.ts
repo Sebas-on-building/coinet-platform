@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import { v4 as uuidv4 } from 'uuid';
 import { createLogger } from 'winston';
+import { getJwtSecret } from '../getJwtSecret';
 
 const prisma = new PrismaClient();
 const logger = createLogger({
@@ -82,7 +83,7 @@ export class AuthController {
           email: user.email, 
           role: user.role 
         },
-        process.env.JWT_SECRET || 'fallback-secret',
+        getJwtSecret(),
         { expiresIn: '7d' }
       );
 
@@ -284,7 +285,7 @@ export class AuthController {
           role: user.role,
           tier: user.tier
         },
-        process.env.JWT_SECRET || 'fallback-secret',
+        getJwtSecret(),
         { expiresIn: '7d' }
       );
 
@@ -451,7 +452,7 @@ export class AuthController {
           role: session.user.role,
           tier: session.user.tier
         },
-        process.env.JWT_SECRET || 'fallback-secret',
+        getJwtSecret(),
         { expiresIn: '7d' }
       );
 

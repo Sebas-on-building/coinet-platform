@@ -9,9 +9,12 @@ declare global {
   }
 }
 
+/** Fallback when FingerprintJS fails (SSR, privacy, unsupported). Not a real fingerprint. */
+const FALLBACK_PREFIX = 'fp-fallback-';
+
 /**
- * getDeviceFingerprint - Returns a unique device fingerprint using FingerprintJS, with fallback stub.
- * @returns {Promise<string>} - Device fingerprint string.
+ * getDeviceFingerprint - Uses FingerprintJS when available; fallback when not.
+ * Fallback: session-only, non-persistent ID when FingerprintJS fails (SSR, privacy, unsupported).
  */
 export async function getDeviceFingerprint(): Promise<string> {
   try {
@@ -19,15 +22,15 @@ export async function getDeviceFingerprint(): Promise<string> {
     const fp = await fpPromise;
     const result = await fp.get();
     return result.visitorId;
-  } catch (e) {
-    // Fallback stub
+  } catch {
     if (typeof window !== 'undefined') {
       if (!(window as any).__co_fingerprint) {
-        (window as any).__co_fingerprint = `stub-fp-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+        (window as any).__co_fingerprint =
+          FALLBACK_PREFIX + Math.random().toString(36).slice(2) + '-' + Date.now();
       }
       return (window as any).__co_fingerprint;
     }
-    return 'stub-fp-server';
+    return FALLBACK_PREFIX + 'server';
   }
 }
 

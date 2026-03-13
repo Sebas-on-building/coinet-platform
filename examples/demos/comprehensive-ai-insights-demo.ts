@@ -1,13 +1,16 @@
 /**
  * =========================================
- * COMPREHENSIVE AI INSIGHTS DEMO
+ * ⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
  * =========================================
+ * COMPREHENSIVE AI INSIGHTS DEMO
  * Complete demonstration of the divine world-class AI insights system
  * Including database integration, real-time updates, and dashboard integration
+ *
+ * Run from repo root: npx ts-node examples/demos/comprehensive-ai-insights-demo.ts
  */
 
-import { GenerateAIInsightsService } from './src/index';
-import { InsightRequest } from './src/types';
+import { GenerateAIInsightsService } from '../../services/generate-ai-insights/src/index';
+import { InsightRequest } from '../../services/generate-ai-insights/src/types';
 
 /**
  * Comprehensive demo showcasing all AI insights features

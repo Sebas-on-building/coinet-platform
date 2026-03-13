@@ -3,12 +3,25 @@ import { createSlice, createEntityAdapter, createAsyncThunk, PayloadAction, Enti
 export type Chart = { id: string; symbol: string; type: string; data: any; createdAt: string };
 const chartsAdapter = createEntityAdapter<Chart, string>();
 
-export const fetchCharts = createAsyncThunk<Chart[], string>('charts/fetchCharts', async (userId: string) => {
-  // TODO: Replace with real API call
-  return [
-    { id: '1', symbol: 'BTC', type: 'candlestick', data: {}, createdAt: new Date().toISOString() },
-    { id: '2', symbol: 'ETH', type: 'line', data: {}, createdAt: new Date().toISOString() },
-  ];
+export const fetchCharts = createAsyncThunk<Chart[], string>('charts/fetchCharts', async (_userId: string) => {
+  try {
+    const res = await fetch('/api/charts');
+    if (!res.ok) {
+      if (res.status === 401) return [];
+      throw new Error(`Failed to fetch charts: ${res.status}`);
+    }
+    const data = await res.json();
+    const charts = Array.isArray(data) ? data : data?.charts ?? data?.data ?? [];
+    return charts.map((c: any) => ({
+      id: c.id || `chart-${c.symbol || Date.now()}`,
+      symbol: c.symbol || 'BTC',
+      type: c.type || 'line',
+      data: c.data || {},
+      createdAt: c.createdAt || new Date().toISOString(),
+    }));
+  } catch {
+    return [];
+  }
 });
 
 interface ChartsState extends EntityState<Chart, string> {

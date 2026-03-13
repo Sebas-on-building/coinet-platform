@@ -20,7 +20,7 @@ import { logger } from '../utils/logger';
 
 const TWITTER_API_CONFIG = {
   BASE_URL: 'https://api.twitterapi.io',
-  API_KEY: process.env.TWITTER_API_KEY || 'new1_f932b6156e30470a9b00b23c5d4e21ed',
+  API_KEY: process.env.TWITTER_API_KEY ?? '',
   
   // Cost per endpoint (in credits, $0.001 = 1 credit approximately)
   COSTS: {
@@ -387,6 +387,10 @@ async function callTwitterAPI<T>(
   endpoint: string,
   params: Record<string, string> = {}
 ): Promise<{ data: T | null; error: string | null }> {
+  if (!TWITTER_API_CONFIG.API_KEY || TWITTER_API_CONFIG.API_KEY.trim() === '') {
+    logger.debug('[TwitterAPI] TWITTER_API_KEY not configured - skipping API call');
+    return { data: null, error: 'TWITTER_API_KEY not configured' };
+  }
   try {
     // Wait for rate limit before making the call
     await waitForRateLimit();

@@ -16,6 +16,7 @@ import chatRoutes from './api/chat/routes';
 import retentionRoutes from './api/retention/routes';
 import authRoutes from './api/auth/routes';
 import feedbackRoutes from './api/feedback/routes';
+import portfolioRoutes from './api/portfolios/routes';
 import { symbolDetector } from './services/symbol-detector';
 import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
 import { getWhaleContextForAI } from './services/whale-data';
@@ -48,30 +49,45 @@ app.options('*', (req: Request, res: Response) => {
   res.sendStatus(204);
 });
 
-// CORS configuration - Allow specific origins including app.coinet.ai
+// CORS configuration - Restrict origins in production when CORS_ORIGIN is set
+const corsOriginEnv = process.env.CORS_ORIGIN?.trim();
+const corsOriginsFromEnv = corsOriginEnv
+  ? corsOriginEnv.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
 const allowedOrigins = [
   'https://app.coinet.ai',
   'https://coinet.ai',
   'http://localhost:5173',
   'http://localhost:3000',
-  process.env.CORS_ORIGIN,
+  'http://localhost:8080',
+  ...corsOriginsFromEnv,
 ].filter(Boolean);
+
+const isProduction = process.env.NODE_ENV === 'production';
 
 app.use(cors({
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
     if (!origin) {
       return callback(null, true);
     }
-    // Allow all Vercel preview deployments
-    if (origin.includes('vercel.app') || origin.includes('coinet')) {
+    // Development: allow Vercel previews and coinet subdomains
+    if (!isProduction && (origin.includes('vercel.app') || origin.includes('coinet'))) {
       return callback(null, true);
     }
     // Allow explicitly listed origins
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    // In production, still allow for now (can restrict later)
+    // Production without CORS_ORIGIN: restrict to known origins only
+    if (isProduction && !corsOriginEnv) {
+      logger.warn('CORS_ORIGIN not set in production - restrict to allowed list only');
+    }
+    // Reject unknown origins in production when CORS_ORIGIN is set
+    if (isProduction && corsOriginEnv) {
+      return callback(null, false);
+    }
+    // Allow for backward compatibility when CORS_ORIGIN not set
     return callback(null, true);
   },
   credentials: true,
@@ -458,6 +474,7 @@ app.get('/api/keys', async (_req: Request, res: Response) => {
 app.use('/api/chat', chatRoutes);
 app.use('/api/retention', retentionRoutes);
 app.use('/api/feedback', feedbackRoutes); // RLHF feedback system
+app.use('/api/v1/portfolios', portfolioRoutes); // Portfolio API (auth required)
 app.use('/auth', authRoutes);
 app.use('/users', authRoutes); // Also handle /users/me via same router
 

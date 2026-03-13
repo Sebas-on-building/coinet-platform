@@ -16,6 +16,8 @@ const metrics = [
   { label: "Volume", icon: <FiActivity />, key: "volume" },
 ];
 
+const useSampleData = import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_DATA === "true";
+
 const mockData: Record<
   string,
   { price: number[]; sentiment: number[]; volume: number[] }
@@ -98,6 +100,21 @@ export function MultiAssetComparisonPanel() {
     );
   };
 
+  if (!useSampleData) {
+    return (
+      <motion.div
+        className="bg-gradient-to-br from-[#1a1a2e] to-[#23234d] rounded-2xl p-6 shadow-xl mb-8 w-full max-w-3xl mx-auto"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, type: "spring" }}
+      >
+        <div className="text-center text-gray-400 py-8">
+          Connect a market data source for live multi-asset comparison.
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       className="bg-gradient-to-br from-[#1a1a2e] to-[#23234d] rounded-2xl p-6 shadow-xl mb-8 w-full max-w-3xl mx-auto"
@@ -105,8 +122,11 @@ export function MultiAssetComparisonPanel() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, type: "spring" }}
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h3 className="text-xl font-bold text-white">Multi-Asset Comparison</h3>
+        <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">
+          Sample Data
+        </span>
         <div className="flex gap-2">
           {metrics.map((m) => (
             <button

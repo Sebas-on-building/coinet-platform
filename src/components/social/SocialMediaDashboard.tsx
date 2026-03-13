@@ -73,12 +73,25 @@ export function SocialMediaDashboard({
     fetchSentimentData();
   }, [symbol, timeframe]);
 
+  const useSampleData = import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_DATA === "true";
+
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
 
-        // Mockup data for demonstration
+        if (!useSampleData) {
+          setTwitterData({
+            sentiment_score: 0,
+            mention_count: 0,
+            top_hashtags: [],
+            top_posts: [],
+            influential_users: [],
+          });
+          return;
+        }
+
+        // Sample data for demonstration (dev/demo only)
         const mockData: TwitterMetrics = {
           sentiment_score: 65,
           mention_count: 2543,
@@ -128,7 +141,7 @@ export function SocialMediaDashboard({
     }
 
     fetchData();
-  }, [symbol]);
+  }, [symbol, useSampleData]);
 
   if (loading) {
     return (
@@ -153,6 +166,11 @@ export function SocialMediaDashboard({
 
   return (
     <div className="space-y-6">
+      {useSampleData && (
+        <div className="px-2 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40 w-fit">
+          Sample Twitter data
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <SocialMediaMetrics data={sentimentData} symbol={symbol} />
       </div>

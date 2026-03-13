@@ -4,8 +4,15 @@ export type User = { id: string; name: string; email: string; avatar: string; pr
 const usersAdapter = createEntityAdapter<User, string>();
 
 export const fetchUser = createAsyncThunk<User, string>('user/fetchUser', async (userId: string) => {
-  // TODO: Replace with real API call
-  return { id: userId, name: 'Satoshi Nakamoto', email: 'satoshi@bitcoin.org', avatar: '', preferences: {} };
+  const { fetchJson } = await import('./api');
+  try {
+    const data = await fetchJson<{ user?: User } & Partial<User>>('/api/auth/me');
+    const u = (data as { user?: User })?.user ?? data;
+    if (u && typeof u === 'object' && u.id) return u as User;
+    return { id: userId, name: '', email: '', avatar: '', preferences: {} };
+  } catch {
+    return { id: userId, name: '', email: '', avatar: '', preferences: {} };
+  }
 });
 
 interface UserState extends EntityState<User, string> {

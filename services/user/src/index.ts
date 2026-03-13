@@ -39,6 +39,7 @@ import {
   emitApiKeyCreated
 } from './kafka-events';
 import { analyticsManager, emitAndIngest } from './analytics-sinks';
+import { getJwtSecret } from './getJwtSecret';
 
 // Environment detection
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -150,7 +151,7 @@ const createJWT = (payload: any, secret?: string): string => {
     // Last resort fallback
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
     const body = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 })).toString('base64url');
-    const signature = crypto.createHmac('sha256', secret || 'fallback-secret').update(`${header}.${body}`).digest('base64url');
+    const signature = crypto.createHmac('sha256', secret || getJwtSecret()).update(`${header}.${body}`).digest('base64url');
     return `${header}.${body}.${signature}`;
   }
 };
@@ -168,7 +169,7 @@ const verifyJWT = (token: string, secret?: string): any => {
     // Last resort fallback
     try {
       const [header, payload, signature] = token.split('.');
-      const expectedSignature = crypto.createHmac('sha256', secret || 'fallback-secret').update(`${header}.${payload}`).digest('base64url');
+      const expectedSignature = crypto.createHmac('sha256', secret || getJwtSecret()).update(`${header}.${payload}`).digest('base64url');
       
       if (signature !== expectedSignature) {
         throw new Error('Invalid signature');
@@ -646,7 +647,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
       const token = authHeader.substring(7);
       
       try {
-        const decoded = verifyJWT(token, process.env.JWT_SECRET || 'fallback-secret');
+        const decoded = verifyJWT(token, getJwtSecret());
         let user: any = null;
 
         if (this.isProductionMode) {
@@ -866,7 +867,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
 
       const token = createJWT(
         { userId: user.id, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       logger.info('User registered successfully', { 
@@ -1059,7 +1060,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
 
       const token = createJWT(
         { userId: user.id, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       // Create session in database
@@ -1266,7 +1267,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
 
       const newToken = createJWT(
         { userId: user.id, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       res.json({

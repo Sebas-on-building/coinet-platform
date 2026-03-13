@@ -1,4 +1,6 @@
 """
+⚠️  DEMO ONLY - DO NOT USE IN PRODUCTION  ⚠️
+==========================================
 Knowledge Graph Demo - Complete System Demonstration
 
 This script demonstrates the full capabilities of Coinet's revolutionary

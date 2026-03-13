@@ -6,6 +6,7 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import { getJwtSecret } from './getJwtSecret';
 
 // Environment detection
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -493,7 +494,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
       const token = authHeader.substring(7);
       
       try {
-        const decoded = verifyJWT(token, process.env.JWT_SECRET || 'fallback-secret');
+        const decoded = verifyJWT(token, getJwtSecret());
         let user: any = null;
 
         if (this.isProductionMode) {
@@ -665,7 +666,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
 
       const token = createJWT(
         { userId: user.id, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       logger.info('User registered successfully', { 
@@ -849,7 +850,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
 
       const token = createJWT(
         { userId: user.id, email: user.email, role: user.role, tier: user.tier },
-        process.env.JWT_SECRET || 'fallback-secret'
+        getJwtSecret()
       );
 
       logger.info('User logged in successfully', { 
@@ -905,7 +906,7 @@ ${this.isProductionMode ? 'ðŸŽ¯ PRODUCTION MODE: Full database persistence' : 'ð
   private refreshToken(req: any, res: any): void {
     const newToken = createJWT(
       { userId: 'refresh-user', email: 'refresh@example.com', role: 'user' },
-      process.env.JWT_SECRET || 'fallback-secret'
+      getJwtSecret()
     );
 
     res.json({

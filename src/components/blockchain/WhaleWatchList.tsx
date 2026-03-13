@@ -25,8 +25,14 @@ export const WhaleWatchList: React.FC<WhaleWatchListProps> = ({ chain }) => {
   const [transactions, setTransactions] = useState<WhaleTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const useSampleData = import.meta.env.DEV || import.meta.env.VITE_USE_MOCK_DATA === 'true';
+
   useEffect(() => {
-    // Mock data - in a real app, this would fetch from a blockchain API
+    if (!useSampleData) {
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
     const mockData: WhaleTransaction[] = [
       {
         hash: '0x7c59b0c689463c8bcd59b0c689463c8b34f5a',
@@ -81,7 +87,7 @@ export const WhaleWatchList: React.FC<WhaleWatchListProps> = ({ chain }) => {
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [chain]);
+  }, [chain, useSampleData]);
 
   const getActionColor = (action: string) => {
     switch (action) {
@@ -111,10 +117,15 @@ export const WhaleWatchList: React.FC<WhaleWatchListProps> = ({ chain }) => {
 
   return (
     <Card className="p-6">
-      <h3 className="text-lg font-medium mb-4 flex items-center">
+      <h3 className="text-lg font-medium mb-4 flex items-center flex-wrap gap-2">
         <span className="mr-2">🐋</span>
         Whale Transactions
-        <span className="text-xs ml-2 text-gray-500">({chain.toUpperCase()})</span>
+        <span className="text-xs text-gray-500">({chain.toUpperCase()})</span>
+        {useSampleData && (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">
+            Sample Data
+          </span>
+        )}
       </h3>
 
       {loading ? (
@@ -125,6 +136,10 @@ export const WhaleWatchList: React.FC<WhaleWatchListProps> = ({ chain }) => {
               <div className="bg-gray-300 dark:bg-gray-700 h-5 w-24 rounded"></div>
             </div>
           ))}
+        </div>
+      ) : transactions.length === 0 ? (
+        <div className="text-sm text-gray-500 py-4 text-center">
+          No whale transactions available. Connect a blockchain data source for live data.
         </div>
       ) : (
         <div className="space-y-3">
