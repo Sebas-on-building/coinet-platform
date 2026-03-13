@@ -29,7 +29,39 @@ app.use(contentSecurityPolicy); // Set Content Security Policy
 app.use('/api', featureRouter); // All modular features
 
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+
+// Derive allowed origins from CORS_ORIGIN / CORS_ORIGINS env vars.
+// Socket.IO's origin:'*' with credentials is a security misconfiguration;
+// browsers ignore credentials when origin is a wildcard.
+const _ioRawOrigins = (process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? '').trim();
+const _ioEnvOrigins = _ioRawOrigins
+  ? _ioRawOrigins.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+const _ioAllowedOrigins: string[] = [
+  'https://app.coinet.ai',
+  'https://coinet.ai',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  ..._ioEnvOrigins,
+];
+const _ioIsProd = process.env.NODE_ENV === 'production';
+
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (_ioAllowedOrigins.includes(origin)) return callback(null, true);
+      if (!_ioIsProd && (origin.includes('vercel.app') || origin.includes('coinet'))) {
+        return callback(null, true);
+      }
+      if (_ioIsProd) return callback(new Error('CORS: origin not allowed'));
+      return callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST'],
+  },
+});
 
 // Initialize RedisClusterManager
 const clusterManager = new RedisClusterManager([

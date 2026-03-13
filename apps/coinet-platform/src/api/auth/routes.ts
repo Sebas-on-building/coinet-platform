@@ -173,7 +173,7 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
         id: authReq.user.id,
         email: authReq.user.email,
         tier: authReq.user.tier,
-        roles: authReq.user.roles,
+        role: authReq.user.role,
       },
     });
   } catch (error) {

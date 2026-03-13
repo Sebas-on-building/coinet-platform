@@ -154,7 +154,11 @@ describe('requireAuth — legacy JWT path', () => {
     const { requireAuth } = await loadMiddleware(VALID_SECRET);
     const { req, res, next } = makeExpressObjects();
 
-    const expired = sign({ sub: 'user-exp' }, VALID_SECRET, { expiresIn: -1 });
+    // exp: 1 hour ago — explicitly expired
+    const expired = sign(
+      { sub: 'user-exp', exp: Math.floor(Date.now() / 1000) - 3600 },
+      VALID_SECRET
+    );
     req.headers.authorization = `Bearer ${expired}`;
 
     await new Promise<void>((resolve) => {
@@ -301,19 +305,19 @@ describe('getJwtSecret', () => {
 
   it('returns null when JWT_SECRET is not set', async () => {
     delete process.env.JWT_SECRET;
-    const { getJwtSecret } = await import('../utils/getJwtSecret');
+    const { getJwtSecret } = await import('../../utils/getJwtSecret');
     expect(getJwtSecret()).toBeNull();
   });
 
   it('returns the secret when it is ≥32 chars', async () => {
     process.env.JWT_SECRET = VALID_SECRET;
-    const { getJwtSecret } = await import('../utils/getJwtSecret');
+    const { getJwtSecret } = await import('../../utils/getJwtSecret');
     expect(getJwtSecret()).toBe(VALID_SECRET);
   });
 
   it('throws when JWT_SECRET is set but < 32 chars', async () => {
     process.env.JWT_SECRET = 'tooshort';
-    const { getJwtSecret } = await import('../utils/getJwtSecret');
+    const { getJwtSecret } = await import('../../utils/getJwtSecret');
     expect(() => getJwtSecret()).toThrow(/too short/);
   });
 });

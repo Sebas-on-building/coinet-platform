@@ -298,7 +298,9 @@ export async function executePass2Renderer(
       };
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     const renderedOutput = data.choices?.[0]?.message?.content || '';
 
     if (!renderedOutput) {

@@ -22,6 +22,7 @@ import { EvidencePack } from '../evidence-pack/types';
 import {
   InsightPackV1,
   EnforcementResult,
+  EnforcementFailure,
   EnforcementOptions,
   DEFAULT_ENFORCEMENT_OPTIONS,
   INSIGHT_PACK_VERSION,
@@ -154,7 +155,9 @@ async function callGrokApi(
       };
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     const text = data.choices?.[0]?.message?.content || '';
 
     emitRawReceived(text.length, latencyMs);
@@ -263,7 +266,7 @@ export async function executeGrokPass1(
   // Build initial prompt
   const userMessageParams: UserMessageParams = {
     userMessage: input.userMessage,
-    intent: input.intent,
+      intent: input.intent as IntentType,
     language: input.language,
     evidencePack: input.evidencePack,
     assetFocus: input.assetFocus,
@@ -334,32 +337,29 @@ export async function executeGrokPass1(
     }
 
     // Enforcement failed
-    if (attempt <= maxRetries) {
-      emitRetry(
-        attempt,
-        maxRetries,
-        lastResult.error,
-        lastResult.validationErrors.length
-      );
+    if (!lastResult.ok && attempt <= maxRetries) {
+      const fail = lastResult as import('./types').EnforcementFailure;
+      emitRetry(attempt, maxRetries, fail.error, fail.validationErrors.length);
       logger.warn('🧠 Pass-1 Grok: Enforcement failed, retrying', {
         attempt,
-        errorCount: lastResult.validationErrors.length,
-        errors: lastResult.validationErrors.slice(0, 3),
+        errorCount: fail.validationErrors.length,
+        errors: fail.validationErrors.slice(0, 3),
       });
       continue;
     }
   }
 
   // INVARIANT I6: Max retries exceeded, mark engine as missing
-  emitMissing(attempt, lastResult?.error || 'Unknown error', true);
+  const finalError = lastResult && !lastResult.ok ? (lastResult as import('./types').EnforcementFailure).error : 'Max retries exceeded';
+  emitMissing(attempt, finalError, true);
   logger.error('🧠 Pass-1 Grok: Max retries exceeded, marking engine as missing', {
     attemptsUsed: attempt,
-    lastError: lastResult?.error,
+    lastError: finalError,
   });
 
   return {
     ok: false,
-    error: lastResult?.error || 'Max retries exceeded',
+    error: finalError,
     attemptsUsed: attempt,
     latencyMs: Date.now() - startTime,
     lastRawExcerpt: lastRawText.slice(0, 500),
@@ -384,7 +384,7 @@ export function createMissingEngineInsightPack(
     meta: {
       version: INSIGHT_PACK_VERSION,
       engine: 'grok',
-      intent: input.intent,
+      intent: (input.intent || 'unknown') as import('./types').IntentType,
       language: input.language,
       asset_focus: input.assetFocus,
       chain: input.chain,

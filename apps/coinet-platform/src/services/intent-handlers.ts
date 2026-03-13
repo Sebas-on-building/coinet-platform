@@ -31,6 +31,10 @@ export interface HandlerResult {
   sources: string[];           // Sources used
   errors?: string[];           // Any errors encountered
   latencyMs: number;
+  /** Optional format hint for AI response shape */
+  aiFormatHint?: string;
+  /** Optional guidance for response context */
+  responseGuidance?: string;
 }
 
 export interface HandlerOptions {

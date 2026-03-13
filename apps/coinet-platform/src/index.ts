@@ -27,10 +27,28 @@ import { initializeRedis, getRedisStatus, getCacheStats, closeRedis } from './se
 import { logApiKeysStatus, generateApiKeysReport, getGracefulDegradation } from './services/api-keys';
 import { initializeCoinIdValidator } from './services/coin-id-validator';
 import { securityHeaders } from './middleware/securityHeaders';
+import { validateEnv, EnvValidationError } from './utils/validateEnv';
 
 // Load environment variables - app .env overrides root so OPENAI_MODEL etc. are correct when run from monorepo root
 dotenv.config(); // cwd .env first (e.g. root .env)
 dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true }); // app .env wins
+
+// Validate critical environment variables before anything else.
+// validateEnv() throws EnvValidationError listing all failures; we exit(1) so
+// Railway/Docker restarts log a clear human-readable reason.
+try {
+  validateEnv();
+} catch (err) {
+  if (err instanceof EnvValidationError) {
+    // logger may not be fully initialised yet; use console.error for guaranteed output
+    console.error('\n[startup] FATAL: Environment validation failed.\n');
+    console.error((err as EnvValidationError).message);
+    console.error('\nFix the above issues and restart the service.\n');
+  } else {
+    console.error('[startup] FATAL: Unexpected error during env validation:', err);
+  }
+  process.exit(1);
+}
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -39,22 +57,31 @@ const PORT = Number(process.env.PORT) || 3000;
 // MIDDLEWARE
 // ============================================================================
 
-// Handle preflight OPTIONS requests FIRST - before CORS middleware
-app.options('*', (req: Request, res: Response) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-Request-ID, Accept');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Max-Age', '86400');
-  res.sendStatus(204);
-});
+// ─── CORS ────────────────────────────────────────────────────────────────────
+//
+// Origin resolution logic (single source of truth):
+//   • Requests with no origin (mobile, Postman, server-to-server) → allowed.
+//   • In development: Vercel preview deployments and *.coinet.* subdomains are
+//     additionally allowed so engineers can test without modifying env vars.
+//   • Any origin explicitly listed in allowedOrigins → allowed.
+//   • In production: everything else is rejected regardless of whether
+//     CORS_ORIGIN is set or not.  When CORS_ORIGIN is not set the built-in list
+//     (app.coinet.ai + coinet.ai) still applies, but unknown origins are still
+//     blocked.
+//   • In development: unknown origins are allowed for local tooling convenience.
+//
+// The cors() middleware handles both preflight (OPTIONS) and regular requests so
+// a separate app.options('*', ...) handler is intentionally absent — having one
+// would bypass this logic and re-introduce the reflected-origin vulnerability.
 
-// CORS configuration - Restrict origins in production when CORS_ORIGIN is set
-const corsOriginEnv = process.env.CORS_ORIGIN?.trim();
+const corsOriginEnv =
+  (process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? '').trim();
 const corsOriginsFromEnv = corsOriginEnv
   ? corsOriginEnv.split(',').map((o) => o.trim()).filter(Boolean)
   : [];
-const allowedOrigins = [
+
+// Production-safe built-in list.  Additional origins are injected via CORS_ORIGIN.
+const allowedOrigins: string[] = [
   'https://app.coinet.ai',
   'https://coinet.ai',
   'http://localhost:5173',
@@ -65,29 +92,35 @@ const allowedOrigins = [
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+if (isProduction && !corsOriginEnv) {
+  logger.warn(
+    '[cors] CORS_ORIGIN is not set in production. ' +
+      'Only the built-in origin list (app.coinet.ai, coinet.ai) is permitted. ' +
+      'Set CORS_ORIGIN to explicitly whitelist additional origins.'
+  );
+}
+
 app.use(cors({
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (mobile apps, Postman, server-to-server)
+    // Requests with no Origin header (mobile apps, server-to-server, Postman)
     if (!origin) {
       return callback(null, true);
     }
-    // Development: allow Vercel previews and coinet subdomains
-    if (!isProduction && (origin.includes('vercel.app') || origin.includes('coinet'))) {
-      return callback(null, true);
-    }
-    // Allow explicitly listed origins
+    // Explicitly listed origin → always allow
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    // Production without CORS_ORIGIN: restrict to known origins only
-    if (isProduction && !corsOriginEnv) {
-      logger.warn('CORS_ORIGIN not set in production - restrict to allowed list only');
+    // Development convenience: allow Vercel preview URLs and *.coinet.* subdomains
+    if (!isProduction && (origin.includes('vercel.app') || origin.includes('coinet'))) {
+      return callback(null, true);
     }
-    // Reject unknown origins in production when CORS_ORIGIN is set
-    if (isProduction && corsOriginEnv) {
+    // Production: reject anything not in the explicit list (covers both
+    // "CORS_ORIGIN set" and "CORS_ORIGIN not set" cases)
+    if (isProduction) {
+      logger.warn(`[cors] Blocked unknown origin in production: ${origin}`);
       return callback(null, false);
     }
-    // Allow for backward compatibility when CORS_ORIGIN not set
+    // Development: allow unknown origins to ease local tooling
     return callback(null, true);
   },
   credentials: true,
@@ -4396,6 +4429,108 @@ app.get('/api/omniscore/v2.3', handleOmniScoreRequest);
 app.get('/api/omniscore/latest', handleOmniScoreRequest);
 
 // ═══════════════════════════════════════════════════════════════════════════
+// JUDGMENT ENGINE ENDPOINT
+// ═══════════════════════════════════════════════════════════════════════════
+
+app.get('/api/judgment', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const symbol = (req.query.symbol as string || '').trim().toUpperCase();
+    if (!symbol) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required query parameter: symbol',
+      });
+    }
+
+    const debug = req.query.debug === 'true';
+    const entity_id = (req.query.entity_id as string) || symbol.toLowerCase();
+    const chain = (req.query.chain as string) || null;
+
+    const { produceJudgment, buildSignalSnapshot } = await import('./services/judgment');
+    const { buildJudgmentDebugView, formatJudgmentForAI, formatJudgmentDebugText } = await import('./services/judgment/debug-view');
+    const { evaluateJudgment } = await import('./services/judgment/evaluator');
+
+    let evidenceData: any = {};
+
+    try {
+      const { buildEvidencePack } = await import('./services/evidence-pack/builder');
+      const packResult = await buildEvidencePack({
+        userMessage: `Analyze ${symbol}`,
+        language: 'en',
+        intent: 'TOKEN_ANALYSIS',
+        inputEntities: [symbol],
+      });
+
+      if (packResult.ok) {
+        const pack = packResult.pack;
+        evidenceData = {
+          dexscreener: pack.evidence.dexscreener?.status === 'ok' ? pack.evidence.dexscreener.data : undefined,
+          derivatives: pack.evidence.derivatives?.status === 'ok' ? pack.evidence.derivatives.data : undefined,
+          security: pack.evidence.security?.status === 'ok' ? pack.evidence.security.data : undefined,
+          holders: pack.evidence.holders?.status === 'ok' ? pack.evidence.holders.data : undefined,
+          sentiment: pack.evidence.sentiment?.status === 'ok' ? pack.evidence.sentiment.data : undefined,
+          news: pack.evidence.news?.status === 'ok'
+            ? { ...pack.evidence.news.data, item_count: pack.evidence.news.data?.items?.length ?? 0 }
+            : undefined,
+          onchain: pack.evidence.onchain?.status === 'ok' ? pack.evidence.onchain.data : undefined,
+          coverage: {
+            available_count: pack.coverage.available.length,
+            total_count: pack.coverage.available.length + pack.coverage.missing.length + pack.coverage.stale.length,
+            stale_count: pack.coverage.stale.length,
+          },
+        };
+      }
+    } catch (epError) {
+      logger.warn('Evidence pack fetch failed for judgment, using empty signals', {
+        symbol,
+        error: epError instanceof Error ? epError.message : String(epError),
+      });
+    }
+
+    const signals = buildSignalSnapshot(evidenceData);
+
+    const judgment = produceJudgment({
+      entity_id,
+      symbol,
+      chain,
+      signals,
+    });
+
+    const evaluation = evaluateJudgment(judgment, signals);
+
+    const response: Record<string, unknown> = {
+      success: true,
+      judgment,
+      evaluation: {
+        healthy: evaluation.healthy,
+        score: evaluation.score,
+        issue_count: evaluation.issues.length,
+        issues: evaluation.issues,
+      },
+      ai_context: formatJudgmentForAI(judgment),
+      computeTime: `${Date.now() - startTime}ms`,
+    };
+
+    if (debug) {
+      const debugView = buildJudgmentDebugView(judgment, signals);
+      response.debug = debugView;
+      response.debug_text = formatJudgmentDebugText(debugView);
+    }
+
+    res.json(response);
+  } catch (error) {
+    logger.error('Judgment engine error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 404 HANDLER (Must be AFTER all route definitions)
 // ═══════════════════════════════════════════════════════════════════════════
 app.use((req: Request, res: Response) => {
@@ -4505,7 +4640,7 @@ async function startServer() {
             const quotedSchemaPath = `"${schemaPath}"`;
             // Suppress npm production warning by setting loglevel and filtering stderr
             // Prisma doesn't install dependencies, so this is safe
-            const env = {
+            const env: Record<string, string | undefined> = {
               ...process.env,
               npm_config_loglevel: 'error',
               npm_config_production: 'false',

@@ -762,6 +762,9 @@ importers:
         specifier: ^3.22.4
         version: 3.25.76
     devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
       '@types/jest':
         specifier: ^29.5.8
         version: 29.5.14
@@ -1003,6 +1006,9 @@ importers:
 
   services/api-gateway:
     dependencies:
+      '@coinet-ai/shared-utils':
+        specifier: workspace:*
+        version: link:../../packages/shared-utils
       '@sentry/node':
         specifier: ^10.11.0
         version: 10.38.0

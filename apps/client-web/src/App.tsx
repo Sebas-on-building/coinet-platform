@@ -1,13 +1,9 @@
-import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setApiFetcher } from "../../packages/shared-models/portfolio/api";
 import { apiClient } from "@/services/api-client";
-
-// Ensure Redux portfolio/alerts/user/settings slices use authenticated fetch (Bearer token)
-setApiFetcher((url) => apiClient.getJson(url));
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -18,8 +14,6 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import SSOCallback from "./pages/SSOCallback";
 import { PortfolioPage } from "./pages/PortfolioPage";
-import { setApiFetcher } from "../../packages/shared-models/portfolio/api";
-import { apiClient } from "@/services/api-client";
 
 // Wire authenticated fetch for Redux/shared-models slices (Bearer + X-User-Id)
 setApiFetcher((url) => apiClient.getJson(url));

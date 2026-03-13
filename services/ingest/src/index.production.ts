@@ -108,9 +108,30 @@ class IngestService {
 
   private async setupServer(): Promise<void> {
     // Register plugins
+    const rawCorsOrigin = (process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? '').trim();
+    const envOrigins = rawCorsOrigin
+      ? rawCorsOrigin.split(',').map((o: string) => o.trim()).filter(Boolean)
+      : [];
+    const prodAllowedOrigins: string[] = [
+      'https://app.coinet.ai',
+      'https://coinet.ai',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      ...envOrigins,
+    ];
+    const prodIsProd = process.env.NODE_ENV === 'production';
     await this.server.register(require('@fastify/cors'), {
-      origin: true,
       credentials: true,
+      origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
+        if (!origin) return cb(null, true);
+        if (prodAllowedOrigins.includes(origin)) return cb(null, true);
+        if (!prodIsProd && (origin.includes('vercel.app') || origin.includes('coinet'))) {
+          return cb(null, true);
+        }
+        if (prodIsProd) return cb(null, false);
+        return cb(null, true);
+      },
     });
 
     await this.server.register(require('@fastify/helmet'), {

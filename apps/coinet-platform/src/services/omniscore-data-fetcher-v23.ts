@@ -1789,11 +1789,11 @@ function synthesizeOmniScoreForTopTier(
     
     explainability: {
       qsDrivers: [
-        { feature: 'market_dominance', impact: 'positive', value: marketCap / 1e9 },
-        { feature: 'ecosystem_maturity', impact: 'positive', value: syntheticQS },
+        { feature: 'market_dominance', z: 0, Q: marketCap / 1e9, contribution: marketCap / 1e9, trend7d: 'flat' as const },
+        { feature: 'ecosystem_maturity', z: 0, Q: syntheticQS, contribution: syntheticQS, trend7d: 'flat' as const },
       ],
       osDrivers: [
-        { feature: 'price_momentum_30d', impact: priceChange > 0 ? 'positive' : 'negative', value: priceChange },
+        { feature: 'price_momentum_30d', z: 0, Q: priceChange, contribution: priceChange, trend7d: priceChange > 0 ? 'up' as const : 'down' as const },
       ],
     },
     

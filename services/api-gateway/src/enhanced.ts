@@ -7,6 +7,7 @@
 import express from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import cors from 'cors';
+import { corsConfig } from './cors';
 import { v4 as uuidv4 } from 'uuid';
 
 // Enhanced features with graceful fallbacks
@@ -146,7 +147,9 @@ class EnhancedCoinetGateway {
   private setupMiddleware(): void {
     // Security
     this.app.use(helmet());
-    this.app.use(cors({ origin: true, credentials: true }));
+    // Env-driven CORS — see corsConfig() for full logic.
+    // Never use origin:true (allows any origin); instead derive from CORS_ORIGIN.
+    this.app.use(corsConfig());
     this.app.use(compression());
     this.app.use(express.json({ limit: '10mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));

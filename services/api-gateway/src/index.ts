@@ -26,12 +26,11 @@ import {
   authenticateToken,
   requireAuth,
   securityHeaders,
-  corsConfig,
   requestLogging,
   authErrorHandler,
-  EliteObservabilityManager
-} from '@/../../shared-utils/src/auth';
-import { EliteObservabilityManager as ObservabilityManager } from '@/../../shared-utils/src/observability';
+  EliteObservabilityManager,
+} from '@coinet-ai/shared-utils/auth';
+import { corsConfig } from './cors';
 
 // Optional imports with fallbacks
 let helmet: any;
@@ -141,6 +140,7 @@ class EliteAPIGateway {
   private metrics: GatewayMetrics;
   private redisClient: any;
   private startTime: number;
+  private logger = logger;
   private cacheManager?: AdvancedCacheManager;
   private rateLimiter?: AdvancedRateLimiter;
   private monitoring: EnhancedMonitoringManager;

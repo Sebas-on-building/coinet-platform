@@ -373,6 +373,69 @@ export async function getTokenPairs(address: string): Promise<DexPair[]> {
 }
 
 /**
+ * Fetch DexScreener data for Evidence Pack builder.
+ * Returns pair-shaped data for a token by address or symbol.
+ */
+export async function fetchDexScreenerData(
+  searchQuery: string,
+  chain: string
+): Promise<{
+  priceUsd: number;
+  priceNative: string;
+  liquidity?: { usd: number };
+  volume?: { h24?: number; h6?: number; h1?: number };
+  marketCap?: number;
+  fdv?: number;
+  pairCreatedAt?: number;
+  txns?: { m5?: { buys: number; sells: number }; h1?: { buys: number; sells: number }; h24?: { buys: number; sells: number } };
+  priceChange?: { m5?: number; h1?: number; h6?: number; h24?: number };
+  url?: string;
+  dexId?: string;
+} | null> {
+  const isAddress = /^0x[a-fA-F0-9]{40}$/.test(searchQuery) || (searchQuery.length >= 32 && searchQuery.length <= 44);
+  const chainId = chain?.toLowerCase() as ChainId;
+
+  if (isAddress && chainId) {
+    const pairs = await getTokenPairs(searchQuery);
+    const chainPairs = pairs.filter((p) => p.chainId === chainId);
+    const best = selectBestPair(chainPairs);
+    if (!best) return null;
+    return {
+      priceUsd: parseFloat(best.priceUsd) || 0,
+      priceNative: best.priceNative || '0',
+      liquidity: best.liquidity,
+      volume: best.volume,
+      marketCap: best.marketCap,
+      fdv: best.fdv,
+      pairCreatedAt: best.pairCreatedAt,
+      txns: best.txns,
+      priceChange: best.priceChange,
+      url: best.url,
+      dexId: best.dexId,
+    };
+  }
+
+  const result = await searchToken(searchQuery);
+  const tokens = result.tokens.filter((t) => !chainId || t.chainId === chainId);
+  if (tokens.length === 0) return null;
+
+  const t = tokens[0];
+  return {
+    priceUsd: t.priceUsd,
+    priceNative: '0',
+    liquidity: { usd: t.liquidity },
+    volume: { h24: t.volume24h },
+    marketCap: t.marketCap,
+    fdv: t.fdv,
+    pairCreatedAt: t.pairCreatedAt ? Math.floor(t.pairCreatedAt.getTime() / 1000) : undefined,
+    txns: { h24: t.txns24h },
+    priceChange: { m5: t.priceChange5m, h1: t.priceChange1h, h24: t.priceChange24h },
+    url: t.pairUrl,
+    dexId: t.dex,
+  };
+}
+
+/**
  * 🔥 Get pair by address
  */
 export async function getPairByAddress(

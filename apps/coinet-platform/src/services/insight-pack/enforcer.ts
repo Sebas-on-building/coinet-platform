@@ -199,7 +199,7 @@ function tryLocateBracesParse(text: string, strictMode: boolean): ExtractionResu
 function extractJson(text: string, strictMode: boolean): ExtractionResult {
   // First try strict raw parse
   const rawResult = tryStrictRawParse(text);
-  emitParseAttempt('raw', rawResult.success);
+  emitParseAttempt(1, rawResult.success, 'raw');
   if (rawResult.success) {
     return rawResult;
   }
@@ -211,14 +211,14 @@ function extractJson(text: string, strictMode: boolean): ExtractionResult {
 
   // Try fenced extraction
   const fencedResult = tryFencedParse(text);
-  emitParseAttempt('fenced', fencedResult.success);
+  emitParseAttempt(2, fencedResult.success, 'fenced');
   if (fencedResult.success) {
     return fencedResult;
   }
 
   // Try locate braces (with strict checking)
   const braceResult = tryLocateBracesParse(text, strictMode);
-  emitParseAttempt('locate_braces', braceResult.success);
+  emitParseAttempt(3, braceResult.success, 'locate_braces');
   return braceResult;
 }
 
@@ -455,7 +455,7 @@ function verifyEvidenceKeysCoverageAware(
 
       // FIX #6b: Resolve path and check value
       const resolution = resolveEvidencePath(evidencePack, key);
-      if (!resolution.exists) {
+      if (!resolution.found) {
         invalidKeys.push({ path: key, reason: resolution.error || 'Path does not exist' });
         continue;
       }
@@ -475,9 +475,13 @@ function verifyEvidenceKeysCoverageAware(
     if (invalidKeys.length > 0) {
       invalidItems.push({ type: itemType, id: itemId, invalidKeys });
       
-      for (const ik of invalidKeys) {
-        emitEvidenceKeyFail(ik.path, 1, `${itemType}s[${itemId}]`);
-      }
+      emitEvidenceKeyFail(
+        invalidKeys.map(ik => ik.path),
+        [...new Set(invalidKeys.map(ik => {
+          const m = ik.path.match(/^evidence\.([a-z_]+)\./);
+          return m ? m[1] : '';
+        }).filter(Boolean))]
+      );
 
       return false;
     }
@@ -604,7 +608,7 @@ export function enforceInsightPack(
   const extraction = extractJson(rawText, options.strictJsonExtraction);
 
   if (!extraction.success) {
-    emitSchemaFail(['JSON extraction failed: ' + extraction.error], attempt);
+    emitSchemaFail(attempt, ['JSON extraction failed: ' + (extraction.error ?? 'Unknown')], rawText.slice(0, 500));
     return {
       ok: false,
       error: 'Failed to extract JSON from Grok output',
@@ -621,7 +625,7 @@ export function enforceInsightPack(
   // Check for Grok error output
   if (isGrokErrorOutput(extraction.json)) {
     const grokError = extraction.json;
-    emitSchemaFail([`Grok returned error: ${grokError.reason || 'SCHEMA_VIOLATION'}`], attempt);
+    emitSchemaFail(attempt, [`Grok returned error: ${grokError.reason || 'SCHEMA_VIOLATION'}`], JSON.stringify(grokError).slice(0, 500));
     return {
       ok: false,
       error: 'Grok explicitly failed to produce valid output',
@@ -635,7 +639,7 @@ export function enforceInsightPack(
   const schemaResult = validateSchema(extraction.json);
 
   if (!schemaResult.valid) {
-    emitSchemaFail(schemaResult.errors, attempt);
+    emitSchemaFail(attempt, schemaResult.errors, JSON.stringify(extraction.json).slice(0, 500));
     return {
       ok: false,
       error: 'Schema validation failed',
@@ -655,7 +659,7 @@ export function enforceInsightPack(
   // Step 4: Validate content (FIX #3, #4, #8)
   const contentValidation = validateContent(pack, options);
   if (!contentValidation.valid) {
-    emitSchemaFail(contentValidation.errors, attempt);
+    emitSchemaFail(attempt, contentValidation.errors, JSON.stringify(pack).slice(0, 500));
     return {
       ok: false,
       error: 'Content validation failed',
@@ -685,7 +689,7 @@ export function enforceInsightPack(
         );
       }
 
-      emitDegraded(demotedCount, verification.invalidItems.length);
+      emitDegraded(demotedCount, warnings);
     } else {
       for (const item of verification.invalidItems) {
         warnings.push(`${item.type} ${item.id} has unresolvable evidence_keys (lenient mode)`);
@@ -696,7 +700,7 @@ export function enforceInsightPack(
   // Step 6: Final validation (in case demotions changed structure)
   const finalValidation = validateSchema(pack);
   if (!finalValidation.valid) {
-    emitSchemaFail(finalValidation.errors, attempt);
+    emitSchemaFail(attempt, finalValidation.errors, JSON.stringify(pack).slice(0, 500));
     return {
       ok: false,
       error: 'Post-demotion validation failed',
@@ -710,7 +714,7 @@ export function enforceInsightPack(
   const finalContentCheck = validateContent(pack, { ...options, strictNumericLiterals: false, strictUserTalk: false });
   if (!finalContentCheck.valid) {
     // This can happen if all items were demoted
-    emitSchemaFail(finalContentCheck.errors, attempt);
+    emitSchemaFail(attempt, finalContentCheck.errors, JSON.stringify(pack).slice(0, 500));
     return {
       ok: false,
       error: 'Post-demotion content validation failed',
@@ -721,13 +725,7 @@ export function enforceInsightPack(
   }
 
   // Success!
-  emitSuccess(
-    attempt,
-    degraded,
-    pack.drivers.length,
-    pack.risks.length,
-    pack.overall_confidence
-  );
+  emitSuccess(attempt, degraded, 0);
 
   return {
     ok: true,

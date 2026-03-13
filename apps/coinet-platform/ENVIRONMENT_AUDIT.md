@@ -7,16 +7,27 @@
 
 ## ⚠️ CRITICAL: Production Variables (Set These First)
 
-Before deploying, ensure these four variables are configured:
+Before deploying, ensure these variables are configured:
 
-| Variable | Required | Example |
-|----------|----------|---------|
-| `TWITTER_API_KEY` | ✅ | From twitterapi.io or developer.twitter.com |
-| `XAI_API_KEY` | ✅ | `xai-xxx` from x.ai (or use `OPENAI_API_KEY` as fallback) |
-| `NODE_ENV` | ✅ | `production` for production deployments |
-| `CORS_ORIGIN` | ✅ | `https://app.coinet.ai` (comma-separated for multiple) |
+| Variable | Required | Validation | Example |
+|----------|----------|------------|---------|
+| `DATABASE_URL` | ✅ Always | Valid URL format | `postgresql://user:pass@host:5432/db` |
+| `JWT_SECRET` | ✅ Always | ≥ 32 chars | `openssl rand -base64 32` |
+| `NODE_ENV` | ✅ | Must be `production` | `production` |
+| `CORS_ORIGIN` | ✅ Production | Non-empty, comma-separated origins | `https://app.coinet.ai,https://coinet.ai` |
+| `XAI_API_KEY` / `OPENAI_API_KEY` | Recommended | Non-empty | `xai-xxx` / `sk-xxx` |
+| `REDIS_URL` | Recommended in prod | Non-empty | `redis://:pass@host:6379` |
+| `TWITTER_API_KEY` | For COMM | Non-empty | From twitterapi.io |
 
-**Without these:** Chat broken, COMM v2.1 broken, security risk from permissive CORS.
+**Without these:** Startup exits immediately for `DATABASE_URL` and `JWT_SECRET`. Missing `CORS_ORIGIN` in production blocks all unknown origins and logs a warning. Missing AI keys degrade chat to error responses.
+
+### Startup validation
+
+`validateEnv()` in `src/utils/validateEnv.ts` runs **before** `express()` is initialised:
+- **Fails startup** (`process.exit(1)`) for: `DATABASE_URL` (always), `JWT_SECRET` (always), `CORS_ORIGIN` (production only).
+- **Warns** (continues) for: missing AI keys, missing `REDIS_URL` in production.
+
+This means misconfigured environments are caught at boot rather than failing silently at runtime.
 
 **Legacy JWT:** `JWT_SECRET` is optional — only required when `services/user` or `services/api-gateway` issue HS256 JWTs that `coinet-platform` must also accept. For Clerk-only deployments leave it unset. When set, it must be ≥ 32 characters and **identical** across `coinet-platform`, `services/user`, and `services/api-gateway`. Generate: `openssl rand -base64 32`.
 
@@ -336,7 +347,47 @@ curl -X POST https://your-app.railway.app/api/chat \
 
 ---
 
-**Status:** 🟡 **Partially Configured**  
-**Critical Issues:** 2 (AI key, Twitter key)  
-**Recommended Additions:** 5 (Redis, CORS, LunarCrush, Coinglass, CryptoPanic)
+---
+
+## 🛡️ CORS Configuration
+
+### Variable naming
+
+| Variable | Role |
+|----------|------|
+| `CORS_ORIGIN` | **Primary** — comma-separated list of allowed origins. Required in production. |
+| `CORS_ORIGINS` | Alias accepted for backward compatibility with other services. |
+
+### Behavior by environment
+
+| Scenario | Result |
+|----------|--------|
+| Request has no `Origin` header (server-to-server, mobile, Postman) | Always allowed |
+| Origin is in `CORS_ORIGIN` / built-in list | Allowed |
+| Development + Vercel preview URL or `*.coinet.*` origin | Allowed (dev convenience) |
+| Production + origin not in allowed list | **Blocked** — even if `CORS_ORIGIN` is unset |
+| Development + unknown origin | Allowed (local tooling convenience) |
+
+### Implementation
+
+The single-source-of-truth origin function lives in each service. No separate `app.options('*', ...)` handler exists in `coinet-platform` — the `cors()` middleware handles preflight automatically with the same origin logic, eliminating the reflected-origin vulnerability (the previous handler wrote `req.headers.origin || '*'` regardless of whether the origin was allowed).
+
+### Services updated
+
+| Service | File | Fix applied |
+|---------|------|-------------|
+| coinet-platform | `src/index.ts` | Removed custom OPTIONS handler; production always rejects unknowns |
+| api-gateway (enhanced) | `src/enhanced.ts` | `origin:true` → `corsConfig()` |
+| api-gateway (main) | `src/index.ts` + `src/cors.ts` | Local `corsConfig()` replaces phantom shared-utils import |
+| ingest | `src/index.ts` + `src/index.production.ts` | `origin:true` → env-driven allow-list |
+| portfolio | `src/index.ts` | Bare `cors()` → env-driven options |
+| stream-processor | `src/index.ts` | Bare `cors()` → env-driven options |
+| Socket.IO backend | `src/app.ts` | `origin:'*'` → env-driven allow-list |
+| Custom middleware | `src/middleware/cors.ts` | Hardcoded `.co` origins → env-driven |
+
+---
+
+**Status:** 🟢 **Foundation ready for production**  
+**Startup validation:** DATABASE_URL, JWT_SECRET, CORS_ORIGIN (prod)  
+**CORS:** All services restricted to explicit allow-list; unknown origins blocked in production
 

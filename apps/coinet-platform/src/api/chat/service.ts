@@ -175,10 +175,10 @@ export class ChatService {
           
           if (tokenContextResult.hasTokenContext) {
             logger.info('🎯 Token context built', {
-              isResolved: tokenContextResult.tokenContext?.isResolved,
+              resolved: tokenContextResult.tokenContext?.resolved,
               needsClarification: tokenContextResult.tokenContext?.needsClarification,
-              modulesAvailable: tokenContextResult.tokenContext?.coverage.available.join(', '),
-              symbol: tokenContextResult.tokenContext?.resolved?.symbol,
+              modulesAvailable: tokenContextResult.tokenContext?.coverage?.available?.join(', ') ?? '',
+              symbol: tokenContextResult.tokenContext?.token?.symbol,
             });
           }
         }
@@ -201,7 +201,7 @@ export class ChatService {
         handlerResult = await executeHandler(
           request.message,
           intentClassification,
-          coinSymbols
+          { tokens: coinSymbols }
         );
         
         const ds: Record<string, boolean> = (handlerResult as any)?.dataSources || {}; // Data source config from intent handler
@@ -370,9 +370,9 @@ export class ChatService {
         if (tokenContextResult?.hasTokenContext && tokenContextResult.injectionText) {
           contextParts.push(tokenContextResult.injectionText);
           logger.info('🎯 Token context injected', {
-            symbol: tokenContextResult.tokenContext?.resolved?.symbol,
-            chain: tokenContextResult.tokenContext?.resolved?.chain,
-            modulesAvailable: tokenContextResult.tokenContext?.coverage.available,
+            symbol: tokenContextResult.tokenContext?.token?.symbol,
+            chain: tokenContextResult.tokenContext?.token?.chain,
+            modulesAvailable: tokenContextResult.tokenContext?.coverage?.available,
             needsClarification: tokenContextResult.tokenContext?.needsClarification,
           });
           
@@ -1066,7 +1066,7 @@ Inform the user that OmniScore analysis is temporarily unavailable.
 
 DETECTED INTENT: ${intentClassification.intent.toUpperCase()} (${(intentClassification.confidence * 100).toFixed(0)}% confidence)
 
-${handlerResult.aiFormatHint}
+${handlerResult.aiFormatHint ?? ''}
 
 ${handlerResult.responseGuidance ? `CONTEXT: ${handlerResult.responseGuidance}` : ''}
 
@@ -1585,10 +1585,12 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         throw new Error('No user message found to regenerate');
       }
 
-      // Mark original as regenerated
+      // Mark original as regenerated (store in metadata; Message model has no regeneratedFrom field)
+      const original = await prisma.message.findUnique({ where: { id: messageId }, select: { metadata: true } });
+      const meta = (original?.metadata as Record<string, unknown>) || {};
       await prisma.message.update({
         where: { id: messageId },
-        data: { regeneratedFrom: messageId },
+        data: { metadata: { ...meta, regeneratedFrom: messageId } },
       });
 
       // Generate new response using the user's original message
@@ -1647,7 +1649,7 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
       // Build where clause
       const whereClause: any = { userId };
       if (!includeArchived) {
-        whereClause.archivedAt = null;
+        whereClause.archived = false;
       }
 
       // Get total count
@@ -1683,7 +1685,7 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         messageCount: conv._count.messages,
         createdAt: conv.createdAt.toISOString(),
         updatedAt: conv.updatedAt.toISOString(),
-        isArchived: !!conv.archivedAt,
+        isArchived: !!conv.archived,
       }));
 
       logger.debug('📋 Listed conversations', {
@@ -1778,7 +1780,7 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         updateData.title = updates.title;
       }
       if (updates.archived !== undefined) {
-        updateData.archivedAt = updates.archived ? new Date() : null;
+        updateData.archived = updates.archived;
       }
 
       // Update conversation
@@ -1797,7 +1799,7 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         data: {
           id: updated.id,
           title: updated.title,
-          isArchived: !!updated.archivedAt,
+          isArchived: !!updated.archived,
           updatedAt: updated.updatedAt.toISOString(),
         },
       };

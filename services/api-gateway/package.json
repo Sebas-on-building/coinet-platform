@@ -20,6 +20,7 @@
     "docker:run": "docker run --rm -p 8000:8000 --name api-gateway coinet/api-gateway:v1.0.0"
   },
   "dependencies": {
+    "@coinet-ai/shared-utils": "workspace:*",
     "@sentry/node": "^10.11.0",
     "@sentry/profiling-node": "^10.11.0",
     "@types/swagger-jsdoc": "^6.0.4",

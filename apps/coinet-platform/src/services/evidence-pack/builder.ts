@@ -44,6 +44,7 @@ import {
   ModuleResultEvent,
   PackCompleteEvent,
   ModuleStatus,
+  MODULE_TTL_SECONDS,
   DexScreenerEvidence,
   SecurityEvidence,
   HoldersEvidence,
@@ -172,7 +173,7 @@ async function fetchDexScreener(
       freshness_seconds: 0,
       data: {
         price_usd: data.priceUsd || 0,
-        price_native: data.priceNative,
+        price_native: data.priceNative != null ? parseFloat(String(data.priceNative)) : undefined,
         liquidity_usd: data.liquidity?.usd || 0,
         volume_24h_usd: data.volume?.h24 || 0,
         volume_6h_usd: data.volume?.h6,
@@ -297,7 +298,7 @@ async function fetchSentiment(
     const { getMarketSentiment } = await import('../sentiment-service');
     
     const data = await Promise.race([
-      getMarketSentiment(symbol),
+      getMarketSentiment(),
       new Promise<null>((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), timeoutMs)
       ),
@@ -311,18 +312,19 @@ async function fetchSentiment(
       };
     }
 
+    const d = data as any;
     const evidence: SentimentEvidence = {
       status: 'ok',
       ts: Math.floor(Date.now() / 1000),
       source: 'CT',
       freshness_seconds: 0,
       data: {
-        label: mapSentimentLabel(data.label || data.sentiment),
-        score: data.score || 0,
-        volume_mentions_24h: data.mentions,
-        trending_rank: data.trendingRank,
-        bullish_percentage: data.bullishPercent,
-        social_dominance: data.socialDominance,
+        label: mapSentimentLabel(d.label ?? d.sentiment ?? d.fearGreed?.classification),
+        score: typeof d.score === 'number' ? d.score : (d.fearGreed?.value != null ? d.fearGreed.value / 100 : 0),
+        volume_mentions_24h: d.mentions ?? 0,
+        trending_rank: d.trendingRank ?? 0,
+        bullish_percentage: d.bullishPercent ?? 50,
+        social_dominance: d.socialDominance ?? 0,
       },
     };
 
@@ -369,7 +371,8 @@ async function fetchNews(
       ),
     ]);
 
-    if (!data || !data.articles) {
+    const articles = (data as any)?.articles ?? [];
+    if (!data || !Array.isArray(articles) || articles.length === 0) {
       return {
         ok: false,
         error: 'No data returned',
@@ -383,16 +386,16 @@ async function fetchNews(
       source: 'NewsPipeline',
       freshness_seconds: 0,
       data: {
-        items: data.articles.slice(0, 10).map((a: any) => ({
+        items: articles.slice(0, 10).map((a: any) => ({
           headline: a.title || a.headline,
           source: a.source || 'Unknown',
           url: a.url,
           published_at_unix: a.publishedAt ? Math.floor(new Date(a.publishedAt).getTime() / 1000) : Math.floor(Date.now() / 1000),
           sentiment: a.sentiment as 'positive' | 'negative' | 'neutral' | undefined,
         })),
-        overall_sentiment: data.sentiment || 'neutral',
-        has_critical_news: data.criticalAlerts > 0,
-        dominant_topics: data.topics || [],
+        overall_sentiment: (data as any).sentiment || 'neutral',
+        has_critical_news: ((data as any).criticalAlerts ?? 0) > 0,
+        dominant_topics: (data as any).topics || [],
       },
     };
 
@@ -438,20 +441,21 @@ async function fetchDerivatives(
       };
     }
 
+    const d = data as any;
     const evidence: DerivativesEvidence = {
       status: 'ok',
       ts: Math.floor(Date.now() / 1000),
       source: 'Coinglass',
       freshness_seconds: 0,
       data: {
-        open_interest_usd: data.openInterest,
-        open_interest_change_24h: data.oiChange24h,
-        funding_rate: data.fundingRate,
-        funding_rate_annualized: data.fundingRate ? data.fundingRate * 365 * 3 : undefined,
-        long_short_ratio: data.longShortRatio,
-        liquidations_24h_usd: data.liquidations24h,
-        liquidations_long_24h: data.longLiquidations24h,
-        liquidations_short_24h: data.shortLiquidations24h,
+        open_interest_usd: d.openInterest ?? d.totalLiquidations24h ?? 0,
+        open_interest_change_24h: d.oiChange24h ?? 0,
+        funding_rate: d.fundingRate ?? 0,
+        funding_rate_annualized: d.fundingRate ? d.fundingRate * 365 * 3 : undefined,
+        long_short_ratio: d.longShortRatio ?? 1,
+        liquidations_24h_usd: d.liquidations24h ?? d.totalLiquidations24h ?? 0,
+        liquidations_long_24h: d.longLiquidations24h ?? 0,
+        liquidations_short_24h: d.shortLiquidations24h ?? 0,
       },
     };
 
@@ -484,7 +488,7 @@ async function fetchOnchain(
     const { getWhaleContextForAI } = await import('../whale-data');
     
     const data = await Promise.race([
-      getWhaleContextForAI(symbol),
+      getWhaleContextForAI(),
       new Promise<null>((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), timeoutMs)
       ),
@@ -498,14 +502,15 @@ async function fetchOnchain(
       };
     }
 
+    const d = data as any;
     const evidence: OnchainEvidence = {
       status: 'ok',
       ts: Math.floor(Date.now() / 1000),
       source: 'Alchemy',
       freshness_seconds: 0,
       data: {
-        whale_net_flow_24h: data.netFlow24h,
-        large_transactions_24h: data.largeTransactions,
+        whale_net_flow_24h: d.netFlow24h ?? 0,
+        large_transactions_24h: d.largeTransactions ?? [],
       },
     };
 
@@ -535,6 +540,7 @@ async function fetchMarketSnapshot(
     const { getMarketDataStatus } = await import('../market-data');
     
     const status = await getMarketDataStatus();
+    const s = status as any;
 
     const evidence: MarketSnapshotEvidence = {
       status: 'ok',
@@ -542,13 +548,13 @@ async function fetchMarketSnapshot(
       source: 'CoinGecko',
       freshness_seconds: 0,
       data: {
-        btc_price: status.btcPrice || 0,
-        btc_dominance: status.btcDominance || 0,
-        eth_price: status.ethPrice || 0,
-        total_market_cap_usd: status.totalMarketCap || 0,
-        total_volume_24h_usd: status.totalVolume24h || 0,
-        fear_greed_index: status.fearGreedIndex,
-        fear_greed_label: status.fearGreedLabel,
+        btc_price: s.btcPrice ?? 0,
+        btc_dominance: s.btcDominance ?? 0,
+        eth_price: s.ethPrice ?? 0,
+        total_market_cap_usd: s.totalMarketCap ?? 0,
+        total_volume_24h_usd: s.totalVolume24h ?? 0,
+        fear_greed_index: s.fearGreedIndex,
+        fear_greed_label: s.fearGreedLabel,
       },
     };
 

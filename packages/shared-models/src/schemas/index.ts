@@ -4,6 +4,10 @@
 
 import { z } from 'zod';
 
+// Connector contract & canonical metrics (Production Architecture Layer 1 & 3)
+export * from './connector-envelope';
+export * from './canonical-metrics';
+
 export const MarketDataSchema = z.object({
   symbol: z.string(),
   price: z.number().positive(),

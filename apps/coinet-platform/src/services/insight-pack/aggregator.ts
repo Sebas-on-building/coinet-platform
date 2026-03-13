@@ -30,7 +30,7 @@ import { InsightPackV1, Driver, Risk, Scenarios, Unknown, ConfidenceLevel } from
  * Canonical topic synonyms map.
  * Grows from observed logs - keep intentionally small.
  */
-const TOPIC_SYNONYMS: Record<string, string> = {
+export const TOPIC_SYNONYMS: Record<string, string> = {
   // Liquidations
   'liq_wipeout': 'liquidations',
   'stop_run': 'liquidations',
@@ -140,7 +140,7 @@ export function normalizeTopic(topic: string): string {
  * Module trust weights for driver scoring.
  * Higher = more trustworthy.
  */
-const MODULE_TRUST_WEIGHTS: Record<string, number> = {
+export const MODULE_TRUST_WEIGHTS: Record<string, number> = {
   'dexscreener': 3,
   'derivatives': 3,
   'onchain': 3,
@@ -583,17 +583,27 @@ function mergeScenarios(
     key_triggers: [] as string[],
   };
 
+  const bullSrc = primary?.scenarios?.bull || secondary?.scenarios?.bull || defaultScenario;
+  const baseSrc = primary?.scenarios?.base || secondary?.scenarios?.base || defaultScenario;
+  const bearSrc = primary?.scenarios?.bear || secondary?.scenarios?.bear || defaultScenario;
+
   return {
     bull: {
-      ...(primary?.scenarios?.bull || secondary?.scenarios?.bull || defaultScenario),
+      summary: bullSrc.summary ?? defaultScenario.summary,
+      probability: bullSrc.probability ?? defaultScenario.probability,
+      key_triggers: bullSrc.key_triggers ?? defaultScenario.key_triggers,
       source: primary?.scenarios?.bull ? primaryTag : (secondary?.scenarios?.bull ? (preferGrok ? 'gemini' : 'grok') : primaryTag),
     },
     base: {
-      ...(primary?.scenarios?.base || secondary?.scenarios?.base || defaultScenario),
+      summary: baseSrc.summary ?? defaultScenario.summary,
+      probability: baseSrc.probability ?? defaultScenario.probability,
+      key_triggers: baseSrc.key_triggers ?? defaultScenario.key_triggers,
       source: primary?.scenarios?.base ? primaryTag : (secondary?.scenarios?.base ? (preferGrok ? 'gemini' : 'grok') : primaryTag),
     },
     bear: {
-      ...(primary?.scenarios?.bear || secondary?.scenarios?.bear || defaultScenario),
+      summary: bearSrc.summary ?? defaultScenario.summary,
+      probability: bearSrc.probability ?? defaultScenario.probability,
+      key_triggers: bearSrc.key_triggers ?? defaultScenario.key_triggers,
       source: primary?.scenarios?.bear ? primaryTag : (secondary?.scenarios?.bear ? (preferGrok ? 'gemini' : 'grok') : primaryTag),
     },
   };
@@ -706,7 +716,7 @@ interface DisagreementResult {
   hasDirectionConflict: boolean;
 }
 
-function calculateDisagreement(
+export function calculateDisagreement(
   grok: InsightPackV1 | null,
   gemini: InsightPackV1 | null,
   evidencePack: EvidencePack
@@ -792,7 +802,7 @@ function inferOverallDirection(pack: InsightPackV1): 'bullish' | 'bearish' | 'ne
 // FINAL CONFIDENCE
 // ============================================================================
 
-function calculateFinalConfidence(
+export function calculateFinalConfidence(
   grok: InsightPackV1 | null,
   gemini: InsightPackV1 | null,
   disagreementLevel: DisagreementLevel,

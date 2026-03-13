@@ -21,6 +21,8 @@ export interface TokenContext {
   needsClarification: boolean;
   clarificationQuestion?: string;
   rawInput: string;
+  /** Optional module coverage info (e.g. from evidence-pack) */
+  coverage?: { available?: string[] };
 }
 
 export interface ResolvedToken {

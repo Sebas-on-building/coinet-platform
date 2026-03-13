@@ -19,6 +19,8 @@ import type {
 } from './types';
 import { CALIBRATION_THRESHOLDS } from './types';
 
+export type { GoldenCaseInput };
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // GOLDEN CASE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════════

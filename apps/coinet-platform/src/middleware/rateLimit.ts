@@ -263,5 +263,5 @@ export {
   defaultKeyGenerator,
   userKeyGenerator,
   endpointKeyGenerator,
-  RateLimitConfig,
 };
+export type { RateLimitConfig };

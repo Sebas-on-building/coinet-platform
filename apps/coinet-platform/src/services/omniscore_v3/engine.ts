@@ -56,10 +56,10 @@ export function calculateOmniScore(
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
   
-  // Extract basic info
-  const projectId = params.projectId;
-  const symbol = params.symbol || projectId.toUpperCase();
-  const name = params.name || projectId;
+  // Extract basic info (support identity-based and legacy params)
+  const projectId = params.identity?.id ?? params.projectId ?? 'unknown';
+  const symbol = params.identity?.symbol ?? params.symbol ?? projectId.toUpperCase();
+  const name = params.identity?.name ?? params.name ?? projectId;
   const sector = params.sector || 'Unknown';
   const capBucket = getCapBucket(params.marketCapUsd);
   const eventRiskSeverity = params.eventRiskSeverity || 0;
@@ -216,7 +216,7 @@ export function calculateOmniScore(
       smoothingApplied: posSmoothing.applied,
       
       totalDataPoints: params.dataPoints.length,
-      validDataPoints: params.dataPoints.filter(dp => dp.value !== null).length,
+      validDataPoints: params.dataPoints.filter(dp => (dp.raw ?? (dp as { value?: number | null }).value) != null).length,
       staleDataPoints: 0, // TODO: Calculate stale points
       
       degraded: confidence.degraded,
@@ -288,13 +288,16 @@ function createGatedResult(
   gateReason: string,
   timestamp: string
 ): OmniScoreResult {
+  const projectId = params.identity?.id ?? params.projectId ?? 'unknown';
+  const symbol = params.identity?.symbol ?? params.symbol ?? projectId.toUpperCase();
+  const name = params.identity?.name ?? params.name ?? projectId;
   const sector = params.sector || 'Unknown';
   const capBucket = getCapBucket(params.marketCapUsd);
   
   return {
-    projectId: params.projectId,
-    symbol: params.symbol || params.projectId.toUpperCase(),
-    name: params.name || params.projectId,
+    projectId,
+    symbol,
+    name,
     sector,
     capBucket,
     

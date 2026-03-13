@@ -84,7 +84,7 @@ export function calculateQualityScore(dataPoints: DataPoint[]): QualityScoreResu
  * Calculate score for a single segment
  */
 function calculateSegmentScore(segment: QSSegment, dataPoints: DataPoint[]): SegmentScore {
-  const validPoints = dataPoints.filter(dp => dp.value !== null);
+  const validPoints = dataPoints.filter(dp => (dp.raw ?? (dp as { value?: number | null }).value) != null);
   const keys = validPoints.map(dp => dp.key);
   const coverage = calculateSegmentCoverage(segment, keys);
   
@@ -108,8 +108,9 @@ function calculateSegmentScore(segment: QSSegment, dataPoints: DataPoint[]): Seg
     const reliability = getSourceReliability(dp.source);
     const weight = reliability;
     
-    // Normalize value to 0-100 scale
-    const normalizedValue = normalizeDataPoint(dp);
+    // Normalize value to 0-100 scale (support both raw and legacy value)
+    const rawVal = dp.raw ?? (dp as { value?: number | null }).value;
+    const normalizedValue = normalizeDataPoint(dp, rawVal!);
     
     totalWeightedValue += normalizedValue * weight;
     totalWeight += weight;
@@ -133,59 +134,57 @@ function calculateSegmentScore(segment: QSSegment, dataPoints: DataPoint[]): Seg
 }
 
 /**
- * Normalize a data point value to 0-100 scale
+ * Normalize a data point value to 0-100 scale (supports raw and legacy value)
  */
-function normalizeDataPoint(dp: DataPoint): number {
-  if (dp.value === null) return 50;
-  
+function normalizeDataPoint(dp: DataPoint, value: number): number {
   // Different normalization based on key
   // This is a simplified version - production would have more sophisticated normalization
   switch (dp.key) {
     // GitHub metrics
     case 'github_commits_30d':
-      return normalizeLog(dp.value, 1, 1000); // 1-1000 commits
+      return normalizeLog(value, 1, 1000); // 1-1000 commits
     case 'github_stars':
-      return normalizeLog(dp.value, 100, 50000); // 100-50k stars
+      return normalizeLog(value, 100, 50000); // 100-50k stars
     case 'github_contributors':
-      return normalizeLog(dp.value, 1, 500); // 1-500 contributors
+      return normalizeLog(value, 1, 500); // 1-500 contributors
     case 'github_forks':
-      return normalizeLog(dp.value, 10, 10000); // 10-10k forks
+      return normalizeLog(value, 10, 10000); // 10-10k forks
       
     // Security metrics
     case 'audit_count':
-      return Math.min(100, dp.value * 20); // 0-5 audits
+      return Math.min(100, value * 20); // 0-5 audits
     case 'auditor_tier':
-      return (5 - dp.value) * 25; // Tier 1=100, Tier 4=25
+      return (5 - value) * 25; // Tier 1=100, Tier 4=25
     case 'bug_bounty_size':
-      return normalizeLog(dp.value, 10000, 10000000); // $10k-$10M
+      return normalizeLog(value, 10000, 10000000); // $10k-$10M
     case 'incident_count':
-      return Math.max(0, 100 - dp.value * 25); // Each incident costs 25 points
+      return Math.max(0, 100 - value * 25); // Each incident costs 25 points
       
     // Team metrics
     case 'team_experience_years':
-      return Math.min(100, dp.value * 10); // 0-10 years
+      return Math.min(100, value * 10); // 0-10 years
     case 'team_transparency_score':
-      return dp.value; // Already 0-100
+      return value; // Already 0-100
       
     // Governance metrics
     case 'decentralization_score':
-      return dp.value; // Already 0-100
+      return value; // Already 0-100
     case 'voter_turnout':
-      return Math.min(100, dp.value * 2); // 0-50% turnout
+      return Math.min(100, value * 2); // 0-50% turnout
     case 'proposal_count_90d':
-      return Math.min(100, dp.value * 10); // 0-10 proposals
+      return Math.min(100, value * 10); // 0-10 proposals
       
     // Ecosystem metrics
     case 'tvl_usd':
-      return normalizeLog(dp.value, 1000000, 10000000000); // $1M-$10B
+      return normalizeLog(value, 1000000, 10000000000); // $1M-$10B
     case 'integration_count':
-      return Math.min(100, dp.value * 5); // 0-20 integrations
+      return Math.min(100, value * 5); // 0-20 integrations
     case 'ecosystem_projects':
-      return normalizeLog(dp.value, 10, 1000); // 10-1000 projects
+      return normalizeLog(value, 10, 1000); // 10-1000 projects
       
     default:
       // If value is already 0-100, return as-is
-      if (dp.value >= 0 && dp.value <= 100) return dp.value;
+      if (value >= 0 && value <= 100) return value;
       // Otherwise, default to 50
       return 50;
   }

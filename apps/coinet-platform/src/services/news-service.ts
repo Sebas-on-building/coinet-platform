@@ -1054,8 +1054,11 @@ function assessImpactAdvanced(post: { title: string; votes?: any }, credibility:
   score *= (0.5 + credibility * 0.5);
   
   // Engagement multiplier (if votes available)
-  if (post.votes) {
-    const totalVotes = Object.values(post.votes).reduce((a: number, b: any) => a + (b || 0), 0);
+  if (post.votes && typeof post.votes === 'object') {
+    const totalVotes = Object.values(post.votes as Record<string, unknown>).reduce(
+      (a: number, b: unknown) => a + (typeof b === 'number' ? b : 0),
+      0 as number
+    ) as number;
     if (totalVotes > 100) score *= 1.5;
     else if (totalVotes > 50) score *= 1.3;
     else if (totalVotes > 20) score *= 1.1;

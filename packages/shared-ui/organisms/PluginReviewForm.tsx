@@ -1,5 +1,22 @@
 import React, { useState } from 'react';
-import tokens from 'src/design-system/tokens';
+import { colors, spacing, radii, typography, shadows } from '../themes/tokens';
+
+// Local tokens shape expected by this component (themes/tokens is flat; we use same values for light/dark)
+const tokens = {
+  spacing,
+  radius: radii,
+  colors: {
+    accent: { blue: { light: colors.primary, dark: colors.info } },
+    border: { light: '#e5e7eb', dark: colors.border },
+    surface: { light: '#fff', dark: colors.surface },
+    text: { light: '#111', dark: colors.text },
+    error: { light: colors.error, dark: colors.error },
+    success: { light: colors.success, dark: colors.success },
+  },
+  typography: { fontSize: { base: typography.body.fontSize, sm: typography.caption.fontSize } },
+  motion: { duration: { short: '0.2s' } },
+  shadows: { xs: shadows.sm },
+};
 
 export interface PluginReviewSubmitPayload {
   rating: number;

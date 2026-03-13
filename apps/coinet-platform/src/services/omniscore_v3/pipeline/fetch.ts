@@ -35,7 +35,7 @@ export interface FetchBundleResult {
   entityStep: StepResult<ResolvedEntity>;
   
   /** Fetch data step result */
-  fetchStep: StepResult<DataPoint[]>;
+  fetchStep: StepResult<FetchAllDataResult>;
   
   /** Complete data bundle (null if failed) */
   bundle: DataBundle | null;

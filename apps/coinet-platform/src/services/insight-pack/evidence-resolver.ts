@@ -22,9 +22,13 @@ import {
 
 export interface EvidenceResolution {
   found: boolean;
+  /** @deprecated Use `found` instead */
+  exists?: boolean;
   value: any;
   path: string;
   module?: string;
+  /** Error message when path not found */
+  error?: string;
 }
 
 export interface EvidenceKeyValidation {
@@ -309,9 +313,11 @@ export function resolveEvidencePath(
   const result = resolveEvidenceKey(pack, keyPath);
   return {
     found: result.found,
+    exists: result.found,
     value: result.value,
     path: keyPath,
     module: keyPath.startsWith('evidence.') ? keyPath.split('.')[1] : undefined,
+    error: result.found ? undefined : 'Path does not exist',
   };
 }
 

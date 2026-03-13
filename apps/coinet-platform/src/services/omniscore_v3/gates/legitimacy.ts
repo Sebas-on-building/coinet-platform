@@ -106,37 +106,38 @@ export function extractLegitimacyData(
     dataPoints,
   };
   
-  // Extract values from data points
+  // Extract values from data points (support raw and legacy value)
   for (const dp of dataPoints) {
-    if (dp.value === null) continue;
+    const val = dp.raw ?? (dp as { value?: number | null }).value;
+    if (val === null || val === undefined) continue;
     
     switch (dp.key) {
       case 'known_rug_pull':
-        input.knownRugPull = dp.value === 1;
+        input.knownRugPull = val === 1;
         break;
       case 'sec_warning_active':
-        input.activeSecWarning = dp.value === 1;
+        input.activeSecWarning = val === 1;
         break;
       case 'honeypot_detected':
-        input.honeypotDetected = dp.value === 1;
+        input.honeypotDetected = val === 1;
         break;
       case 'fake_audit_detected':
-        input.fakeAuditDetected = dp.value === 1;
+        input.fakeAuditDetected = val === 1;
         break;
       case 'project_age_days':
-        input.projectAgeDays = dp.value;
+        input.projectAgeDays = val;
         break;
       case 'holder_count':
-        input.holderCount = dp.value;
+        input.holderCount = val;
         break;
       case 'team_public':
-        input.teamPublic = dp.value === 1;
+        input.teamPublic = val === 1;
         break;
       case 'has_audit':
-        input.hasAudit = dp.value === 1;
+        input.hasAudit = val === 1;
         break;
       case 'wash_trading_score':
-        input.washTradingScore = dp.value;
+        input.washTradingScore = val;
         break;
     }
   }

@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "noEmit": false,
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
@@ -15,7 +16,6 @@
     "dist",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "src/auth.ts",
     "src/observability.ts"
   ]
 } 

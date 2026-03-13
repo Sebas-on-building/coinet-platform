@@ -489,8 +489,7 @@ export {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export {
-  // Types
-  type LegitimacyLabel,
+  // Types (LegitimacyLabel already exported from main types)
   type LegitimacyFactors,
   type LegitimacyRuleResult,
   type LegitimacyResult as LegitimacyGateResult,

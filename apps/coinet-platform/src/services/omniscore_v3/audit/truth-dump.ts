@@ -374,12 +374,12 @@ function calculateContributions(
 ): FeatureContribution[] {
   const available = features.filter(f => f.available && f.normalized !== null);
   const totalEffectiveWeight = available.reduce((sum, f) => {
-    const reliability = f.confidence ?? 1;
+    const reliability = f.quality?.confidence ?? 1;
     return sum + f.weight * reliability;
   }, 0);
   
   return features.map(f => {
-    const reliability = f.confidence ?? 1;
+    const reliability = f.quality?.confidence ?? 1;
     const effectiveWeight = f.weight * reliability;
     const contribution = f.normalized !== null ? f.normalized * effectiveWeight : 0;
     

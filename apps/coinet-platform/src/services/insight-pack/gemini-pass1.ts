@@ -163,8 +163,10 @@ async function callGeminiApi(
       };
     }
 
-    const data = await response.json();
-    
+    const data = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+    };
+
     // Extract text from Gemini response format
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
@@ -336,10 +338,7 @@ export async function executeGeminiPass1(
     lastResult = enforceInsightPack(lastRawText, input.evidencePack, {
       ...options,
       attempt,
-      serverMeta: {
-        ...serverMeta,
-        engine: 'gemini',  // Override engine
-      },
+      serverMeta,
     });
 
     if (lastResult.ok) {
@@ -359,32 +358,29 @@ export async function executeGeminiPass1(
     }
 
     // Enforcement failed
-    if (attempt <= maxRetries) {
-      emitRetry(
-        attempt,
-        maxRetries,
-        lastResult.error,
-        lastResult.validationErrors.length
-      );
+    if (!lastResult.ok && attempt <= maxRetries) {
+      const fail = lastResult;
+      emitRetry(attempt, maxRetries, fail.error, fail.validationErrors.length);
       logger.warn('🔮 Pass-1B Gemini: Enforcement failed, retrying', {
         attempt,
-        errorCount: lastResult.validationErrors.length,
-        errors: lastResult.validationErrors.slice(0, 3),
+        errorCount: fail.validationErrors.length,
+        errors: fail.validationErrors.slice(0, 3),
       });
       continue;
     }
   }
 
   // Max retries exceeded, mark engine as missing
-  emitMissing(attempt, lastResult?.error || 'Unknown error', true);
+  const finalError = lastResult && !lastResult.ok ? lastResult.error : 'Max retries exceeded';
+  emitMissing(attempt, finalError, true);
   logger.error('🔮 Pass-1B Gemini: Max retries exceeded, marking engine as missing', {
     attemptsUsed: attempt,
-    lastError: lastResult?.error,
+    lastError: finalError,
   });
 
   return {
     ok: false,
-    error: lastResult?.error || 'Max retries exceeded',
+    error: finalError,
     attemptsUsed: attempt,
     latencyMs: Date.now() - startTime,
     lastRawExcerpt: lastRawText.slice(0, 500),
@@ -408,7 +404,7 @@ export function createMissingGeminiInsightPack(
     meta: {
       version: INSIGHT_PACK_VERSION,
       engine: 'gemini',
-      intent: input.intent,
+      intent: input.intent as IntentType,
       language: input.language,
       asset_focus: input.assetFocus,
       chain: input.chain,

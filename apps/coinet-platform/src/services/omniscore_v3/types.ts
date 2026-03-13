@@ -355,7 +355,7 @@ export interface AuditMetadata {
   engineVersion: string;
   formulaVersion: string;
   methodologyId: string;
-  methodologyHash: string;     // SHA256 hash of methodology spec
+  methodologyHash?: string;     // SHA256 hash of methodology spec (optional for legacy)
   buildSha?: string;           // Git commit SHA of the build
   timestamp: string;           // ISO8601
   requestId?: string;
@@ -368,9 +368,9 @@ export interface AuditMetadata {
   // Data quality
   totalDataPoints: number;
   validDataPoints: number;
-  staleDataPoints: number;
-  sourceStaleness: Record<string, number>;  // source -> hours since last fetch
-  missingSources: string[];                  // Sources we couldn't reach
+  staleDataPoints?: number;
+  sourceStaleness?: Record<string, number>;  // source -> hours since last fetch
+  missingSources?: string[];                  // Sources we couldn't reach
   
   // Flags
   degraded: boolean;
@@ -602,8 +602,17 @@ export interface OmniScoreResult {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface CalculateOmniScoreParams {
-  /** Token identity (required) */
-  identity: TokenIdentity;
+  /** Token identity (preferred when available) */
+  identity?: TokenIdentity;
+  
+  /** Legacy: project/asset identifier (used when identity not provided) */
+  projectId?: string;
+  
+  /** Legacy: trading symbol */
+  symbol?: string;
+  
+  /** Legacy: full name */
+  name?: string;
   
   /** Sector classification */
   sector?: SectorType;

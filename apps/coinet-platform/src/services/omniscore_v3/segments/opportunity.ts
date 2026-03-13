@@ -92,7 +92,7 @@ export function calculateOpportunityScore(dataPoints: DataPoint[]): OpportunityS
  * Calculate score for a single segment
  */
 function calculateSegmentScore(segment: OSSegment, dataPoints: DataPoint[]): SegmentScore {
-  const validPoints = dataPoints.filter(dp => dp.value !== null);
+  const validPoints = dataPoints.filter(dp => (dp.raw ?? (dp as { value?: number | null }).value) != null);
   const keys = validPoints.map(dp => dp.key);
   const coverage = calculateSegmentCoverage(segment, keys);
   
@@ -116,8 +116,9 @@ function calculateSegmentScore(segment: OSSegment, dataPoints: DataPoint[]): Seg
     const reliability = getSourceReliability(dp.source);
     const weight = reliability;
     
-    // Normalize value to 0-100 scale
-    const normalizedValue = normalizeDataPoint(dp);
+    // Normalize value to 0-100 scale (support both raw and legacy value)
+    const rawVal = dp.raw ?? (dp as { value?: number | null }).value;
+    const normalizedValue = normalizeDataPoint(dp, rawVal!);
     
     totalWeightedValue += normalizedValue * weight;
     totalWeight += weight;
@@ -143,72 +144,70 @@ function calculateSegmentScore(segment: OSSegment, dataPoints: DataPoint[]): Seg
 /**
  * Normalize a data point value to 0-100 scale
  */
-function normalizeDataPoint(dp: DataPoint): number {
-  if (dp.value === null) return 50;
-  
+function normalizeDataPoint(dp: DataPoint, value: number): number {
   switch (dp.key) {
     // Market metrics
     case 'price_usd':
       return 50; // Price itself isn't a score, used for other calculations
     case 'volume_24h':
-      return normalizeLog(dp.value, 100000, 10000000000); // $100k-$10B
+      return normalizeLog(value, 100000, 10000000000); // $100k-$10B
     case 'market_cap':
-      return normalizeLog(dp.value, 1000000, 1000000000000); // $1M-$1T
+      return normalizeLog(value, 1000000, 1000000000000); // $1M-$1T
     case 'liquidity_depth':
-      return normalizeLog(dp.value, 10000, 100000000); // $10k-$100M
+      return normalizeLog(value, 10000, 100000000); // $10k-$100M
     case 'bid_ask_spread':
-      return Math.max(0, 100 - dp.value * 1000); // Lower spread = better
+      return Math.max(0, 100 - value * 1000); // Lower spread = better
     case 'exchange_count_tier1':
-      return Math.min(100, dp.value * 15); // 0-7 tier-1 exchanges
+      return Math.min(100, value * 15); // 0-7 tier-1 exchanges
       
     // Token metrics
     case 'circulating_supply_ratio':
-      return dp.value * 100; // 0-1 ratio
+      return value * 100; // 0-1 ratio
     case 'holder_concentration':
-      return Math.max(0, 100 - dp.value * 100); // Lower concentration = better
+      return Math.max(0, 100 - value * 100); // Lower concentration = better
     case 'unlock_pressure_12m':
-      return Math.max(0, 100 - dp.value * 2); // Lower unlock = better
+      return Math.max(0, 100 - value * 2); // Lower unlock = better
     case 'inflation_rate':
-      return Math.max(0, 100 - dp.value * 5); // Lower inflation = better
+      return Math.max(0, 100 - value * 5); // Lower inflation = better
     case 'utility_count':
-      return Math.min(100, dp.value * 20); // 0-5 utilities
+      return Math.min(100, value * 20); // 0-5 utilities
       
     // Valuation metrics
     case 'price_vs_ath':
       // -80% from ATH gets 80 points (buy opportunity)
-      return Math.min(100, Math.max(0, 100 - dp.value));
+      return Math.min(100, Math.max(0, 100 - value));
     case 'mcap_rank':
-      return normalizeLog(1000 - Math.min(dp.value, 1000), 1, 1000);
+      return normalizeLog(1000 - Math.min(value, 1000), 1, 1000);
     case 'mcap_tvl_ratio':
       // Lower ratio = better value
-      return Math.max(0, 100 - dp.value * 10);
+      return Math.max(0, 100 - value * 10);
       
     // Adoption metrics
     case 'active_addresses_30d':
-      return normalizeLog(dp.value, 100, 10000000); // 100-10M addresses
+      return normalizeLog(value, 100, 10000000); // 100-10M addresses
     case 'transaction_count_30d':
-      return normalizeLog(dp.value, 1000, 100000000); // 1k-100M txns
+      return normalizeLog(value, 1000, 100000000); // 1k-100M txns
     case 'tvl_usd':
-      return normalizeLog(dp.value, 1000000, 10000000000); // $1M-$10B
+      return normalizeLog(value, 1000000, 10000000000); // $1M-$10B
     case 'revenue_30d':
-      return normalizeLog(dp.value, 1000, 100000000); // $1k-$100M
+      return normalizeLog(value, 1000, 100000000); // $1k-$100M
     case 'user_retention_30d':
-      return dp.value * 100; // 0-1 ratio
+      return value * 100; // 0-1 ratio
       
     // Community metrics
     case 'twitter_followers':
-      return normalizeLog(dp.value, 1000, 5000000); // 1k-5M followers
+      return normalizeLog(value, 1000, 5000000); // 1k-5M followers
     case 'twitter_engagement_rate':
-      return Math.min(100, dp.value * 2000); // 0-5% engagement
+      return Math.min(100, value * 2000); // 0-5% engagement
     case 'discord_members':
-      return normalizeLog(dp.value, 100, 500000); // 100-500k members
+      return normalizeLog(value, 100, 500000); // 100-500k members
     case 'telegram_members':
-      return normalizeLog(dp.value, 100, 500000); // 100-500k members
+      return normalizeLog(value, 100, 500000); // 100-500k members
     case 'github_stars':
-      return normalizeLog(dp.value, 100, 50000); // 100-50k stars
+      return normalizeLog(value, 100, 50000); // 100-50k stars
       
     default:
-      if (dp.value >= 0 && dp.value <= 100) return dp.value;
+      if (value >= 0 && value <= 100) return value;
       return 50;
   }
 }

@@ -174,9 +174,38 @@ class StreamProcessor {
   }
 
   private setupExpress(): void {
+    const spRawOrigins = (process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? '').trim();
+    const spEnvOrigins = spRawOrigins
+      ? spRawOrigins.split(',').map((o: string) => o.trim()).filter(Boolean)
+      : [];
+    const spAllowedOrigins: string[] = [
+      'https://app.coinet.ai',
+      'https://coinet.ai',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      ...spEnvOrigins,
+    ];
+    const spIsProd = process.env.NODE_ENV === 'production';
+
     // Security and middleware
     this.app.use(helmet());
-    this.app.use(cors());
+    this.app.use(
+      cors({
+        origin: (origin, callback) => {
+          if (!origin) return callback(null, true);
+          if (spAllowedOrigins.includes(origin)) return callback(null, true);
+          if (!spIsProd && (origin.includes('vercel.app') || origin.includes('coinet'))) {
+            return callback(null, true);
+          }
+          if (spIsProd) return callback(null, false);
+          return callback(null, true);
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id', 'X-Request-ID'],
+      })
+    );
     this.app.use(compression());
     this.app.use(express.json({ limit: '10mb' }));
 

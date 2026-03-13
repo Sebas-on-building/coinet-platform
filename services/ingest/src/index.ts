@@ -14,9 +14,32 @@ const server = fastify({
 async function setupServer() {
   try {
     // Register plugins
+    // Restrict CORS to explicitly allowed origins derived from CORS_ORIGIN env var.
+    // Never use origin:true — it reflects any origin unconditionally.
+    const rawCorsOrigin = (process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS ?? '').trim();
+    const envOrigins = rawCorsOrigin
+      ? rawCorsOrigin.split(',').map((o: string) => o.trim()).filter(Boolean)
+      : [];
+    const ingestAllowedOrigins: string[] = [
+      'https://app.coinet.ai',
+      'https://coinet.ai',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      ...envOrigins,
+    ];
+    const ingestIsProd = process.env.NODE_ENV === 'production';
     await server.register(require('@fastify/cors'), {
-      origin: true,
       credentials: true,
+      origin: (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
+        if (!origin) return cb(null, true);
+        if (ingestAllowedOrigins.includes(origin)) return cb(null, true);
+        if (!ingestIsProd && (origin.includes('vercel.app') || origin.includes('coinet'))) {
+          return cb(null, true);
+        }
+        if (ingestIsProd) return cb(null, false);
+        return cb(null, true);
+      },
     });
 
     await server.register(require('@fastify/helmet'), {

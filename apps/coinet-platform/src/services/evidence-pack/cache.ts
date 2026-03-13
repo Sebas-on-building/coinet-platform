@@ -499,7 +499,5 @@ export class RedisCacheAdapter implements CacheStore {
 }
 
 // ============================================================================
-// EXPORTS
+// EXPORTS (interfaces already exported inline above)
 // ============================================================================
-
-export type { CacheStore, CachedValue, CacheStats };

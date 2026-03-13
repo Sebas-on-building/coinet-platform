@@ -56,7 +56,8 @@ export async function shouldResearchProject(
     }
     
     // Check if data quality is low
-    if (knowledge.dataQuality && knowledge.dataQuality < 0.3) {
+    const dq = typeof knowledge.dataQuality === 'number' ? knowledge.dataQuality : Number(knowledge.dataQuality);
+    if (dq > 0 && dq < 0.3) {
       return {
         shouldResearch: true,
         reason: 'low_quality',

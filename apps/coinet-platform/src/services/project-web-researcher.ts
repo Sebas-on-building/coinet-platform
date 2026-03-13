@@ -100,6 +100,25 @@ export interface ResearchFindings {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// HELPERS (ProjectKnowledge schema uses strings for researchDepth/dataQuality)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function dataQualityToString(q: number): string {
+  if (q < 0.4) return 'low';
+  if (q < 0.7) return 'medium';
+  return 'high';
+}
+
+function incrementResearchDepth(current: string): string {
+  const depthMap: Record<string, string> = {
+    minimal: 'standard',
+    standard: 'deep',
+    deep: 'deep',
+  };
+  return depthMap[current] ?? (parseInt(current) >= 1 ? String(parseInt(current) + 1) : 'standard');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // WEB SEARCH UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -412,22 +431,15 @@ export async function saveResearchFindings(
         name: findings.name,
         description: findings.description,
         category: findings.category,
-        website: findings.website,
         teamInfo: findings.teamInfo as any,
         partnerships: findings.partnerships as any,
         backers: findings.backers as any,
         audits: findings.audits as any,
         governanceType: findings.governance?.type,
-        governanceUrl: findings.governance?.url,
-        votingPlatform: findings.governance?.platform,
         socialLinks: findings.socialLinks as any,
-        blockchain: findings.technical?.blockchain,
-        isOpenSource: findings.technical?.isOpenSource,
-        codeRepository: findings.technical?.codeRepository,
         contractAddresses: findings.technical?.contractAddresses as any,
-        researchDepth: 1,
-        lastResearchType: researchType,
-        dataQuality: findings.dataQuality,
+        researchDepth: 'minimal',
+        dataQuality: dataQualityToString(findings.dataQuality),
         sourcesUsed: findings.sourcesUsed,
         lastResearchedAt: new Date(),
       },
@@ -435,22 +447,15 @@ export async function saveResearchFindings(
         name: findings.name || undefined,
         description: findings.description || undefined,
         category: findings.category || undefined,
-        website: findings.website || undefined,
         teamInfo: findings.teamInfo ? (findings.teamInfo as any) : undefined,
         partnerships: findings.partnerships ? (findings.partnerships as any) : undefined,
         backers: findings.backers ? (findings.backers as any) : undefined,
         audits: findings.audits ? (findings.audits as any) : undefined,
         governanceType: findings.governance?.type || undefined,
-        governanceUrl: findings.governance?.url || undefined,
-        votingPlatform: findings.governance?.platform || undefined,
         socialLinks: findings.socialLinks ? (findings.socialLinks as any) : undefined,
-        blockchain: findings.technical?.blockchain || undefined,
-        isOpenSource: findings.technical?.isOpenSource ?? undefined,
-        codeRepository: findings.technical?.codeRepository || undefined,
         contractAddresses: findings.technical?.contractAddresses ? (findings.technical.contractAddresses as any) : undefined,
-        researchDepth: existing ? existing.researchDepth + 1 : 1,
-        lastResearchType: researchType,
-        dataQuality: findings.dataQuality,
+        researchDepth: existing ? incrementResearchDepth(existing.researchDepth) : 'minimal',
+        dataQuality: dataQualityToString(findings.dataQuality),
         sourcesUsed: findings.sourcesUsed,
         lastResearchedAt: new Date(),
       },
@@ -461,7 +466,6 @@ export async function saveResearchFindings(
       data: {
         projectId,
         researchType,
-        query: null, // Could add specific queries used
         findings: findings as any,
         sourcesUsed: findings.sourcesUsed,
         confidence: findings.confidence,
@@ -474,7 +478,7 @@ export async function saveResearchFindings(
     });
     
     logger.info(`[WebResearcher] Saved research findings for ${projectId}`, {
-      researchDepth: existing ? existing.researchDepth + 1 : 1,
+      researchDepth: existing ? incrementResearchDepth(existing.researchDepth) : 'minimal',
       fieldsUpdated,
       dataAdded,
       dataRefined,

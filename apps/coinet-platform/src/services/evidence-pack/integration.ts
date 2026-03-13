@@ -30,6 +30,7 @@ import {
   ResolvedToken,
   TokenClarifier,
   RESOLUTION_THRESHOLDS,
+  type EvidencePackBuildFailure,
 } from './types';
 import { generateCoverageSummary, getConfidenceCapFromQuality, requiresUncertaintyDisclosure } from './coverage';
 import { trackPackBuild, logPackSummary } from './observability';
@@ -200,11 +201,12 @@ export async function prepareForPass1(input: PipelineInput): Promise<Pass1Prepar
     const buildTimeMs = Date.now() - startTime;
 
     if (!buildResult.ok) {
-      logger.warn('Evidence Pack build failed', { error: buildResult.error });
+      const failure = buildResult as EvidencePackBuildFailure;
+      logger.warn('Evidence Pack build failed', { error: failure.error });
       return {
         ready: false,
-        error: buildResult.error,
-        fallbackReason: `Build failed: ${buildResult.error}`,
+        error: failure.error,
+        fallbackReason: `Build failed: ${failure.error}`,
       };
     }
 

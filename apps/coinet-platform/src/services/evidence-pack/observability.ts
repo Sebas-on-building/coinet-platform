@@ -316,34 +316,36 @@ export function resetStats(): void {
  */
 export function logPackSummary(
   pack: {
-    kind: string;
-    coverage: {
-      available: string[];
-      missing: string[];
-      stale: string[];
-      errors: string[];
-      quality_score: number;
+    kind?: string;
+    coverage?: {
+      available?: string[];
+      missing?: string[];
+      stale?: string[];
+      errors?: string[];
+      quality_score?: number;
     };
-    token_resolution: {
-      resolved: any[];
-      clarifier: any;
+    token_resolution?: {
+      resolved?: any[];
+      clarifier?: any;
     };
   },
   latencyMs: number
 ): void {
-  const tokenInfo = pack.token_resolution.resolved[0];
+  const cov = pack.coverage ?? {};
+  const res = pack.token_resolution ?? {};
+  const tokenInfo = res.resolved?.[0];
   
   logger.info('📦 Evidence Pack Summary', {
-    kind: pack.kind,
+    kind: pack.kind ?? 'unknown',
     token: tokenInfo ? `${tokenInfo.symbol} (${tokenInfo.chain})` : 'none',
     tokenConfidence: tokenInfo?.confidence,
-    available: pack.coverage.available.join(', ') || 'none',
-    missing: pack.coverage.missing.join(', ') || 'none',
-    stale: pack.coverage.stale.join(', ') || 'none',
-    errors: pack.coverage.errors.join(', ') || 'none',
-    quality: `${Math.round(pack.coverage.quality_score * 100)}%`,
+    available: (cov.available ?? []).join(', ') || 'none',
+    missing: (cov.missing ?? []).join(', ') || 'none',
+    stale: (cov.stale ?? []).join(', ') || 'none',
+    errors: (cov.errors ?? []).join(', ') || 'none',
+    quality: `${Math.round((cov.quality_score ?? 0) * 100)}%`,
     latency: `${latencyMs}ms`,
-    hasClarifier: !!pack.token_resolution.clarifier,
+    hasClarifier: !!res.clarifier,
   });
 }
 

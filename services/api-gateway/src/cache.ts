@@ -660,8 +660,8 @@ export class EliteCacheManager {
     // Simple pattern-based prediction
     if (req.path.includes('/users/') && req.method === 'GET') {
       // Predict profile and portfolio requests
-      predictions.push(this.generateCacheKey({ ...req, path: '/api/v1/portfolio' }));
-      predictions.push(this.generateCacheKey({ ...req, path: '/api/v1/users/profile' }));
+      predictions.push(this.generateCacheKey({ ...req, path: '/api/v1/portfolio' } as Request));
+      predictions.push(this.generateCacheKey({ ...req, path: '/api/v1/users/profile' } as Request));
     }
 
     if (req.path.includes('/signals/') && req.method === 'POST') {
@@ -670,7 +670,7 @@ export class EliteCacheManager {
         ...req,
         path: '/api/v1/alerts/evaluate',
         method: 'POST'
-      }));
+      } as Request));
     }
 
     return predictions.slice(0, this.config.prefetching.maxPrefetchSize);
@@ -737,6 +737,17 @@ export class EliteCacheManager {
       } catch (error) {
       this.logger.error('Cache delete failed', error);
     }
+  }
+
+  /**
+   * Invalidate cache by pattern. Use '*' to clear all, or a key to delete that entry.
+   */
+  async invalidate(pattern: string): Promise<void> {
+    if (!pattern || pattern === '*') {
+      await this.clear();
+      return;
+    }
+    await this.delete(pattern);
   }
 
   /**

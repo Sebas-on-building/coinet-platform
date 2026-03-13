@@ -131,6 +131,29 @@ export class AdvancedRateLimiter {
   }
 
   /**
+   * Check rate limit for a key with custom limit/window. Returns allowed and resetTime.
+   */
+  async checkRateLimit(
+    key: string,
+    opts: { limit: number; windowMs: number }
+  ): Promise<{ allowed: boolean; resetTime: number }> {
+    const rule: RateLimitRule = {
+      windowMs: opts.windowMs,
+      maxRequests: opts.limit,
+    };
+    const entry = await this.getCurrentStatus(key, rule);
+    const newEntry: RateLimitEntry = {
+      ...entry,
+      count: entry.count + 1,
+    };
+    const allowed = newEntry.count <= rule.maxRequests;
+    if (allowed) {
+      await this.updateStatus(key, newEntry, rule);
+    }
+    return { allowed, resetTime: newEntry.resetTime };
+  }
+
+  /**
    * Get current rate limit status
    */
   async getCurrentStatus(key: string, rule: RateLimitRule): Promise<RateLimitEntry> {
