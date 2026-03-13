@@ -1,6 +1,7 @@
 /**
  * Hook to sync auth with API client
  * Works with both Clerk (when configured) and demo mode (when Clerk key is missing)
+ * Sends Authorization: Bearer <token> when Clerk token is available
  */
 
 import { useEffect } from 'react';
@@ -8,16 +9,28 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { apiClient } from '@/services/api-client';
 
 export function useAuthenticatedApi() {
-  const { user } = useAuth();
+  const { user, getToken } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      // Demo mode or Clerk - set user ID for API requests (X-User-Id header)
-      apiClient.setAuth(user.id, null);
-    } else {
-      apiClient.setAuth(null, null);
+    let mounted = true;
+
+    async function syncAuth() {
+      if (!user) {
+        apiClient.setAuth(null, null);
+        return;
+      }
+      // Demo mode: X-User-Id only. Clerk: Bearer token + X-User-Id
+      const token = await getToken();
+      if (mounted) {
+        apiClient.setAuth(user.id, token);
+      }
     }
-  }, [user]);
+
+    syncAuth();
+    return () => {
+      mounted = false;
+    };
+  }, [user, getToken]);
 
   return apiClient;
 }
