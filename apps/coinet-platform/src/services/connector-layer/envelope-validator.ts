@@ -14,7 +14,7 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import type { ConnectorEnvelope, EntityType, TrustClass, FallbackStatus, FreshnessBucket } from './types';
+import type { ConnectorEnvelope, EntityType, TrustClass, FallbackStatus, FreshnessBucket, RoutingMode } from './types';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONTROLLED VOCABULARIES
@@ -34,6 +34,10 @@ const VALID_FALLBACK_STATUSES: ReadonlySet<FallbackStatus> = new Set([
 
 const VALID_FRESHNESS_BUCKETS: ReadonlySet<FreshnessBucket> = new Set([
   'live', 'fresh', 'acceptable', 'stale', 'expired',
+]);
+
+const VALID_ROUTING_MODES: ReadonlySet<RoutingMode> = new Set([
+  'realtime', 'scheduled', 'on_demand', 'backfill',
 ]);
 
 const FORBIDDEN_SOURCE_LABELS: ReadonlySet<string> = new Set([
@@ -106,6 +110,14 @@ export function validateEnvelope(envelope: ConnectorEnvelope): EnvelopeValidatio
       invariant: 'INV-1',
       field: 'canonical_confidence',
       message: 'Mandatory field canonical_confidence is missing or not a number',
+      severity: 'error',
+    });
+  }
+  if (!envelope.routing_mode || !VALID_ROUTING_MODES.has(envelope.routing_mode)) {
+    violations.push({
+      invariant: 'INV-1',
+      field: 'routing_mode',
+      message: `Mandatory field routing_mode is missing or invalid: '${envelope.routing_mode}'. Must be one of: realtime, scheduled, on_demand, backfill`,
       severity: 'error',
     });
   }
@@ -389,6 +401,8 @@ function allFieldsPresent(envelope: ConnectorEnvelope): boolean {
     'raw_payload' in envelope &&
     'normalized_payload_fragment' in envelope &&
     !!envelope.trace_id &&
-    !!envelope.fallback_status
+    !!envelope.fallback_status &&
+    !!envelope.routing_mode &&
+    VALID_ROUTING_MODES.has(envelope.routing_mode)
   );
 }

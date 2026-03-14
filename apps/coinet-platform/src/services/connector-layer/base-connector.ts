@@ -28,10 +28,12 @@ import type {
   TrustClass,
   FallbackStatus,
   Freshness,
+  RoutingMode,
 } from './types';
 import { generateTraceId } from './trace';
 import { computeFreshness, computeFreshnessNoSourceTime } from './freshness';
 import { validateEnvelope } from './envelope-validator';
+import { getRoutingModeFromCategory } from './routing-modes';
 import { recordSuccess, recordFailure } from '../source-systems/health-monitor';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -249,6 +251,12 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
       lifecycleTrace.steps.fallback = { status: fallbackStatus };
       lifecycleTrace.completed_at = Date.now();
 
+      // ── Resolve routing mode (4.2) ────────────────────────────────────
+      const routingMode: RoutingMode =
+        params.routing_mode ??
+        this.config.routing_mode ??
+        getRoutingModeFromCategory(this.config.category);
+
       // ── Assemble envelope ────────────────────────────────────────────
       const canonicalConfidence = this.assessCanonicalConfidence(params);
 
@@ -266,6 +274,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
         normalized_payload_fragment: normalized,
         trace_id: traceId,
         fallback_status: fallbackStatus,
+        routing_mode: routingMode,
       };
 
       // ── Invariant enforcement — reject invalid envelopes ──────────
@@ -296,6 +305,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
         source_class: this.config.source_class,
         truth_class: this.config.truth_class,
         category: this.config.category,
+        routing_mode: routingMode,
       };
 
     } catch (err: unknown) {
@@ -332,6 +342,8 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
     startTime: number,
     traceId: string,
   ): ConnectorResult<TNormalized> {
+    const routingMode: RoutingMode =
+      this.config.routing_mode ?? getRoutingModeFromCategory(this.config.category);
     return {
       ok: false,
       error,
@@ -342,6 +354,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
       source_class: this.config.source_class,
       truth_class: this.config.truth_class,
       category: this.config.category,
+      routing_mode: routingMode,
     };
   }
 }

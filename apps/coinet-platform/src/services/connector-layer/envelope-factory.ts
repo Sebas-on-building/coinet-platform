@@ -16,6 +16,7 @@ import type {
   EntityType,
   TrustClass,
   FallbackStatus,
+  RoutingMode,
 } from './types';
 import type { SourceClass, TruthClass } from '../source-systems/registry';
 import { generateTraceId } from './trace';
@@ -32,6 +33,8 @@ interface ModuleDoctrine {
   truth_class: TruthClass;
   entity_type: EntityType;
   source_label: string;
+  /** Default routing mode when this module is used in Evidence Pack (4.2) */
+  routing_mode: RoutingMode;
 }
 
 const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
@@ -41,6 +44,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'dex_emergence',
     entity_type: 'pair',
     source_label: 'DexScreener',
+    routing_mode: 'scheduled',
   },
   derivatives: {
     provider: 'coinglass',
@@ -48,6 +52,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'derivatives_pressure',
     entity_type: 'asset',
     source_label: 'CoinGlass',
+    routing_mode: 'scheduled',
   },
   security: {
     provider: 'goplus',
@@ -55,6 +60,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'structural_safety',
     entity_type: 'asset',
     source_label: 'GoPlus',
+    routing_mode: 'scheduled',
   },
   holders: {
     provider: 'goplus',
@@ -62,6 +68,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'structural_safety',
     entity_type: 'asset',
     source_label: 'GoPlus',
+    routing_mode: 'scheduled',
   },
   sentiment: {
     provider: 'lunarcrush',
@@ -69,6 +76,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'narrative_attention',
     entity_type: 'market_event',
     source_label: 'LunarCrush',
+    routing_mode: 'scheduled',
   },
   news: {
     provider: 'cryptopanic',
@@ -76,6 +84,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'narrative_attention',
     entity_type: 'narrative',
     source_label: 'CryptoPanic',
+    routing_mode: 'scheduled',
   },
   onchain: {
     provider: 'alchemy',
@@ -83,6 +92,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'onchain_behavior',
     entity_type: 'asset',
     source_label: 'Alchemy',
+    routing_mode: 'scheduled',
   },
   market_snapshot: {
     provider: 'coingecko',
@@ -90,6 +100,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     truth_class: 'market_surface',
     entity_type: 'market_event',
     source_label: 'CoinGecko',
+    routing_mode: 'scheduled',
   },
 };
 
@@ -115,6 +126,8 @@ export interface EnvelopeFactoryInput {
   address?: string | null;
   /** Chain identifier */
   chain?: string;
+  /** Override routing mode (default: from module doctrine) */
+  routing_mode?: RoutingMode;
 }
 
 /**
@@ -156,6 +169,7 @@ export function createEnvelope(input: EnvelopeFactoryInput): ConnectorEnvelope {
 
   const canonicalId = buildCanonicalId(doctrine.entity_type, input);
   const canonicalConfidence = assessCanonicalConfidence(input);
+  const routingMode: RoutingMode = input.routing_mode ?? doctrine.routing_mode;
 
   const envelope: ConnectorEnvelope = {
     source: doctrine.provider,
@@ -171,6 +185,7 @@ export function createEnvelope(input: EnvelopeFactoryInput): ConnectorEnvelope {
     normalized_payload_fragment: input.data,
     trace_id: generateTraceId(),
     fallback_status: fallbackStatus,
+    routing_mode: routingMode,
   };
 
   // Invariant enforcement — log violations but don't throw (factory is best-effort)
@@ -192,7 +207,7 @@ export function createEnvelope(input: EnvelopeFactoryInput): ConnectorEnvelope {
 export function createEnvelopesFromEvidence(
   evidence: Record<string, any>,
   moduleEvents: Array<{ module: string; status: string; latency_ms: number }>,
-  context: { symbol?: string; address?: string | null; chain?: string },
+  context: { symbol?: string; address?: string | null; chain?: string; routing_mode?: RoutingMode },
 ): Map<string, ConnectorEnvelope> {
   const envelopes = new Map<string, ConnectorEnvelope>();
 
@@ -211,6 +226,7 @@ export function createEnvelopesFromEvidence(
         symbol: context.symbol,
         address: context.address,
         chain: context.chain,
+        routing_mode: context.routing_mode,
       });
       envelopes.set(event.module, envelope);
     } catch {

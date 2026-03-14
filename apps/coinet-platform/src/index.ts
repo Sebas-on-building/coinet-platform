@@ -360,6 +360,8 @@ app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response)
       getRegistryDiagnostics,
       getAllModuleDoctrines,
       getRegisteredModules,
+      ROUTING_MODE_CONTRACTS,
+      MODE_DEGRADATION_POLICIES,
     } = require('./services/connector-layer');
 
     res.json({
@@ -367,6 +369,8 @@ app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response)
       modules: getRegisteredModules(),
       registry: getRegistryDiagnostics(),
       doctrines: getAllModuleDoctrines(),
+      routing_modes: ROUTING_MODE_CONTRACTS,
+      mode_degradation_policies: MODE_DEGRADATION_POLICIES,
       guarantees: [
         'Provider isolation',
         'Envelope standardization',

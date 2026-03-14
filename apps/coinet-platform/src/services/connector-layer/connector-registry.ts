@@ -19,9 +19,11 @@ import type {
   ConnectorResult,
   ConnectorAcquireParams,
   ConnectorCategory,
+  RoutingMode,
 } from './types';
 import type { SourceClass } from '../source-systems/registry';
 import { getFallbackChain } from '../source-systems/registry';
+import { getRoutingModeFromCategory } from './routing-modes';
 import { BaseConnector } from './base-connector';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -125,14 +127,19 @@ export function getRegistryDiagnostics(): Record<string, Array<{
 }>> {
   const result: Record<string, any[]> = {};
   for (const [module, entries] of registry) {
-    result[module] = entries.map(e => ({
-      connector_id: e.connector.config.id,
-      provider: e.connector.config.provider,
-      source_class: e.connector.config.source_class,
-      category: e.connector.config.category,
-      priority: e.priority,
-      enabled: e.connector.config.enabled,
-    }));
+    result[module] = entries.map(e => {
+      const routingMode: RoutingMode =
+        e.connector.config.routing_mode ?? getRoutingModeFromCategory(e.connector.config.category);
+      return {
+        connector_id: e.connector.config.id,
+        provider: e.connector.config.provider,
+        source_class: e.connector.config.source_class,
+        category: e.connector.config.category,
+        routing_mode: routingMode,
+        priority: e.priority,
+        enabled: e.connector.config.enabled,
+      };
+    });
   }
   return result;
 }
@@ -167,6 +174,7 @@ export async function executeWithFallback<T = unknown>(
         source_class: 'market_data' as SourceClass,
         truth_class: 'market_surface' as any,
         category: 'polling',
+        routing_mode: 'scheduled' as RoutingMode,
       },
       summary: {
         module: moduleName,
@@ -213,6 +221,8 @@ export async function executeWithFallback<T = unknown>(
 
   // All connectors failed
   const lastAttempt = attempts[attempts.length - 1];
+  const routingMode: RoutingMode =
+    chain[0].config.routing_mode ?? getRoutingModeFromCategory(chain[0].config.category);
   return {
     result: {
       ok: false,
@@ -224,6 +234,7 @@ export async function executeWithFallback<T = unknown>(
       source_class: chain[0].config.source_class,
       truth_class: chain[0].config.truth_class,
       category: chain[0].config.category,
+      routing_mode: routingMode,
     },
     summary: {
       module: moduleName,

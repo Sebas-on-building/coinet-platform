@@ -30,7 +30,24 @@ export type {
   ConnectorCategory,
   FreshnessBucket,
   Freshness,
+  RoutingMode,
+  RoutingModeContract,
 } from './types';
+
+// ── Routing Modes (4.2) ───────────────────────────────────────────────────────
+export {
+  getRoutingModeFromCategory,
+  getRoutingModeContract,
+  getModeDegradationPolicy,
+  isFreshnessAcceptableForMode,
+  isLatencyDegradedForMode,
+  compareModePriority,
+  getModesByPriority,
+  CATEGORY_TO_MODE,
+  ROUTING_MODE_CONTRACTS,
+  MODE_DEGRADATION_POLICIES,
+} from './routing-modes';
+export type { ModeDegradationPolicy, DegradationAction } from './routing-modes';
 
 // ── Trace ────────────────────────────────────────────────────────────────────
 export { generateTraceId, traceIdTimestamp } from './trace';

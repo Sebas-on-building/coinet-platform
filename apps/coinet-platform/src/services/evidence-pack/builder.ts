@@ -889,6 +889,7 @@ export async function buildEvidencePack(
           symbol: primaryToken?.symbol,
           address: primaryToken?.address,
           chain: primaryToken?.chain,
+          routing_mode: 'on_demand',
         },
       );
     } catch { /* Layer 2 envelope creation is best-effort */ }

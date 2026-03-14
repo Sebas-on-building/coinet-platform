@@ -46,7 +46,7 @@ export type FallbackStatus =
   | 'backfill';  // From historical/replay process
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CONNECTOR CATEGORY — Transport mode classification
+// CONNECTOR CATEGORY — Transport mode classification (legacy, maps to RoutingMode)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type ConnectorCategory =
@@ -54,6 +54,33 @@ export type ConnectorCategory =
   | 'stream'     // WebSocket or event-based flows
   | 'triggered'  // User-requested or AI-requested retrievals
   | 'backfill';  // Historical rebuilds, calibration, replay
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ROUTING MODE — Formal execution class (4.2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type RoutingMode =
+  | 'realtime'   // Perishable event truth — capture first, enrich safely
+  | 'scheduled'  // Periodic state maintenance — regularity, cost efficiency
+  | 'on_demand'  // Contextual depth tied to explicit user/system need
+  | 'backfill';  // Historical reconstruction, calibration, replay
+
+/** Operational contract for a routing mode — latency, freshness, retry, fallback, degradation */
+export interface RoutingModeContract {
+  mode: RoutingMode;
+  /** Max acceptable latency (ms) before degraded */
+  latency_expectation_ms: number;
+  /** Strictest freshness bucket acceptable for this mode */
+  freshness_acceptable_buckets: readonly string[];
+  /** Max retries before fallback */
+  retry_budget: number;
+  /** Max fallback depth (primary → fallback chain) */
+  fallback_depth: number;
+  /** Whether cached data is permissible */
+  cache_permissible: boolean;
+  /** Downstream priority (higher = more urgent) */
+  downstream_priority: number;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FRESHNESS — Computed at ingress, never guessed downstream
@@ -125,6 +152,12 @@ export interface ConnectorEnvelope<T = unknown> {
 
   /** How the data was obtained */
   fallback_status: FallbackStatus;
+
+  /**
+   * Routing mode — formal execution class (4.2).
+   * Downstream must always know whether observation is live, periodic, user-triggered, or historical.
+   */
+  routing_mode: RoutingMode;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -142,6 +175,7 @@ export interface ConnectorResult<T = unknown> {
   source_class: SourceClass;
   truth_class: TruthClass;
   category: ConnectorCategory;
+  routing_mode: RoutingMode;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -159,6 +193,8 @@ export interface ConnectorConfig {
   truth_class: TruthClass;
   /** Transport mode */
   category: ConnectorCategory;
+  /** Routing mode — formal execution class (4.2). Defaults from category if omitted. */
+  routing_mode?: RoutingMode;
   /** Default entity type for this connector */
   default_entity_type: EntityType;
   /** Default timeout in ms */
@@ -188,6 +224,8 @@ export interface ConnectorAcquireParams {
   is_fallback?: boolean;
   /** Mark this as a backfill execution */
   is_backfill?: boolean;
+  /** Override routing mode (default: derived from connector category) */
+  routing_mode?: RoutingMode;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
