@@ -878,6 +878,21 @@ export async function buildEvidencePack(
       (e): e is import('./types').ModuleResultEvent => e.type === 'EVIDENCE_MODULE_RESULT'
     );
 
+    // Layer 2: Create ConnectorEnvelopes for every fetched module
+    let envelopes: Map<string, import('../connector-layer/types').ConnectorEnvelope> | undefined;
+    try {
+      const { createEnvelopesFromEvidence } = require('../connector-layer/envelope-factory');
+      envelopes = createEnvelopesFromEvidence(
+        evidence,
+        moduleEvents.map(e => ({ module: e.module, status: e.status, latency_ms: e.latency_ms })),
+        {
+          symbol: primaryToken?.symbol,
+          address: primaryToken?.address,
+          chain: primaryToken?.chain,
+        },
+      );
+    } catch { /* Layer 2 envelope creation is best-effort */ }
+
     return {
       ok: true,
       pack,
@@ -885,6 +900,7 @@ export async function buildEvidencePack(
       modulesAttempted,
       modulesFailed,
       moduleEvents,
+      envelopes,
     };
 
   } catch (error: any) {

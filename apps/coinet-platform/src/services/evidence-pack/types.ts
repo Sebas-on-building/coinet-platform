@@ -503,6 +503,8 @@ export interface EvidencePackBuildResult {
   modulesFailed: string[];
   /** Module-level event traces for source-governance diagnostics */
   moduleEvents?: ModuleResultEvent[];
+  /** ConnectorEnvelopes for each module (Layer 2 governed ingress) */
+  envelopes?: Map<string, import('../connector-layer/types').ConnectorEnvelope>;
 }
 
 export interface EvidencePackBuildFailure {

@@ -50,6 +50,12 @@ try {
   process.exit(1);
 }
 
+// Initialize Layer 2 — Connector & Routing Layer
+try {
+  const { initializeConnectors } = require('./services/connector-layer');
+  initializeConnectors();
+} catch { /* Connector layer initialization is best-effort at startup */ }
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -342,6 +348,36 @@ app.get('/api/source-systems/truth-diagnostics', async (req: Request, res: Respo
       error: 'Truth diagnostics failed',
       message: error.message,
     });
+  }
+});
+
+// =============================================================================
+// CONNECTOR LAYER DIAGNOSTICS — Layer 2 ingress governance observability
+// =============================================================================
+app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response) => {
+  try {
+    const {
+      getRegistryDiagnostics,
+      getAllModuleDoctrines,
+      getRegisteredModules,
+    } = require('./services/connector-layer');
+
+    res.json({
+      layer: 'Layer 2 — Connector & Routing',
+      modules: getRegisteredModules(),
+      registry: getRegistryDiagnostics(),
+      doctrines: getAllModuleDoctrines(),
+      guarantees: [
+        'Provider isolation',
+        'Envelope standardization',
+        'Freshness awareness',
+        'Routing discipline',
+        'Controlled degradation',
+      ],
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Connector layer diagnostics failed', message: error.message });
   }
 });
 
@@ -3800,6 +3836,7 @@ app.get('/', (_req: Request, res: Response) => {
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       sourceSystemsHealth: '/api/source-systems/health',
       truthDiagnostics: '/api/source-systems/truth-diagnostics?symbol=BTC',
+      connectorDiagnostics: '/api/connector-layer/diagnostics',
       keys: '/api/keys',
       testNeuroeconomic: '/api/test/neuroeconomic',
       testBehavioralFinance: '/api/test/behavioral-finance',
