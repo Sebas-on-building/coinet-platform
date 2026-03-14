@@ -15,8 +15,7 @@ import {
   type MarketState,
   MARKET_STATE_GROUPS,
 } from './taxonomies';
-import type { JudgmentState } from './types';
-import type { SignalSnapshot } from './signal-snapshot';
+import type { JudgmentState, SignalSnapshot } from './types';
 
 interface StateCandidate {
   state: MarketState;

@@ -159,6 +159,8 @@ export const HYPOTHESIS_CLASSES = {
   SECTOR_SPILLOVER_REPRICING: 'sector_spillover_repricing',
   CROWDED_CONTINUATION: 'crowded_continuation',
   GENUINE_BREAKOUT: 'genuine_breakout',
+  CAPITULATION_RESET: 'capitulation_reset',
+  FORCED_LIQUIDATION_CASCADE: 'forced_liquidation_cascade',
 } as const;
 
 export type HypothesisClass = (typeof HYPOTHESIS_CLASSES)[keyof typeof HYPOTHESIS_CLASSES];
@@ -174,6 +176,8 @@ export const HypothesisClassSchema = z.enum([
   HYPOTHESIS_CLASSES.SECTOR_SPILLOVER_REPRICING,
   HYPOTHESIS_CLASSES.CROWDED_CONTINUATION,
   HYPOTHESIS_CLASSES.GENUINE_BREAKOUT,
+  HYPOTHESIS_CLASSES.CAPITULATION_RESET,
+  HYPOTHESIS_CLASSES.FORCED_LIQUIDATION_CASCADE,
 ]);
 
 export const HYPOTHESIS_LABELS: Record<HypothesisClass, string> = {
@@ -187,6 +191,8 @@ export const HYPOTHESIS_LABELS: Record<HypothesisClass, string> = {
   sector_spillover_repricing: 'Sector Spillover Repricing',
   crowded_continuation: 'Crowded Continuation',
   genuine_breakout: 'Genuine Breakout',
+  capitulation_reset: 'Capitulation Reset',
+  forced_liquidation_cascade: 'Forced Liquidation Cascade',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════

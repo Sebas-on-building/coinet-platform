@@ -12,20 +12,20 @@ Before deploying, ensure these variables are configured:
 | Variable | Required | Validation | Example |
 |----------|----------|------------|---------|
 | `DATABASE_URL` | ✅ Always | Valid URL format | `postgresql://user:pass@host:5432/db` |
-| `JWT_SECRET` | ✅ Always | ≥ 32 chars | `openssl rand -base64 32` |
+| `JWT_SECRET` | Optional (Clerk-only) | If set: ≥ 32 chars | `openssl rand -base64 32` |
 | `NODE_ENV` | ✅ | Must be `production` | `production` |
 | `CORS_ORIGIN` | ✅ Production | Non-empty, comma-separated origins | `https://app.coinet.ai,https://coinet.ai` |
 | `XAI_API_KEY` / `OPENAI_API_KEY` | Recommended | Non-empty | `xai-xxx` / `sk-xxx` |
 | `REDIS_URL` | Recommended in prod | Non-empty | `redis://:pass@host:6379` |
 | `TWITTER_API_KEY` | For COMM | Non-empty | From twitterapi.io |
 
-**Without these:** Startup exits immediately for `DATABASE_URL` and `JWT_SECRET`. Missing `CORS_ORIGIN` in production blocks all unknown origins and logs a warning. Missing AI keys degrade chat to error responses.
+**Without these:** Startup exits immediately for `DATABASE_URL`. Missing `CORS_ORIGIN` in production blocks all unknown origins and logs a warning. Missing AI keys degrade chat to error responses.
 
 ### Startup validation
 
 `validateEnv()` in `src/utils/validateEnv.ts` runs **before** `express()` is initialised:
-- **Fails startup** (`process.exit(1)`) for: `DATABASE_URL` (always), `JWT_SECRET` (always), `CORS_ORIGIN` (production only).
-- **Warns** (continues) for: missing AI keys, missing `REDIS_URL` in production.
+- **Fails startup** (`process.exit(1)`) for: `DATABASE_URL` (always), `CORS_ORIGIN` (production only).
+- **Warns** (continues) for: `JWT_SECRET` set but too short (< 32 chars) — app runs in Clerk-only mode; missing AI keys; missing `REDIS_URL` in production.
 
 This means misconfigured environments are caught at boot rather than failing silently at runtime.
 

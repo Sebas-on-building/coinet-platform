@@ -501,6 +501,8 @@ export interface EvidencePackBuildResult {
   buildTimeMs: number;
   modulesAttempted: string[];
   modulesFailed: string[];
+  /** Module-level event traces for source-governance diagnostics */
+  moduleEvents?: ModuleResultEvent[];
 }
 
 export interface EvidencePackBuildFailure {

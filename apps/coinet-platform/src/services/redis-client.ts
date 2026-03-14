@@ -283,6 +283,14 @@ export function isRedisAvailable(): boolean {
   return isConnected && redisClient !== null;
 }
 
+/**
+ * Get the underlying ioredis client instance.
+ * Returns null if Redis is not initialized or not available.
+ */
+export function getRedisClient(): Redis | null {
+  return isConnected ? redisClient : null;
+}
+
 // ============================================================================
 // CACHE READ FUNCTIONS
 // ============================================================================

@@ -168,6 +168,30 @@ export interface JudgmentDebugView {
     risk: number;
     pos: number | null;
   };
+
+  regime_debug: {
+    macro_posture: string;
+    macro_confidence: number;
+    macro_drivers: string[];
+    btc_trend: string;
+    btc_dominance_trend: string;
+    overall_leverage: string;
+    ecosystem_chain: string;
+    ecosystem_health: string;
+    ecosystem_tvl_trend: string;
+    ecosystem_activity_trend: string;
+    ecosystem_capital_flow: string;
+    volatility_regime: string;
+    volatility_trend: string;
+    transition_risk: string;
+    transition_probability: number;
+    transition_direction: string;
+    transition_signals: string[];
+    confidence_modifier: number;
+    data_coverage: number;
+    config_version: string;
+    summary: string;
+  } | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -342,6 +366,32 @@ export function buildJudgmentDebugView(
       risk: Number(judgment.scores.risk),
       pos: judgment.scores.pos != null ? Number(judgment.scores.pos) : null,
     },
+
+    regime_debug: judgment.regime
+      ? {
+          macro_posture: judgment.regime.macro.posture,
+          macro_confidence: judgment.regime.macro.confidence,
+          macro_drivers: judgment.regime.macro.drivers,
+          btc_trend: judgment.regime.macro.btcTrend,
+          btc_dominance_trend: judgment.regime.macro.btcDominanceTrend,
+          overall_leverage: judgment.regime.macro.overallLeverage,
+          ecosystem_chain: judgment.regime.ecosystem.chain,
+          ecosystem_health: judgment.regime.ecosystem.health,
+          ecosystem_tvl_trend: judgment.regime.ecosystem.tvlTrend,
+          ecosystem_activity_trend: judgment.regime.ecosystem.activityTrend,
+          ecosystem_capital_flow: judgment.regime.ecosystem.capitalFlow,
+          volatility_regime: judgment.regime.volatility.regime,
+          volatility_trend: judgment.regime.volatility.trend,
+          transition_risk: judgment.regime.transition.risk,
+          transition_probability: judgment.regime.transition.probability,
+          transition_direction: judgment.regime.transition.direction,
+          transition_signals: judgment.regime.transition.signals,
+          confidence_modifier: judgment.regime.confidenceModifier,
+          data_coverage: (judgment.regime as any).dataCoverage ?? 0,
+          config_version: (judgment.regime as any).configVersion ?? 'unknown',
+          summary: judgment.regime.summary,
+        }
+      : null,
   };
 }
 
@@ -556,6 +606,18 @@ export function formatJudgmentForAI(judgment: JudgmentOutput): string {
   lines.push(`Overall confidence: ${judgment.confidence.overall} (${(Number(judgment.confidence.score) * 100).toFixed(0)}%)`);
   if (judgment.confidence.primary_uncertainty) {
     lines.push(`Primary uncertainty: ${judgment.confidence.primary_uncertainty}`);
+  }
+
+  if (judgment.regime) {
+    lines.push('');
+    lines.push('Regime context:');
+    lines.push(`  ${judgment.regime.summary}`);
+    if (judgment.regime.transition.risk !== 'low') {
+      lines.push(`  Transition risk: ${judgment.regime.transition.risk} (${(judgment.regime.transition.probability * 100).toFixed(0)}% probability, ${judgment.regime.transition.direction})`);
+    }
+    if (judgment.regime.confidenceModifier < 0.9) {
+      lines.push(`  Confidence adjustment: ${((judgment.regime.confidenceModifier - 1) * 100).toFixed(0)}% from regime context`);
+    }
   }
 
   lines.push('');

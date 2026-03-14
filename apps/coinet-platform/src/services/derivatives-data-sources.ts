@@ -25,6 +25,7 @@
 
 import { logger } from '../utils/logger';
 import axios, { AxiosError } from 'axios';
+import { validateProvider, CoinglassLiquidationsSchema, CoinglassFundingSchema } from './provider-schemas';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -319,6 +320,120 @@ const cache: {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RESILIENCE: CIRCUIT BREAKER + RATE LIMITER + RETRY
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface CircuitBreakerState {
+  failures: number;
+  lastFailure: number;
+  open: boolean;
+  halfOpenAt: number;
+}
+
+const CIRCUIT_CONFIG = {
+  failureThreshold: 5,
+  resetTimeoutMs: 60_000,
+  halfOpenMaxCalls: 1,
+} as const;
+
+const circuitBreakers = new Map<DataSource, CircuitBreakerState>();
+
+function getCircuit(source: DataSource): CircuitBreakerState {
+  if (!circuitBreakers.has(source)) {
+    circuitBreakers.set(source, { failures: 0, lastFailure: 0, open: false, halfOpenAt: 0 });
+  }
+  return circuitBreakers.get(source)!;
+}
+
+function isCircuitOpen(source: DataSource): boolean {
+  const cb = getCircuit(source);
+  if (!cb.open) return false;
+  if (Date.now() >= cb.halfOpenAt) {
+    cb.open = false;
+    return false;
+  }
+  return true;
+}
+
+function recordCircuitSuccess(source: DataSource): void {
+  const cb = getCircuit(source);
+  cb.failures = 0;
+  cb.open = false;
+}
+
+function recordCircuitFailure(source: DataSource): void {
+  const cb = getCircuit(source);
+  cb.failures++;
+  cb.lastFailure = Date.now();
+  if (cb.failures >= CIRCUIT_CONFIG.failureThreshold) {
+    cb.open = true;
+    cb.halfOpenAt = Date.now() + CIRCUIT_CONFIG.resetTimeoutMs;
+    logger.warn('Circuit breaker OPEN for derivatives source', { source, failures: cb.failures });
+  }
+}
+
+interface RateLimitSlot {
+  lastCall: number;
+  minIntervalMs: number;
+}
+
+const RATE_LIMITS: Record<DataSource, number> = {
+  coinglass: 2000,
+  binance: 200,
+  okx: 500,
+  bybit: 500,
+};
+
+const rateLimitSlots = new Map<DataSource, RateLimitSlot>();
+
+async function waitForRateLimit(source: DataSource): Promise<void> {
+  const minInterval = RATE_LIMITS[source];
+  let slot = rateLimitSlots.get(source);
+  if (!slot) {
+    slot = { lastCall: 0, minIntervalMs: minInterval };
+    rateLimitSlots.set(source, slot);
+  }
+  const elapsed = Date.now() - slot.lastCall;
+  if (elapsed < slot.minIntervalMs) {
+    await new Promise(r => setTimeout(r, slot!.minIntervalMs - elapsed));
+  }
+  slot.lastCall = Date.now();
+}
+
+async function fetchWithResilience<T>(
+  source: DataSource,
+  fetcher: () => Promise<T>,
+  fallback: T,
+  maxRetries: number = 2,
+): Promise<T> {
+  if (isCircuitOpen(source)) {
+    logger.debug('Circuit open, skipping derivatives source', { source });
+    return fallback;
+  }
+
+  await waitForRateLimit(source);
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fetcher();
+      recordCircuitSuccess(source);
+      return result;
+    } catch (err) {
+      lastError = err as Error;
+      if (attempt < maxRetries) {
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 4000);
+        await new Promise(r => setTimeout(r, backoff));
+      }
+    }
+  }
+
+  recordCircuitFailure(source);
+  updateSourceStatus(source, false, 0, lastError?.message);
+  return fallback;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DATA FETCHING - COINGLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -338,15 +453,16 @@ async function fetchCoinglassLiquidations(): Promise<RawLiquidation[]> {
     });
     
     updateSourceStatus('coinglass', true, Date.now() - startTime);
-    
-    if (response.data?.data) {
-      return response.data.data.map((item: any) => ({
+
+    const liqValidation = validateProvider('coinglass_liquidations', CoinglassLiquidationsSchema, response.data);
+    if (liqValidation.ok && liqValidation.data.data) {
+      return liqValidation.data.data.map((item) => ({
         exchange: item.exchangeName?.toLowerCase() || 'unknown',
         symbol: item.symbol || 'BTCUSDT',
-        side: item.side?.toLowerCase() || 'long',
-        quantity: parseFloat(item.quantity) || 0,
-        price: parseFloat(item.price) || 0,
-        value: parseFloat(item.usdValue) || 0,
+        side: ((item.side as string)?.toLowerCase() === 'short' ? 'short' : 'long') as 'long' | 'short',
+        quantity: parseFloat(String(item.quantity ?? 0)) || 0,
+        price: parseFloat(String(item.price ?? 0)) || 0,
+        value: parseFloat(String(item.usdValue ?? 0)) || 0,
         timestamp: item.timestamp || Date.now(),
       }));
     }
@@ -372,13 +488,14 @@ async function fetchCoinglassFunding(): Promise<RawFundingRate[]> {
     });
     
     updateSourceStatus('coinglass', true, Date.now() - startTime);
-    
-    if (response.data?.data) {
-      return response.data.data.map((item: any) => ({
+
+    const fundValidation = validateProvider('coinglass_funding', CoinglassFundingSchema, response.data);
+    if (fundValidation.ok && fundValidation.data.data) {
+      return fundValidation.data.data.map((item) => ({
         exchange: item.exchangeName?.toLowerCase() || 'unknown',
         symbol: item.symbol || 'BTCUSDT',
-        rate: parseFloat(item.rate) || 0,
-        predictedRate: parseFloat(item.predictedRate) || undefined,
+        rate: parseFloat(String(item.rate ?? 0)) || 0,
+        predictedRate: item.predictedRate != null ? (parseFloat(String(item.predictedRate)) || undefined) : undefined,
         timestamp: item.timestamp || Date.now(),
       }));
     }
@@ -779,10 +896,9 @@ export async function fetchAggregatedLiquidations(): Promise<AggregatedLiquidati
   
   logger.info('💀 Fetching aggregated liquidation data from multiple sources...');
   
-  // Fetch from all sources in parallel
   const [coinglassLiqs, binanceLiqs] = await Promise.all([
-    fetchCoinglassLiquidations(),
-    fetchBinanceLiquidations(),
+    fetchWithResilience('coinglass', fetchCoinglassLiquidations, []),
+    fetchWithResilience('binance', fetchBinanceLiquidations, []),
   ]);
   
   // Combine and deduplicate
@@ -895,12 +1011,11 @@ export async function fetchAggregatedFunding(): Promise<AggregatedFunding> {
   
   logger.info('💰 Fetching aggregated funding rate data from multiple sources...');
   
-  // Fetch from all sources in parallel
   const [coinglassFunding, binanceFunding, okxFunding, bybitFunding] = await Promise.all([
-    fetchCoinglassFunding(),
-    fetchBinanceFunding(),
-    fetchOKXFunding(),
-    fetchBybitFunding(),
+    fetchWithResilience('coinglass', fetchCoinglassFunding, []),
+    fetchWithResilience('binance', fetchBinanceFunding, []),
+    fetchWithResilience('okx', fetchOKXFunding, []),
+    fetchWithResilience('bybit', fetchBybitFunding, []),
   ]);
   
   // Combine all funding rates
@@ -1019,10 +1134,9 @@ export async function fetchAggregatedOI(): Promise<AggregatedOI> {
   
   logger.info('📊 Fetching aggregated open interest data...');
   
-  // Fetch from all sources
   const [binanceOI, okxOI] = await Promise.all([
-    fetchBinanceOI(),
-    fetchOKXOI(),
+    fetchWithResilience('binance', fetchBinanceOI, []),
+    fetchWithResilience('okx', fetchOKXOI, []),
   ]);
   
   const allOI = [...binanceOI, ...okxOI];
@@ -1259,10 +1373,20 @@ export function getDataSourcesStatus(): {
   return { sources, overallHealth, recommendation };
 }
 
+export function getCircuitBreakerStatus(): Record<DataSource, { open: boolean; failures: number }> {
+  const result: Record<string, { open: boolean; failures: number }> = {};
+  for (const source of ['coinglass', 'binance', 'okx', 'bybit'] as DataSource[]) {
+    const cb = getCircuit(source);
+    result[source] = { open: isCircuitOpen(source), failures: cb.failures };
+  }
+  return result as Record<DataSource, { open: boolean; failures: number }>;
+}
+
 export default {
   fetchAggregatedLiquidations,
   fetchAggregatedFunding,
   fetchAggregatedOI,
   getDataSourcesStatus,
+  getCircuitBreakerStatus,
 };
 

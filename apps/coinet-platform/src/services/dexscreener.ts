@@ -23,6 +23,7 @@
 
 import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
+import { validateProvider, DexScreenerPairsSchema, DexScreenerPairSchema } from './provider-schemas';
 
 // ============================================================================
 // CONFIGURATION
@@ -275,8 +276,9 @@ export async function searchToken(query: string): Promise<DexSearchResult> {
       timeout: CONFIG.TIMEOUT,
       headers: { 'Accept': 'application/json' },
     });
-    
-    const pairs: DexPair[] = response.data?.pairs || [];
+
+    const dexValidation = validateProvider('dexscreener', DexScreenerPairsSchema, response.data);
+    const pairs: DexPair[] = (dexValidation.ok ? ((dexValidation.data.pairs ?? []) as unknown as DexPair[]) : []);
     const tokens = processAndRankPairs(pairs, query);
     
     const result: DexSearchResult = {
@@ -328,10 +330,10 @@ export async function getTokenByAddress(
       `${CONFIG.BASE_URL}/latest/dex/tokens/${address}`,
       { timeout: CONFIG.TIMEOUT }
     );
-    
-    const pairs: DexPair[] = response.data?.pairs || [];
-    
-    // Filter to specified chain
+
+    const addrValidation = validateProvider('dexscreener', DexScreenerPairsSchema, response.data);
+    const pairs: DexPair[] = (addrValidation.ok ? ((addrValidation.data.pairs ?? []) as unknown as DexPair[]) : []);
+
     const chainPairs = pairs.filter(p => p.chainId === chainId);
     if (chainPairs.length === 0) return null;
     

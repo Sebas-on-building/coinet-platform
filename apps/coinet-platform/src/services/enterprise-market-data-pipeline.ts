@@ -26,6 +26,7 @@
 
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
+import { validateProvider, DefiLlamaPricesSchema, CoinGeckoMarketsSchema } from './provider-schemas';
 import { symbolDetector } from './symbol-detector';
 import { getCache, getCacheStatistics, type CacheStats } from './low-latency-cache';
 import { 
@@ -771,14 +772,15 @@ async function fetchFromDefiLlama(
     
     const latency = Date.now() - startTime;
     
-    if (response.data?.coins) {
-      for (const [llamaId, data] of Object.entries(response.data.coins) as [string, any][]) {
+    const llamaValidation = validateProvider('defillama', DefiLlamaPricesSchema, response.data);
+    if (llamaValidation.ok && llamaValidation.data.coins) {
+      for (const [llamaId, coinData] of Object.entries(llamaValidation.data.coins)) {
         const coinId = llamaId.replace('coingecko:', '');
         results.set(coinId, {
           coinGeckoId: coinId,
-          price: data.price || 0,
-          confidence: data.confidence || 0.8,
-          lastUpdated: new Date(data.timestamp * 1000).toISOString(),
+          price: coinData.price || 0,
+          confidence: coinData.confidence || 0.8,
+          lastUpdated: new Date((coinData.timestamp ?? Date.now() / 1000) * 1000).toISOString(),
         });
       }
     }

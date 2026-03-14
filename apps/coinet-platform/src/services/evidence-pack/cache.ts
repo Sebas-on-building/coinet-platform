@@ -403,11 +403,21 @@ let globalSingleFlight: SingleFlight | null = null;
 
 /**
  * Initialize the global cache.
+ * Uses TwoTierCache (L1 memory + L2 Redis) when Redis is configured,
+ * otherwise falls back to InMemoryLRUCache.
  */
-export function initializeCache(options?: { maxSize?: number }): void {
-  globalCache = new InMemoryLRUCache(options?.maxSize || 1000);
+export function initializeCache(options?: { maxSize?: number; useRedis?: boolean }): void {
+  const maxSize = options?.maxSize ?? 1000;
+  const shouldUseRedis = options?.useRedis ?? isRedisAvailable();
+
+  if (shouldUseRedis) {
+    globalCache = new TwoTierCache(maxSize);
+    logger.info('Evidence Pack cache initialized (L1 memory + L2 Redis)', { maxSize });
+  } else {
+    globalCache = new InMemoryLRUCache(maxSize);
+    logger.info('Evidence Pack cache initialized (in-memory only)', { maxSize });
+  }
   globalSingleFlight = new SingleFlight();
-  logger.info('Evidence Pack cache initialized', { maxSize: options?.maxSize || 1000 });
 }
 
 /**
@@ -448,56 +458,189 @@ export async function clearCache(): Promise<void> {
 }
 
 // ============================================================================
-// REDIS CACHE ADAPTER (PLACEHOLDER)
+// REDIS CACHE ADAPTER
 // ============================================================================
 
+import { getRedisClient, isRedisAvailable } from '../redis-client';
+import type Redis from 'ioredis';
+
+const EP_CACHE_PREFIX = 'ep:';
+
+interface RedisStoredEntry<T> {
+  v: T;
+  ca: number; // cached_at_unix
+  ttl: number; // ttl_seconds
+}
+
 /**
- * Redis cache adapter for production multi-instance deployments.
- * Implements the same CacheStore interface.
- * 
- * TODO: Implement when moving to horizontal scaling.
+ * Redis-backed cache adapter for production multi-instance deployments.
+ * Falls back gracefully to returning null/no-op when Redis is unavailable —
+ * callers should pair this with an InMemoryLRUCache as L1.
  */
 export class RedisCacheAdapter implements CacheStore {
-  private redisUrl: string;
+  private hits = 0;
+  private misses = 0;
+  private prefix: string;
 
-  constructor(redisUrl: string) {
-    this.redisUrl = redisUrl;
-    logger.warn('RedisCacheAdapter is a placeholder - using in-memory fallback');
+  constructor(prefix: string = EP_CACHE_PREFIX) {
+    this.prefix = prefix;
+  }
+
+  private client(): Redis | null {
+    return getRedisClient();
+  }
+
+  private key(raw: string): string {
+    return `${this.prefix}${raw}`;
   }
 
   async get<T>(key: string): Promise<CachedValue<T> | null> {
-    // TODO: Implement Redis GET with TTL check
-    // const redis = await this.getClient();
-    // const data = await redis.get(key);
-    // if (!data) return null;
-    // const parsed = JSON.parse(data);
-    // return { value: parsed.value, cached_at_unix: parsed.cached_at_unix, ttl_seconds: parsed.ttl_seconds };
-    throw new Error('Redis cache not implemented');
+    const redis = this.client();
+    if (!redis) { this.misses++; return null; }
+
+    try {
+      const raw = await redis.get(this.key(key));
+      if (!raw) { this.misses++; return null; }
+
+      const entry: RedisStoredEntry<T> = JSON.parse(raw);
+      const now = Math.floor(Date.now() / 1000);
+      const age = now - entry.ca;
+
+      if (age > entry.ttl) {
+        await redis.del(this.key(key)).catch(() => {});
+        this.misses++;
+        return null;
+      }
+
+      this.hits++;
+      return { value: entry.v, cached_at_unix: entry.ca, ttl_seconds: entry.ttl };
+    } catch (err) {
+      logger.warn('RedisCacheAdapter.get failed', { key, error: (err as Error).message });
+      this.misses++;
+      return null;
+    }
   }
 
   async set<T>(key: string, value: T, ttl_seconds: number): Promise<void> {
-    // TODO: Implement Redis SETEX
-    // const redis = await this.getClient();
-    // await redis.setex(key, ttl_seconds, JSON.stringify({ value, cached_at_unix: now, ttl_seconds }));
-    throw new Error('Redis cache not implemented');
+    const redis = this.client();
+    if (!redis) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    const entry: RedisStoredEntry<T> = { v: value, ca: now, ttl: ttl_seconds };
+
+    try {
+      await redis.setex(this.key(key), ttl_seconds, JSON.stringify(entry));
+    } catch (err) {
+      logger.warn('RedisCacheAdapter.set failed', { key, error: (err as Error).message });
+    }
   }
 
   async delete(key: string): Promise<void> {
-    // TODO: Implement Redis DEL
-    throw new Error('Redis cache not implemented');
+    const redis = this.client();
+    if (!redis) return;
+
+    try {
+      await redis.del(this.key(key));
+    } catch (err) {
+      logger.warn('RedisCacheAdapter.del failed', { key, error: (err as Error).message });
+    }
   }
 
   async clear(): Promise<void> {
-    // TODO: Implement Redis FLUSHDB (careful in production!)
-    throw new Error('Redis cache not implemented');
+    const redis = this.client();
+    if (!redis) return;
+
+    try {
+      const stream = redis.scanStream({ match: `${this.prefix}*`, count: 200 });
+      const pipeline = redis.pipeline();
+      let count = 0;
+
+      for await (const keys of stream) {
+        for (const k of keys as string[]) {
+          pipeline.del(k);
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        await pipeline.exec();
+        logger.info('RedisCacheAdapter: cleared entries', { count });
+      }
+    } catch (err) {
+      logger.warn('RedisCacheAdapter.clear failed', { error: (err as Error).message });
+    }
   }
 
   stats(): CacheStats {
-    // TODO: Implement Redis INFO
-    return { hits: 0, misses: 0, size: 0, maxSize: 0, hitRate: 0 };
+    const total = this.hits + this.misses;
+    return {
+      hits: this.hits,
+      misses: this.misses,
+      size: -1, // Redis size not tracked locally; use Redis INFO
+      maxSize: -1,
+      hitRate: total > 0 ? this.hits / total : 0,
+    };
   }
 }
 
 // ============================================================================
-// EXPORTS (interfaces already exported inline above)
+// TWO-TIER CACHE (L1 in-memory + L2 Redis)
 // ============================================================================
+
+/**
+ * Two-tier cache combining fast in-memory L1 with shared Redis L2.
+ * Reads check L1 first; on miss, check L2 and promote to L1.
+ * Writes go to both tiers.
+ */
+export class TwoTierCache implements CacheStore {
+  private l1: InMemoryLRUCache;
+  private l2: RedisCacheAdapter;
+
+  constructor(l1MaxSize: number = 1000) {
+    this.l1 = new InMemoryLRUCache(l1MaxSize);
+    this.l2 = new RedisCacheAdapter();
+  }
+
+  async get<T>(key: string): Promise<CachedValue<T> | null> {
+    const l1Hit = await this.l1.get<T>(key);
+    if (l1Hit) return l1Hit;
+
+    const l2Hit = await this.l2.get<T>(key);
+    if (l2Hit) {
+      const remainingTtl = l2Hit.ttl_seconds - (Math.floor(Date.now() / 1000) - l2Hit.cached_at_unix);
+      if (remainingTtl > 0) {
+        await this.l1.set(key, l2Hit.value, remainingTtl);
+      }
+      return l2Hit;
+    }
+
+    return null;
+  }
+
+  async set<T>(key: string, value: T, ttl_seconds: number): Promise<void> {
+    await Promise.all([
+      this.l1.set(key, value, ttl_seconds),
+      this.l2.set(key, value, ttl_seconds),
+    ]);
+  }
+
+  async delete(key: string): Promise<void> {
+    await Promise.all([this.l1.delete(key), this.l2.delete(key)]);
+  }
+
+  async clear(): Promise<void> {
+    await Promise.all([this.l1.clear(), this.l2.clear()]);
+  }
+
+  stats(): CacheStats {
+    const l1Stats = this.l1.stats();
+    const l2Stats = this.l2.stats();
+    return {
+      hits: l1Stats.hits + l2Stats.hits,
+      misses: l2Stats.misses,
+      size: l1Stats.size,
+      maxSize: l1Stats.maxSize,
+      hitRate: (l1Stats.hits + l2Stats.hits) / Math.max(1, l1Stats.hits + l2Stats.hits + l2Stats.misses),
+    };
+  }
+}

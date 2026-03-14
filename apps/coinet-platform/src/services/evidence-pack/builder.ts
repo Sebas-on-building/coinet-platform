@@ -773,14 +773,39 @@ export async function buildEvidencePack(
         }
 
         // Emit module result event
+        const moduleLatencyMs = Date.now() - moduleStartTime;
+        const moduleStatus = (evidence as any)[moduleName]?.status || 'error';
         events.push({
           type: 'EVIDENCE_MODULE_RESULT',
           timestamp: Date.now(),
           module: moduleName,
-          status: (evidence as any)[moduleName]?.status || 'error',
+          status: moduleStatus,
           freshness_seconds: 0,
-          latency_ms: Date.now() - moduleStartTime,
+          latency_ms: moduleLatencyMs,
         });
+
+        // Record source health for the Source Systems Layer
+        try {
+          const sourceHealthProviders: Record<string, string> = {
+            dexscreener: 'dexscreener',
+            derivatives: 'coinglass',
+            security: 'goplus',
+            holders: 'goplus',
+            sentiment: 'lunarcrush',
+            news: 'cryptopanic',
+            onchain: 'alchemy',
+            market_snapshot: 'coingecko',
+          };
+          const providerId = sourceHealthProviders[moduleName];
+          if (providerId) {
+            const { recordSuccess: srcSuccess, recordFailure: srcFailure } = require('../source-systems/health-monitor');
+            if (moduleStatus === 'ok' || moduleStatus === 'success') {
+              srcSuccess(providerId, moduleLatencyMs);
+            } else {
+              srcFailure(providerId, moduleLatencyMs);
+            }
+          }
+        } catch { /* source-systems health recording is best-effort */ }
       })();
 
       fetchPromises.push(fetchPromise);
@@ -849,12 +874,17 @@ export async function buildEvidencePack(
       buildTimeMs,
     });
 
+    const moduleEvents = events.filter(
+      (e): e is import('./types').ModuleResultEvent => e.type === 'EVIDENCE_MODULE_RESULT'
+    );
+
     return {
       ok: true,
       pack,
       buildTimeMs,
       modulesAttempted,
       modulesFailed,
+      moduleEvents,
     };
 
   } catch (error: any) {

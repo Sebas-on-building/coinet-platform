@@ -196,24 +196,167 @@ export class InMemoryOmniScoreStore implements OmniScoreStore {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PRISMA-BACKED STORE (production)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { prisma } from '../../../db/client';
+
+/**
+ * Prisma-backed OmniScore store using the OmniScoreHistory model.
+ * Maps between the runtime OmniScoreStateRecord and the Prisma schema.
+ */
+export class PrismaOmniScoreStore implements OmniScoreStore {
+  async saveState(input: SaveStateInput): Promise<OmniScoreStateRecord> {
+    const record = await prisma.omniScoreHistory.create({
+      data: {
+        projectId: input.projectId,
+        pos: input.posFinal ?? input.posSmoothed,
+        posRaw: input.posRaw,
+        qsScore: input.qs,
+        osScore: input.os,
+        riskScore: input.risk,
+        engineVersion: ENGINE_VERSION,
+        formulaVersion: METHODOLOGY_ID,
+        regime: input.status,
+        capBucket: null,
+        sector: null,
+        qsCoverage: input.coverageQs,
+        osCoverage: input.coverageOs,
+        degraded: input.status !== 'scored',
+        calculatedAt: input.dataTimestamp,
+      },
+    });
+
+    return this.toStateRecord(record);
+  }
+
+  async getLatestState(projectId: string): Promise<OmniScoreStateRecord | null> {
+    const record = await prisma.omniScoreHistory.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return record ? this.toStateRecord(record) : null;
+  }
+
+  async getSmoothingState(projectId: string): Promise<SmoothingState> {
+    const latest = await this.getLatestState(projectId);
+    if (!latest) return createInitialSmoothingState(projectId);
+
+    const count = await prisma.omniScoreHistory.count({ where: { projectId } });
+
+    return {
+      prevPosSmoothed: latest.posSmoothed,
+      prevTimestamp: latest.dataTimestamp,
+      stateCount: count,
+      projectId,
+    };
+  }
+
+  async queryHistory(query: HistoryQuery): Promise<HistoryResult> {
+    const where: Record<string, unknown> = { projectId: query.projectId };
+    if (query.startDate || query.endDate) {
+      where.createdAt = {
+        ...(query.startDate ? { gte: query.startDate } : {}),
+        ...(query.endDate ? { lte: query.endDate } : {}),
+      };
+    }
+
+    const limit = query.limit ?? 100;
+    const [records, totalCount] = await Promise.all([
+      prisma.omniScoreHistory.findMany({
+        where,
+        orderBy: { createdAt: query.orderBy === 'asc' ? 'asc' : 'desc' },
+        take: limit + 1,
+      }),
+      prisma.omniScoreHistory.count({ where }),
+    ]);
+
+    const hasMore = records.length > limit;
+    const trimmed = hasMore ? records.slice(0, limit) : records;
+
+    return {
+      records: trimmed.map(r => this.toStateRecord(r)),
+      totalCount,
+      hasMore,
+    };
+  }
+
+  async deleteProjectStates(projectId: string): Promise<number> {
+    const result = await prisma.omniScoreHistory.deleteMany({ where: { projectId } });
+    return result.count;
+  }
+
+  async clearAll(): Promise<void> {
+    await prisma.omniScoreHistory.deleteMany({});
+  }
+
+  /**
+   * Maps Prisma OmniScoreHistory to runtime OmniScoreStateRecord.
+   * Handles the field-name differences cleanly.
+   */
+  private toStateRecord(r: {
+    id: string;
+    projectId: string;
+    pos: number;
+    posRaw: number | null;
+    qsScore: number | null;
+    osScore: number | null;
+    riskScore: number | null;
+    engineVersion: string;
+    formulaVersion: string;
+    regime: string | null;
+    qsCoverage: number | null;
+    osCoverage: number | null;
+    degraded: boolean;
+    createdAt: Date;
+    calculatedAt: Date;
+  }): OmniScoreStateRecord {
+    return {
+      id: r.id,
+      projectId: r.projectId,
+      posFinal: r.pos,
+      posRaw: r.posRaw ?? r.pos,
+      posSmoothed: r.pos,
+      qs: r.qsScore ?? 0,
+      os: r.osScore,
+      risk: r.riskScore ?? 0,
+      confidence: 0,
+      coverageQs: r.qsCoverage ?? 0,
+      coverageOs: r.osCoverage ?? 0,
+      legitimacy: r.degraded ? 'WATCH' : 'LEGIT',
+      status: r.degraded ? 'partial' : 'scored',
+      engineVersion: r.engineVersion,
+      methodologyId: r.formulaVersion,
+      createdAt: r.createdAt,
+      dataTimestamp: r.calculatedAt,
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SINGLETON STORE INSTANCE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let storeInstance: OmniScoreStore | null = null;
 
 /**
- * Get the current store instance
- * Creates an in-memory store if none exists
+ * Get the current store instance.
+ * Uses PrismaOmniScoreStore when DATABASE_URL is configured,
+ * otherwise falls back to InMemoryOmniScoreStore.
  */
 export function getStore(): OmniScoreStore {
   if (!storeInstance) {
-    storeInstance = new InMemoryOmniScoreStore();
+    if (process.env.DATABASE_URL) {
+      storeInstance = new PrismaOmniScoreStore();
+    } else {
+      storeInstance = new InMemoryOmniScoreStore();
+    }
   }
   return storeInstance;
 }
 
 /**
- * Set a custom store instance (e.g., PostgreSQL)
+ * Set a custom store instance (e.g., for testing)
  */
 export function setStore(store: OmniScoreStore): void {
   storeInstance = store;

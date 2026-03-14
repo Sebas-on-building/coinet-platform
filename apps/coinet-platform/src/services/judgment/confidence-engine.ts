@@ -38,14 +38,20 @@ export interface ConfidenceInput {
   signals: SignalSnapshot;
   contradictions: JudgmentContradictions;
   state: JudgmentState;
+  /**
+   * Regime-based confidence modifier (0.5–1.2).
+   * Produced by the Regime Engine (Layer 8).
+   * Applied as a final multiplier after all additive penalties.
+   */
+  regimeModifier?: number;
 }
 
 /**
  * Compute confidence across all categories with penalties
- * for contradictions, data gaps, and state ambiguity.
+ * for contradictions, data gaps, state ambiguity, and regime context.
  */
 export function computeConfidence(input: ConfidenceInput): JudgmentConfidence {
-  const { signals, contradictions, state } = input;
+  const { signals, contradictions, state, regimeModifier } = input;
 
   const breakdown = computeBreakdown(signals);
 
@@ -85,6 +91,24 @@ export function computeConfidence(input: ConfidenceInput): JudgmentConfidence {
     raw -= 0.10;
   }
 
+  // Missing-signal penalty: each missing category reduces trust proportionally
+  const missing = signals._missing;
+  if (missing && missing.size > 0) {
+    const missingFraction = missing.size / 9;
+    raw -= missingFraction * 0.2;
+
+    // Critical categories missing: derivatives or onchain = extra penalty
+    if (missing.has('derivatives') || missing.has('onchain')) {
+      raw -= 0.05;
+    }
+  }
+
+  // Regime modifier: macro risk-off, stressed ecosystem, or high volatility
+  // reduce confidence; strong risk-on with healthy ecosystem can boost it.
+  if (regimeModifier !== undefined) {
+    raw *= regimeModifier;
+  }
+
   const score = clamp(raw, 0, 1);
 
   const primaryUncertainty = identifyPrimaryUncertainty(breakdown, contradictions, signals);
@@ -110,30 +134,25 @@ function computeBreakdown(signals: SignalSnapshot): ConfidenceBreakdown {
   };
 }
 
-/**
- * Market confidence: do we have reliable price, volume, liquidity data?
- */
 function computeMarketConfidence(s: SignalSnapshot): number {
-  let conf = 0.5;
+  const missing = s._missing;
 
-  // Volume available and non-trivial
+  // If the market data source is entirely missing, cap confidence low
+  if (missing?.has('market')) return 0.2;
+
+  let conf = 0.5;
   if (s.volume_24h > 0.01) conf += 0.15;
-  // Liquidity available
   if (s.liquidity > 0.01) conf += 0.15;
-  // Pair age known
   if (s.pair_age_hours !== null) conf += 0.1;
-  // Derivatives data available (leverage_pressure != neutral default)
-  if (s.leverage_pressure !== 0.5) conf += 0.1;
+  if (!missing?.has('derivatives') && s.leverage_pressure !== 0.5) conf += 0.1;
 
   return clamp(conf, 0, 1);
 }
 
-/**
- * Fundamentals confidence: do we have protocol data?
- */
 function computeFundamentalsConfidence(s: SignalSnapshot): number {
-  let conf = 0.3;
+  if (s._missing?.has('protocol')) return 0.15;
 
+  let conf = 0.3;
   if (s.tvl_trend > 0) conf += 0.2;
   if (s.revenue_quality > 0) conf += 0.25;
   if (s.fundamentals_strength > 0) conf += 0.25;
@@ -141,29 +160,26 @@ function computeFundamentalsConfidence(s: SignalSnapshot): number {
   return clamp(conf, 0, 1);
 }
 
-/**
- * On-chain confidence: do we have wallet and exchange flow data?
- */
 function computeOnchainConfidence(s: SignalSnapshot): number {
-  let conf = 0.3;
+  if (s._missing?.has('onchain')) return 0.15;
 
+  let conf = 0.3;
   if (s.whale_activity !== 0.5) conf += 0.2;
   if (s.exchange_inflow > 0 || s.exchange_outflow > 0) conf += 0.25;
-  if (s.holder_concentration !== 0.5) conf += 0.15;
-  if (s.security_risk !== 0.5) conf += 0.1;
+  if (!s._missing?.has('holders') && s.holder_concentration !== 0.5) conf += 0.15;
+  if (!s._missing?.has('security') && s.security_risk !== 0.5) conf += 0.1;
 
   return clamp(conf, 0, 1);
 }
 
-/**
- * Narrative confidence: do we have sentiment and news data?
- */
 function computeNarrativeConfidence(s: SignalSnapshot): number {
-  let conf = 0.3;
+  const hasSentiment = !s._missing?.has('sentiment');
+  const hasNews = !s._missing?.has('news');
+  if (!hasSentiment && !hasNews) return 0.15;
 
+  let conf = 0.3;
   if (s.narrative_intensity > 0) conf += 0.25;
-  if (s.sentiment !== 0) conf += 0.25;
-  // Penalty for extreme values with no other confirmation
+  if (hasSentiment && s.sentiment !== 0) conf += 0.25;
   if (Math.abs(s.sentiment) > 0.8 && s.narrative_intensity < 0.2) conf -= 0.1;
 
   return clamp(conf, 0, 1);
@@ -188,9 +204,20 @@ function identifyPrimaryUncertainty(
     if (contradictions.items[0].summary) return contradictions.items[0].summary;
   }
 
-  // Data completeness
+  // Explicit missing-data surfacing
+  const missing = signals._missing;
+  if (missing && missing.size >= 4) {
+    const cats = [...missing].slice(0, 4).join(', ');
+    return `Significant data gaps — missing: ${cats}. Confidence is structurally limited.`;
+  }
+
   if (signals.data_completeness < 0.5) {
     return 'Significant data gaps — multiple modules missing or stale.';
+  }
+
+  if (missing && missing.size >= 2) {
+    const cats = [...missing].slice(0, 3).join(', ');
+    return `Partial data coverage — missing: ${cats}. Some conclusions may be less reliable.`;
   }
 
   // Find weakest category

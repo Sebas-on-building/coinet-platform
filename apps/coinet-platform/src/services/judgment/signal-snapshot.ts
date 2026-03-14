@@ -8,51 +8,9 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-/**
- * Normalized signal values for judgment engines.
- * All fields 0–1 unless noted otherwise.
- */
-export interface SignalSnapshot {
-  // Price & Volume (0–1 normalized relative intensity)
-  price_momentum_24h: number;   // -1 to 1 (negative = down)
-  price_momentum_1h: number;    // -1 to 1
-  volume_24h: number;           // 0–1 relative to universe
-  buy_sell_ratio: number;       // 0–1 (0.5 = balanced)
+import type { SignalSnapshot } from './types';
 
-  // Liquidity
-  liquidity: number;            // 0–1 normalized depth
-  pair_age_hours: number | null; // raw hours, null if unknown
-
-  // Derivatives
-  leverage_pressure: number;    // 0–1 composite (OI, funding, crowding)
-  funding_rate: number;         // 0–1 normalized (0.5 = neutral)
-  liquidation_density: number;  // 0–1 near-spot liq density
-
-  // Fundamentals
-  fundamentals_strength: number; // 0–1 composite (TVL, fees, revenue, activity)
-  tvl_trend: number;            // 0–1 (growth direction)
-  revenue_quality: number;      // 0–1
-
-  // On-chain
-  whale_activity: number;       // 0–1 accumulation signal
-  exchange_inflow: number;      // 0–1 (sell-side pressure)
-  exchange_outflow: number;     // 0–1 (buy-side conviction)
-
-  // Security
-  security_risk: number;        // 0–1 (higher = more risk)
-  holder_concentration: number; // 0–1 (higher = more concentrated)
-
-  // Narrative
-  narrative_intensity: number;  // 0–1 (social + news combined)
-  sentiment: number;            // -1 to 1 (negative = bearish)
-
-  // Supply
-  unlock_pressure: number;      // 0–1 (upcoming unlock severity)
-
-  // Source quality
-  data_completeness: number;    // 0–1 (fraction of modules available)
-  data_freshness: number;       // 0–1 (1 = all fresh)
-}
+export type { SignalSnapshot } from './types';
 
 /**
  * Build a SignalSnapshot from Evidence Pack modules and OmniScore data.
@@ -129,6 +87,17 @@ export function buildSignalSnapshot(input: {
   const proto = input.protocol ?? {};
   const unlock = input.unlock ?? {};
   const cov = input.coverage ?? { available_count: 0, total_count: 8, stale_count: 0 };
+
+  const _missing = new Set<string>();
+  if (!input.dexscreener) _missing.add('market');
+  if (!input.derivatives) _missing.add('derivatives');
+  if (!input.security) _missing.add('security');
+  if (!input.holders) _missing.add('holders');
+  if (!input.sentiment) _missing.add('sentiment');
+  if (!input.news) _missing.add('news');
+  if (!input.onchain) _missing.add('onchain');
+  if (!input.protocol) _missing.add('protocol');
+  if (!input.unlock) _missing.add('unlock');
 
   const buys = d.txns_buys_24h ?? 0;
   const sells = d.txns_sells_24h ?? 0;
@@ -213,6 +182,8 @@ export function buildSignalSnapshot(input: {
     data_freshness: cov.total_count > 0
       ? (cov.available_count - cov.stale_count) / cov.total_count
       : 0,
+
+    _missing,
   };
 }
 

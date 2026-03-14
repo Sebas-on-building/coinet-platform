@@ -231,6 +231,121 @@ app.get('/api/status', async (_req: Request, res: Response) => {
 });
 
 // =============================================================================
+// SOURCE SYSTEMS HEALTH — Layer 1 observational status
+// =============================================================================
+app.get('/api/source-systems/health', async (_req: Request, res: Response) => {
+  try {
+    const {
+      getSystemHealth,
+      getAllClassHealth,
+      getSourceClassCoverage,
+      assessDegradation,
+      auditDoctrine,
+    } = require('./services/source-systems');
+
+    res.json({
+      system: getSystemHealth(),
+      classes: getAllClassHealth(),
+      coverage: getSourceClassCoverage(),
+      degradation: assessDegradation(),
+      doctrine: auditDoctrine(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Source systems health check failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// SOURCE SYSTEMS TRUTH DIAGNOSTICS — Per-analysis source-governance observability
+// =============================================================================
+app.get('/api/source-systems/truth-diagnostics', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+  const symbol = (req.query.symbol as string || '').trim().toUpperCase();
+
+  if (!symbol) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required query parameter: symbol',
+      usage: '/api/source-systems/truth-diagnostics?symbol=BTC',
+    });
+  }
+
+  try {
+    const entityId = (req.query.entity_id as string) || symbol.toLowerCase();
+    const { buildEvidencePack } = await import('./services/evidence-pack/builder');
+    const { buildSignalSnapshot } = await import('./services/judgment');
+    const { buildTruthDiagnostics } = await import('./services/source-systems');
+    const { produceJudgment } = await import('./services/judgment');
+
+    const packResult = await buildEvidencePack({
+      userMessage: `Analyze ${symbol}`,
+      language: 'en',
+      intent: 'TOKEN_ANALYSIS',
+      inputEntities: [symbol],
+    });
+
+    const moduleTraces: Array<{ module: string; status: string; latencyMs: number }> = [];
+    let evidenceData: any = {};
+
+    if (packResult.ok) {
+      const pack = packResult.pack;
+      evidenceData = {
+        dexscreener: pack.evidence.dexscreener?.status === 'ok' ? pack.evidence.dexscreener.data : undefined,
+        derivatives: pack.evidence.derivatives?.status === 'ok' ? pack.evidence.derivatives.data : undefined,
+        security: pack.evidence.security?.status === 'ok' ? pack.evidence.security.data : undefined,
+        holders: pack.evidence.holders?.status === 'ok' ? pack.evidence.holders.data : undefined,
+        sentiment: pack.evidence.sentiment?.status === 'ok' ? pack.evidence.sentiment.data : undefined,
+        news: pack.evidence.news?.status === 'ok'
+          ? { ...pack.evidence.news.data, item_count: pack.evidence.news.data?.items?.length ?? 0 }
+          : undefined,
+        onchain: pack.evidence.onchain?.status === 'ok' ? pack.evidence.onchain.data : undefined,
+      };
+
+      if (packResult.moduleEvents) {
+        for (const ev of packResult.moduleEvents) {
+          moduleTraces.push({
+            module: ev.module,
+            status: ev.status,
+            latencyMs: ev.latency_ms,
+          });
+        }
+      }
+    }
+
+    const signals = buildSignalSnapshot(evidenceData);
+
+    const judgment = produceJudgment({
+      entity_id: entityId,
+      symbol,
+      chain: (req.query.chain as string) || null,
+      signals,
+    });
+
+    const diagnostics = buildTruthDiagnostics(
+      entityId,
+      symbol,
+      moduleTraces,
+      signals,
+      judgment.confidence.score,
+    );
+
+    res.json({
+      success: true,
+      diagnostics,
+      computeTime: `${Date.now() - startTime}ms`,
+    });
+  } catch (error: any) {
+    logger.error('Truth diagnostics failed', { symbol, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Truth diagnostics failed',
+      message: error.message,
+    });
+  }
+});
+
+// =============================================================================
 // 🔬 DIAGNOSTIC ENDPOINT - Tests ALL services
 // =============================================================================
 app.get('/api/diagnostic', async (req: Request, res: Response) => {
@@ -3683,6 +3798,8 @@ app.get('/', (_req: Request, res: Response) => {
       health: '/api/health',
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
+      sourceSystemsHealth: '/api/source-systems/health',
+      truthDiagnostics: '/api/source-systems/truth-diagnostics?symbol=BTC',
       keys: '/api/keys',
       testNeuroeconomic: '/api/test/neuroeconomic',
       testBehavioralFinance: '/api/test/behavioral-finance',

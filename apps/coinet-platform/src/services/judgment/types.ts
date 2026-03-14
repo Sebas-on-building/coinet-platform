@@ -27,6 +27,42 @@ import {
 } from './taxonomies';
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 0. SIGNAL SNAPSHOT (input for all judgment engines)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Normalized signal values for judgment engines. All fields 0–1 unless noted. */
+export interface SignalSnapshot {
+  price_momentum_24h: number;
+  price_momentum_1h: number;
+  volume_24h: number;
+  buy_sell_ratio: number;
+  liquidity: number;
+  pair_age_hours: number | null;
+  leverage_pressure: number;
+  funding_rate: number;
+  liquidation_density: number;
+  fundamentals_strength: number;
+  tvl_trend: number;
+  revenue_quality: number;
+  whale_activity: number;
+  exchange_inflow: number;
+  exchange_outflow: number;
+  security_risk: number;
+  holder_concentration: number;
+  narrative_intensity: number;
+  sentiment: number;
+  unlock_pressure: number;
+  data_completeness: number;
+  data_freshness: number;
+  /**
+   * Set of signal categories that were defaulted due to missing source data.
+   * Used to distinguish "neutral observation" from "no data available".
+   * When non-empty, downstream engines apply coverage penalties.
+   */
+  _missing?: Set<string>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 1. STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -132,6 +168,15 @@ export type JudgmentTiming = z.infer<typeof JudgmentTimingSchema>;
 // 6. SCENARIO
 // ═══════════════════════════════════════════════════════════════════════════════
 
+export const HorizonScenarioSchema = z.object({
+  horizon: z.enum(['24h', '7d', '30d']),
+  confirmation: z.string(),
+  failure: z.string(),
+  trigger: z.string(),
+  invalidation: z.string(),
+});
+export type HorizonScenario = z.infer<typeof HorizonScenarioSchema>;
+
 export const JudgmentScenarioSchema = z.object({
   base_case: z.string(),
   bullish_confirmation: z.string(),
@@ -139,6 +184,14 @@ export const JudgmentScenarioSchema = z.object({
   next_trigger: z.string(),
   /** How confident is the scenario framing? */
   scenario_confidence: z.number().min(0).max(1),
+  /** Horizon-specific scenarios (24h, 7d, 30d) */
+  horizons: z.array(HorizonScenarioSchema).optional(),
+  /** Primary hypothesis label referenced in scenario */
+  primary_hypothesis: z.string().optional(),
+  /** Top contradiction referenced in scenario */
+  top_contradiction: z.string().optional(),
+  /** Regime context referenced in scenario */
+  regime_context: z.string().optional(),
 });
 export type JudgmentScenario = z.infer<typeof JudgmentScenarioSchema>;
 
@@ -215,6 +268,43 @@ export const JudgmentOutputSchema = z.object({
     has_honest_confidence: z.boolean(),
     all_passed: z.boolean(),
   }),
+
+  /** Unified Regime Context (Layer 8 v2) */
+  regime: z.object({
+    macro: z.object({
+      posture: z.enum(['risk_on', 'risk_off', 'neutral', 'transition_bearish', 'transition_bullish', 'data_unavailable']),
+      confidence: z.number(),
+      drivers: z.array(z.string()),
+      btcTrend: z.enum(['bullish', 'bearish', 'neutral']),
+      btcDominanceTrend: z.enum(['rising', 'falling', 'stable']),
+      overallLeverage: z.enum(['low', 'moderate', 'high', 'extreme']),
+      coverage: z.number(),
+    }),
+    ecosystem: z.object({
+      chain: z.string(),
+      health: z.enum(['thriving', 'growing', 'stable', 'weakening', 'stressed', 'crisis', 'unknown']),
+      tvlTrend: z.enum(['rising', 'falling', 'stable']),
+      activityTrend: z.enum(['rising', 'falling', 'stable']),
+      capitalFlow: z.enum(['inflow', 'outflow', 'neutral']),
+      coverage: z.number(),
+    }),
+    volatility: z.object({
+      regime: z.enum(['extreme_high', 'high', 'elevated', 'normal', 'low', 'extreme_low']),
+      realizedAnnualized: z.number(),
+      trend: z.enum(['expanding', 'contracting', 'stable']),
+      method: z.enum(['realized_multi', 'intraday_proxy']),
+    }),
+    transition: z.object({
+      risk: z.enum(['low', 'moderate', 'elevated', 'high']),
+      probability: z.number(),
+      direction: z.enum(['improving', 'deteriorating', 'stable']),
+      signals: z.array(z.string()),
+    }),
+    summary: z.string(),
+    confidenceModifier: z.number(),
+    dataCoverage: z.number(),
+    configVersion: z.string(),
+  }).optional(),
 
   /** Extended timing & sequence data (Phase C) */
   timing_extended: z.object({

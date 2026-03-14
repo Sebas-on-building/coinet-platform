@@ -7,23 +7,26 @@
  * ║                                                                               ║
  * ║   Phase B: State + Contradiction + Confidence                                 ║
  * ║   Phase C: Full Timing & Sequence Engine                                      ║
- * ║   Phase D: + Hypothesis ranking (future)                                      ║
- * ║   Phase E: + Scenario engine (future)                                         ║
+ * ║   Phase D: Dynamic Hypothesis Ranking (v2)                                    ║
+ * ║   Phase E: Dynamic Scenario Engine (v2)                                       ║
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
 import { classifyState } from './state-engine';
 import { detectContradictions } from './contradiction-engine';
 import { computeConfidence } from './confidence-engine';
-import { classifyTimingFull } from './timing-engine';
+import { classifyTimingFull, type FullTimingResult } from './timing-engine';
 import { buildSignalSnapshot, type SignalSnapshot } from './signal-snapshot';
 import {
   CAUSAL_FAMILIES,
   FEATURE_TO_CAUSAL_FAMILY,
   HYPOTHESIS_CLASSES,
   MARKET_STATE_GROUPS,
+  MARKET_STATE_LABELS,
+  HYPOTHESIS_LABELS,
   type CausalFamily,
   type MarketState,
+  type HypothesisClass,
 } from './taxonomies';
 import type {
   JudgmentOutput,
@@ -31,10 +34,12 @@ import type {
   JudgmentThesis,
   JudgmentTiming,
   JudgmentScenario,
+  HorizonScenario,
   CausalDriver,
   RankedHypothesis,
 } from './types';
 import { JUDGMENT_VERSION } from './types';
+import { classifyRegime, type MarketWideInputs, type UnifiedRegime } from './regime-engine';
 
 // Re-export everything consumers need
 export { buildSignalSnapshot } from './signal-snapshot';
@@ -43,7 +48,9 @@ export type { JudgmentOutput } from './types';
 export { JudgmentOutputSchema, JUDGMENT_VERSION } from './types';
 export * from './taxonomies';
 export { classifyTimingFull } from './timing-engine';
-export type { FullTimingResult, SequenceAnalysis, InflectionSignal } from './timing-engine';
+export type { FullTimingResult, SequenceAnalysis, InflectionSignal, TemporalAnalysis, TimestampedSnapshot } from './timing-engine';
+export { classifyRegime } from './regime-engine';
+export type { UnifiedRegime, MacroContext, EcosystemPosture, MarketWideInputs } from './regime-engine';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN API
@@ -61,6 +68,17 @@ export interface ProduceJudgmentInput {
     risk: number;
     pos: number | null;
   };
+  /** Market-wide inputs for regime classification (Layer 8) */
+  marketWide?: Partial<MarketWideInputs>;
+  /** Entity context from Knowledge Graph (Layer 4) — enriches regime + scenario */
+  entityContext?: {
+    ecosystem: string | null;
+    sector: string | null;
+    relatedAssets: string[];
+    narratives: string[];
+    competitors: string[];
+    capBucket: string | null;
+  };
 }
 
 /**
@@ -69,16 +87,16 @@ export interface ProduceJudgmentInput {
  * This is THE orchestrator. All judgment engines run here in order:
  * 1. Classify state
  * 2. Detect contradictions
- * 3. Compute confidence
- * 4. Attribute causes
- * 5. Rank hypotheses (simplified v1)
- * 6. Classify timing (full timing & sequence engine)
- * 7. Generate scenario (simplified v1)
+ * 3. Attribute causes
+ * 4. Classify timing (full timing & sequence engine)
+ * 5. Rank hypotheses (v2 — dynamic signal-aligned scoring)
+ * 6. Generate scenario (v2 — dynamic from state+cause+contradiction+timing)
+ * 7. Compute confidence
  * 8. Build evidence ledger
  * 9. Run quality checks
  */
 export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
-  const { entity_id, symbol, chain, signals, scores } = input;
+  const { entity_id, symbol, chain, signals, scores, marketWide, entityContext } = input;
 
   // 1. State
   const state = classifyState(signals);
@@ -86,16 +104,10 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
   // 2. Contradictions
   const contradictions = detectContradictions(signals);
 
-  // 3. Confidence (depends on state + contradictions)
-  const confidence = computeConfidence({ signals, contradictions, state });
-
-  // 4. Cause
+  // 3. Cause
   const cause = attributeCauses(signals);
 
-  // 5. Thesis (simplified v1 — derive from state + cause)
-  const thesis = rankHypotheses(state, cause, contradictions);
-
-  // 6. Timing (full timing & sequence engine)
+  // 4. Timing (full timing & sequence engine — needed by thesis + scenario)
   const fullTiming = classifyTimingFull(
     { primary: state.primary, confidence: state.confidence },
     signals
@@ -109,13 +121,52 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
     maturity_note: fullTiming.maturity_note,
   };
 
-  // 7. Scenario (simplified v1 — derive from state + contradictions)
-  const scenario = generateScenario(state, contradictions, signals);
+  // 5. Regime (Layer 8 — runs BEFORE thesis/scenario so they can consume regime context)
+  const regimeMarketWide: Partial<MarketWideInputs> = {
+    ...marketWide,
+    ...(entityContext?.ecosystem ? { ecosystem_chain: entityContext.ecosystem.replace('chain:', '') } : {}),
+    ...(entityContext?.sector ? { sector: entityContext.sector.replace('sector:', '') } : {}),
+    ...(entityContext?.capBucket ? { capBucket: entityContext.capBucket } : {}),
+  };
+  const regime = classifyRegime(signals, regimeMarketWide);
 
-  // 8. Evidence ledger
+  // 6. Thesis (v3 — regime-aware, context-aware, dynamic scoring)
+  const thesis = rankHypotheses(state, cause, contradictions, signals, entityContext, regime);
+
+  // 7. Scenario (v3 — horizon-aware, regime+hypothesis+contradiction referencing)
+  const scenario = generateScenario(state, cause, thesis, contradictions, fullTiming, signals, entityContext, regime);
+
+  // 8. Confidence (depends on state + contradictions + regime modifier)
+  const confidence = computeConfidence({
+    signals,
+    contradictions,
+    state,
+    regimeModifier: regime.confidenceModifier,
+  });
+
+  // 9. Source Systems doctrine enforcement (best-effort — non-blocking)
+  try {
+    const { enforceR6SecurityCap, getAggregateConfidencePenalty } = require('../source-systems');
+    // Rule 6: Security cap on confidence
+    if (signals.security_risk > 0.5) {
+      const { cappedConfidence } = enforceR6SecurityCap(signals.security_risk, confidence.score);
+      if (cappedConfidence < confidence.score) {
+        (confidence as any).score = cappedConfidence;
+        (confidence as any).primary_uncertainty = (confidence as any).primary_uncertainty
+          || `Security risk (${(signals.security_risk * 100).toFixed(0)}%) caps confidence`;
+      }
+    }
+    // Source degradation penalty
+    const degradationPenalty = getAggregateConfidencePenalty();
+    if (degradationPenalty > 0.01) {
+      (confidence as any).score = Math.max(0, confidence.score - degradationPenalty);
+    }
+  } catch { /* source-systems integration is best-effort */ }
+
+  // 10. Evidence ledger
   const evidence = buildEvidenceLedger(signals, contradictions);
 
-  // 9. Quality checks
+  // 11. Quality checks
   const quality_checks = runQualityChecks(state, cause, contradictions, timing, scenario, confidence);
 
   return {
@@ -134,6 +185,7 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
     evidence,
     scores: scores ?? { qs: 0, os: null, risk: 0, pos: null },
     quality_checks,
+    regime,
     timing_extended: {
       sequence: fullTiming.sequence,
       maturity: fullTiming.maturity,
@@ -244,136 +296,850 @@ function getCausalSummary(family: CausalFamily, strength: number): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HYPOTHESIS RANKING (Simplified v1)
+// HYPOTHESIS RANKING (v2 — dynamic signal-aligned scoring)
+//
+// Each hypothesis has a signal-derived support function, a set of
+// contradiction classes that specifically weaken it, and a function
+// that identifies missing evidence.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** Linear interpolation between min→0 and max→1, clamped. */
+function scale(value: number, min: number, max: number): number {
+  if (max <= min) return value >= min ? 1 : 0;
+  return clamp((value - min) / (max - min), 0, 1);
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+interface HypothesisProfile {
+  id: HypothesisClass;
+  label?: string;
+  /** State groups where this hypothesis is plausible */
+  plausibleGroups: ReadonlySet<string>;
+  /** Aligned causal family — gets a boost when cause.dominant matches */
+  alignedCause: CausalFamily;
+  /** Compute raw support from actual signal values (0–1) */
+  computeSupport(s: SignalSnapshot): number;
+  /** Contradiction classes that specifically undermine this hypothesis */
+  weakenedBy: ReadonlySet<string>;
+  /** Identify evidence gaps that would increase confidence */
+  getMissingEvidence(s: SignalSnapshot): string[];
+}
+
+const HYPOTHESIS_PROFILES: HypothesisProfile[] = [
+  // ── EARLY ACCUMULATION ──────────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.EARLY_ACCUMULATION,
+    plausibleGroups: new Set(['discovery', 'expansion']),
+    alignedCause: CAUSAL_FAMILIES.SMART_MONEY_ACCUMULATION,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.25 * scale(s.whale_activity, 0.15, 0.6);
+      v += 0.20 * scale(s.exchange_outflow, 0.1, 0.5);
+      v += 0.15 * scale(1 - s.leverage_pressure, 0.5, 1.0);
+      v += 0.15 * scale(1 - s.narrative_intensity, 0.5, 1.0);
+      v += 0.15 * scale(s.price_momentum_24h + 0.1, 0, 0.3);
+      if (s.volume_24h > 0.05 && s.volume_24h < 0.5) v += 0.10;
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['late_whale_entry', 'sentiment_vs_onchain']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.volume_24h < 0.2) m.push('Spot volume confirmation needed');
+      if (s.fundamentals_strength < 0.3) m.push('Fundamental backing would strengthen thesis');
+      if (s.liquidity < 0.2) m.push('Liquidity depth needed for sustainability');
+      return m;
+    },
+  },
+
+  // ── GENUINE BREAKOUT ────────────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.GENUINE_BREAKOUT,
+    plausibleGroups: new Set(['expansion']),
+    alignedCause: CAUSAL_FAMILIES.SPOT_DEMAND,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.25 * scale(s.volume_24h, 0.2, 0.7);
+      v += 0.20 * scale(s.price_momentum_24h, 0.05, 0.3);
+      v += 0.15 * scale(s.liquidity, 0.15, 0.5);
+      v += 0.15 * scale(s.buy_sell_ratio, 0.5, 0.7);
+      // Spot should outpace leverage
+      const spotOverLeverage = Math.max(0, s.volume_24h - s.leverage_pressure);
+      v += 0.15 * scale(spotOverLeverage, 0, 0.3);
+      v += 0.10 * scale(s.whale_activity, 0.1, 0.5);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['price_vs_fundamentals', 'price_vs_spot_structure', 'leverage_vs_spot']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.fundamentals_strength < 0.3) m.push('Fundamental validation would confirm real breakout');
+      if (s.whale_activity < 0.3) m.push('Smart money participation not yet confirmed');
+      if (s.exchange_outflow < 0.2) m.push('Exchange outflow conviction signal absent');
+      return m;
+    },
+  },
+
+  // ── FUNDAMENTALLY SUPPORTED RERATING ────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.FUNDAMENTALLY_SUPPORTED_RERATING,
+    plausibleGroups: new Set(['expansion']),
+    alignedCause: CAUSAL_FAMILIES.FUNDAMENTALS_IMPROVEMENT,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.30 * scale(s.fundamentals_strength, 0.3, 0.8);
+      v += 0.20 * scale(s.tvl_trend, 0.2, 0.6);
+      v += 0.20 * scale(s.revenue_quality, 0.2, 0.6);
+      v += 0.15 * scale(s.price_momentum_24h, -0.05, 0.2);
+      v += 0.15 * scale(1 - s.security_risk, 0.5, 1.0);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['tvl_vs_inflows', 'price_vs_fundamentals']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.narrative_intensity < 0.2) m.push('Market has not yet recognized fundamental improvement');
+      if (s.volume_24h < 0.2) m.push('Volume confirmation needed');
+      if (s.whale_activity < 0.2) m.push('Smart money participation would strengthen thesis');
+      return m;
+    },
+  },
+
+  // ── LEVERAGE-DRIVEN SQUEEZE ─────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.LEVERAGE_DRIVEN_SQUEEZE,
+    plausibleGroups: new Set(['expansion', 'fragility']),
+    alignedCause: CAUSAL_FAMILIES.LEVERAGE_EXPANSION,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.30 * scale(s.leverage_pressure, 0.35, 0.8);
+      v += 0.20 * scale(s.funding_rate, 0.3, 0.7);
+      v += 0.20 * scale(s.liquidation_density, 0.2, 0.6);
+      v += 0.15 * scale(s.price_momentum_24h, 0.0, 0.2);
+      // Leverage exceeding spot is the defining signature
+      const leverageOverSpot = Math.max(0, s.leverage_pressure - s.volume_24h);
+      v += 0.15 * scale(leverageOverSpot, 0.05, 0.35);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['leverage_vs_spot', 'volume_vs_liquidity']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.volume_24h < 0.3) m.push('Spot volume confirmation would de-risk the setup');
+      if (s.fundamentals_strength < 0.2) m.push('No fundamental backing increases fragility');
+      if (s.whale_activity < 0.2) m.push('No smart money participation detected');
+      return m;
+    },
+  },
+
+  // ── NARRATIVE-ONLY PUMP ─────────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.NARRATIVE_ONLY_PUMP,
+    plausibleGroups: new Set(['expansion', 'fragility', 'discovery']),
+    alignedCause: CAUSAL_FAMILIES.NARRATIVE_ACCELERATION,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.30 * scale(s.narrative_intensity, 0.3, 0.8);
+      v += 0.20 * scale(Math.max(0, s.sentiment), 0.1, 0.6);
+      // Weak fundamentals confirm narrative-only nature
+      v += 0.20 * scale(1 - s.fundamentals_strength, 0.6, 1.0);
+      v += 0.15 * scale(s.price_momentum_24h, 0.0, 0.2);
+      // Low whale activity means retail-driven
+      v += 0.15 * scale(1 - s.whale_activity, 0.5, 1.0);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['positive_signals_vs_security', 'volume_vs_liquidity']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.fundamentals_strength > 0.3) m.push('Fundamentals may support move — narrative-only thesis weakened');
+      if (s.exchange_inflow < 0.1 && s.exchange_outflow < 0.1) m.push('Exchange flow data needed to assess distribution risk');
+      if (s.whale_activity > 0.3) m.push('Whale participation detected — may not be purely narrative');
+      return m;
+    },
+  },
+
+  // ── LOW QUALITY / MANIPULATED LAUNCH ────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.LOW_QUALITY_MANIPULATED_LAUNCH,
+    plausibleGroups: new Set(['discovery', 'risk']),
+    alignedCause: CAUSAL_FAMILIES.SECURITY_CONCERN,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.35 * scale(s.security_risk, 0.4, 0.9);
+      v += 0.25 * scale(s.holder_concentration, 0.5, 0.9);
+      v += 0.20 * scale(1 - s.liquidity, 0.7, 1.0);
+      if (s.pair_age_hours !== null && s.pair_age_hours < 48) v += 0.20;
+      else if (s.pair_age_hours !== null && s.pair_age_hours < 168) v += 0.10;
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['positive_signals_vs_security']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.security_risk < 0.7 && s.security_risk > 0.3) m.push('Security assessment inconclusive — more data needed');
+      if (s.holder_concentration < 0.6) m.push('Holder distribution data incomplete');
+      if (s.data_completeness < 0.5) m.push('Significant data gaps prevent definitive classification');
+      return m;
+    },
+  },
+
+  // ── POST-UNLOCK SELL PRESSURE ───────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.POST_UNLOCK_SELL_PRESSURE,
+    plausibleGroups: new Set(['risk', 'fragility']),
+    alignedCause: CAUSAL_FAMILIES.SUPPLY_OVERHANG,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.35 * scale(s.unlock_pressure, 0.2, 0.7);
+      v += 0.25 * scale(s.exchange_inflow, 0.2, 0.6);
+      v += 0.20 * scale(-s.price_momentum_24h, 0.0, 0.2);
+      v += 0.20 * scale(1 - s.whale_activity, 0.6, 1.0);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['growth_vs_unlock']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.exchange_outflow < 0.1) m.push('Exchange outflow data needed to detect selling exhaustion');
+      if (s.whale_activity > 0.3) m.push('Whale accumulation may be absorbing unlock supply');
+      return m;
+    },
+  },
+
+  // ── DISTRIBUTION UNDER HYPE ─────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.DISTRIBUTION_UNDER_HYPE,
+    plausibleGroups: new Set(['fragility', 'risk']),
+    alignedCause: CAUSAL_FAMILIES.DISTRIBUTION_PRESSURE,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.30 * scale(s.exchange_inflow, 0.25, 0.7);
+      v += 0.25 * scale(s.narrative_intensity, 0.25, 0.6);
+      v += 0.20 * scale(1 - s.whale_activity, 0.5, 1.0);
+      // Price flat or slightly up while distribution happens
+      if (s.price_momentum_24h > -0.1 && s.price_momentum_24h < 0.1) v += 0.15;
+      v += 0.10 * scale(s.volume_24h, 0.15, 0.5);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['sentiment_vs_onchain', 'leverage_vs_spot']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.exchange_inflow < 0.3) m.push('Exchange inflow signal is moderate — distribution thesis uncertain');
+      if (s.fundamentals_strength < 0.2) m.push('Fundamental health assessment needed');
+      return m;
+    },
+  },
+
+  // ── SECTOR SPILLOVER / REPRICING ────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.SECTOR_SPILLOVER_REPRICING,
+    plausibleGroups: new Set(['expansion', 'discovery']),
+    alignedCause: CAUSAL_FAMILIES.NARRATIVE_ACCELERATION,
+    computeSupport(s) {
+      let v = 0;
+      // Moderate narrative + weak fundamentals + price movement = sector flow
+      v += 0.25 * scale(s.narrative_intensity, 0.2, 0.5);
+      v += 0.25 * scale(s.price_momentum_24h, 0.03, 0.2);
+      v += 0.20 * scale(1 - s.fundamentals_strength, 0.5, 1.0);
+      v += 0.15 * scale(1 - s.leverage_pressure, 0.4, 0.8);
+      v += 0.15 * scale(s.volume_24h, 0.1, 0.4);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['price_vs_fundamentals', 'narrative_before_fundamentals']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      m.push('Cross-asset correlation data not available in current snapshot');
+      if (s.data_completeness < 0.6) m.push('Incomplete data prevents sector flow confirmation');
+      return m;
+    },
+  },
+
+  // ── CROWDED CONTINUATION ────────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.CROWDED_CONTINUATION,
+    plausibleGroups: new Set(['expansion', 'fragility']),
+    alignedCause: CAUSAL_FAMILIES.LEVERAGE_EXPANSION,
+    computeSupport(s) {
+      let v = 0;
+      v += 0.30 * scale(s.leverage_pressure, 0.45, 0.85);
+      v += 0.20 * scale(s.funding_rate, 0.4, 0.75);
+      v += 0.15 * scale(s.price_momentum_24h, 0.03, 0.2);
+      v += 0.15 * scale(s.narrative_intensity, 0.3, 0.7);
+      v += 0.20 * scale(s.liquidation_density, 0.3, 0.7);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['leverage_vs_spot', 'volume_vs_liquidity']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.volume_24h < 0.3) m.push('Spot participation unclear — volume confirmation needed');
+      if (s.fundamentals_strength < 0.2) m.push('No fundamental anchor for continuation');
+      if (s.whale_activity < 0.2) m.push('No smart money participation to absorb liquidation cascades');
+      return m;
+    },
+  },
+
+  // ── CAPITULATION RESET ───────────────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.CAPITULATION_RESET,
+    label: 'Capitulation Reset',
+    plausibleGroups: new Set(['risk', 'fragility']),
+    alignedCause: CAUSAL_FAMILIES.STRUCTURAL_FRAGILITY as CausalFamily,
+    computeSupport(s: SignalSnapshot) {
+      let v = 0;
+      v += 0.30 * scale(Math.abs(s.price_momentum_24h), 0.1, 0.3);
+      v += 0.25 * scale(s.exchange_inflow, 0.3, 0.7);
+      v += 0.20 * scale(1 - s.buy_sell_ratio, 0.3, 0.7);
+      v += 0.15 * scale(s.liquidation_density, 0.3, 0.7);
+      v += 0.10 * scale(1 - s.sentiment, 0.3, 0.8);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['volume_vs_liquidity']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.volume_24h > 0.5) m.push('Volume still elevated — capitulation may not be complete');
+      if (s.whale_activity > 0.4) m.push('Smart money still active — not typical capitulation');
+      return m;
+    },
+  },
+
+  // ── FORCED LIQUIDATION CASCADE ───────────────────────────────────────────
+  {
+    id: HYPOTHESIS_CLASSES.FORCED_LIQUIDATION_CASCADE,
+    label: 'Forced Liquidation Cascade',
+    plausibleGroups: new Set(['risk', 'fragility', 'expansion']),
+    alignedCause: CAUSAL_FAMILIES.LEVERAGE_EXPANSION as CausalFamily,
+    computeSupport(s: SignalSnapshot) {
+      let v = 0;
+      v += 0.35 * scale(s.liquidation_density, 0.4, 0.8);
+      v += 0.25 * scale(s.leverage_pressure, 0.5, 0.85);
+      v += 0.20 * scale(s.funding_rate, 0.5, 0.85);
+      v += 0.20 * scale(Math.abs(s.price_momentum_1h), 0.05, 0.2);
+      return clamp(v, 0, 1);
+    },
+    weakenedBy: new Set(['leverage_vs_spot']),
+    getMissingEvidence(s) {
+      const m: string[] = [];
+      if (s.liquidation_density < 0.3) m.push('Liquidation density not elevated enough');
+      if (s.leverage_pressure < 0.4) m.push('Leverage not at cascade-risk levels');
+      return m;
+    },
+  },
+];
+
+/**
+ * Score all hypotheses against actual signals and return ranked thesis.
+ */
 function rankHypotheses(
   state: ReturnType<typeof classifyState>,
   cause: JudgmentCause,
-  contradictions: ReturnType<typeof detectContradictions>
+  contradictions: ReturnType<typeof detectContradictions>,
+  signals: SignalSnapshot,
+  entityContext?: ProduceJudgmentInput['entityContext'],
+  regime?: UnifiedRegime,
 ): JudgmentThesis {
   const stateGroup = MARKET_STATE_GROUPS[state.primary];
-  const dominant = cause.dominant_cluster;
 
-  const hypotheses: RankedHypothesis[] = [];
+  const scored: RankedHypothesis[] = HYPOTHESIS_PROFILES
+    .filter(p => p.plausibleGroups.has(stateGroup))
+    .map(profile => {
+      let support = profile.computeSupport(signals);
 
-  if (stateGroup === 'expansion' && dominant === CAUSAL_FAMILIES.SPOT_DEMAND) {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.GENUINE_BREAKOUT, 0.7, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.FUNDAMENTALLY_SUPPORTED_RERATING, 0.5, contradictions));
-  } else if (stateGroup === 'expansion' && dominant === CAUSAL_FAMILIES.LEVERAGE_EXPANSION) {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.LEVERAGE_DRIVEN_SQUEEZE, 0.7, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.CROWDED_CONTINUATION, 0.5, contradictions));
-  } else if (stateGroup === 'expansion' && dominant === CAUSAL_FAMILIES.SMART_MONEY_ACCUMULATION) {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.EARLY_ACCUMULATION, 0.7, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.GENUINE_BREAKOUT, 0.4, contradictions));
-  } else if (stateGroup === 'expansion' && dominant === CAUSAL_FAMILIES.NARRATIVE_ACCELERATION) {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.NARRATIVE_ONLY_PUMP, 0.6, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.GENUINE_BREAKOUT, 0.3, contradictions));
-  } else if (stateGroup === 'fragility') {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.CROWDED_CONTINUATION, 0.6, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.DISTRIBUTION_UNDER_HYPE, 0.4, contradictions));
-  } else if (stateGroup === 'risk' && dominant === CAUSAL_FAMILIES.DISTRIBUTION_PRESSURE) {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.DISTRIBUTION_UNDER_HYPE, 0.7, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.POST_UNLOCK_SELL_PRESSURE, 0.3, contradictions));
-  } else if (stateGroup === 'risk' && dominant === CAUSAL_FAMILIES.SECURITY_CONCERN) {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.LOW_QUALITY_MANIPULATED_LAUNCH, 0.7, contradictions));
-  } else if (stateGroup === 'discovery') {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.EARLY_ACCUMULATION, 0.5, contradictions));
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.LOW_QUALITY_MANIPULATED_LAUNCH, 0.3, contradictions));
-  } else {
-    hypotheses.push(makeHypothesis(HYPOTHESIS_CLASSES.CROWDED_CONTINUATION, 0.4, contradictions));
+      // Boost when dominant causal family aligns with this hypothesis
+      if (cause.dominant_cluster === profile.alignedCause) {
+        support = clamp(support * 1.2, 0, 1);
+      }
+      if (cause.secondary_cluster === profile.alignedCause) {
+        support = clamp(support * 1.08, 0, 1);
+      }
+
+      // ── Regime as first-class prior ──
+      if (regime) {
+        const macro = regime.macro.posture;
+        const ecoHealth = regime.ecosystem.health;
+        const volRegime = regime.volatility.regime;
+        const leverage = regime.macro.overallLeverage;
+
+        // Risk-off regime suppresses bullish continuation hypotheses
+        if (macro === 'risk_off') {
+          if (profile.id === HYPOTHESIS_CLASSES.CROWDED_CONTINUATION) {
+            support = clamp(support * 0.55, 0, 1);
+          }
+          if (profile.id === HYPOTHESIS_CLASSES.FUNDAMENTALLY_SUPPORTED_RERATING) {
+            support = clamp(support * 0.75, 0, 1);
+          }
+          // Boost capitulation and forced-liquidation hypotheses during risk-off
+          if (profile.id === HYPOTHESIS_CLASSES.CAPITULATION_RESET) {
+            support = clamp(support * 1.35, 0, 1);
+          }
+          if (profile.id === HYPOTHESIS_CLASSES.FORCED_LIQUIDATION_CASCADE) {
+            support = clamp(support * 1.3, 0, 1);
+          }
+        }
+
+        // Risk-on regime boosts continuation, suppresses capitulation
+        if (macro === 'risk_on') {
+          if (profile.id === HYPOTHESIS_CLASSES.CROWDED_CONTINUATION) {
+            support = clamp(support * 1.15, 0, 1);
+          }
+          if (profile.id === HYPOTHESIS_CLASSES.CAPITULATION_RESET) {
+            support = clamp(support * 0.6, 0, 1);
+          }
+        }
+
+        // Extreme volatility boosts squeeze/liquidation hypotheses
+        if (volRegime === 'extreme_high' || volRegime === 'high') {
+          if (profile.id === HYPOTHESIS_CLASSES.FORCED_LIQUIDATION_CASCADE) {
+            support = clamp(support * 1.25, 0, 1);
+          }
+          // Suppress gentle-rerating hypotheses in high volatility
+          if (profile.id === HYPOTHESIS_CLASSES.FUNDAMENTALLY_SUPPORTED_RERATING) {
+            support = clamp(support * 0.8, 0, 1);
+          }
+        }
+
+        // Extreme leverage makes crowded-continuation fragile
+        if (leverage === 'extreme' || leverage === 'high') {
+          if (profile.id === HYPOTHESIS_CLASSES.CROWDED_CONTINUATION) {
+            support = clamp(support * 0.7, 0, 1);
+          }
+        }
+
+        // Stressed/crisis ecosystem penalizes sector spillover (contagion, not relative)
+        if (ecoHealth === 'stressed' || ecoHealth === 'crisis') {
+          if (profile.id === HYPOTHESIS_CLASSES.SECTOR_SPILLOVER_REPRICING) {
+            support = clamp(support * 0.6, 0, 1);
+          }
+          if (profile.id === HYPOTHESIS_CLASSES.CAPITULATION_RESET) {
+            support = clamp(support * 1.2, 0, 1);
+          }
+        }
+
+        // Data-unavailable regime: penalize high-conviction hypotheses
+        if (macro === 'data_unavailable') {
+          support = clamp(support * 0.85, 0, 1);
+        }
+      }
+
+      // ── Entity context priors (expanded) ──
+      if (entityContext) {
+        if (profile.id === HYPOTHESIS_CLASSES.SECTOR_SPILLOVER_REPRICING && entityContext.relatedAssets.length > 3) {
+          support = clamp(support * 1.15, 0, 1);
+        }
+
+        const cap = entityContext.capBucket;
+        if (cap === 'mega' || cap === 'large') {
+          if (profile.id === HYPOTHESIS_CLASSES.LOW_QUALITY_MANIPULATED_LAUNCH) {
+            support = clamp(support * 0.2, 0, 1);
+          }
+          if (profile.id === HYPOTHESIS_CLASSES.NARRATIVE_ONLY_PUMP) {
+            support = clamp(support * 0.6, 0, 1);
+          }
+        }
+
+        // Micro/small-cap + low liquidity: boost manipulated launch prior
+        if ((cap === 'micro' || cap === 'small') && signals.liquidity < 0.2) {
+          if (profile.id === HYPOTHESIS_CLASSES.LOW_QUALITY_MANIPULATED_LAUNCH) {
+            support = clamp(support * 1.4, 0, 1);
+          }
+        }
+
+        if (!entityContext.sector && profile.id === HYPOTHESIS_CLASSES.SECTOR_SPILLOVER_REPRICING) {
+          support = clamp(support * 0.5, 0, 1);
+        }
+
+        // DeFi sector + strong fundamentals = stronger fundamental rerating
+        if (entityContext.sector?.toLowerCase().includes('defi') && signals.fundamentals_strength > 0.5) {
+          if (profile.id === HYPOTHESIS_CLASSES.FUNDAMENTALLY_SUPPORTED_RERATING) {
+            support = clamp(support * 1.15, 0, 1);
+          }
+        }
+      }
+
+      // ── Discovery states: suppress crowded-continuation fallback ──
+      if (stateGroup === 'discovery' && profile.id === HYPOTHESIS_CLASSES.CROWDED_CONTINUATION) {
+        support = clamp(support * 0.3, 0, 1);
+      }
+
+      // Targeted contradiction penalty
+      let contradictionPenalty = 0;
+      for (const c of contradictions.items) {
+        if (profile.weakenedBy.has(c.class as string)) {
+          contradictionPenalty += severityWeight(c.severity as string);
+        }
+      }
+      contradictionPenalty += contradictions.load * 0.08;
+      contradictionPenalty = Math.min(0.5, contradictionPenalty);
+
+      const confidence = clamp(support - contradictionPenalty, 0, 1);
+      const missing_evidence = profile.getMissingEvidence(signals);
+
+      return {
+        hypothesis: profile.id,
+        support_score: Math.round(support * 1000) / 1000,
+        contradiction_score: Math.round(contradictionPenalty * 1000) / 1000,
+        confidence: Math.round(confidence * 1000) / 1000,
+        missing_evidence,
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence);
+
+  // Fallback if no hypothesis was plausible for this state group
+  if (scored.length === 0) {
+    scored.push({
+      hypothesis: HYPOTHESIS_CLASSES.CROWDED_CONTINUATION,
+      support_score: 0.15,
+      contradiction_score: contradictions.load,
+      confidence: clamp(0.15 - contradictions.load * 0.3, 0, 1),
+      missing_evidence: ['Insufficient signal data for clear hypothesis'],
+    });
   }
 
-  hypotheses.sort((a, b) => b.confidence - a.confidence);
-
-  const primary = hypotheses[0];
-  const secondary = hypotheses.length > 1 ? hypotheses[1] : null;
-  const clarity = secondary ? primary.confidence - secondary.confidence : primary.confidence;
+  const primary = scored[0];
+  const secondary = scored.length > 1 ? scored[1] : null;
+  const clarity = secondary
+    ? primary.confidence - secondary.confidence
+    : primary.confidence;
 
   return {
     primary,
     secondary,
-    clarity: Math.min(1, Math.max(0, clarity)),
+    clarity: clamp(clarity, 0, 1),
     ambiguity_flag: clarity < 0.15,
   };
 }
 
-function makeHypothesis(
-  hypothesis: (typeof HYPOTHESIS_CLASSES)[keyof typeof HYPOTHESIS_CLASSES],
-  baseSupport: number,
-  contradictions: ReturnType<typeof detectContradictions>
-): RankedHypothesis {
-  const contradictionPenalty = contradictions.load * 0.3;
-  const confidence = Math.max(0, Math.min(1, baseSupport - contradictionPenalty));
-
-  return {
-    hypothesis,
-    support_score: baseSupport,
-    contradiction_score: contradictions.load,
-    confidence,
-    missing_evidence: [],
-  };
+function severityWeight(severity: string): number {
+  switch (severity) {
+    case 'critical': return 0.20;
+    case 'high': return 0.14;
+    case 'moderate': return 0.08;
+    case 'low': return 0.04;
+    default: return 0.02;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SCENARIO (Simplified v1)
+// SCENARIO ENGINE (v2 — dynamic from state + cause + thesis + timing context)
+//
+// Generates scenarios from the specific combination of signals rather than
+// selecting from group-level templates.
 // ═══════════════════════════════════════════════════════════════════════════════
+
+const CAUSAL_FAMILY_LABELS: Record<CausalFamily, string> = {
+  leverage_expansion: 'derivatives and leverage expansion',
+  spot_demand: 'organic spot demand',
+  smart_money_accumulation: 'smart money accumulation',
+  narrative_acceleration: 'narrative and social momentum',
+  fundamentals_improvement: 'fundamental improvement',
+  liquidity_emergence: 'liquidity formation',
+  supply_overhang: 'supply overhang pressure',
+  structural_fragility: 'structural fragility',
+  security_concern: 'security concerns',
+  distribution_pressure: 'distribution pressure',
+};
 
 function generateScenario(
   state: ReturnType<typeof classifyState>,
+  cause: JudgmentCause,
+  thesis: JudgmentThesis,
   contradictions: ReturnType<typeof detectContradictions>,
-  signals: SignalSnapshot
+  timing: FullTimingResult,
+  signals: SignalSnapshot,
+  entityContext?: ProduceJudgmentInput['entityContext'],
+  regime?: UnifiedRegime,
 ): JudgmentScenario {
-  const stateGroup = MARKET_STATE_GROUPS[state.primary];
+  const stateLabel = MARKET_STATE_LABELS[state.primary] ?? state.primary;
+  const causeLabel = CAUSAL_FAMILY_LABELS[cause.dominant_cluster] ?? cause.dominant_cluster;
+  const thesisLabel = HYPOTHESIS_LABELS[thesis.primary.hypothesis as HypothesisClass] ?? thesis.primary.hypothesis;
   const topContradiction = contradictions.items[0];
+  const topContradictionSummary = topContradiction?.summary ?? null;
 
-  const scenarios: Record<string, { base: string; bull: string; bear: string; trigger: string }> = {
-    discovery: {
-      base: 'Early-stage formation with limited data.',
-      bull: 'Liquidity deepens and narrative develops with real demand.',
-      bear: 'Liquidity dries up or security concerns emerge.',
-      trigger: 'Watch for sustained volume and holder growth.',
-    },
-    expansion: {
-      base: 'Active expansion with positive momentum.',
-      bull: 'Spot volume confirms and fundamentals strengthen.',
-      bear: 'Volume fades or leverage becomes overextended.',
-      trigger: 'Watch for spot volume follow-through and funding normalization.',
-    },
-    fragility: {
-      base: 'Crowded continuation with elevated fragility.',
-      bull: 'Spot participation strengthens while funding cools.',
-      bear: 'Exchange inflows rise and liquidation cascade begins.',
-      trigger: 'Watch for spot-led confirmation within next 24h.',
-    },
-    risk: {
-      base: 'Distribution or structural weakness present.',
-      bull: 'Selling pressure subsides and inflows resume.',
-      bear: 'Distribution continues and price support breaks.',
-      trigger: 'Watch for exchange outflow reversal and whale re-entry.',
-    },
-  };
+  // ── BASE CASE (with regime + hypothesis references) ───────────────────
+  const baseParts: string[] = [];
+  baseParts.push(`Primary hypothesis: ${thesisLabel.toLowerCase()}.`);
 
-  const s = scenarios[stateGroup] ?? scenarios.expansion;
-
-  let base = s.base;
-  if (topContradiction) {
-    base += ` Key tension: ${topContradiction.summary.toLowerCase()}`;
+  if (thesis.secondary) {
+    const secLabel = HYPOTHESIS_LABELS[thesis.secondary.hypothesis as HypothesisClass] ?? thesis.secondary.hypothesis;
+    baseParts.push(`Secondary hypothesis: ${secLabel.toLowerCase()} if ${thesis.primary.missing_evidence[0]?.toLowerCase() ?? 'primary thesis weakens'}.`);
   }
 
-  const scenarioConfidence = Math.max(0, Math.min(1,
-    signals.data_completeness * 0.4 +
-    state.confidence * 0.3 +
-    (1 - contradictions.load) * 0.3
-  ));
+  baseParts.push(`${stateLabel} driven primarily by ${causeLabel}.`);
+
+  if (regime) {
+    const regimeDesc = regime.macro.posture !== 'data_unavailable'
+      ? `Regime: ${regime.macro.posture.replace(/_/g, '-')}, ${regime.ecosystem.health} ecosystem, ${regime.volatility.regime.replace(/_/g, '-')} volatility.`
+      : 'Regime data insufficient — elevated uncertainty.';
+    baseParts.push(regimeDesc);
+  }
+
+  if (topContradiction) {
+    baseParts.push(`Main contradiction: ${topContradiction.summary.toLowerCase()}`);
+  }
+
+  if (timing.maturity.warning && timing.maturity.note) {
+    baseParts.push(`Current timing: ${timing.phase.replace(/_/g, ' ')}. ${timing.maturity.note}`);
+  } else {
+    baseParts.push(`Current timing: ${timing.phase.replace(/_/g, ' ')}.`);
+  }
+
+  if (thesis.ambiguity_flag) {
+    baseParts.push(`Thesis is ambiguous — ${thesisLabel} only marginally leads alternative explanations.`);
+  }
+
+  // Surface coverage weakness in scenario text
+  const missing = signals._missing;
+  if (missing && missing.size >= 4) {
+    const cats = [...missing].slice(0, 4).join(', ');
+    baseParts.push(`Data coverage is sparse (missing: ${cats}) — all conclusions carry elevated uncertainty.`);
+  } else if (missing && missing.size >= 2) {
+    const cats = [...missing].slice(0, 3).join(', ');
+    baseParts.push(`Partial data coverage (missing: ${cats}) — confidence reduced.`);
+  }
+
+  const base_case = baseParts.join(' ');
+
+  // ── LEGACY FIELDS (backward compat) ────────────────────────────────────
+  const bullish_confirmation = buildBullishCase(signals, thesis, timing, cause);
+  const bearish_failure = buildBearishCase(signals, thesis, contradictions, timing);
+  const next_trigger = buildNextTrigger(timing, contradictions, signals);
+
+  // ── HORIZON-SPECIFIC SCENARIOS (24h / 7d / 30d) ───────────────────────
+  const horizons = buildHorizonScenarios(signals, thesis, contradictions, timing, regime, entityContext);
+
+  // ── CONFIDENCE ────────────────────────────────────────────────────────
+  let conf = 0;
+  conf += signals.data_completeness * 0.25;
+  conf += state.confidence * 0.20;
+  conf += (1 - contradictions.load) * 0.20;
+  conf += thesis.clarity * 0.20;
+  conf += timing.sequence.sequence_health * 0.15;
+  const scenario_confidence = clamp(conf, 0, 1);
 
   return {
-    base_case: base,
-    bullish_confirmation: s.bull,
-    bearish_failure: s.bear,
-    next_trigger: s.trigger,
-    scenario_confidence: scenarioConfidence,
+    base_case,
+    bullish_confirmation,
+    bearish_failure,
+    next_trigger,
+    scenario_confidence: Math.round(scenario_confidence * 1000) / 1000,
+    horizons,
+    primary_hypothesis: thesisLabel,
+    top_contradiction: topContradictionSummary ?? undefined,
+    regime_context: regime?.summary,
   };
+}
+
+function buildHorizonScenarios(
+  signals: SignalSnapshot,
+  thesis: JudgmentThesis,
+  contradictions: ReturnType<typeof detectContradictions>,
+  timing: FullTimingResult,
+  regime?: UnifiedRegime,
+  entityContext?: ProduceJudgmentInput['entityContext'],
+): HorizonScenario[] {
+  const thesisLabel = HYPOTHESIS_LABELS[thesis.primary.hypothesis as HypothesisClass] ?? thesis.primary.hypothesis;
+  const topC = contradictions.items[0];
+  const macroLabel = regime ? regime.macro.posture.replace(/_/g, '-') : 'unknown';
+  const isRiskOff = regime?.macro.posture === 'risk_off';
+  const isHighVol = regime && (regime.volatility.regime === 'extreme_high' || regime.volatility.regime === 'high');
+  const highLeverage = signals.leverage_pressure > 0.5;
+
+  // ── 24h ────────────────────────────────────────────────────────────────
+  const h24Confirm: string[] = [];
+  if (signals.volume_24h < 0.3) h24Confirm.push('spot volume expansion');
+  if (highLeverage) h24Confirm.push('funding rate cooling without price collapse');
+  if (signals.whale_activity < 0.2) h24Confirm.push('smart money entry on spot');
+  if (h24Confirm.length === 0) h24Confirm.push('broad participation continues');
+  const h24Confirmation = `${thesisLabel} confirmed if ${h24Confirm.join(' with ')}.`;
+
+  const h24Fail: string[] = [];
+  if (highLeverage) h24Fail.push('leveraged unwind on thin spot demand');
+  if (signals.exchange_inflow > 0.3) h24Fail.push('exchange inflows accelerate');
+  if (topC) h24Fail.push(`${topC.summary.split('.')[0].toLowerCase()} worsens`);
+  if (h24Fail.length === 0) h24Fail.push('price reverses on volume spike');
+  const h24Failure = `Thesis fails if ${h24Fail.join(' or ')}.`;
+
+  const h24Trigger = timing.projection.watch_for.length > 0
+    ? `Watch: ${timing.projection.watch_for.slice(0, 2).join(', ').toLowerCase()}.`
+    : 'Monitor volume, funding, and exchange flow direction.';
+
+  const h24Invalidation = timing.projection.invalidates_thesis.length > 0
+    ? timing.projection.invalidates_thesis[0]
+    : 'No immediate invalidation conditions.';
+
+  // ── 7d ─────────────────────────────────────────────────────────────────
+  const h7dConfirm: string[] = [];
+  if (isRiskOff) h7dConfirm.push(`macro shifts away from ${macroLabel}`);
+  if (signals.fundamentals_strength < 0.3 && signals.narrative_intensity > 0.3) {
+    h7dConfirm.push('fundamentals begin confirming narrative');
+  }
+  if (signals.liquidity < 0.25) h7dConfirm.push('liquidity depth builds');
+  if (h7dConfirm.length === 0) h7dConfirm.push('sustained volume with declining contradiction load');
+  const h7dConfirmation = `Weekly outlook: ${thesisLabel.toLowerCase()} strengthens if ${h7dConfirm.join(' and ')}.`;
+
+  const h7dFail: string[] = [];
+  if (isRiskOff) h7dFail.push('risk-off regime deepens');
+  if (isHighVol) h7dFail.push('volatility expansion triggers liquidation cascades');
+  if (signals.exchange_inflow > 0.25) h7dFail.push('exchange inflows rise while liquidity weakens');
+  if (h7dFail.length === 0) h7dFail.push('sustained selling without buyer absorption');
+  const h7dFailure = `7d failure condition: ${h7dFail.join(' while ')}.`;
+
+  const h7dTrigger = entityContext?.sector
+    ? `Sector rotation signals in ${entityContext.sector.replace('sector:', '')} space.`
+    : 'Cross-asset correlation shifts or sector-level capital rotation.';
+
+  const h7dInvalidation = contradictions.structural_warning
+    ? 'Structural contradiction resolves against thesis direction.'
+    : 'Persistent divergence between spot and derivatives activity.';
+
+  // ── 30d ────────────────────────────────────────────────────────────────
+  const h30dConfirm: string[] = [];
+  h30dConfirm.push('fundamental metrics validate growth thesis');
+  if (signals.unlock_pressure > 0.2) h30dConfirm.push('unlock pressure absorbed without distribution');
+  if (entityContext?.narratives && entityContext.narratives.length > 0) {
+    h30dConfirm.push(`narrative "${entityContext.narratives[0]}" sustains institutional interest`);
+  }
+  const h30dConfirmation = `30d confirmation: ${h30dConfirm.join(', ')}.`;
+
+  const h30dFail: string[] = [];
+  h30dFail.push('fundamental metrics stagnate or decline');
+  if (signals.holder_concentration > 0.6) h30dFail.push('concentration risk materializes through distribution');
+  if (isRiskOff) h30dFail.push('macro regime remains adverse for extended period');
+  const h30dFailure = `30d failure: ${h30dFail.join(' and ')}.`;
+
+  const h30dTrigger = 'Quarterly fundamental catalysts, governance events, or macro regime shift.';
+  const h30dInvalidation = 'Sustained capital exodus or fundamental thesis invalidation (TVL collapse, security event).';
+
+  return [
+    { horizon: '24h', confirmation: h24Confirmation, failure: h24Failure, trigger: h24Trigger, invalidation: h24Invalidation },
+    { horizon: '7d', confirmation: h7dConfirmation, failure: h7dFailure, trigger: h7dTrigger, invalidation: h7dInvalidation },
+    { horizon: '30d', confirmation: h30dConfirmation, failure: h30dFailure, trigger: h30dTrigger, invalidation: h30dInvalidation },
+  ];
+}
+
+function buildBullishCase(
+  s: SignalSnapshot,
+  thesis: JudgmentThesis,
+  timing: FullTimingResult,
+  cause: JudgmentCause
+): string {
+  const parts: string[] = [];
+
+  // Lead with what confirmation the thesis needs
+  const missing = thesis.primary.missing_evidence;
+  if (missing.length > 0) {
+    parts.push(missing[0]);
+  }
+
+  // Add timing-specific progression requirement
+  if (timing.projection.must_happen.length > 0) {
+    const mustHappen = timing.projection.must_happen[0];
+    if (!parts.some(p => p.toLowerCase().includes(mustHappen.substring(0, 20).toLowerCase()))) {
+      parts.push(mustHappen);
+    }
+  }
+
+  // Signal-specific confirmations based on current weaknesses
+  if (s.volume_24h < 0.25 && !parts.some(p => p.toLowerCase().includes('volume'))) {
+    parts.push('Spot volume must expand to validate momentum');
+  }
+  if (s.leverage_pressure > 0.5 && s.funding_rate > 0.5 && !parts.some(p => p.toLowerCase().includes('funding'))) {
+    parts.push('Funding rate must normalize without price collapse');
+  }
+  if (s.whale_activity < 0.2 && !parts.some(p => p.toLowerCase().includes('smart money') || p.toLowerCase().includes('whale'))) {
+    parts.push('Smart money entry would strengthen conviction');
+  }
+
+  // Cause-specific progression
+  if (cause.dominant_cluster === CAUSAL_FAMILIES.NARRATIVE_ACCELERATION && s.fundamentals_strength < 0.3) {
+    if (!parts.some(p => p.toLowerCase().includes('fundamental'))) {
+      parts.push('Fundamentals must begin confirming the narrative');
+    }
+  }
+
+  if (parts.length === 0) {
+    parts.push('Broad participation continues with declining contradiction load');
+  }
+
+  return parts.slice(0, 3).join('. ') + '.';
+}
+
+function buildBearishCase(
+  s: SignalSnapshot,
+  thesis: JudgmentThesis,
+  contradictions: ReturnType<typeof detectContradictions>,
+  timing: FullTimingResult
+): string {
+  const parts: string[] = [];
+
+  // Lead with timing invalidation
+  if (timing.projection.invalidates_thesis.length > 0) {
+    parts.push(timing.projection.invalidates_thesis[0]);
+  }
+
+  // Top contradiction worsening
+  const topC = contradictions.items[0];
+  if (topC) {
+    const sev = topC.severity;
+    if (sev === 'critical' || sev === 'high') {
+      parts.push(`${topC.summary.replace(/\.$/, '')} intensifies`);
+    }
+  }
+
+  // Signal-specific risks
+  if (s.leverage_pressure > 0.5 && !parts.some(p => p.toLowerCase().includes('leverage') || p.toLowerCase().includes('liquidat'))) {
+    parts.push('Liquidation cascade triggered by deleveraging event');
+  }
+  if (s.exchange_inflow > 0.3 && !parts.some(p => p.toLowerCase().includes('exchange') || p.toLowerCase().includes('distribut'))) {
+    parts.push('Exchange inflows accelerate as distribution intensifies');
+  }
+  if (s.narrative_intensity > 0.4 && s.fundamentals_strength < 0.2 && !parts.some(p => p.toLowerCase().includes('narrative'))) {
+    parts.push('Narrative momentum fades without fundamental backing');
+  }
+
+  // Structural warnings
+  if (contradictions.structural_warning && !parts.some(p => p.toLowerCase().includes('structural'))) {
+    parts.push('Structural contradiction resolves unfavorably');
+  }
+
+  if (parts.length === 0) {
+    parts.push('Key support levels break and selling pressure overwhelms demand');
+  }
+
+  return parts.slice(0, 3).join('. ') + '.';
+}
+
+function buildNextTrigger(
+  timing: FullTimingResult,
+  contradictions: ReturnType<typeof detectContradictions>,
+  s: SignalSnapshot
+): string {
+  const parts: string[] = [];
+
+  // Timing engine's watch list is the primary source
+  if (timing.projection.watch_for.length > 0) {
+    parts.push(`Watch for ${timing.projection.watch_for.slice(0, 2).join(' and ').toLowerCase()}`);
+  }
+
+  // Most impactful contradiction that could resolve
+  const resolvable = contradictions.items.find(c => c.resolvable);
+  if (resolvable) {
+    parts.push(`Key contradiction to monitor: ${resolvable.summary.split('.')[0].toLowerCase()}`);
+  }
+
+  // Signal-specific inflection points
+  if (timing.inflections.length > 0) {
+    const top = timing.inflections[0];
+    const direction = top.type === 'positive' ? 'Positive inflection' : 'Risk signal';
+    parts.push(`${direction}: ${top.label.toLowerCase()}`);
+  }
+
+  // Fallback
+  if (parts.length === 0) {
+    if (s.data_completeness < 0.5) {
+      parts.push('Await more complete data before drawing conclusions');
+    } else {
+      parts.push('Monitor volume, funding rate, and exchange flow direction for next signal');
+    }
+  }
+
+  return parts.slice(0, 2).join('. ') + '.';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -410,6 +1176,14 @@ function buildEvidenceLedger(
 
   if (signals.data_freshness < 0.5) stale.push('Some data sources are stale');
   if (signals.data_completeness < 0.6) stale.push('Multiple data modules unavailable');
+
+  // Surface explicitly missing data sources
+  const missing = signals._missing;
+  if (missing && missing.size > 0) {
+    for (const src of missing) {
+      stale.push(`No data: ${src}`);
+    }
+  }
 
   return { positive, negative, unresolved, stale };
 }

@@ -620,20 +620,215 @@ function projectNextSteps(
 // FULL TIMING OUTPUT (extended from JudgmentTiming)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// MULTI-SNAPSHOT TEMPORAL ANALYSIS (v2)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface TimestampedSnapshot {
+  snapshot: SignalSnapshot;
+  timestamp: number;
+}
+
+export interface LeadLagRelationship {
+  leader: string;
+  lagger: string;
+  /** How many snapshots the leader activated before the lagger */
+  leadBy: number;
+  /** Strength of the relationship (0–1) */
+  confidence: number;
+}
+
+export interface PhaseTransition {
+  from: TimingPhase;
+  to: TimingPhase;
+  /** When the transition occurred (unix ms) */
+  transitionAt: number;
+  /** Duration in the previous phase (ms) */
+  durationMs: number;
+}
+
+export interface TemporalAnalysis {
+  /** Number of snapshots analyzed */
+  snapshotCount: number;
+  /** Span covered (ms) */
+  spanMs: number;
+  /** Lead-lag relationships detected across time */
+  leadLag: LeadLagRelationship[];
+  /** Phase transitions observed */
+  phaseTransitions: PhaseTransition[];
+  /** How long current phase has been active (ms) */
+  currentPhaseDurationMs: number;
+  /** Phase progression velocity: positive = advancing, negative = regressing */
+  phaseVelocity: number;
+  /** Timestamps where inflection signals first appeared */
+  inflectionTimestamps: Array<{ signal: string; timestamp: number; type: 'positive' | 'negative' }>;
+  /** Rationale explaining current timing conclusion */
+  rationale: string[];
+}
+
+const LAYER_IDS = ['smart_money', 'liquidity', 'spot_demand', 'fundamentals', 'narrative', 'leverage'] as const;
+const ACTIVE_THRESHOLD = 0.2;
+
+function extractLayerStrengths(s: SignalSnapshot): Record<string, number> {
+  return {
+    smart_money: s.whale_activity,
+    liquidity: s.liquidity,
+    spot_demand: Math.max(s.volume_24h, Math.abs(s.price_momentum_24h)),
+    fundamentals: s.fundamentals_strength,
+    narrative: s.narrative_intensity,
+    leverage: s.leverage_pressure,
+  };
+}
+
+function analyzeTemporalSequence(history: TimestampedSnapshot[]): TemporalAnalysis {
+  if (history.length < 2) {
+    return {
+      snapshotCount: history.length,
+      spanMs: 0,
+      leadLag: [],
+      phaseTransitions: [],
+      currentPhaseDurationMs: 0,
+      phaseVelocity: 0,
+      inflectionTimestamps: [],
+      rationale: ['Single snapshot — temporal analysis unavailable'],
+    };
+  }
+
+  const sorted = [...history].sort((a, b) => a.timestamp - b.timestamp);
+  const spanMs = sorted[sorted.length - 1].timestamp - sorted[0].timestamp;
+  const rationale: string[] = [];
+
+  // Detect when each layer first became active
+  const firstActiveAt = new Map<string, number>();
+  for (const { snapshot, timestamp } of sorted) {
+    const strengths = extractLayerStrengths(snapshot);
+    for (const id of LAYER_IDS) {
+      if (strengths[id] > ACTIVE_THRESHOLD && !firstActiveAt.has(id)) {
+        firstActiveAt.set(id, timestamp);
+      }
+    }
+  }
+
+  // Build lead-lag from activation order
+  const activationEntries = [...firstActiveAt.entries()].sort((a, b) => a[1] - b[1]);
+  const leadLag: LeadLagRelationship[] = [];
+
+  for (let i = 0; i < activationEntries.length - 1; i++) {
+    for (let j = i + 1; j < activationEntries.length; j++) {
+      const [leader, leaderTime] = activationEntries[i];
+      const [lagger, laggerTime] = activationEntries[j];
+      const snapshotsApart = sorted.filter(s => s.timestamp >= leaderTime && s.timestamp < laggerTime).length;
+      if (snapshotsApart > 0) {
+        leadLag.push({
+          leader,
+          lagger,
+          leadBy: snapshotsApart,
+          confidence: clampVal(snapshotsApart / sorted.length, 0, 1),
+        });
+      }
+    }
+  }
+
+  if (leadLag.length > 0) {
+    const topLead = leadLag[0];
+    rationale.push(`${topLead.leader} activated before ${topLead.lagger} by ${topLead.leadBy} snapshots`);
+  }
+
+  // Track phase transitions
+  const phaseTransitions: PhaseTransition[] = [];
+  let lastPhase: TimingPhase | null = null;
+  let lastPhaseStart = sorted[0].timestamp;
+
+  for (const { snapshot, timestamp } of sorted) {
+    const stateGroup = 'expansion'; // simplified — use latest state group in production
+    const seq = analyzeSequence(snapshot);
+    const mat = assessMaturity(snapshot, seq, stateGroup);
+    const phase = classifyPhase(snapshot, seq, mat, stateGroup);
+
+    if (lastPhase !== null && phase !== lastPhase) {
+      phaseTransitions.push({
+        from: lastPhase,
+        to: phase,
+        transitionAt: timestamp,
+        durationMs: timestamp - lastPhaseStart,
+      });
+      lastPhaseStart = timestamp;
+    }
+    lastPhase = phase;
+  }
+
+  const currentPhaseDurationMs = sorted[sorted.length - 1].timestamp - lastPhaseStart;
+
+  if (phaseTransitions.length > 0) {
+    const last = phaseTransitions[phaseTransitions.length - 1];
+    rationale.push(`Phase shifted from ${last.from} → ${last.to} ${Math.round((sorted[sorted.length - 1].timestamp - last.transitionAt) / 60000)}m ago`);
+  }
+  rationale.push(`Current phase active for ${Math.round(currentPhaseDurationMs / 60000)}m`);
+
+  // Phase velocity: compare first and last phase positions
+  const firstSeq = analyzeSequence(sorted[0].snapshot);
+  const firstMat = assessMaturity(sorted[0].snapshot, firstSeq, 'expansion');
+  const firstPhase = classifyPhase(sorted[0].snapshot, firstSeq, firstMat, 'expansion');
+  const lastSeq = analyzeSequence(sorted[sorted.length - 1].snapshot);
+  const lastMat = assessMaturity(sorted[sorted.length - 1].snapshot, lastSeq, 'expansion');
+  const lastPhaseCalc = classifyPhase(sorted[sorted.length - 1].snapshot, lastSeq, lastMat, 'expansion');
+
+  const firstPos = TIMING_POSITION[firstPhase] ?? 1;
+  const lastPos = TIMING_POSITION[lastPhaseCalc] ?? 1;
+  const phaseVelocity = spanMs > 0 ? ((lastPos - firstPos) / (spanMs / 3600000)) : 0;
+
+  // Inflection timestamps
+  const inflectionTimestamps: TemporalAnalysis['inflectionTimestamps'] = [];
+  const seenInflections = new Set<string>();
+  for (const { snapshot, timestamp } of sorted) {
+    const seq = analyzeSequence(snapshot);
+    const inflections = detectInflections(snapshot, seq);
+    for (const infl of inflections) {
+      if (!seenInflections.has(infl.label)) {
+        seenInflections.add(infl.label);
+        inflectionTimestamps.push({ signal: infl.label, timestamp, type: infl.type });
+      }
+    }
+  }
+
+  return {
+    snapshotCount: sorted.length,
+    spanMs,
+    leadLag,
+    phaseTransitions,
+    currentPhaseDurationMs,
+    phaseVelocity,
+    inflectionTimestamps,
+    rationale,
+  };
+}
+
+function clampVal(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FULL TIMING OUTPUT (extended from JudgmentTiming)
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export interface FullTimingResult extends JudgmentTiming {
   sequence: SequenceAnalysis;
   maturity: MaturityAssessment;
   inflections: InflectionSignal[];
   projection: TimingProjection;
+  /** Multi-snapshot temporal analysis (present when history is provided) */
+  temporal?: TemporalAnalysis;
 }
 
 /**
- * Full timing/sequence engine.
- * Replaces the simplified classifyTiming from v1.
+ * Full timing/sequence engine (v2).
+ * When `history` is provided, performs multi-snapshot temporal analysis
+ * for lead-lag, phase transitions, and inflection timestamps.
  */
 export function classifyTimingFull(
   state: { primary: MarketState; confidence: number },
-  signals: SignalSnapshot
+  signals: SignalSnapshot,
+  history?: TimestampedSnapshot[],
 ): FullTimingResult {
   const stateGroup = MARKET_STATE_GROUPS[state.primary];
 
@@ -645,6 +840,20 @@ export function classifyTimingFull(
 
   const position = TIMING_POSITION[phase];
   const score = Math.round((position / TIMING_TOTAL_STEPS) * 100);
+
+  // Multi-snapshot temporal analysis
+  let temporal: TemporalAnalysis | undefined;
+  if (history && history.length >= 2) {
+    temporal = analyzeTemporalSequence(history);
+
+    // Use temporal rationale to refine maturity note
+    if (temporal.phaseVelocity > 2 && !maturity.note?.includes('accelerat')) {
+      maturity.risk_factors.push(`Phase advancing rapidly (velocity: ${temporal.phaseVelocity.toFixed(1)}/hr)`);
+    }
+    if (temporal.currentPhaseDurationMs > 4 * 3600000 && phase === TIMING_PHASES.MATURE) {
+      maturity.risk_factors.push(`Extended time in mature phase (${Math.round(temporal.currentPhaseDurationMs / 3600000)}h)`);
+    }
+  }
 
   return {
     phase,
@@ -658,5 +867,6 @@ export function classifyTimingFull(
     maturity,
     inflections,
     projection,
+    temporal,
   };
 }

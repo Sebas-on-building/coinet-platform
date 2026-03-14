@@ -65,6 +65,7 @@ export {
   
   // Classes
   InMemoryOmniScoreStore,
+  PrismaOmniScoreStore,
   
   // Store management
   getStore,

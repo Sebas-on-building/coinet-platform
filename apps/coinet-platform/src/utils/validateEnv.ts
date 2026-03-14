@@ -118,11 +118,13 @@ export function validateEnv(): void {
   );
 
   // JWT_SECRET is optional for Clerk-only deployments. When set (legacy JWT mode),
-  // it must be ≥32 chars for security.
+  // it must be ≥32 chars for security. If set but too short, we ignore it and run
+  // in Clerk-only mode — do not fail startup (requireAuth already handles this).
   const jwtSecret = process.env.JWT_SECRET;
   if (jwtSecret !== undefined && jwtSecret !== '' && !minLength(32)(jwtSecret)) {
-    failures.push(
-      'JWT_SECRET: When set, must be at least 32 characters. Generate: openssl rand -base64 32'
+    logger.warn(
+      '[env] JWT_SECRET: Set but too short (< 32 chars) — legacy JWT disabled, running in Clerk-only mode. ' +
+        'Generate a valid secret: openssl rand -base64 32'
     );
   }
 
@@ -170,10 +172,12 @@ export function validateEnv(): void {
   }
 
   // ── Summary ──────────────────────────────────────────────────────────────
+  const jwtUsable =
+    process.env.JWT_SECRET && minLength(32)(process.env.JWT_SECRET);
   logger.info('[env] Startup validation passed', {
     NODE_ENV: process.env.NODE_ENV ?? 'development',
     DATABASE_URL: 'configured',
-    JWT_SECRET: process.env.JWT_SECRET ? 'configured' : 'absent (Clerk-only)',
+    JWT_SECRET: jwtUsable ? 'configured' : 'absent (Clerk-only)',
     XAI_API_KEY: process.env.XAI_API_KEY ? 'configured' : 'absent',
     OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'configured' : 'absent',
     CORS_ORIGIN: process.env.CORS_ORIGIN ? 'configured' : 'absent',

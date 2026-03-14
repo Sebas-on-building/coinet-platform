@@ -25,6 +25,7 @@
 
 import axios, { AxiosError } from 'axios';
 import { logger } from '../utils/logger';
+import { validateProvider, CoinGeckoPriceSchema, CMCResponseSchema } from './provider-schemas';
 import { symbolDetector, DetectedCoin } from './symbol-detector';
 import { recordDataSource } from '../api/chat/source-manager';
 import { searchToken, DexToken, analyzeTokenRisk } from './dexscreener';
@@ -346,10 +347,8 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
     });
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 3: RESPONSE VALIDATION (Defense in depth)
+    // STEP 3: RESPONSE VALIDATION (Zod schema + emptiness check)
     // ═══════════════════════════════════════════════════════════════════════
-    // ⚠️ Even with pre-validation, still check for empty responses
-    // (API issues, temporary delisting, etc.)
     if (!response.data || Object.keys(response.data).length === 0) {
       logger.warn('CoinGecko returned empty response despite valid IDs', { 
         requestedCoinIds: validCoinIds,
@@ -358,15 +357,20 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
       return [];
     }
 
+    const schemaResult = validateProvider('coingecko', CoinGeckoPriceSchema, response.data);
+    if (!schemaResult.ok) {
+      logger.warn('CoinGecko response failed schema validation — degrading', { error: (schemaResult as { ok: false; error: string }).error });
+      return [];
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 4: PROCESS RESPONSE
+    // STEP 4: PROCESS RESPONSE (schema-validated)
     // ═══════════════════════════════════════════════════════════════════════
     const prices: MarketPrice[] = [];
 
-    for (const [id, data] of Object.entries(response.data) as [string, any][]) {
-      // Validate data structure - CoinGecko might return incomplete data
-      if (!data || typeof data !== 'object' || !data.usd) {
-        logger.warn('CoinGecko returned incomplete data for coin', { id, data });
+    for (const [id, data] of Object.entries(schemaResult.data)) {
+      if (!data || !data.usd) {
+        logger.warn('CoinGecko returned incomplete data for coin', { id });
         continue;
       }
       
@@ -434,8 +438,11 @@ async function fetchFromCoinMarketCap(symbols: string[]): Promise<MarketPrice[]>
 
     const prices: MarketPrice[] = [];
 
-    if (response.data?.data) {
-      for (const [symbol, data] of Object.entries(response.data.data) as [string, any][]) {
+    const cmcValidation = validateProvider('cmc', CMCResponseSchema, response.data);
+    if (cmcValidation.ok && cmcValidation.data.data) {
+      for (const [symbol, rawEntry] of Object.entries(cmcValidation.data.data)) {
+        const data = Array.isArray(rawEntry) ? rawEntry[0] : rawEntry;
+        if (!data) continue;
         const quote = data.quote?.USD;
         if (!quote) continue;
 

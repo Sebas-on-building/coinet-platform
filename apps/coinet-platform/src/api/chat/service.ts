@@ -12,6 +12,10 @@
 import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/market-data';
+import { produceJudgment, buildSignalSnapshot } from '../../services/judgment';
+import { formatJudgmentForAI } from '../../services/judgment/debug-view';
+import { resolve as resolveCanonical } from '../../services/canonical';
+import { graph as knowledgeGraph } from '../../services/knowledge-graph';
 import { getWhaleContextForAI } from '../../services/whale-data';
 import { getEnrichedNewsForCoins, formatEnrichedNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
@@ -1020,7 +1024,115 @@ Inform the user that OmniScore analysis is temporarily unavailable.
           }
         }
         
-        // 15. Investigate unknown projects not in OmniScore database
+        // 15. JUDGMENT ENGINE — 7-part structured market intelligence (Layer 10–12)
+        if (detectedCoins.length > 0) {
+          try {
+            const primaryCoin = detectedCoins[0];
+            const rawId = primaryCoin.coinGeckoId || primaryCoin.symbol.toLowerCase();
+
+            // Canonical resolution (Layer 3)
+            const resolution = resolveCanonical({ raw: rawId, kindHint: 'asset' });
+            const judgmentEntityId = resolution.entity?.canonicalId ?? rawId;
+            const resolvedSymbol = resolution.entity?.symbol ?? primaryCoin.symbol.toUpperCase();
+            const resolvedChain = (resolution.entity && 'primaryChain' in resolution.entity)
+              ? (resolution.entity as any).primaryChain as string | null
+              : null;
+
+            // Graph context (Layer 4)
+            const graphCtx = resolution.entity
+              ? knowledgeGraph.getEntityContext(resolution.entity.canonicalId)
+              : null;
+
+            const signals = buildSignalSnapshot({
+              dexscreener: {
+                price_change_24h: (marketData as any)?.priceChange24h ?? 0,
+                price_change_1h: (marketData as any)?.priceChange1h ?? 0,
+                volume_24h_usd: (marketData as any)?.volume24h ?? 0,
+                txns_buys_24h: (marketData as any)?.buys24h ?? 0,
+                txns_sells_24h: (marketData as any)?.sells24h ?? 0,
+                liquidity_usd: (marketData as any)?.liquidity ?? 0,
+                pair_age_hours: undefined,
+              },
+              derivatives: {
+                open_interest_usd: (derivativesFinal as any)?.openInterest?.total ?? 0,
+                open_interest_change_24h: (derivativesFinal as any)?.openInterest?.change24h ?? 0,
+                funding_rate: (derivativesFinal as any)?.funding?.current ?? 0,
+                liquidations_24h_usd: (derivativesFinal as any)?.liquidations?.total24h ?? 0,
+                long_short_ratio: (derivativesFinal as any)?.positioning?.longShortRatio ?? 1,
+              },
+              protocol: {
+                tvl_usd: 0,
+                fees_usd: 0,
+                revenue_usd: 0,
+              },
+              onchain: {
+                whale_net_flow_24h: 0,
+                exchange_inflow_24h: 0,
+                exchange_outflow_24h: 0,
+                active_addresses_24h: 0,
+              },
+              security: { risk_score: 0 },
+              holders: { top_10_percentage: 0 },
+              sentiment: {
+                score: (sentiment as any)?.overall ?? 0,
+                volume_mentions_24h: 0,
+                social_dominance: 0,
+              },
+              news: { item_count: 0 },
+              unlock: {},
+              coverage: {
+                available_count: derivativesFinal ? 5 : 3,
+                total_count: 10,
+                stale_count: 0,
+              },
+            });
+
+            const judgment = produceJudgment({
+              entity_id: judgmentEntityId,
+              symbol: resolvedSymbol,
+              chain: resolvedChain,
+              signals,
+              entityContext: graphCtx ? {
+                ecosystem: graphCtx.ecosystem,
+                sector: graphCtx.sector,
+                relatedAssets: graphCtx.relatedAssets,
+                narratives: graphCtx.narratives,
+                competitors: graphCtx.competitors,
+                capBucket: graphCtx.capBucket,
+              } : undefined,
+            });
+
+            const judgmentContext = formatJudgmentForAI(judgment);
+            contextParts.push(`
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║  STRUCTURED MARKET JUDGMENT — ${resolvedSymbol}${graphCtx?.sector ? ` (${graphCtx.sector.replace('sector:', '')})` : ''}${graphCtx?.ecosystem ? ` on ${graphCtx.ecosystem.replace('chain:', '')}` : ''}
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+${judgmentContext}
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPORTANT: This is the engine's structured analysis. Use it to ground your
+response. Reference the state, thesis, contradictions, and timing when
+answering questions about this asset. Do NOT contradict this judgment
+without explicit evidence.
+═══════════════════════════════════════════════════════════════════════════════
+`);
+
+            logger.info('Judgment engine context added', {
+              symbol: primaryCoin.symbol,
+              state: judgment.state.primary,
+              thesis: judgment.thesis.primary.hypothesis,
+              confidence: judgment.confidence.overall,
+              contradictions: judgment.contradictions.items.length,
+            });
+          } catch (judgmentError) {
+            logger.warn('Judgment engine failed — continuing without structured judgment', {
+              error: judgmentError instanceof Error ? judgmentError.message : String(judgmentError),
+            });
+          }
+        }
+
+        // 16. Investigate unknown projects not in OmniScore database
         // This provides comprehensive CoinGecko data for projects that might be new/unknown
         const unknownCoins = detectedCoins.filter(coin => {
           // Check if we already have market data for this coin
