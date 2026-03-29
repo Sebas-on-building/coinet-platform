@@ -2054,7 +2054,8 @@ model UserFeedback {
   @@index([alertId, feedbackTime])
   @@index([tenantId, userId, satisfactionScore])
   @@index([category, subcategories, satisfactionScore])
-  @@index([sentimentScore, emotionScores])
+  // B-tree cannot index Json in PostgreSQL without GIN; index scalar only
+  @@index([sentimentScore])
   @@index([algorithmVersion, satisfactionScore])
   @@index([feedbackChannel, feedbackQuality])
   @@index([processed, helpfulnessScore])
