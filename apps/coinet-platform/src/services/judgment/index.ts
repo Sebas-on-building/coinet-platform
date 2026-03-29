@@ -40,6 +40,10 @@ import type {
 } from './types';
 import { JUDGMENT_VERSION } from './types';
 import { classifyRegime, type MarketWideInputs, type UnifiedRegime } from './regime-engine';
+import { produceHypothesisOutput, type ProduceHypothesisResult } from '../hypotheses/orchestrator';
+import { formatHypothesisForAI } from '../hypotheses/explainer';
+import { persistHypothesisJudgmentSnapshot } from '../hypotheses/logging';
+import { captureJudgmentSnapshot } from '../calibration-spine/snapshot-writer';
 
 // Re-export everything consumers need
 export { buildSignalSnapshot } from './signal-snapshot';
@@ -51,6 +55,8 @@ export { classifyTimingFull } from './timing-engine';
 export type { FullTimingResult, SequenceAnalysis, InflectionSignal, TemporalAnalysis, TimestampedSnapshot } from './timing-engine';
 export { classifyRegime } from './regime-engine';
 export type { UnifiedRegime, MacroContext, EcosystemPosture, MarketWideInputs } from './regime-engine';
+export { produceHypothesisOutput } from '../hypotheses/orchestrator';
+export type { HypothesisOutput, RankedHypothesis as HypothesisRanked } from '../hypotheses/types';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN API
@@ -133,6 +139,31 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
   // 6. Thesis (v3 — regime-aware, context-aware, dynamic scoring)
   const thesis = rankHypotheses(state, cause, contradictions, signals, entityContext, regime);
 
+  // 6b. Hypothesis Engine (Phase 3 Wave 2 — full evidence-linked ranking)
+  let hypothesisEngineResult: ProduceHypothesisResult | undefined;
+  try {
+    hypothesisEngineResult = produceHypothesisOutput({
+      signals,
+      regimePrimary: regime?.macro?.posture,
+      sequenceState: fullTiming?.sequence?.summary,
+      regimeConfigVersion: regime?.configVersion,
+    });
+
+    persistHypothesisJudgmentSnapshot({
+      assetCanonicalId: entity_id,
+      assetSymbol: symbol,
+      chainId: chain ?? undefined,
+      judgmentTimestamp: new Date(),
+      regimePrimary: regime?.macro?.posture,
+      sequenceState: fullTiming?.sequence?.summary,
+      timingPhase: fullTiming?.phase,
+      hypothesisOutput: hypothesisEngineResult.hypothesisOutput,
+      coverage: hypothesisEngineResult.coverage,
+      configVersions: hypothesisEngineResult.configVersions,
+      contradictionLoad: contradictions.load as number,
+    }).catch(() => {});
+  } catch { /* hypothesis engine is best-effort in this rollout */ }
+
   // 7. Scenario (v3 — horizon-aware, regime+hypothesis+contradiction referencing)
   const scenario = generateScenario(state, cause, thesis, contradictions, fullTiming, signals, entityContext, regime);
 
@@ -169,6 +200,38 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
   // 11. Quality checks
   const quality_checks = runQualityChecks(state, cause, contradictions, timing, scenario, confidence);
 
+  // 12. Calibration Spine — snapshot capture (Phase 3 Wave 3, Gate 1)
+  try {
+    const heOutput = hypothesisEngineResult?.hypothesisOutput;
+    captureJudgmentSnapshot({
+      assetCanonicalId: entity_id,
+      assetSymbol: symbol,
+      chainId: chain ?? undefined,
+      priceAtJudgment: 0,
+      regimePrimary: regime?.macro?.posture,
+      sequenceState: fullTiming?.sequence?.summary,
+      timingPhase: fullTiming?.phase,
+      primaryHypothesisId: heOutput?.primary?.id ?? thesis.primary.hypothesis,
+      primaryHypothesisScore: heOutput?.primary?.score ?? thesis.primary.support_score,
+      primaryHypothesisConfidence: heOutput?.primary?.confidence ?? thesis.primary.confidence,
+      secondaryHypothesisId: heOutput?.secondary?.id ?? thesis.secondary?.hypothesis,
+      secondaryHypothesisScore: heOutput?.secondary?.score ?? thesis.secondary?.support_score,
+      confidenceSpread: heOutput ? (heOutput.primary.score - (heOutput.secondary?.score ?? 0)) : thesis.clarity,
+      ambiguityLevel: heOutput?.ambiguityLevel ?? (thesis.ambiguity_flag ? 'high' : 'low'),
+      opportunityScore: scores?.os ?? undefined,
+      riskScore: scores?.risk ?? undefined,
+      qualityScore: scores?.qs ?? undefined,
+      signalConfidence: confidence.score,
+      contradictionLoad: contradictions.load as number,
+      contradictionClasses: contradictions.items.map((c: any) => c.class),
+      coverageScore: signals.data_completeness,
+      degradedDomains: signals._missing ? [...signals._missing] : [],
+      decisiveMissingEvidence: heOutput?.decisiveMissingEvidence ?? [],
+      hypothesisConfigVersion: hypothesisEngineResult?.configVersions?.hypothesisRegistryVersion ?? 'legacy',
+      regimeConfigVersion: regime?.configVersion,
+    });
+  } catch { /* calibration snapshot is best-effort */ }
+
   return {
     version: JUDGMENT_VERSION,
     entity_id,
@@ -192,6 +255,12 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
       inflections: fullTiming.inflections,
       projection: fullTiming.projection,
     },
+    hypothesisEngine: hypothesisEngineResult ? {
+      output: hypothesisEngineResult.hypothesisOutput,
+      coverage: hypothesisEngineResult.coverage,
+      configVersions: hypothesisEngineResult.configVersions,
+      auditNotes: hypothesisEngineResult.internalProfiles.auditNotes,
+    } : undefined,
   };
 }
 

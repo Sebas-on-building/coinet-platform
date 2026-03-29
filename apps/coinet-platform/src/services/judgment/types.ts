@@ -341,6 +341,14 @@ export const JudgmentOutputSchema = z.object({
       watch_for: z.array(z.string()),
     }),
   }).optional(),
+
+  /** Phase 3 Wave 2 — Full Hypothesis Engine output */
+  hypothesisEngine: z.object({
+    output: z.any(),
+    coverage: z.any(),
+    configVersions: z.any(),
+    auditNotes: z.array(z.string()),
+  }).optional(),
 });
 
 export type JudgmentOutput = z.infer<typeof JudgmentOutputSchema>;

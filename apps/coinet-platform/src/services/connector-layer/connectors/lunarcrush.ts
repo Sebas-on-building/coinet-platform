@@ -28,6 +28,7 @@ export class LunarCrushConnector extends BaseConnector<SentimentRaw, SentimentDa
       source_class: 'narrative',
       truth_class: 'narrative_attention',
       category: 'polling',
+      scheduled_cadence_tier: 'medium_frequency',
       default_entity_type: 'market_event',
       default_timeout_ms: 10_000,
       enabled: true,

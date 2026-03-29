@@ -3582,3 +3582,140 @@ model ProjectResearchLog {
   @@index([createdAt])
   @@map("project_research_logs")
 }
+
+// =============================================================================
+// HYPOTHESIS JUDGMENT SNAPSHOTS — Phase 3 Wave 2
+// =============================================================================
+// Persists every hypothesis ranking for forward-outcome calibration.
+// Stores primary/secondary hypotheses, evidence links, invalidation state,
+// config versions, and coverage context.
+
+model HypothesisJudgmentSnapshot {
+  id                      String   @id @default(uuid())
+  createdAt               DateTime @default(now())
+
+  assetCanonicalId        String   @db.VarChar(200)
+  assetSymbol             String?  @db.VarChar(30)
+  chainId                 String?  @db.VarChar(50)
+
+  judgmentTimestamp        DateTime
+  regimePrimary           String?  @db.VarChar(60)
+  regimeSecondary         String?  @db.VarChar(60)
+  sequenceState           String?  @db.VarChar(60)
+  timingPhase             String?  @db.VarChar(60)
+
+  primaryHypothesisId     String   @db.VarChar(80)
+  primaryScore            Float
+  primaryConfidence       Float
+
+  secondaryHypothesisId   String?  @db.VarChar(80)
+  secondaryScore          Float?
+  secondaryConfidence     Float?
+  confidenceSpread        Float?
+
+  ambiguityLevel          String   @db.VarChar(20)
+  outputVersion           String   @db.VarChar(20)
+  hypothesisConfigVersion String   @db.VarChar(60)
+  regimeConfigVersion     String?  @db.VarChar(60)
+  scoringConfigVersion    String?  @db.VarChar(60)
+
+  contradictionLoad       Float?
+  coverageScore           Float?
+  degradedDomains         Json?
+  decisiveMissingEvidence Json?
+  rankingExplanation      Json?
+
+  evidenceLinks           Json
+  invalidationStatus      Json
+  triggeredRules          Json
+
+  // Wave 3 — score state + price for forward-outcome calibration
+  priceAtJudgment         Float?
+  opportunityScore        Float?
+  riskScore               Float?
+  timingScore             Float?
+  qualityScore            Float?
+  signalConfidence        Float?
+  confidenceConfigVersion String?  @db.VarChar(60)
+  calibrationSpineVersion String?  @db.VarChar(20)
+
+  sourceTraceIds          Json?
+  rawContextSnapshot      Json?
+
+  forwardOutcomes         ForwardOutcome[]
+
+  @@index([assetCanonicalId, judgmentTimestamp])
+  @@index([primaryHypothesisId, judgmentTimestamp])
+  @@index([regimePrimary, judgmentTimestamp])
+  @@map("hypothesis_judgment_snapshots")
+}
+
+// =============================================================================
+// FORWARD OUTCOMES — Phase 3 Wave 3
+// =============================================================================
+// Captures realized market consequence after a defined forward window.
+// Stores path metrics (excursion, drawdown, volatility), not only destination.
+
+model ForwardOutcome {
+  id                    String   @id @default(uuid())
+  createdAt             DateTime @default(now())
+
+  snapshotId            String   @db.VarChar(200)
+  snapshot              HypothesisJudgmentSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  window                String   @db.VarChar(10)
+  resolvedAt            DateTime
+
+  endPrice              Float
+  endReturn             Float
+  maxUpsideExcursion    Float
+  maxDownsideExcursion  Float
+  maxDrawdown           Float
+  realizedVolatility    Float
+  pathReturn            Float
+
+  benchmarkReturn       Float?
+  excessReturn          Float?
+
+  directionCorrect      Boolean?
+  continuationStrength  Float
+  reversalSeverity      Float
+
+  @@unique([snapshotId, window])
+  @@index([window, resolvedAt])
+  @@index([snapshotId])
+  @@map("forward_outcomes")
+}
+
+// =============================================================================
+// CALIBRATION AGGREGATES — Phase 3 Wave 3
+// =============================================================================
+// Pattern-level memory: score reliability, confidence accountability,
+// hypothesis hit rates, timing expectancy, contradiction impact.
+// Recomputed periodically. Segmented by regime, cap bucket, version, etc.
+
+model CalibrationAggregate {
+  id                      String   @id @default(uuid())
+  computedAt              DateTime @default(now())
+
+  window                  String   @db.VarChar(10)
+  segmentType             String   @db.VarChar(30)
+  segmentValue            String   @db.VarChar(120)
+  sampleCount             Int
+
+  scoreReliability        Json
+  confidenceCalibration   Json
+  hypothesisReliability   Json
+  timingUsefulness        Json
+  contradictionImpact     Json
+
+  calibrationError        Float
+  overconfidenceRate      Float
+
+  configVersion           String   @db.VarChar(60)
+  calibrationSpineVersion String   @db.VarChar(20)
+
+  @@index([window, segmentType, segmentValue])
+  @@index([computedAt])
+  @@map("calibration_aggregates")
+}

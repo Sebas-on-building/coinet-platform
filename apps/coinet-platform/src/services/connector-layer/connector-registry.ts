@@ -23,8 +23,10 @@ import type {
 } from './types';
 import type { SourceClass } from '../source-systems/registry';
 import { getFallbackChain } from '../source-systems/registry';
-import { getRoutingModeFromCategory } from './routing-modes';
+import { getRoutingModeFromCategory, sortModulesByRoutingPriority } from './routing-modes';
 import { BaseConnector } from './base-connector';
+import { getModuleDoctrine } from './envelope-factory';
+import { buildFallbackEpistemicMetadataForFailure } from './fallback-design';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -122,6 +124,8 @@ export function getRegistryDiagnostics(): Record<string, Array<{
   provider: string;
   source_class: SourceClass;
   category: ConnectorCategory;
+  routing_mode: RoutingMode;
+  scheduled_cadence_tier?: string;
   priority: number;
   enabled: boolean;
 }>> {
@@ -136,6 +140,7 @@ export function getRegistryDiagnostics(): Record<string, Array<{
         source_class: e.connector.config.source_class,
         category: e.connector.config.category,
         routing_mode: routingMode,
+        scheduled_cadence_tier: e.connector.config.scheduled_cadence_tier,
         priority: e.priority,
         enabled: e.connector.config.enabled,
       };
@@ -163,6 +168,12 @@ export async function executeWithFallback<T = unknown>(
   const attempts: ExecutionSummary['results'] = [];
 
   if (chain.length === 0) {
+    const fe = buildFallbackEpistemicMetadataForFailure({
+      truthClass: 'market_surface',
+      primaryProviderId: 'none',
+      failedProvider: 'none',
+      reason: `No connector registered for module: ${moduleName}`,
+    });
     return {
       result: {
         ok: false,
@@ -175,6 +186,7 @@ export async function executeWithFallback<T = unknown>(
         truth_class: 'market_surface' as any,
         category: 'polling',
         routing_mode: 'scheduled' as RoutingMode,
+        fallback_epistemic: fe,
       },
       summary: {
         module: moduleName,
@@ -185,6 +197,8 @@ export async function executeWithFallback<T = unknown>(
     };
   }
 
+  const primaryProviderId = chain[0]?.config.provider;
+
   for (let i = 0; i < chain.length; i++) {
     const connector = chain[i];
     if (!connector.config.enabled) continue;
@@ -193,6 +207,7 @@ export async function executeWithFallback<T = unknown>(
     const execParams: ConnectorAcquireParams = {
       ...params,
       is_fallback: isFallback || params.is_fallback,
+      primary_provider_id_for_epistemic: primaryProviderId,
     };
 
     const result = await connector.execute(execParams) as ConnectorResult<T>;
@@ -223,6 +238,12 @@ export async function executeWithFallback<T = unknown>(
   const lastAttempt = attempts[attempts.length - 1];
   const routingMode: RoutingMode =
     chain[0].config.routing_mode ?? getRoutingModeFromCategory(chain[0].config.category);
+  const fe = buildFallbackEpistemicMetadataForFailure({
+    truthClass: chain[0].config.truth_class,
+    primaryProviderId: chain[0].config.provider,
+    failedProvider: lastAttempt?.provider,
+    reason: attempts.map(a => `${a.provider}: ${a.error}`).join('; '),
+  });
   return {
     result: {
       ok: false,
@@ -235,6 +256,7 @@ export async function executeWithFallback<T = unknown>(
       truth_class: chain[0].config.truth_class,
       category: chain[0].config.category,
       routing_mode: routingMode,
+      fallback_epistemic: fe,
     },
     summary: {
       module: moduleName,
@@ -247,14 +269,25 @@ export async function executeWithFallback<T = unknown>(
 
 /**
  * Execute multiple modules in parallel with fallback routing.
+ *
+ * @param options.sortByRoutingPriority — 4.2.4 Rule 4: higher-urgency modes' modules first (scheduled yields).
  */
 export async function executeModules(
   modules: string[],
   params: ConnectorAcquireParams = {},
+  options?: { sortByRoutingPriority?: boolean },
 ): Promise<Map<string, { result: ConnectorResult; summary: ExecutionSummary }>> {
   const results = new Map<string, { result: ConnectorResult; summary: ExecutionSummary }>();
 
-  const executions = modules.map(async (mod) => {
+  const ordered =
+    options?.sortByRoutingPriority === true
+      ? sortModulesByRoutingPriority(modules, name => {
+          const d = getModuleDoctrine(name);
+          return d?.routing_mode ?? 'scheduled';
+        })
+      : modules;
+
+  const executions = ordered.map(async (mod) => {
     const outcome = await executeWithFallback(mod, params);
     results.set(mod, outcome);
   });

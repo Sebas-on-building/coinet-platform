@@ -35,6 +35,9 @@ export class DexScreenerConnector extends BaseConnector<DexScreenerRaw, DexScree
       source_class: 'dex_discovery',
       truth_class: 'dex_emergence',
       category: 'triggered',
+      /** 4.2.4: DEX emergence is periodic state maintenance when cron/evidence refreshes run */
+      routing_mode: 'scheduled',
+      scheduled_cadence_tier: 'high_frequency',
       default_entity_type: 'pair',
       default_timeout_ms: 10_000,
       enabled: true,

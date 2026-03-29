@@ -17,17 +17,21 @@ import type {
   TrustClass,
   FallbackStatus,
   RoutingMode,
+  ScheduledCadenceTier,
+  IngressOrigin,
 } from './types';
 import type { SourceClass, TruthClass } from '../source-systems/registry';
 import { generateTraceId } from './trace';
 import { computeFreshness, computeFreshnessNoSourceTime } from './freshness';
 import { validateEnvelope } from './envelope-validator';
+import { resolveIngressOrigin, computeModeOperationalFlags } from './routing-modes';
+import { buildFallbackEpistemicMetadata } from './fallback-design';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODULE METADATA — Connector doctrine for each evidence module
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface ModuleDoctrine {
+export interface ModuleDoctrine {
   provider: string;
   source_class: SourceClass;
   truth_class: TruthClass;
@@ -35,6 +39,8 @@ interface ModuleDoctrine {
   source_label: string;
   /** Default routing mode when this module is used in Evidence Pack (4.2) */
   routing_mode: RoutingMode;
+  /** Scheduled refresh tier when routing_mode is scheduled (4.2.4 Rule 1) */
+  scheduled_cadence_tier?: ScheduledCadenceTier;
 }
 
 const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
@@ -45,6 +51,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'pair',
     source_label: 'DexScreener',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'high_frequency',
   },
   derivatives: {
     provider: 'coinglass',
@@ -53,6 +60,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'asset',
     source_label: 'CoinGlass',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'high_frequency',
   },
   security: {
     provider: 'goplus',
@@ -61,6 +69,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'asset',
     source_label: 'GoPlus',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'medium_frequency',
   },
   holders: {
     provider: 'goplus',
@@ -69,6 +78,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'asset',
     source_label: 'GoPlus',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'medium_frequency',
   },
   sentiment: {
     provider: 'lunarcrush',
@@ -77,6 +87,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'market_event',
     source_label: 'LunarCrush',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'medium_frequency',
   },
   news: {
     provider: 'cryptopanic',
@@ -85,6 +96,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'narrative',
     source_label: 'CryptoPanic',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'medium_frequency',
   },
   onchain: {
     provider: 'alchemy',
@@ -93,6 +105,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'asset',
     source_label: 'Alchemy',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'medium_frequency',
   },
   market_snapshot: {
     provider: 'coingecko',
@@ -101,6 +114,7 @@ const MODULE_DOCTRINE: Record<string, ModuleDoctrine> = {
     entity_type: 'market_event',
     source_label: 'CoinGecko',
     routing_mode: 'scheduled',
+    scheduled_cadence_tier: 'medium_frequency',
   },
 };
 
@@ -128,6 +142,10 @@ export interface EnvelopeFactoryInput {
   chain?: string;
   /** Override routing mode (default: from module doctrine) */
   routing_mode?: RoutingMode;
+  /** Override ingress origin — must still match routing_mode (validator) */
+  ingress_origin?: IngressOrigin;
+  /** 4.3.3 C — thesis-critical truth classes for penalty amplification */
+  thesis_critical_truth_classes?: TruthClass[];
 }
 
 /**
@@ -170,6 +188,24 @@ export function createEnvelope(input: EnvelopeFactoryInput): ConnectorEnvelope {
   const canonicalId = buildCanonicalId(doctrine.entity_type, input);
   const canonicalConfidence = assessCanonicalConfidence(input);
   const routingMode: RoutingMode = input.routing_mode ?? doctrine.routing_mode;
+  const ingressOrigin = resolveIngressOrigin(routingMode, input.ingress_origin);
+  const modeOperationalFlags = computeModeOperationalFlags({
+    latency_ms: input.latency_ms,
+    freshness_bucket: freshness.bucket,
+    routing_mode: routingMode,
+    fallback_status: fallbackStatus,
+  });
+
+  const fallbackEpistemic = buildFallbackEpistemicMetadata({
+    truthClass: doctrine.truth_class,
+    primaryProviderId: doctrine.provider,
+    effectiveProvider: doctrine.provider,
+    fallbackStatus,
+    isFallbackExecution: false,
+    trustClass,
+    modeOperationalFlags,
+    thesisCriticalTruthClasses: input.thesis_critical_truth_classes,
+  });
 
   const envelope: ConnectorEnvelope = {
     source: doctrine.provider,
@@ -186,6 +222,9 @@ export function createEnvelope(input: EnvelopeFactoryInput): ConnectorEnvelope {
     trace_id: generateTraceId(),
     fallback_status: fallbackStatus,
     routing_mode: routingMode,
+    ingress_origin: ingressOrigin,
+    mode_operational_flags: modeOperationalFlags,
+    fallback_epistemic: fallbackEpistemic,
   };
 
   // Invariant enforcement — log violations but don't throw (factory is best-effort)
@@ -207,7 +246,13 @@ export function createEnvelope(input: EnvelopeFactoryInput): ConnectorEnvelope {
 export function createEnvelopesFromEvidence(
   evidence: Record<string, any>,
   moduleEvents: Array<{ module: string; status: string; latency_ms: number }>,
-  context: { symbol?: string; address?: string | null; chain?: string; routing_mode?: RoutingMode },
+  context: {
+    symbol?: string;
+    address?: string | null;
+    chain?: string;
+    routing_mode?: RoutingMode;
+    thesis_critical_truth_classes?: TruthClass[];
+  },
 ): Map<string, ConnectorEnvelope> {
   const envelopes = new Map<string, ConnectorEnvelope>();
 
@@ -227,6 +272,7 @@ export function createEnvelopesFromEvidence(
         address: context.address,
         chain: context.chain,
         routing_mode: context.routing_mode,
+        thesis_critical_truth_classes: context.thesis_critical_truth_classes,
       });
       envelopes.set(event.module, envelope);
     } catch {

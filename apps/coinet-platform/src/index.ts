@@ -352,6 +352,35 @@ app.get('/api/source-systems/truth-diagnostics', async (req: Request, res: Respo
 });
 
 // =============================================================================
+// CALIBRATION SPINE DASHBOARD — Phase 3 Wave 3
+// =============================================================================
+app.get('/api/calibration-spine/dashboard', async (req: Request, res: Response) => {
+  try {
+    const { getCalibrationDashboard, CALIBRATION_SPINE_VERSION } = await import('./services/calibration-spine');
+    const windows = (req.query.windows as string)?.split(',') as any[] ?? undefined;
+    const dashboard = getCalibrationDashboard(windows);
+    res.json({
+      success: true,
+      version: CALIBRATION_SPINE_VERSION,
+      ...dashboard,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message ?? 'Calibration spine error' });
+  }
+});
+
+app.post('/api/calibration-spine/recompute', async (req: Request, res: Response) => {
+  try {
+    const { recomputeAggregates } = await import('./services/calibration-spine');
+    const window = (req.query.window as string) ?? '24h';
+    const aggregates = recomputeAggregates(window as any);
+    res.json({ success: true, aggregatesComputed: aggregates.length, aggregates });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message ?? 'Recompute error' });
+  }
+});
+
+// =============================================================================
 // CONNECTOR LAYER DIAGNOSTICS — Layer 2 ingress governance observability
 // =============================================================================
 app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response) => {
@@ -362,6 +391,17 @@ app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response)
       getRegisteredModules,
       ROUTING_MODE_CONTRACTS,
       MODE_DEGRADATION_POLICIES,
+      ROUTING_MODE_BOUNDARIES,
+      PRODUCTION_ROUTING_RULES_4_2_9,
+      READER_EXECUTION_DOCTRINE_4_2_12,
+      PROVIDER_ROUTING_MODE_REFERENCE,
+      FALLBACK_INVARIANTS,
+      PRODUCTION_FALLBACK_RULES,
+      READER_EXECUTION_DOCTRINE,
+      TRUTH_DOMAIN_FALLBACK_DOCTRINE,
+      FALLBACK_SEQUENCE_STEPS,
+      CONTINUITY_HIERARCHY,
+      getFallbackImpactMatrix,
     } = require('./services/connector-layer');
 
     res.json({
@@ -371,12 +411,26 @@ app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response)
       doctrines: getAllModuleDoctrines(),
       routing_modes: ROUTING_MODE_CONTRACTS,
       mode_degradation_policies: MODE_DEGRADATION_POLICIES,
+      routing_mode_boundaries: ROUTING_MODE_BOUNDARIES,
+      production_routing_rules_4_2_9: PRODUCTION_ROUTING_RULES_4_2_9,
+      reader_execution_doctrine_4_2_12: READER_EXECUTION_DOCTRINE_4_2_12,
+      provider_routing_mode_reference: PROVIDER_ROUTING_MODE_REFERENCE,
+      doctrine_document: 'apps/coinet-platform/src/services/connector-layer/ROUTING_MODES_DOCTRINE.md',
+      fallback_invariants: FALLBACK_INVARIANTS,
+      production_fallback_rules: PRODUCTION_FALLBACK_RULES,
+      reader_execution_doctrine_fallback: READER_EXECUTION_DOCTRINE,
+      truth_domain_fallback_doctrine: TRUTH_DOMAIN_FALLBACK_DOCTRINE,
+      fallback_sequence_steps: FALLBACK_SEQUENCE_STEPS,
+      continuity_hierarchy: CONTINUITY_HIERARCHY,
+      fallback_impact_matrix: getFallbackImpactMatrix(),
+      fallback_doctrine_document: 'apps/coinet-platform/src/services/connector-layer/FALLBACK_DESIGN_DOCTRINE.md',
       guarantees: [
         'Provider isolation',
         'Envelope standardization',
         'Freshness awareness',
         'Routing discipline',
         'Controlled degradation',
+        'Governed truth loss (4.3) — fallback as epistemic state change, not silent substitution',
       ],
       timestamp: new Date().toISOString(),
     });
@@ -3840,6 +3894,8 @@ app.get('/', (_req: Request, res: Response) => {
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       sourceSystemsHealth: '/api/source-systems/health',
       truthDiagnostics: '/api/source-systems/truth-diagnostics?symbol=BTC',
+      calibrationDashboard: '/api/calibration-spine/dashboard',
+      calibrationRecompute: '/api/calibration-spine/recompute?window=24h',
       connectorDiagnostics: '/api/connector-layer/diagnostics',
       keys: '/api/keys',
       testNeuroeconomic: '/api/test/neuroeconomic',

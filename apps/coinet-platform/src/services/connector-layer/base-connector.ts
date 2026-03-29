@@ -33,8 +33,13 @@ import type {
 import { generateTraceId } from './trace';
 import { computeFreshness, computeFreshnessNoSourceTime } from './freshness';
 import { validateEnvelope } from './envelope-validator';
-import { getRoutingModeFromCategory } from './routing-modes';
+import {
+  getRoutingModeFromCategory,
+  resolveIngressOrigin,
+  computeModeOperationalFlags,
+} from './routing-modes';
 import { recordSuccess, recordFailure } from '../source-systems/health-monitor';
+import { buildFallbackEpistemicMetadata, buildFallbackEpistemicMetadataForFailure } from './fallback-design';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RAW ACQUISITION RESULT — What the provider-specific acquire step returns
@@ -186,6 +191,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
           acquisition.error_code,
           startTime,
           traceId,
+          params,
         );
       }
 
@@ -200,6 +206,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
           'VALIDATION_FAILED',
           startTime,
           traceId,
+          params,
         );
       }
 
@@ -257,6 +264,29 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
         this.config.routing_mode ??
         getRoutingModeFromCategory(this.config.category);
 
+      const ingressOrigin = resolveIngressOrigin(routingMode, params.ingress_origin);
+      const totalLatency = Date.now() - startTime;
+      const modeOperationalFlags = computeModeOperationalFlags({
+        latency_ms: totalLatency,
+        freshness_bucket: freshness.bucket,
+        routing_mode: routingMode,
+        fallback_status: fallbackStatus,
+      });
+
+      const primaryForEpistemic = params.primary_provider_id_for_epistemic ?? this.config.provider;
+      const fallbackEpistemic = buildFallbackEpistemicMetadata({
+        truthClass: this.config.truth_class,
+        primaryProviderId: primaryForEpistemic,
+        effectiveProvider: this.config.provider,
+        fallbackStatus,
+        isFallbackExecution: isFallback,
+        trustClass,
+        modeOperationalFlags,
+        partialLayer: params.partial_layer_degradation,
+        authorityDowngrade: params.authority_downgrade,
+        thesisCriticalTruthClasses: params.thesis_critical_truth_classes,
+      });
+
       // ── Assemble envelope ────────────────────────────────────────────
       const canonicalConfidence = this.assessCanonicalConfidence(params);
 
@@ -275,6 +305,9 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
         trace_id: traceId,
         fallback_status: fallbackStatus,
         routing_mode: routingMode,
+        ingress_origin: ingressOrigin,
+        mode_operational_flags: modeOperationalFlags,
+        fallback_epistemic: fallbackEpistemic,
       };
 
       // ── Invariant enforcement — reject invalid envelopes ──────────
@@ -290,10 +323,10 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
           'ENVELOPE_INVALID',
           startTime,
           traceId,
+          params,
         );
       }
 
-      const totalLatency = Date.now() - startTime;
       recordSuccess(this.config.provider, totalLatency);
 
       return {
@@ -315,7 +348,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
       const message = err instanceof Error ? err.message : String(err);
       const code = message.includes('timeout') ? 'TIMEOUT' : 'UNEXPECTED_ERROR';
 
-      return this.failResult(message, code, startTime, traceId);
+      return this.failResult(message, code, startTime, traceId, params);
     }
   }
 
@@ -341,9 +374,18 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
     errorCode: string | undefined,
     startTime: number,
     traceId: string,
+    params: ConnectorAcquireParams = {},
   ): ConnectorResult<TNormalized> {
     const routingMode: RoutingMode =
-      this.config.routing_mode ?? getRoutingModeFromCategory(this.config.category);
+      params.routing_mode ??
+      this.config.routing_mode ??
+      getRoutingModeFromCategory(this.config.category);
+    const fallbackEpistemic = buildFallbackEpistemicMetadataForFailure({
+      truthClass: this.config.truth_class,
+      primaryProviderId: this.config.provider,
+      failedProvider: this.config.provider,
+      reason: error,
+    });
     return {
       ok: false,
       error,
@@ -355,6 +397,7 @@ export abstract class BaseConnector<TRaw = unknown, TNormalized = unknown> {
       truth_class: this.config.truth_class,
       category: this.config.category,
       routing_mode: routingMode,
+      fallback_epistemic: fallbackEpistemic,
     };
   }
 }

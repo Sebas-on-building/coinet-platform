@@ -14,7 +14,22 @@
  * ╚═══════════════════════════════════════════════════════════════════════════════╝
  */
 
-import type { ConnectorEnvelope, EntityType, TrustClass, FallbackStatus, FreshnessBucket, RoutingMode } from './types';
+import type {
+  ConnectorEnvelope,
+  EntityType,
+  TrustClass,
+  FallbackStatus,
+  FreshnessBucket,
+  RoutingMode,
+  IngressOrigin,
+  ModeOperationalFlags,
+  TruthStateKind,
+  FallbackEpistemicMetadata,
+  SubstitutionSemantics,
+  JudgmentMeaningfulness,
+  ContinuityHierarchyRank,
+} from './types';
+import { ROUTING_MODE_TO_INGRESS_ORIGIN } from './routing-modes';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONTROLLED VOCABULARIES
@@ -38,6 +53,34 @@ const VALID_FRESHNESS_BUCKETS: ReadonlySet<FreshnessBucket> = new Set([
 
 const VALID_ROUTING_MODES: ReadonlySet<RoutingMode> = new Set([
   'realtime', 'scheduled', 'on_demand', 'backfill',
+]);
+
+const VALID_INGRESS_ORIGINS: ReadonlySet<IngressOrigin> = new Set([
+  'stream_event',
+  'periodic_fetch',
+  'user_triggered',
+  'historical_replay',
+]);
+
+const VALID_TRUTH_STATE_KINDS: ReadonlySet<TruthStateKind> = new Set([
+  'live_primary_truth',
+  'retained_trusted_state',
+  'fallback_source_truth',
+  'historical_backfill_state',
+  'layer_unavailable',
+]);
+
+const VALID_SUBSTITUTION_SEMANTICS: ReadonlySet<SubstitutionSemantics> = new Set([
+  'equivalent',
+  'degraded',
+  'unknown',
+  'not_applicable',
+]);
+
+const VALID_JUDGMENT_MEANINGFULNESS: ReadonlySet<JudgmentMeaningfulness> = new Set([
+  'full',
+  'bounded_partial',
+  'unavailable',
 ]);
 
 const FORBIDDEN_SOURCE_LABELS: ReadonlySet<string> = new Set([
@@ -120,6 +163,159 @@ export function validateEnvelope(envelope: ConnectorEnvelope): EnvelopeValidatio
       message: `Mandatory field routing_mode is missing or invalid: '${envelope.routing_mode}'. Must be one of: realtime, scheduled, on_demand, backfill`,
       severity: 'error',
     });
+  }
+
+  // ─── 4.2: ingress_origin + mode_operational_flags (mandatory) ─────────────
+  if (!envelope.ingress_origin || !VALID_INGRESS_ORIGINS.has(envelope.ingress_origin)) {
+    violations.push({
+      invariant: 'INV-1',
+      field: 'ingress_origin',
+      message: `Mandatory field ingress_origin is missing or invalid (4.2.3 Rule 1 — stream vs periodic vs user vs replay)`,
+      severity: 'error',
+    });
+  }
+
+  const expectedOrigin = ROUTING_MODE_TO_INGRESS_ORIGIN[envelope.routing_mode];
+  if (envelope.ingress_origin && envelope.ingress_origin !== expectedOrigin) {
+    violations.push({
+      invariant: '4.2.3',
+      field: 'ingress_origin',
+      message: `ingress_origin '${envelope.ingress_origin}' inconsistent with routing_mode '${envelope.routing_mode}' (expected '${expectedOrigin}')`,
+      severity: 'error',
+    });
+  }
+
+  const flags = envelope.mode_operational_flags as ModeOperationalFlags | undefined;
+  if (
+    !flags ||
+    typeof flags.latency_exceeds_contract !== 'boolean' ||
+    typeof flags.freshness_below_mode_standard !== 'boolean' ||
+    typeof flags.temporal_downgrade !== 'boolean'
+  ) {
+    violations.push({
+      invariant: 'INV-1',
+      field: 'mode_operational_flags',
+      message: 'Mandatory mode_operational_flags missing or incomplete (4.2.2 — mode semantics visible downstream)',
+      severity: 'error',
+    });
+  }
+
+  // ─── 4.3 Fallback epistemic metadata (mandatory machine-readable state) ──
+  const fe = envelope.fallback_epistemic as FallbackEpistemicMetadata | undefined;
+  if (!fe || typeof fe.degraded_mode_active !== 'boolean') {
+    violations.push({
+      invariant: '4.3.7',
+      field: 'fallback_epistemic',
+      message: 'Mandatory fallback_epistemic missing (4.3 — fallback is part of the truth model)',
+      severity: 'error',
+    });
+  } else {
+    if (!VALID_TRUTH_STATE_KINDS.has(fe.truth_state_kind)) {
+      violations.push({
+        invariant: '4.3.3',
+        field: 'fallback_epistemic.truth_state_kind',
+        message: `Invalid truth_state_kind: ${fe.truth_state_kind}`,
+        severity: 'error',
+      });
+    }
+    if (typeof fe.confidence_penalty_suggestion !== 'number' || fe.confidence_penalty_suggestion < 0 || fe.confidence_penalty_suggestion > 1) {
+      violations.push({
+        invariant: '4.3.3',
+        field: 'fallback_epistemic.confidence_penalty_suggestion',
+        message: 'confidence_penalty_suggestion must be a number in [0, 1]',
+        severity: 'error',
+      });
+    }
+    if (fe.degraded_mode_active && (!fe.user_visible_layer_message || fe.user_visible_layer_message.trim().length === 0)) {
+      violations.push({
+        invariant: '4.3.3-E',
+        field: 'fallback_epistemic.user_visible_layer_message',
+        message: 'When degraded_mode_active, user_visible_layer_message must name the affected layer (no vague disclaimers)',
+        severity: 'error',
+      });
+    }
+    if (envelope.fallback_status === 'backfill' && fe.truth_state_kind !== 'historical_backfill_state') {
+      violations.push({
+        invariant: '4.3.3-B',
+        field: 'fallback_epistemic.truth_state_kind',
+        message: 'backfill envelopes must use truth_state_kind historical_backfill_state',
+        severity: 'error',
+      });
+    }
+    if (envelope.fallback_status === 'cached' && fe.truth_state_kind !== 'retained_trusted_state') {
+      violations.push({
+        invariant: '4.3.3-B',
+        field: 'fallback_epistemic.truth_state_kind',
+        message: 'cached envelopes must use truth_state_kind retained_trusted_state',
+        severity: 'warning',
+      });
+    }
+
+    if (!fe.substitution_semantics || !VALID_SUBSTITUTION_SEMANTICS.has(fe.substitution_semantics)) {
+      violations.push({
+        invariant: '4.3.3-A',
+        field: 'fallback_epistemic.substitution_semantics',
+        message: 'substitution_semantics is required (4.3.3 A — never silently assume equivalent substitute)',
+        severity: 'error',
+      });
+    }
+    if (!fe.judgment_meaningfulness || !VALID_JUDGMENT_MEANINGFULNESS.has(fe.judgment_meaningfulness)) {
+      violations.push({
+        invariant: '4.3.3-A',
+        field: 'fallback_epistemic.judgment_meaningfulness',
+        message: 'judgment_meaningfulness is required (full vs bounded partial vs unavailable)',
+        severity: 'error',
+      });
+    }
+    if (fe.degraded_mode_active && fe.confidence_penalty_suggestion === 0 && fe.fallback_semantic_category !== null) {
+      violations.push({
+        invariant: '4.3.12-I5',
+        field: 'fallback_epistemic.confidence_penalty_suggestion',
+        message: 'Invariant I5: confidence must respond when fallback materially alters evidence quality',
+        severity: 'error',
+      });
+    }
+
+    // 4.3.6 — continuity hierarchy rank
+    const validRanks: ReadonlySet<ContinuityHierarchyRank> = new Set([1, 2, 3, 4, 5]);
+    if (!validRanks.has(fe.continuity_hierarchy_rank)) {
+      violations.push({
+        invariant: '4.3.6',
+        field: 'fallback_epistemic.continuity_hierarchy_rank',
+        message: `continuity_hierarchy_rank must be 1-5, got: ${fe.continuity_hierarchy_rank}`,
+        severity: 'error',
+      });
+    }
+
+    // 4.3.8 — is_hard_blocker must be boolean
+    if (typeof fe.is_hard_blocker !== 'boolean') {
+      violations.push({
+        invariant: '4.3.8',
+        field: 'fallback_epistemic.is_hard_blocker',
+        message: 'is_hard_blocker must be boolean (hard-blocker determination)',
+        severity: 'error',
+      });
+    }
+
+    // 4.3.12 I8 — if hard blocker, judgment_meaningfulness should not be 'full'
+    if (fe.is_hard_blocker && fe.judgment_meaningfulness === 'full') {
+      violations.push({
+        invariant: '4.3.12-I8',
+        field: 'fallback_epistemic.judgment_meaningfulness',
+        message: 'Invariant I8: hard blocker must narrow claims — judgment_meaningfulness cannot be full',
+        severity: 'error',
+      });
+    }
+
+    // 4.3.12 I9 — if degraded, user_visible_layer_message must mention truth domain, not be generic
+    if (fe.degraded_mode_active && fe.user_visible_layer_message && fe.user_visible_layer_message === 'data may be incomplete') {
+      violations.push({
+        invariant: '4.3.12-I9',
+        field: 'fallback_epistemic.user_visible_layer_message',
+        message: 'Invariant I9: user-visible must reflect missing truth domains, not generic uncertainty',
+        severity: 'error',
+      });
+    }
   }
 
   // ─── Invariant 2: timestamp_ingested >= timestamp_observed ──────────────
@@ -299,7 +495,7 @@ export function assessProductionReadiness(envelope: ConnectorEnvelope): Producti
   criteria.push({
     criterion: 'complete',
     met: allFieldsPresent(envelope),
-    detail: 'All 13 mandatory envelope fields are present',
+    detail: 'All mandatory envelope fields are present (including 4.2 routing doctrine fields)',
   });
 
   criteria.push({
@@ -362,6 +558,28 @@ export function assessProductionReadiness(envelope: ConnectorEnvelope): Producti
     detail: 'Both raw (audit) and normalized (compute) forms coexist',
   });
 
+  criteria.push({
+    criterion: 'routing-doctrine-4.2',
+    met:
+      !!envelope.routing_mode &&
+      VALID_ROUTING_MODES.has(envelope.routing_mode) &&
+      !!envelope.ingress_origin &&
+      envelope.ingress_origin === ROUTING_MODE_TO_INGRESS_ORIGIN[envelope.routing_mode] &&
+      !!envelope.mode_operational_flags,
+    detail: 'routing_mode, ingress_origin, and mode_operational_flags present and aligned',
+  });
+
+  criteria.push({
+    criterion: 'fallback-doctrine-4.3',
+    met:
+      !!envelope.fallback_epistemic &&
+      typeof envelope.fallback_epistemic.degraded_mode_active === 'boolean' &&
+      VALID_TRUTH_STATE_KINDS.has(envelope.fallback_epistemic.truth_state_kind) &&
+      typeof envelope.fallback_epistemic.continuity_hierarchy_rank === 'number' &&
+      typeof envelope.fallback_epistemic.is_hard_blocker === 'boolean',
+    detail: 'fallback_epistemic carries governed truth-loss state: hierarchy rank, hard-blocker, truth-loss accounting',
+  });
+
   return {
     ready: criteria.every(c => c.met),
     criteria,
@@ -389,6 +607,7 @@ function checkMandatoryField(
 }
 
 function allFieldsPresent(envelope: ConnectorEnvelope): boolean {
+  const f = envelope.mode_operational_flags;
   return (
     !!envelope.source &&
     !!envelope.entity_type &&
@@ -403,6 +622,24 @@ function allFieldsPresent(envelope: ConnectorEnvelope): boolean {
     !!envelope.trace_id &&
     !!envelope.fallback_status &&
     !!envelope.routing_mode &&
-    VALID_ROUTING_MODES.has(envelope.routing_mode)
+    VALID_ROUTING_MODES.has(envelope.routing_mode) &&
+    !!envelope.ingress_origin &&
+    VALID_INGRESS_ORIGINS.has(envelope.ingress_origin) &&
+    envelope.ingress_origin === ROUTING_MODE_TO_INGRESS_ORIGIN[envelope.routing_mode] &&
+    !!f &&
+    typeof f.latency_exceeds_contract === 'boolean' &&
+    typeof f.freshness_below_mode_standard === 'boolean' &&
+    typeof f.temporal_downgrade === 'boolean' &&
+    !!envelope.fallback_epistemic &&
+    typeof envelope.fallback_epistemic.degraded_mode_active === 'boolean' &&
+    VALID_TRUTH_STATE_KINDS.has(envelope.fallback_epistemic.truth_state_kind) &&
+    !!envelope.fallback_epistemic.substitution_semantics &&
+    VALID_SUBSTITUTION_SEMANTICS.has(envelope.fallback_epistemic.substitution_semantics) &&
+    !!envelope.fallback_epistemic.judgment_meaningfulness &&
+    VALID_JUDGMENT_MEANINGFULNESS.has(envelope.fallback_epistemic.judgment_meaningfulness) &&
+    typeof envelope.fallback_epistemic.continuity_hierarchy_rank === 'number' &&
+    envelope.fallback_epistemic.continuity_hierarchy_rank >= 1 &&
+    envelope.fallback_epistemic.continuity_hierarchy_rank <= 5 &&
+    typeof envelope.fallback_epistemic.is_hard_blocker === 'boolean'
   );
 }

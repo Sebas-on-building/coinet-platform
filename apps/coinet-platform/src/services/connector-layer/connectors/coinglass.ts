@@ -30,6 +30,9 @@ export class CoinGlassConnector extends BaseConnector<LiquidationRaw, Derivative
       source_class: 'derivatives',
       truth_class: 'derivatives_pressure',
       category: 'triggered',
+      /** 4.2.4: funding/OI snapshots as scheduled surface unless wired to websocket (then realtime) */
+      routing_mode: 'scheduled',
+      scheduled_cadence_tier: 'high_frequency',
       default_entity_type: 'asset',
       default_timeout_ms: 10_000,
       enabled: true,

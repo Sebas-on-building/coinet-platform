@@ -29,6 +29,8 @@ export class AlchemyConnector extends BaseConnector<WhaleContextRaw, OnchainData
       source_class: 'onchain',
       truth_class: 'onchain_behavior',
       category: 'triggered',
+      routing_mode: 'scheduled',
+      scheduled_cadence_tier: 'medium_frequency',
       default_entity_type: 'asset',
       default_timeout_ms: 12_000,
       enabled: true,

@@ -17,6 +17,7 @@
 
 import type { SignalSnapshot } from './signal-snapshot';
 import type { JudgmentOutput } from './types';
+import { formatHypothesisForAI } from '../hypotheses/explainer';
 import {
   MARKET_STATE_LABELS,
   MARKET_STATE_GROUPS,
@@ -628,6 +629,27 @@ export function formatJudgmentForAI(judgment: JudgmentOutput): string {
   if (pos.length > 0) lines.push(`  Positive: ${pos.join(', ')}`);
   if (neg.length > 0) lines.push(`  Negative: ${neg.join(', ')}`);
   if (unres.length > 0) lines.push(`  Unresolved: ${unres.join(', ')}`);
+
+  const he = (judgment as any).hypothesisEngine;
+  if (he?.output) {
+    lines.push('');
+    lines.push(formatHypothesisForAI(he.output.primary, he.output.secondary ?? null));
+    if (he.output.rankingExplanation?.length > 0) {
+      lines.push('');
+      lines.push('Hypothesis ranking rationale:');
+      for (const line of he.output.rankingExplanation) {
+        lines.push(`  ${line}`);
+      }
+    }
+    if (he.output.decisiveMissingEvidence?.length > 0) {
+      lines.push(`  Decisive missing evidence: ${he.output.decisiveMissingEvidence.join('; ')}`);
+    }
+    if (he.auditNotes?.length > 0) {
+      for (const note of he.auditNotes) {
+        lines.push(`  ${note}`);
+      }
+    }
+  }
 
   return lines.join('\n');
 }

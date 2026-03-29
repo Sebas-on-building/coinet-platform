@@ -27,6 +27,7 @@ export class CoinGeckoConnector extends BaseConnector<MarketStatusRaw, MarketSna
       source_class: 'market_data',
       truth_class: 'market_surface',
       category: 'polling',
+      scheduled_cadence_tier: 'low_frequency',
       default_entity_type: 'market_event',
       default_timeout_ms: 10_000,
       enabled: true,
