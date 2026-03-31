@@ -20,6 +20,8 @@
     "db:studio": "turbo db:studio",
     "prisma:gen:root": "cd apps/coinet-platform && npx prisma generate",
     "prisma:migrate:root": "cd apps/coinet-platform && npx prisma migrate deploy",
+    "prisma:platform:push": "pnpm --filter coinet-platform db:push",
+    "prisma:platform:generate": "pnpm --filter coinet-platform db:generate",
     "benchmark": "cd services/market-prices && npm run benchmark",
     "benchmark:quick": "cd services/market-prices && npm run benchmark:quick",
     "benchmark:compare": "cd services/market-prices && npm run benchmark:compare",
