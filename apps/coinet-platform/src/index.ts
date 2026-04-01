@@ -263,6 +263,288 @@ app.get('/api/source-systems/health', async (_req: Request, res: Response) => {
 });
 
 // =============================================================================
+// L1.1 SOURCE CLASS DOCTRINE — Observational constitution diagnostics
+// =============================================================================
+app.get('/api/source-systems/doctrine', async (_req: Request, res: Response) => {
+  try {
+    const {
+      getAllFullDoctrines,
+      CLAIM_BOUNDARIES,
+      CLAIM_ESCALATION_RULES,
+      CLASS_INTERACTIONS,
+      getCoverageSummary,
+      getClassCoverage,
+      CLASS_DEGRADATION_RULES,
+      validateAllProvidersMapped,
+      buildTruthFingerprint,
+      L11_DOCTRINE_VERSION,
+    } = await import('./services/source-systems');
+
+    const coverageEntries = getClassCoverage();
+    const classStrengths: Record<string, number> = {};
+    const overrideVisibilities: Record<string, string> = {};
+    for (const entry of coverageEntries) {
+      classStrengths[entry.truthClass] = entry.healthScore;
+      overrideVisibilities[entry.truthClass] = entry.visibility;
+    }
+
+    const fingerprint = buildTruthFingerprint({
+      classStrengths,
+      overrideVisibilities: overrideVisibilities as any,
+    });
+
+    res.json({
+      version: L11_DOCTRINE_VERSION,
+      doctrines: getAllFullDoctrines(),
+      claimBoundaries: CLAIM_BOUNDARIES,
+      escalationRules: CLAIM_ESCALATION_RULES,
+      interactions: CLASS_INTERACTIONS,
+      coverage: getCoverageSummary(),
+      classCoverage: coverageEntries,
+      degradationRules: CLASS_DEGRADATION_RULES,
+      providerMapping: validateAllProvidersMapped(),
+      currentFingerprint: fingerprint,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Doctrine diagnostics failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L1.2 SOURCE AUTHORITY HIERARCHY — Authority diagnostics
+// =============================================================================
+app.get('/api/source-systems/authority', async (req: Request, res: Response) => {
+  try {
+    const chain = (req.query.chain as string) || undefined;
+    const assetClass = (req.query.asset_class as string) || undefined;
+    const tokenAge = (req.query.token_age as string) || undefined;
+    const challengers = (req.query.challengers as string || '').split(',').filter(Boolean);
+
+    const { buildAuthorityDiagnostics } = await import('./services/source-systems');
+
+    const context: Record<string, string | undefined> = {};
+    if (chain) context.chain = chain;
+    if (assetClass) context.assetClass = assetClass;
+    if (tokenAge) context.tokenAge = tokenAge;
+
+    const report = buildAuthorityDiagnostics(context as any, challengers);
+
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Authority diagnostics failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L1.3 REDUNDANCY & SUBSTITUTION MATRIX — Redundancy diagnostics
+// =============================================================================
+app.get('/api/source-systems/redundancy', async (req: Request, res: Response) => {
+  try {
+    const { buildRedundancyDiagnostics } = await import('./services/source-systems');
+
+    const lastTrustedAges: Record<string, number> = {};
+    const ageParam = req.query.stale_ages as string | undefined;
+    if (ageParam) {
+      for (const pair of ageParam.split(',')) {
+        const [atomId, ms] = pair.split(':');
+        if (atomId && ms) lastTrustedAges[atomId.trim()] = parseInt(ms.trim(), 10);
+      }
+    }
+
+    const report = buildRedundancyDiagnostics({ lastTrustedStateAges: lastTrustedAges });
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Redundancy diagnostics failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L1.1 CRYPTOGRAPHIC INTEGRITY — Sub-layer diagnostics
+// =============================================================================
+app.get('/api/source-systems/cryptographic-integrity', async (req: Request, res: Response) => {
+  try {
+    const entityId = (req.query.entity_id as string || '').trim();
+    const entityType = (req.query.entity_type as string || 'chain').trim();
+
+    if (!entityId) {
+      return res.status(400).json({
+        error: 'Missing required query parameter: entity_id',
+        usage: '/api/source-systems/cryptographic-integrity?entity_id=bitcoin&entity_type=chain',
+      });
+    }
+
+    const { buildCIDiagnostics } = await import('./services/source-systems');
+
+    const report = buildCIDiagnostics({
+      entity_id: entityId,
+      entity_type: entityType as any,
+      entity_label: entityId,
+    });
+
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Cryptographic integrity diagnostics failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L1.2 CRYPTOGRAPHIC INTEGRITY AUTHORITY — Domain-specific authority diagnostics
+// =============================================================================
+app.get('/api/source-systems/cryptographic-integrity/authority', async (req: Request, res: Response) => {
+  try {
+    const entityId = (req.query.entity_id as string || '').trim();
+    const entityType = (req.query.entity_type as string || 'chain').trim();
+
+    if (!entityId) {
+      return res.status(400).json({
+        error: 'Missing required query parameter: entity_id',
+        usage: '/api/source-systems/cryptographic-integrity/authority?entity_id=bitcoin&entity_type=chain',
+      });
+    }
+
+    const {
+      produceCryptographicIntegrityState,
+      buildCIAuthorityDiagnostics,
+      buildDefaultClaimsFromFields,
+    } = await import('./services/source-systems');
+
+    const state = produceCryptographicIntegrityState({
+      entity_id: entityId,
+      entity_type: entityType as any,
+      entity_label: entityId,
+    });
+
+    const fieldValueMap: Record<string, unknown> = {
+      signature_scheme_family: state.signature_scheme_family.value,
+      signature_scheme_variant: state.signature_scheme_variant.value,
+      address_or_account_model: state.address_or_account_model.value,
+      public_key_exposure_model: state.public_key_exposure_model.value,
+      key_exposure_state: state.key_exposure_state.value,
+      address_reuse_rate: state.address_reuse_rate.value,
+      exposure_surface_class: state.exposure_surface_class.value,
+      cross_chain_exposure_risk: state.cross_chain_exposure_risk.value,
+      trusted_setup_dependency: state.trusted_setup_dependency.value,
+      validator_key_model: state.validator_key_model.value,
+      admin_key_model: state.admin_key_model.value,
+      pqc_support_status: state.pqc_support_status.value,
+      pqc_migration_stage: state.pqc_migration_stage.value,
+      migration_velocity: state.migration_velocity.value,
+      upgrade_dependency_risk: state.upgrade_dependency_risk.value,
+      overall_fragility_class: state.overall_fragility_class.value,
+      dormant_vulnerable_supply: state.dormant_vulnerable_supply.value,
+    };
+
+    const claimsByField = buildDefaultClaimsFromFields(fieldValueMap);
+    const report = buildCIAuthorityDiagnostics({
+      entity_id: entityId,
+      claims_by_field: claimsByField,
+    });
+
+    res.json({
+      entity_id: entityId,
+      entity_type: entityType,
+      authority: report,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Cryptographic authority diagnostics failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// QUANTUM RISK V1 LOOP — Run BTC default or custom asset
+// =============================================================================
+app.get('/api/quantum-risk/run', async (req: Request, res: Response) => {
+  try {
+    const asset = (req.query.asset as string || 'BTC').trim().toUpperCase();
+
+    const { runBtcQuantumRisk, runQuantumRiskPipeline } = await import('./services/source-systems');
+
+    let result;
+    if (asset === 'BTC') {
+      result = runBtcQuantumRisk();
+    } else {
+      result = runQuantumRiskPipeline({
+        asset,
+        totalSupply: 0,
+        scriptDistribution: null,
+        dormantCohorts: null,
+        pqEvidence: null,
+      });
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Quantum risk pipeline failed', message: error.message });
+  }
+});
+
+app.get('/api/quantum-risk/snapshots', async (req: Request, res: Response) => {
+  try {
+    const asset = (req.query.asset as string || '').trim().toUpperCase();
+    const limit = parseInt(req.query.limit as string || '50', 10);
+
+    const { getAllQuantumSnapshots, getLatestQuantumSnapshot } = await import('./services/source-systems');
+
+    if (asset) {
+      const latest = getLatestQuantumSnapshot(asset);
+      return res.json({ asset, latest: latest || null });
+    }
+
+    const snapshots = getAllQuantumSnapshots(limit);
+    res.json({ count: snapshots.length, snapshots });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Quantum snapshot retrieval failed', message: error.message });
+  }
+});
+
+app.post('/api/quantum-risk/outcome', async (req: Request, res: Response) => {
+  try {
+    const { snapshot_id, window, price_change, volatility, event_flags } = req.body || {};
+
+    if (!snapshot_id || !window || price_change === undefined || volatility === undefined) {
+      return res.status(400).json({
+        error: 'Missing fields: snapshot_id, window (24h|7d), price_change, volatility',
+      });
+    }
+
+    const { recordQuantumOutcome } = await import('./services/source-systems');
+    const outcome = recordQuantumOutcome(snapshot_id, window, price_change, volatility, event_flags || []);
+    res.json(outcome);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Outcome recording failed', message: error.message });
+  }
+});
+
+app.get('/api/quantum-risk/calibration', async (req: Request, res: Response) => {
+  try {
+    const asset = (req.query.asset as string || '').trim().toUpperCase() || undefined;
+    const { buildCalibrationReport } = await import('./services/source-systems');
+    const report = buildCalibrationReport(asset || undefined);
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Calibration report failed', message: error.message });
+  }
+});
+
+app.get('/api/quantum-risk/evaluate-band', async (req: Request, res: Response) => {
+  try {
+    const threshold = parseFloat(req.query.threshold as string || '70');
+    const asset = (req.query.asset as string || '').trim().toUpperCase() || undefined;
+
+    if (isNaN(threshold)) {
+      return res.status(400).json({ error: 'threshold must be a number' });
+    }
+
+    const { evaluateQRSBand } = await import('./services/source-systems');
+    const band = evaluateQRSBand(threshold, asset || undefined);
+    res.json(band);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Band evaluation failed', message: error.message });
+  }
+});
+
+// =============================================================================
 // SOURCE SYSTEMS TRUTH DIAGNOSTICS — Per-analysis source-governance observability
 // =============================================================================
 app.get('/api/source-systems/truth-diagnostics', async (req: Request, res: Response) => {
@@ -3893,6 +4175,16 @@ app.get('/', (_req: Request, res: Response) => {
       status: '/api/status',
       diagnostic: '/api/diagnostic?symbol=SUPRA',
       sourceSystemsHealth: '/api/source-systems/health',
+      sourceClassDoctrine: '/api/source-systems/doctrine',
+      sourceAuthority: '/api/source-systems/authority',
+      sourceRedundancy: '/api/source-systems/redundancy',
+      cryptographicIntegrity: '/api/source-systems/cryptographic-integrity?entity_id=bitcoin&entity_type=chain',
+      cryptographicIntegrityAuthority: '/api/source-systems/cryptographic-integrity/authority?entity_id=bitcoin&entity_type=chain',
+      quantumRiskRun: '/api/quantum-risk/run?asset=BTC',
+      quantumRiskSnapshots: '/api/quantum-risk/snapshots',
+      quantumRiskOutcome: '/api/quantum-risk/outcome [POST]',
+      quantumRiskCalibration: '/api/quantum-risk/calibration',
+      quantumRiskBandEval: '/api/quantum-risk/evaluate-band?threshold=70',
       truthDiagnostics: '/api/source-systems/truth-diagnostics?symbol=BTC',
       calibrationDashboard: '/api/calibration-spine/dashboard',
       calibrationRecompute: '/api/calibration-spine/recompute?window=24h',
