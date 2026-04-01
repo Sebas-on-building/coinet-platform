@@ -5111,6 +5111,24 @@ async function startServer() {
     });
   }
 
+  // Market data smoke test — verify at least one price source works
+  try {
+    logger.info('🔄 Market data smoke test — fetching BTC price...');
+    const smokeResult = await Promise.race([
+      fetchPricesForMessage('BTC'),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+    ]);
+    if (smokeResult && smokeResult.prices.length > 0) {
+      const btc = smokeResult.prices.find((p: any) => p.symbol?.toUpperCase() === 'BTC');
+      logger.info(`✅ Market data OK — BTC $${btc?.price?.toLocaleString() ?? 'n/a'} via ${smokeResult.sources.join(', ') || 'unknown'} (${smokeResult.fetchTime}ms)`);
+    } else {
+      logger.error('❌ MARKET DATA SMOKE TEST FAILED — No BTC price from any source. Chat will have degraded responses.');
+      logger.error('   Check: COINGECKO_API_KEY, CMC_API_KEY, MARKET_PRICES_URL, and network connectivity.');
+    }
+  } catch (smokeErr) {
+    logger.error('❌ MARKET DATA SMOKE TEST ERROR', { error: smokeErr instanceof Error ? smokeErr.message : String(smokeErr) });
+  }
+
   try {
     // Check if DATABASE_URL is configured
     if (!process.env.DATABASE_URL) {

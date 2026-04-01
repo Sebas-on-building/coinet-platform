@@ -60,6 +60,7 @@ import {
   messageContainsTokenRef,
   TokenContext 
 } from '../../services/token-context';
+import { runBtcQuantumRisk } from '../../services/source-systems';
 import {
   ChatMessageRequest,
   ChatMessageResponse,
@@ -1043,22 +1044,42 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               ? knowledgeGraph.getEntityContext(resolution.entity.canonicalId)
               : null;
 
+            // Extract primary coin price from enterprise or standard market data
+            const eprice = (enterpriseMarketData as any)?.prices?.find(
+              (p: any) => p.symbol?.toUpperCase() === resolvedSymbol,
+            );
+            const sprice = (marketData as any)?.prices?.find(
+              (p: any) => p.symbol?.toUpperCase() === resolvedSymbol,
+            );
+            const coinPrice = eprice || sprice;
+
+            // Compute dynamic coverage from fetch results
+            const dataSourceNames = ['marketData', 'enterpriseMarketData', 'sentiment', 'enrichedNews', 'perpsData', 'derivativesFinal', 'socialV2Result', 'whaleContext', 'csiResult', 'comprehensiveDerivatives'] as const;
+            const availableSources = dataSourceNames.filter(n => {
+              const r = (fetchResults as any)[n];
+              return r && r.success && (r.duration === undefined || r.duration > 0);
+            }).length;
+            const staleSources = dataSourceNames.filter(n => {
+              const r = (fetchResults as any)[n];
+              return r && r.success && r.duration && r.duration > 5000;
+            }).length;
+
             const signals = buildSignalSnapshot({
               dexscreener: {
-                price_change_24h: (marketData as any)?.priceChange24h ?? 0,
-                price_change_1h: (marketData as any)?.priceChange1h ?? 0,
-                volume_24h_usd: (marketData as any)?.volume24h ?? 0,
-                txns_buys_24h: (marketData as any)?.buys24h ?? 0,
-                txns_sells_24h: (marketData as any)?.sells24h ?? 0,
-                liquidity_usd: (marketData as any)?.liquidity ?? 0,
+                price_change_24h: coinPrice?.changePercent24h ?? coinPrice?.priceChangePercent24h ?? 0,
+                price_change_1h: coinPrice?.priceChange1h ?? 0,
+                volume_24h_usd: coinPrice?.volume24h ?? 0,
+                txns_buys_24h: 0,
+                txns_sells_24h: 0,
+                liquidity_usd: 0,
                 pair_age_hours: undefined,
               },
               derivatives: {
-                open_interest_usd: (derivativesFinal as any)?.openInterest?.total ?? 0,
-                open_interest_change_24h: (derivativesFinal as any)?.openInterest?.change24h ?? 0,
-                funding_rate: (derivativesFinal as any)?.funding?.current ?? 0,
+                open_interest_usd: (derivativesFinal as any)?.openInterest?.total?.value ?? 0,
+                open_interest_change_24h: (derivativesFinal as any)?.openInterest?.total?.change24h ?? 0,
+                funding_rate: (derivativesFinal as any)?.funding?.avgRate ?? 0,
                 liquidations_24h_usd: (derivativesFinal as any)?.liquidations?.total24h ?? 0,
-                long_short_ratio: (derivativesFinal as any)?.positioning?.longShortRatio ?? 1,
+                long_short_ratio: (derivativesFinal as any)?.positioning?.ratio ?? 1,
               },
               protocol: {
                 tvl_usd: 0,
@@ -1075,15 +1096,15 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               holders: { top_10_percentage: 0 },
               sentiment: {
                 score: (sentiment as any)?.overall ?? 0,
-                volume_mentions_24h: 0,
+                volume_mentions_24h: (socialV2Result as any)?.volume?.totalMentions24h ?? 0,
                 social_dominance: 0,
               },
-              news: { item_count: 0 },
+              news: { item_count: (enrichedNews as any)?.articles?.length ?? 0 },
               unlock: {},
               coverage: {
-                available_count: derivativesFinal ? 5 : 3,
-                total_count: 10,
-                stale_count: 0,
+                available_count: availableSources,
+                total_count: dataSourceNames.length,
+                stale_count: staleSources,
               },
             });
 
@@ -1132,6 +1153,48 @@ without explicit evidence.
           }
         }
 
+        // 15b. QUANTUM RISK ASSESSMENT — structural crypto risk intelligence for BTC
+        if (coinSymbols.some(s => s === 'BTC' || s === 'BITCOIN')) {
+          try {
+            const qr = runBtcQuantumRisk();
+            const j = qr.snapshot.judgment;
+            const s = qr.snapshot.score;
+            const f = qr.snapshot.features;
+            contextParts.push(`
+── QUANTUM RISK ASSESSMENT — BTC ───────────────────────────────────────
+QRS: ${s.value}/100 (${j.state})
+${j.explanation}
+Key exposure: ${(f.key_exposure_rate.value * 100).toFixed(1)}% | Dormant vulnerable: ${f.dormant_vulnerable_supply.base.toLocaleString()} BTC | PQC migration: ${(f.pq_migration_progress.value * 100).toFixed(0)}%
+Components: exposure=${s.components.exposure.toFixed(2)} dormant=${s.components.dormant.toFixed(2)} migration=${s.components.migration.toFixed(2)}
+Scenarios: fast_quantum ${qr.snapshot.scenarios[0]?.triggered ? 'TRIGGERED' : 'inactive'} | slow_quantum ${qr.snapshot.scenarios[1]?.triggered ? 'TRIGGERED' : 'inactive'}
+Confidence: ${(j.confidence * 100).toFixed(0)}% | Version: ${qr.snapshot.logic_version}
+${j.prohibit_directional_claims ? 'WARNING: Directional claims prohibited due to low data quality.' : ''}
+─────────────────────────────────────────────────────────────────────────
+NOTE: Quantum risk is a long-horizon structural concern. Reference it
+when discussing BTC security model, not as a short-term trading signal.
+`);
+            logger.info('Quantum risk context added', { qrs: s.value, state: j.state });
+          } catch (qrError) {
+            logger.debug('Quantum risk engine unavailable', {
+              error: qrError instanceof Error ? qrError.message : String(qrError),
+            });
+          }
+        }
+
+        // 15c. SOURCE COVERAGE FINGERPRINT — which truth domains are visible
+        if (detectedCoins.length > 0) {
+          const fr = fetchResults as Record<string, { success: boolean }>;
+          const vis = (key: string) => fr[key]?.success ? 'available' : 'blind';
+          const marketVis = (fr['marketData']?.success || fr['enterpriseMarketData']?.success) ? 'available' : 'blind';
+          contextParts.push(`
+── SOURCE VISIBILITY ───────────────────────────────────────────────────
+Market Surface: ${marketVis} | Derivatives: ${vis('derivativesFinal')} | Sentiment: ${vis('sentiment')}
+News: ${vis('enrichedNews')} | Social: ${vis('socialV2Result')} | Whale/On-chain: ${vis('whaleContext')}
+Protocol substance: unavailable | Structural safety: unavailable
+Use this to qualify claims: do NOT make strong claims about blind domains.
+`);
+        }
+
         // 16. Investigate unknown projects not in OmniScore database
         // This provides comprehensive CoinGecko data for projects that might be new/unknown
         const unknownCoins = detectedCoins.filter(coin => {
@@ -1165,6 +1228,24 @@ without explicit evidence.
           }
         }
         
+        // 17. DATA QUALITY DIAGNOSTIC — tell the AI exactly what succeeded/failed
+        {
+          const succeeded = Object.entries(fetchResults).filter(([_, r]) => (r as any).success);
+          const failed = Object.entries(fetchResults).filter(([_, r]) => !(r as any).success);
+          const totalEnabled = Object.entries(fetchResults).filter(([_, r]) => (r as any).duration === undefined || (r as any).duration > 0 || !(r as any).success).length;
+          
+          if (failed.length > 0 || succeeded.length < 8) {
+            const failedNames = failed.map(([n, r]) => `${n} (${(r as any).error?.substring(0, 40) || 'failed'})`).join(', ');
+            contextParts.push(`
+── DATA QUALITY REPORT ──────────────────────────────────────────────────
+Sources available: ${succeeded.length}/${totalEnabled || succeeded.length + failed.length}
+${failed.length > 0 ? `Failed sources: ${failedNames}` : 'All enabled sources succeeded.'}
+IMPORTANT: Only use data from available sources. Do NOT guess values for failed sources.
+─────────────────────────────────────────────────────────────────────────
+`);
+          }
+        }
+
         if (contextParts.length > 0) {
           liveContextStr = contextParts.join('\n');
         }
