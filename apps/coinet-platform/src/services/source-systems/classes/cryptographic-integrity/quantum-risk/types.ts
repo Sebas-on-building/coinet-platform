@@ -158,4 +158,11 @@ export interface QuantumRiskPipelineInput {
   dormantCohorts: DormantCohorts | null;
   pqEvidence: PQEvidence | null;
   totalSupply: number;
+  /** L1.5: optional secondary sources for conflict resolution */
+  secondary?: {
+    scriptDistribution?: { sourceId: string; data: ScriptDistribution; observedAt?: string; trustClass?: string };
+    dormantCohorts?: { sourceId: string; data: DormantCohorts; observedAt?: string; trustClass?: string };
+    pqEvidence?: { sourceId: string; data: PQEvidence; observedAt?: string; trustClass?: string };
+    totalSupply?: { sourceId: string; data: number; observedAt?: string; trustClass?: string };
+  };
 }

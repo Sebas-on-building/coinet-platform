@@ -2,7 +2,7 @@
  * V1 Loop Pipeline — full orchestrator with build checkpoints.
  *
  * Flow:
- *   Input → Classify → Features → Score → Scenarios → Judgment → Snapshot
+ *   Input → L1.3 Resolve → Classify → Features → Score → Scenarios → Judgment → Snapshot
  *
  * Checkpoints:
  *   1. key_exposure_rate computable
@@ -29,12 +29,23 @@ import { computeQuantumRiskScore } from './scoring';
 import { evaluateScenarios } from './scenarios';
 import { produceQuantumJudgment } from './judgment';
 import { storeSnapshot, getSnapshot } from './snapshot';
+import type { RedundancyDiagnostics } from './redundancy-types';
+import { resolveAllQuantumFields } from './redundancy-resolver';
+import type { FieldSourceCandidate } from './redundancy-types';
+import type { SourceHealthDiagnostics, TrustClass } from './source-health-types';
+import { scoreAllQuantumSources, computeConfidencePenaltyFromHealth } from './source-health-scorer';
+import type { QuantumFieldSource } from './source-health-scorer';
+import type { ConflictDiagnostics, ConflictCandidate } from './conflict-types';
+import { resolveAllConflicts, clearConflictState } from './conflict-resolver';
 
 export interface PipelineResult {
   success: boolean;
   snapshot: QuantumRiskSnapshot;
   checkpoints: CheckpointReport;
   degradation: PipelineDegradation;
+  redundancy?: RedundancyDiagnostics;
+  sourceHealth?: SourceHealthDiagnostics;
+  conflicts?: ConflictDiagnostics;
 }
 
 export interface CheckpointReport {
@@ -51,13 +62,153 @@ export interface PipelineDegradation {
   confidence_penalty: number;
 }
 
+function buildCandidate(
+  sourceId: string,
+  data: unknown,
+  observedAt?: string,
+  healthScore?: number,
+): FieldSourceCandidate | null {
+  if (data === null || data === undefined) return null;
+  return {
+    sourceId,
+    data,
+    observedAt: observedAt ?? new Date().toISOString(),
+    freshness: 'live',
+    healthScore: healthScore ?? 1.0,
+    schemaVersion: LOGIC_VERSION,
+  };
+}
+
+function buildHealthInput(
+  sourceId: string,
+  trustClass: TrustClass,
+  data: unknown,
+  observedAt?: string,
+  availabilityScore?: number,
+): QuantumFieldSource | null {
+  if (data === null || data === undefined) return null;
+  return { sourceId, trustClass, data, observedAt, availabilityScore };
+}
+
 export function runQuantumRiskPipeline(input: QuantumRiskPipelineInput): PipelineResult {
+  // ── L1.4: Score source health across all 5 dimensions ─────────────────
+  const now = new Date().toISOString();
+  const { records: healthRecords, diagnostics: healthDiag } = scoreAllQuantumSources({
+    scriptDistribution: buildHealthInput('btc_chain_index', 'verified_chain_data', input.scriptDistribution, now, 1.0),
+    dormantCohorts: buildHealthInput('btc_chain_index', 'verified_chain_data', input.dormantCohorts, now, 1.0),
+    pqEvidence: buildHealthInput('btc_protocol_evidence', 'official_protocol_evidence', input.pqEvidence, input.pqEvidence?.lastUpdate, 1.0),
+    totalSupply: buildHealthInput('btc_chain_index', 'verified_chain_data', input.totalSupply, now, 1.0),
+    btcPriceContext: null,
+    outcomeMetrics: null,
+  });
+
+  // ── L1.5: Conflict resolution when secondary sources exist ──────────────
+  clearConflictState();
+  let conflictDiag: ConflictDiagnostics | undefined;
+  let conflictPenalty = 0;
+
+  const sec = input.secondary;
+  if (sec) {
+    const conflictPairs: Record<string, { a: ConflictCandidate; b: ConflictCandidate } | null> = {};
+
+    const primaryAuthority = 0.95;
+    const secondaryAuthority = 0.75;
+
+    if (sec.scriptDistribution && input.scriptDistribution) {
+      conflictPairs.scriptDistribution = {
+        a: { sourceId: 'btc_chain_index', data: input.scriptDistribution, observedAt: now,
+             authorityLevel: primaryAuthority, healthScore: healthRecords.scriptDistribution?.sourceUsabilityScore ?? 1.0,
+             trustClass: 'verified_chain_data' },
+        b: { sourceId: sec.scriptDistribution.sourceId, data: sec.scriptDistribution.data,
+             observedAt: sec.scriptDistribution.observedAt, authorityLevel: secondaryAuthority,
+             healthScore: 0.85, trustClass: sec.scriptDistribution.trustClass ?? 'trusted_external_analytics' },
+      };
+    }
+    if (sec.dormantCohorts && input.dormantCohorts) {
+      conflictPairs.dormantCohorts = {
+        a: { sourceId: 'btc_chain_index', data: input.dormantCohorts, observedAt: now,
+             authorityLevel: primaryAuthority, healthScore: healthRecords.dormantCohorts?.sourceUsabilityScore ?? 1.0,
+             trustClass: 'verified_chain_data' },
+        b: { sourceId: sec.dormantCohorts.sourceId, data: sec.dormantCohorts.data,
+             observedAt: sec.dormantCohorts.observedAt, authorityLevel: secondaryAuthority,
+             healthScore: 0.85, trustClass: sec.dormantCohorts.trustClass ?? 'trusted_external_analytics' },
+      };
+    }
+    if (sec.pqEvidence && input.pqEvidence) {
+      conflictPairs.pqEvidence = {
+        a: { sourceId: 'btc_protocol_evidence', data: input.pqEvidence, observedAt: input.pqEvidence.lastUpdate,
+             authorityLevel: primaryAuthority, healthScore: healthRecords.pqEvidence?.sourceUsabilityScore ?? 1.0,
+             trustClass: 'official_protocol_evidence' },
+        b: { sourceId: sec.pqEvidence.sourceId, data: sec.pqEvidence.data,
+             observedAt: sec.pqEvidence.observedAt, authorityLevel: secondaryAuthority,
+             healthScore: 0.85, trustClass: sec.pqEvidence.trustClass ?? 'official_protocol_evidence' },
+      };
+    }
+    if (sec.totalSupply && input.totalSupply) {
+      conflictPairs.totalSupply = {
+        a: { sourceId: 'btc_chain_index', data: input.totalSupply, observedAt: now,
+             authorityLevel: primaryAuthority, healthScore: healthRecords.totalSupply?.sourceUsabilityScore ?? 1.0,
+             trustClass: 'verified_chain_data' },
+        b: { sourceId: sec.totalSupply.sourceId, data: sec.totalSupply.data,
+             observedAt: sec.totalSupply.observedAt, authorityLevel: secondaryAuthority,
+             healthScore: 0.85, trustClass: sec.totalSupply.trustClass ?? 'trusted_external_analytics' },
+      };
+    }
+
+    if (Object.values(conflictPairs).some(p => p !== null)) {
+      const conflictResult = resolveAllConflicts(conflictPairs);
+      conflictDiag = conflictResult.diagnostics;
+      conflictPenalty = conflictDiag.totalConfidencePenalty;
+    }
+  }
+
+  // ── L1.3: Resolve sources through redundancy matrix (fed by L1.4 health) ──
+  const { results: resolved, diagnostics: redundancyDiag } = resolveAllQuantumFields({
+    scriptDistribution: {
+      primary: buildCandidate('btc_chain_index', input.scriptDistribution, now, healthRecords.scriptDistribution?.sourceUsabilityScore),
+      secondary: null,
+    },
+    dormantCohorts: {
+      primary: buildCandidate('btc_chain_index', input.dormantCohorts, now, healthRecords.dormantCohorts?.sourceUsabilityScore),
+      secondary: null,
+    },
+    pqEvidence: {
+      primary: buildCandidate('btc_protocol_evidence', input.pqEvidence, input.pqEvidence?.lastUpdate, healthRecords.pqEvidence?.sourceUsabilityScore),
+      secondary: null,
+    },
+    totalSupply: {
+      primary: buildCandidate('btc_chain_index', { value: input.totalSupply }, now, healthRecords.totalSupply?.sourceUsabilityScore),
+      secondary: null,
+    },
+  });
+
   const missing: string[] = [];
   let confidencePenalty = 0;
 
-  if (!input.scriptDistribution) { missing.push('scriptDistribution'); confidencePenalty += 0.2; }
-  if (!input.dormantCohorts) { missing.push('dormantCohorts'); confidencePenalty += 0.2; }
-  if (!input.pqEvidence) { missing.push('pqEvidence'); confidencePenalty += 0.2; }
+  // L1.3 resolution penalties
+  for (const [field, result] of Object.entries(resolved)) {
+    if (!result.usable) {
+      missing.push(field);
+      confidencePenalty += result.resolution.confidencePenalty;
+    } else if (result.resolution.confidencePenalty > 0) {
+      confidencePenalty += result.resolution.confidencePenalty;
+    }
+  }
+
+  // L1.4 health-based penalties (additive to L1.3)
+  for (const [field, record] of Object.entries(healthRecords)) {
+    const healthPenalty = computeConfidencePenaltyFromHealth(record);
+    if (healthPenalty > 0) {
+      confidencePenalty += healthPenalty;
+    }
+  }
+
+  // L1.5 conflict penalties (additive)
+  confidencePenalty += conflictPenalty;
+
+  if (!input.scriptDistribution) { if (!missing.includes('scriptDistribution')) { missing.push('scriptDistribution'); confidencePenalty += 0.2; } }
+  if (!input.dormantCohorts) { if (!missing.includes('dormantCohorts')) { missing.push('dormantCohorts'); confidencePenalty += 0.2; } }
+  if (!input.pqEvidence) { if (!missing.includes('pqEvidence')) { missing.push('pqEvidence'); confidencePenalty += 0.2; } }
 
   const degradationState: DegradationState =
     missing.length === 0 ? 'healthy'
@@ -130,6 +281,9 @@ export function runQuantumRiskPipeline(input: QuantumRiskPipelineInput): Pipelin
       missing_inputs: missing,
       confidence_penalty: confidencePenalty,
     },
+    redundancy: redundancyDiag,
+    sourceHealth: healthDiag,
+    conflicts: conflictDiag,
   };
 }
 

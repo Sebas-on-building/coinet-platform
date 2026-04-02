@@ -544,6 +544,94 @@ app.get('/api/quantum-risk/evaluate-band', async (req: Request, res: Response) =
   }
 });
 
+app.get('/api/quantum-risk/redundancy', async (_req: Request, res: Response) => {
+  try {
+    const { runBtcQuantumRisk } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline');
+    const result = runBtcQuantumRisk();
+    res.json({
+      redundancy: result.redundancy,
+      degradation: result.degradation,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Redundancy diagnostics failed', message: error.message });
+  }
+});
+
+app.get('/api/quantum-risk/conflicts', async (_req: Request, res: Response) => {
+  try {
+    const { runQuantumRiskPipeline } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline');
+    const result = runQuantumRiskPipeline({
+      asset: 'BTC',
+      totalSupply: 19_700_000,
+      scriptDistribution: { p2pk: 1_700_000, p2pkh: 8_500_000, p2wpkh: 5_200_000, p2tr: 1_500_000, p2sh: 1_800_000, unknown: 1_000_000, total: 19_700_000 },
+      dormantCohorts: { gt_5y: 3_900_000, gt_7y: 2_800_000, gt_10y: 1_700_000 },
+      pqEvidence: { hasProposal: true, hasImplementation: false, hasDeployment: false, lastUpdate: '2024-06-15T00:00:00Z' },
+      secondary: {
+        scriptDistribution: {
+          sourceId: 'external_analytics',
+          data: { p2pk: 1_680_000, p2pkh: 8_550_000, p2wpkh: 5_180_000, p2tr: 1_520_000, p2sh: 1_790_000, unknown: 980_000, total: 19_700_000 },
+          observedAt: new Date().toISOString(),
+        },
+        dormantCohorts: {
+          sourceId: 'external_dormancy_provider',
+          data: { gt_5y: 3_850_000, gt_7y: 2_780_000, gt_10y: 1_690_000 },
+          observedAt: new Date().toISOString(),
+        },
+      },
+    });
+    res.json({
+      conflicts: result.conflicts,
+      degradation: result.degradation,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Conflict diagnostics failed', message: error.message });
+  }
+});
+
+app.get('/api/quantum-risk/source-health', async (_req: Request, res: Response) => {
+  try {
+    const { runBtcQuantumRisk } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline');
+    const result = runBtcQuantumRisk();
+    res.json({
+      sourceHealth: result.sourceHealth,
+      degradation: result.degradation,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Source health diagnostics failed', message: error.message });
+  }
+});
+
+app.get('/api/quantum-risk/edge-report', async (req: Request, res: Response) => {
+  try {
+    const asset = (req.query.asset as string || '').trim().toUpperCase() || undefined;
+    const { buildEdgeReport } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/evaluation');
+    const report = buildEdgeReport(asset || undefined);
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Edge report failed', message: error.message });
+  }
+});
+
+app.get('/api/chat-audit/stats', async (_req: Request, res: Response) => {
+  try {
+    const { getAuditStats } = await import('./services/chat-audit');
+    res.json(getAuditStats());
+  } catch (error: any) {
+    res.status(500).json({ error: 'Audit stats failed', message: error.message });
+  }
+});
+
+app.get('/api/chat-audit/log', async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string || '50', 10);
+    const { getAuditLog } = await import('./services/chat-audit');
+    const log = getAuditLog().slice(-limit);
+    res.json({ count: log.length, entries: log });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Audit log failed', message: error.message });
+  }
+});
+
 // =============================================================================
 // SOURCE SYSTEMS TRUTH DIAGNOSTICS — Per-analysis source-governance observability
 // =============================================================================
@@ -4185,6 +4273,12 @@ app.get('/', (_req: Request, res: Response) => {
       quantumRiskOutcome: '/api/quantum-risk/outcome [POST]',
       quantumRiskCalibration: '/api/quantum-risk/calibration',
       quantumRiskBandEval: '/api/quantum-risk/evaluate-band?threshold=70',
+      quantumRiskRedundancy: '/api/quantum-risk/redundancy',
+      quantumRiskSourceHealth: '/api/quantum-risk/source-health',
+      quantumRiskConflicts: '/api/quantum-risk/conflicts',
+      quantumRiskEdgeReport: '/api/quantum-risk/edge-report',
+      chatAuditStats: '/api/chat-audit/stats',
+      chatAuditLog: '/api/chat-audit/log?limit=50',
       truthDiagnostics: '/api/source-systems/truth-diagnostics?symbol=BTC',
       calibrationDashboard: '/api/calibration-spine/dashboard',
       calibrationRecompute: '/api/calibration-spine/recompute?window=24h',

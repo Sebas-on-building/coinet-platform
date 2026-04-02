@@ -61,6 +61,9 @@ import {
   TokenContext 
 } from '../../services/token-context';
 import { runBtcQuantumRisk } from '../../services/source-systems';
+import { buildReasoningContext, serializeReasoningContext, validateGrounding } from '../../services/reasoning-context';
+import type { ReasoningContext } from '../../services/reasoning-context';
+import { logChatAudit } from '../../services/chat-audit';
 import {
   ChatMessageRequest,
   ChatMessageResponse,
@@ -170,6 +173,7 @@ export class ChatService {
       let liveContextStr: string | undefined;
       let handlerResult: HandlerResult | null = null;
       let tokenContextResult: { hasTokenContext: boolean; tokenContext: TokenContext | null; injectionText: string | null } | null = null;
+      let currentReasoningContext: ReasoningContext | null = null;
       
       try {
         // 🎯 ENTITY-DRIVEN ENRICHMENT: Detect and enrich token entities FIRST
@@ -1153,46 +1157,37 @@ without explicit evidence.
           }
         }
 
-        // 15b. QUANTUM RISK ASSESSMENT — structural crypto risk intelligence for BTC
-        if (coinSymbols.some(s => s === 'BTC' || s === 'BITCOIN')) {
+        // 15b. STRUCTURED REASONING CONTEXT — typed, validated, auditable
+        // Now bridges L1.0/L1.1 into production: feeds health-monitor,
+        // builds truth fingerprint, and injects governed source visibility.
+        if (detectedCoins.length > 0) {
           try {
-            const qr = runBtcQuantumRisk();
-            const j = qr.snapshot.judgment;
-            const s = qr.snapshot.score;
-            const f = qr.snapshot.features;
-            contextParts.push(`
-── QUANTUM RISK ASSESSMENT — BTC ───────────────────────────────────────
-QRS: ${s.value}/100 (${j.state})
-${j.explanation}
-Key exposure: ${(f.key_exposure_rate.value * 100).toFixed(1)}% | Dormant vulnerable: ${f.dormant_vulnerable_supply.base.toLocaleString()} BTC | PQC migration: ${(f.pq_migration_progress.value * 100).toFixed(0)}%
-Components: exposure=${s.components.exposure.toFixed(2)} dormant=${s.components.dormant.toFixed(2)} migration=${s.components.migration.toFixed(2)}
-Scenarios: fast_quantum ${qr.snapshot.scenarios[0]?.triggered ? 'TRIGGERED' : 'inactive'} | slow_quantum ${qr.snapshot.scenarios[1]?.triggered ? 'TRIGGERED' : 'inactive'}
-Confidence: ${(j.confidence * 100).toFixed(0)}% | Version: ${qr.snapshot.logic_version}
-${j.prohibit_directional_claims ? 'WARNING: Directional claims prohibited due to low data quality.' : ''}
-─────────────────────────────────────────────────────────────────────────
-NOTE: Quantum risk is a long-horizon structural concern. Reference it
-when discussing BTC security model, not as a short-term trading signal.
-`);
-            logger.info('Quantum risk context added', { qrs: s.value, state: j.state });
-          } catch (qrError) {
-            logger.debug('Quantum risk engine unavailable', {
-              error: qrError instanceof Error ? qrError.message : String(qrError),
+            const isBtc = coinSymbols.some(s => s === 'BTC' || s === 'BITCOIN');
+            const qr = isBtc ? runBtcQuantumRisk() : null;
+            const fr = fetchResults as Record<string, { success: boolean; error?: string }>;
+
+            currentReasoningContext = buildReasoningContext(
+              coinSymbols[0] || 'UNKNOWN',
+              qr,
+              fr,
+            );
+
+            const serialized = serializeReasoningContext(currentReasoningContext);
+            contextParts.push(serialized);
+
+            const fpCoverage = currentReasoningContext.system_state.truth_fingerprint?.overall_coverage;
+            logger.info('Structured reasoning context added (L1 bridge active)', {
+              qrs: currentReasoningContext.quantum?.score,
+              state: currentReasoningContext.quantum?.state,
+              confidence: currentReasoningContext.quantum?.confidence,
+              l1_coverage: fpCoverage !== undefined ? `${Math.round(fpCoverage * 100)}%` : 'n/a',
+              blind_spots: currentReasoningContext.system_state.blind_domains.length,
+            });
+          } catch (ctxError) {
+            logger.debug('Reasoning context build failed', {
+              error: ctxError instanceof Error ? ctxError.message : String(ctxError),
             });
           }
-        }
-
-        // 15c. SOURCE COVERAGE FINGERPRINT — which truth domains are visible
-        if (detectedCoins.length > 0) {
-          const fr = fetchResults as Record<string, { success: boolean }>;
-          const vis = (key: string) => fr[key]?.success ? 'available' : 'blind';
-          const marketVis = (fr['marketData']?.success || fr['enterpriseMarketData']?.success) ? 'available' : 'blind';
-          contextParts.push(`
-── SOURCE VISIBILITY ───────────────────────────────────────────────────
-Market Surface: ${marketVis} | Derivatives: ${vis('derivativesFinal')} | Sentiment: ${vis('sentiment')}
-News: ${vis('enrichedNews')} | Social: ${vis('socialV2Result')} | Whale/On-chain: ${vis('whaleContext')}
-Protocol substance: unavailable | Structural safety: unavailable
-Use this to qualify claims: do NOT make strong claims about blind domains.
-`);
         }
 
         // 16. Investigate unknown projects not in OmniScore database
@@ -1411,6 +1406,33 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         });
         logger.warn('⚠️  AI Service unavailable, using mock response — user will see fallback text');
         aiResponse = generateMockResponse(request.message);
+      }
+
+      // 5b. CHAT AUDIT — validate grounding and log for evaluation
+      if (currentReasoningContext && aiResponse) {
+        try {
+          const responseText = aiResponse.data.thesis || aiResponse.data.summary || '';
+          const groundingReport = validateGrounding(request.message, responseText, currentReasoningContext);
+          const ctxSerialized = serializeReasoningContext(currentReasoningContext);
+          logChatAudit(
+            currentReasoningContext.asset,
+            request.message,
+            ctxSerialized,
+            responseText,
+            currentReasoningContext,
+            groundingReport,
+          );
+          if (groundingReport.verdict === 'HALLUCINATION_DETECTED') {
+            logger.warn('GROUNDING: hallucination detected in AI response', {
+              prompt: request.message.substring(0, 80),
+              failures: groundingReport.checks.filter(c => c.hallucinated).map(c => c.detail),
+            });
+          }
+        } catch (auditErr) {
+          logger.debug('Chat audit logging failed', {
+            error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+          });
+        }
       }
 
       // 6. Get sources - only show sources that were actually used during data fetching
