@@ -19,3 +19,6 @@ export * from './source-health-scorer';
 export * from './conflict-types';
 export * from './conflict-matrix';
 export * from './conflict-resolver';
+export * from './degradation-types';
+export * from './degradation-rules';
+export * from './degradation-engine';

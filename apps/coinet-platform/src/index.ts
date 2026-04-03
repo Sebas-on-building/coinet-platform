@@ -588,6 +588,19 @@ app.get('/api/quantum-risk/conflicts', async (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/quantum-risk/degradation', async (_req: Request, res: Response) => {
+  try {
+    const { runBtcQuantumRisk } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline');
+    const result = runBtcQuantumRisk();
+    res.json({
+      semanticDegradation: result.semanticDegradation,
+      degradation: result.degradation,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Degradation diagnostics failed', message: error.message });
+  }
+});
+
 app.get('/api/quantum-risk/source-health', async (_req: Request, res: Response) => {
   try {
     const { runBtcQuantumRisk } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline');
@@ -4276,6 +4289,7 @@ app.get('/', (_req: Request, res: Response) => {
       quantumRiskRedundancy: '/api/quantum-risk/redundancy',
       quantumRiskSourceHealth: '/api/quantum-risk/source-health',
       quantumRiskConflicts: '/api/quantum-risk/conflicts',
+      quantumRiskDegradation: '/api/quantum-risk/degradation',
       quantumRiskEdgeReport: '/api/quantum-risk/edge-report',
       chatAuditStats: '/api/chat-audit/stats',
       chatAuditLog: '/api/chat-audit/log?limit=50',

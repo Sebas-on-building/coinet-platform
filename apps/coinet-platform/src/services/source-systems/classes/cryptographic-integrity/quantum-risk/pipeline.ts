@@ -37,6 +37,9 @@ import { scoreAllQuantumSources, computeConfidencePenaltyFromHealth } from './so
 import type { QuantumFieldSource } from './source-health-scorer';
 import type { ConflictDiagnostics, ConflictCandidate } from './conflict-types';
 import { resolveAllConflicts, clearConflictState } from './conflict-resolver';
+import type { DegradationDiagnostics } from './degradation-types';
+import { evaluateAllDegradation, clearDegradationLedger } from './degradation-engine';
+import type { DetectionInput } from './degradation-engine';
 
 export interface PipelineResult {
   success: boolean;
@@ -46,6 +49,7 @@ export interface PipelineResult {
   redundancy?: RedundancyDiagnostics;
   sourceHealth?: SourceHealthDiagnostics;
   conflicts?: ConflictDiagnostics;
+  semanticDegradation?: DegradationDiagnostics;
 }
 
 export interface CheckpointReport {
@@ -210,9 +214,34 @@ export function runQuantumRiskPipeline(input: QuantumRiskPipelineInput): Pipelin
   if (!input.dormantCohorts) { if (!missing.includes('dormantCohorts')) { missing.push('dormantCohorts'); confidencePenalty += 0.2; } }
   if (!input.pqEvidence) { if (!missing.includes('pqEvidence')) { missing.push('pqEvidence'); confidencePenalty += 0.2; } }
 
+  // ── L1.6: Evaluate semantic degradation across all fields ──────────────
+  clearDegradationLedger();
+  const coreFields = ['scriptDistribution', 'dormantCohorts', 'pqEvidence', 'totalSupply'];
+  const degradationInputs: Record<string, DetectionInput> = {};
+
+  for (const fieldName of coreFields) {
+    const healthRec = healthDiag.records.find(r => r.fieldName === fieldName);
+    const redundancyRec = redundancyDiag.resolutions.find(r => r.fieldName === fieldName);
+    const conflictRec = conflictDiag?.records.find(r => r.fieldName === fieldName);
+
+    degradationInputs[fieldName] = {
+      fieldName,
+      sourceId: healthRec?.sourceId,
+      dataPresent: !missing.includes(fieldName),
+      healthRecord: healthRec,
+      redundancyRecord: redundancyRec,
+      conflictRecord: conflictRec,
+    };
+  }
+
+  const { diagnostics: semDegDiag } = evaluateAllDegradation({ fields: degradationInputs });
+
+  // L1.6 adds its own penalty on top (from degradation rules, not double-counted with L1.3/L1.4/L1.5)
+  confidencePenalty += semDegDiag.totalFieldPenalty;
+
   const degradationState: DegradationState =
-    missing.length === 0 ? 'healthy'
-      : missing.length <= 1 ? 'partial'
+    missing.length === 0 && semDegDiag.totalEvents === 0 ? 'healthy'
+      : missing.length <= 1 && !semDegDiag.forceInsufficientData ? 'partial'
         : 'degraded';
 
   // ── Section 2: Classify ────────────────────────────────────────────────
@@ -284,6 +313,7 @@ export function runQuantumRiskPipeline(input: QuantumRiskPipelineInput): Pipelin
     redundancy: redundancyDiag,
     sourceHealth: healthDiag,
     conflicts: conflictDiag,
+    semanticDegradation: semDegDiag,
   };
 }
 
