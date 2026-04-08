@@ -14,6 +14,7 @@ export type FreshnessProfile = 'realtime' | 'fast' | 'scheduled' | 'slow';
 export type DegradationImpact = 'low' | 'medium' | 'high' | 'critical';
 export type ClassVisibility = 'healthy' | 'partial' | 'degraded' | 'stale_dominant' | 'blind';
 export type TensionDirection = 'stronger' | 'weaker' | 'neutral';
+export type CadenceRange = 'seconds' | 'seconds_to_minutes' | 'near_realtime' | 'minutes' | 'minutes_to_hours' | 'block_time_to_minutes' | 'event_driven' | 'on_demand' | 'slower_than_chain';
 
 export interface ClassClaimRight {
   claim: string;
@@ -41,6 +42,9 @@ export interface FullSourceClassDoctrine {
   typicalFreshnessProfile: FreshnessProfile;
   degradationImpact: DegradationImpact;
   downstreamConsumers: string[];
+  cadence: CadenceRange;
+  failureMode: string;
+  productionRule: string;
   version: string;
 }
 

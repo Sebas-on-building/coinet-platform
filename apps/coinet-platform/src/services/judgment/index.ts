@@ -44,6 +44,8 @@ import { produceHypothesisOutput, type ProduceHypothesisResult } from '../hypoth
 import { formatHypothesisForAI } from '../hypotheses/explainer';
 import { persistHypothesisJudgmentSnapshot } from '../hypotheses/logging';
 import { captureJudgmentSnapshot } from '../calibration-spine/snapshot-writer';
+import type { EntityConfidenceState } from '../canonicalization/entity-confidence-model';
+import type { ConfidenceGateDecision } from '../canonicalization/confidence-gate';
 
 // Re-export everything consumers need
 export { buildSignalSnapshot } from './signal-snapshot';
@@ -85,6 +87,8 @@ export interface ProduceJudgmentInput {
     competitors: string[];
     capBucket: string | null;
   };
+  /** L3.3-B: identity confidence state for gate enforcement */
+  identityConfidenceState?: EntityConfidenceState;
 }
 
 /**
@@ -103,6 +107,33 @@ export interface ProduceJudgmentInput {
  */
 export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
   const { entity_id, symbol, chain, signals, scores, marketWide, entityContext } = input;
+
+  // L3.3-B gate enforcement — compute gate decisions before engines run
+  let identityConfidenceOutput: JudgmentOutput['identity_confidence'];
+  if (input.identityConfidenceState) {
+    try {
+      const { canUseForScoring, canUseForContradiction, canUseForScenario, canUseForJudgment } =
+        require('../canonicalization/confidence-gate') as typeof import('../canonicalization/confidence-gate');
+      const cState = input.identityConfidenceState;
+      const objType = cState.objectType;
+      const sg = canUseForScoring(entity_id, objType, cState);
+      const cg = canUseForContradiction(entity_id, objType, cState, { allowConditional: true });
+      const scg = canUseForScenario(entity_id, objType, cState, { allowConditional: true });
+      const jg = canUseForJudgment(entity_id, objType, cState);
+      identityConfidenceOutput = {
+        band: cState.band,
+        epistemic_state: cState.epistemicState,
+        scoring_gate: sg.mode,
+        contradiction_gate: cg.mode,
+        scenario_gate: scg.mode,
+        judgment_gate: jg.mode,
+        disclosure_required: cState.band === 'UNRESOLVED' || cState.band === 'LOW'
+          || cState.epistemicState === 'CONTESTED',
+        active_scars: cState.activeScars.map(s => s.code),
+        state_id: cState.stateId,
+      };
+    } catch { /* L3.3-B integration is best-effort during rollout */ }
+  }
 
   // 1. State
   const state = classifyState(signals);
@@ -261,6 +292,7 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
       configVersions: hypothesisEngineResult.configVersions,
       auditNotes: hypothesisEngineResult.internalProfiles.auditNotes,
     } : undefined,
+    identity_confidence: identityConfidenceOutput,
   };
 }
 

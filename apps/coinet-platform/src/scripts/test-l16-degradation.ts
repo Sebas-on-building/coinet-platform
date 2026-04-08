@@ -1,335 +1,538 @@
 /**
- * L1.6 Integration Test Suite
+ * L1.6 Source Degradation Semantics — Full Integration Test
  *
- * Tests:
- *   1.  Healthy pipeline — no degradation events
- *   2.  Missing scriptDistribution — critical, exposure truth lost
- *   3.  Missing dormantCohorts — critical, dormant supply truth lost
- *   4.  Missing pqEvidence — critical, migration truth lost
- *   5.  All missing — multiple critical, forceInsufficientData
- *   6.  Stale source — partial/degraded severity
- *   7.  Invalid payload — degraded/critical severity
- *   8.  Conflicted field — severity from conflict
- *   9.  Weak substitution — advisory/partial severity
- *  10.  Pipeline integration — L1.6 diagnostics in PipelineResult
- *  11.  Claim restrictions — correct restriction classes per severity
- *  12.  User/reasoning disclosure — non-empty for material degradation
- *  13.  Calibration handling — exclude/downweight at right severity
+ * Tests: level assignment, disclosure generation, downstream propagation,
+ * restoration hysteresis, ledger auditability, claim restrictions,
+ * and anti-fake degradation (behavior must change when level changes).
  */
 
-import { evaluateFieldDegradation, evaluateAllDegradation, clearDegradationLedger } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/degradation-engine';
-import type { DetectionInput } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/degradation-engine';
-import { runQuantumRiskPipeline } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline';
-import type { SourceHealthRecord } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/source-health-types';
-import type { SourceResolutionRecord } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/redundancy-types';
-import type { ConflictResolutionRecord } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/conflict-types';
-import { clearReliabilityMemory } from '../services/source-systems/classes/cryptographic-integrity/quantum-risk/reliability-tracker';
+import assert from 'node:assert';
+
+import { TRUTH_CLASSES, type TruthClass } from '../services/source-systems/registry';
+import {
+  type DegradationInput, type FieldDegradationInput, type DegradationLevel,
+  DEGRADATION_RANK, DEGRADATION_LABELS, DOWNSTREAM_BLOCKS, CONFIDENCE_PENALTY_RANGE,
+  DISCLOSURE_TEMPLATES, CLAIM_RESTRICTIONS, getClaimRestrictions,
+  L16_PLATFORM_VERSION,
+} from '../services/source-systems/classes/degradation-types';
+import {
+  CLASS_DEGRADATION_PROFILES, getAllClassProfiles,
+} from '../services/source-systems/classes/degradation-constitution';
+import {
+  evaluateDegradation, evaluateAllDegradation, buildDegradationFingerprint,
+  buildPropagationMap, getLockedClasses, getClassesUnsafeForThesis, getAllDisclosures,
+} from '../services/source-systems/classes/degradation-evaluator';
+import {
+  recordDegradation, recordDegradationBatch, constrainRestoration,
+  attemptRestoration, getCurrentLevel, getAllCurrentLevels,
+  getLedger, getDegradationEvents, getRestorationEvents,
+  resetState,
+} from '../services/source-systems/classes/degradation-ledger';
 
 let passed = 0;
 let failed = 0;
 
-function assert(condition: boolean, label: string) {
-  if (condition) { console.log(`  ✅ ${label}`); passed++; }
-  else { console.log(`  ❌ ${label}`); failed++; }
+function test(name: string, fn: () => void) {
+  try { fn(); passed++; console.log(`  ✅ ${name}`); }
+  catch (e: any) { failed++; console.log(`  ❌ ${name}: ${e.message}`); }
 }
 
-function heading(label: string) { console.log(`\n━━━ TEST: ${label} ━━━`); }
-
-function makeHealthRecord(overrides: Partial<SourceHealthRecord>): SourceHealthRecord {
+function makeField(overrides: Partial<FieldDegradationInput> & { fieldId: string }): FieldDegradationInput {
   return {
-    sourceId: 'test', fieldName: 'test', truthDomain: 'cryptographic_integrity',
-    trustClass: 'verified_chain_data', availabilityScore: 1, freshnessScore: 1,
-    payloadValidityScore: 1, historicalReliabilityScore: 1, compositeHealthScore: 1,
-    trustClassModifier: 1, sourceUsabilityScore: 1, healthBand: 'healthy',
-    freshnessBand: 'optimal', freshnessPolicyVersion: '1.0.0', reasonSummary: [],
+    healthState: 'H0_HEALTHY', integrityState: 'I0_INTACT',
+    permissionState: 'ALLOW_PRIMARY', recoveryState: 'STABLE',
+    criticality: 'CONTEXTUAL', isMissionCritical: false, isThesisCritical: false,
+    ...overrides,
+  };
+}
+
+function makeInput(classId: TruthClass, fieldStates: FieldDegradationInput[], overrides?: Partial<DegradationInput>): DegradationInput {
+  return {
+    classId, fieldStates,
+    substitutionBlindCount: 0, substitutionDegradedCount: 0,
+    noFallbackTriggered: false, conflictContradictionsPreserved: 0,
+    conflictBlockersActive: 0, conflictUnresolved: 0,
     ...overrides,
   };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Test 1: Healthy pipeline — no degradation events
+// 1. CONSTITUTION COMPLETENESS
 // ═══════════════════════════════════════════════════════════════════════════════
-heading('1. Healthy — no degradation');
-clearDegradationLedger();
-clearReliabilityMemory();
 
-const healthyInput: DetectionInput = {
-  fieldName: 'scriptDistribution',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({ fieldName: 'scriptDistribution' }),
-};
-const r1 = evaluateFieldDegradation(healthyInput);
-assert(r1 === null, 'no degradation event for healthy field');
+console.log('\n─── 1. Constitution completeness ───');
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 2: Missing scriptDistribution — critical
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('2. Missing scriptDistribution');
-clearDegradationLedger();
-
-const r2 = evaluateFieldDegradation({
-  fieldName: 'scriptDistribution', dataPresent: false,
-});
-assert(r2 !== null, 'degradation event generated');
-assert(r2!.degradationType === 'missing', `type = ${r2!.degradationType}`);
-assert(r2!.severity === 'critical', `severity = ${r2!.severity}`);
-assert(r2!.truthDomain === 'exposure_truth', `domain = ${r2!.truthDomain}`);
-assert(r2!.fieldConfidencePenalty === 0.30, `penalty = ${r2!.fieldConfidencePenalty}`);
-assert(r2!.featureImpacts.some(f => f.feature === 'key_exposure_rate'), 'impacts key_exposure_rate');
-assert(r2!.claimRestrictions.includes('R1_exactness'), 'R1 restriction');
-assert(r2!.claimRestrictions.includes('R3_directional'), 'R3 restriction');
-assert(r2!.userDisclosure.length > 10, `user disclosure: "${r2!.userDisclosure.substring(0, 50)}..."`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 3: Missing dormantCohorts — critical
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('3. Missing dormantCohorts');
-clearDegradationLedger();
-
-const r3 = evaluateFieldDegradation({
-  fieldName: 'dormantCohorts', dataPresent: false,
-});
-assert(r3 !== null, 'event generated');
-assert(r3!.severity === 'critical', `severity = ${r3!.severity}`);
-assert(r3!.truthDomain === 'dormant_supply_truth', `domain = ${r3!.truthDomain}`);
-assert(r3!.scenarioImpacts.some(s => s.scenario === 'slow_quantum'), 'impacts slow_quantum');
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 4: Missing pqEvidence — critical
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('4. Missing pqEvidence');
-clearDegradationLedger();
-
-const r4 = evaluateFieldDegradation({
-  fieldName: 'pqEvidence', dataPresent: false,
-});
-assert(r4 !== null, 'event generated');
-assert(r4!.severity === 'critical', `severity = ${r4!.severity}`);
-assert(r4!.truthDomain === 'migration_truth', `domain = ${r4!.truthDomain}`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 5: All missing — forceInsufficientData
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('5. All core fields missing → forceInsufficientData');
-clearDegradationLedger();
-
-const { diagnostics: allMissingDiag } = evaluateAllDegradation({
-  fields: {
-    scriptDistribution: { fieldName: 'scriptDistribution', dataPresent: false },
-    dormantCohorts: { fieldName: 'dormantCohorts', dataPresent: false },
-    pqEvidence: { fieldName: 'pqEvidence', dataPresent: false },
-    totalSupply: { fieldName: 'totalSupply', dataPresent: false },
-  },
+test('All 9 truth classes have degradation profiles', () => {
+  const classes = Object.values(TRUTH_CLASSES);
+  for (const tc of classes) {
+    assert.ok(CLASS_DEGRADATION_PROFILES[tc], `Missing degradation profile for ${tc}`);
+  }
 });
 
-assert(allMissingDiag.forceInsufficientData, 'forceInsufficientData = true');
-assert(allMissingDiag.critical >= 3, `critical count = ${allMissingDiag.critical}`);
-assert(allMissingDiag.totalFieldPenalty > 0.80, `total penalty = ${allMissingDiag.totalFieldPenalty}`);
-assert(allMissingDiag.userDisclosures.length >= 4, `user disclosures = ${allMissingDiag.userDisclosures.length}`);
-assert(allMissingDiag.activeRestrictions.includes('R1_exactness'), 'R1 active');
-assert(allMissingDiag.activeRestrictions.includes('R3_directional'), 'R3 active');
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 6: Stale source — partial/degraded
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('6. Stale source');
-clearDegradationLedger();
-
-const r6 = evaluateFieldDegradation({
-  fieldName: 'scriptDistribution',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({
-    fieldName: 'scriptDistribution',
-    healthBand: 'usable',
-    freshnessBand: 'degraded',
-    freshnessScore: 0.45,
-    sourceUsabilityScore: 0.72,
-  }),
-});
-assert(r6 !== null, 'event generated');
-assert(r6!.degradationType === 'stale', `type = ${r6!.degradationType}`);
-assert(r6!.severity === 'degraded', `severity = ${r6!.severity}`);
-assert(r6!.fieldConfidencePenalty > 0.10, `penalty = ${r6!.fieldConfidencePenalty}`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 7: Invalid payload
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('7. Invalid payload');
-clearDegradationLedger();
-
-const r7 = evaluateFieldDegradation({
-  fieldName: 'dormantCohorts',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({
-    fieldName: 'dormantCohorts',
-    healthBand: 'weak',
-    payloadValidityScore: 0.30,
-    sourceUsabilityScore: 0.55,
-  }),
-});
-assert(r7 !== null, 'event generated');
-assert(r7!.degradationType === 'invalid', `type = ${r7!.degradationType}`);
-assert(r7!.severity === 'degraded' || r7!.severity === 'critical', `severity = ${r7!.severity}`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 8: Conflicted field
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('8. Conflicted field');
-clearDegradationLedger();
-
-const r8 = evaluateFieldDegradation({
-  fieldName: 'pqEvidence',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({ fieldName: 'pqEvidence' }),
-  conflictRecord: {
-    fieldName: 'pqEvidence',
-    conflictType: 'structural',
-    sourceA: 'a', sourceB: 'b', valueA: {}, valueB: {},
-    authorityComparison: 'equal',
-    semanticComparability: 'aligned',
-    freshnessComparison: 'equal',
-    healthComparison: 'equal',
-    severity: 'high',
-    action: 'preserved_contradiction',
-    resolvedValue: null,
-    confidencePenalty: 0.25,
-    contradictionPreserved: true,
-    outputRestrictionFlags: [],
-    reasonSummary: ['stage conflict'],
-    policyVersion: '1.0.0',
-  },
-});
-assert(r8 !== null, 'event generated');
-assert(r8!.degradationType === 'conflicted', `type = ${r8!.degradationType}`);
-assert(r8!.severity === 'degraded', `severity = ${r8!.severity}`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 9: Weak substitution
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('9. Weak substitution');
-clearDegradationLedger();
-
-const r9 = evaluateFieldDegradation({
-  fieldName: 'scriptDistribution',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({
-    fieldName: 'scriptDistribution',
-    healthBand: 'weak',
-    sourceUsabilityScore: 0.60,
-  }),
-  redundancyRecord: {
-    fieldName: 'scriptDistribution',
-    meaningClaim: 'test',
-    substitutionClass: 'C',
-    fallbackStatus: 'cached_secondary',
-    confidencePenalty: 0.35,
-    degradationState: 'partial',
-    reason: 'secondary cache used',
-  },
-});
-assert(r9 !== null, 'event generated');
-assert(r9!.degradationType === 'weak_substituted', `type = ${r9!.degradationType}`);
-assert(r9!.severity === 'partial', `severity = ${r9!.severity}`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 10: Pipeline integration
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('10. Pipeline integration — L1.6 in PipelineResult');
-clearDegradationLedger();
-clearReliabilityMemory();
-
-const pipeResult = runQuantumRiskPipeline({
-  asset: 'BTC', totalSupply: 19_700_000,
-  scriptDistribution: { p2pk: 1700000, p2pkh: 8500000, p2wpkh: 5200000, p2tr: 1500000, p2sh: 1800000, unknown: 1000000, total: 19700000 },
-  dormantCohorts: { gt_5y: 3900000, gt_7y: 2800000, gt_10y: 1700000 },
-  pqEvidence: { hasProposal: true, hasImplementation: false, hasDeployment: false, lastUpdate: '2024-06-15T00:00:00Z' },
+test('Every profile has d1, d2, d3, d4 with triggers', () => {
+  for (const profile of getAllClassProfiles()) {
+    for (const lvl of ['d1', 'd2', 'd3', 'd4'] as const) {
+      assert.ok(profile[lvl].triggers.length > 0, `${profile.classId}.${lvl} has no triggers`);
+    }
+  }
 });
 
-assert(pipeResult.semanticDegradation !== undefined, 'semanticDegradation present');
-assert(pipeResult.semanticDegradation!.version === '1.0.0', `version = ${pipeResult.semanticDegradation!.version}`);
-assert(pipeResult.success, 'pipeline still succeeds');
-assert(pipeResult.redundancy !== undefined, 'L1.3 still present');
-assert(pipeResult.sourceHealth !== undefined, 'L1.4 still present');
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 11: Missing input → pipeline with degradation
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('11. Missing input → pipeline degradation propagation');
-clearDegradationLedger();
-clearReliabilityMemory();
-
-const degradedPipe = runQuantumRiskPipeline({
-  asset: 'BTC', totalSupply: 19_700_000,
-  scriptDistribution: null,
-  dormantCohorts: null,
-  pqEvidence: null,
+test('Disclosure templates cover all 9 classes', () => {
+  for (const tc of Object.values(TRUTH_CLASSES)) {
+    assert.ok(DISCLOSURE_TEMPLATES[tc], `Missing disclosure template for ${tc}`);
+  }
 });
 
-assert(degradedPipe.semanticDegradation !== undefined, 'degradation present');
-assert(degradedPipe.semanticDegradation!.forceInsufficientData, 'forceInsufficientData = true');
-assert(degradedPipe.semanticDegradation!.critical >= 2, `critical events = ${degradedPipe.semanticDegradation!.critical}`);
-assert(degradedPipe.semanticDegradation!.userDisclosures.length >= 3, `disclosures = ${degradedPipe.semanticDegradation!.userDisclosures.length}`);
-assert(degradedPipe.snapshot.judgment.state === 'insufficient_data', `judgment = ${degradedPipe.snapshot.judgment.state}`);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Test 12: Claim restrictions correctness
-// ═══════════════════════════════════════════════════════════════════════════════
-heading('12. Claim restrictions by severity');
-clearDegradationLedger();
-
-// Critical should have R1, R2, R3
-const critEvent = evaluateFieldDegradation({
-  fieldName: 'scriptDistribution', dataPresent: false,
+test('D4 blocks at least 5 downstream components', () => {
+  assert.ok(DOWNSTREAM_BLOCKS['D4_EPISTEMIC_LOCK'].length >= 5);
 });
-assert(critEvent!.claimRestrictions.includes('R1_exactness'), 'critical → R1');
-assert(critEvent!.claimRestrictions.includes('R2_currentness'), 'critical → R2');
-assert(critEvent!.claimRestrictions.includes('R3_directional'), 'critical → R3');
 
-// Advisory should have no restrictions
-clearDegradationLedger();
-const advEvent = evaluateFieldDegradation({
-  fieldName: 'btcPriceContext',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({
-    fieldName: 'btcPriceContext',
-    healthBand: 'weak',
-    sourceUsabilityScore: 0.60,
-  }),
-  redundancyRecord: {
-    fieldName: 'btcPriceContext', meaningClaim: 'test',
-    substitutionClass: 'B', fallbackStatus: 'cached_secondary',
-    confidencePenalty: 0.10, degradationState: 'partial', reason: 'secondary',
-  },
+test('D0 blocks nothing', () => {
+  assert.strictEqual(DOWNSTREAM_BLOCKS['D0_NORMAL'].length, 0);
 });
-// btcPriceContext partial has no claim restrictions per rules
-if (advEvent) {
-  assert(advEvent.claimRestrictions.length === 0, `partial btcPrice restrictions = ${advEvent.claimRestrictions.length}`);
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Test 13: Calibration handling
+// 2. LEVEL ASSIGNMENT
 // ═══════════════════════════════════════════════════════════════════════════════
-heading('13. Calibration handling');
-clearDegradationLedger();
 
-const calExclude = evaluateFieldDegradation({
-  fieldName: 'outcomeMetrics',
-  dataPresent: true,
-  healthRecord: makeHealthRecord({
-    fieldName: 'outcomeMetrics',
-    healthBand: 'weak',
-    payloadValidityScore: 0.40,
-  }),
+console.log('\n─── 2. Level assignment ───');
+
+test('All healthy fields → D0_NORMAL', () => {
+  const input = makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical' }),
+    makeField({ fieldId: 'price.ohlcv' }),
+    makeField({ fieldId: 'market.cap' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.level, 'D0_NORMAL');
+  assert.strictEqual(result.confidencePenalty, 0);
 });
-assert(calExclude !== null, 'event for outcome metrics');
-assert(calExclude!.calibrationHandling === 'exclude' || calExclude!.calibrationHandling === 'downweight',
-  `calibration = ${calExclude!.calibrationHandling}`);
-assert(calExclude!.claimRestrictions.includes('R5_evaluation'), 'R5 evaluation restriction');
+
+test('Stressed fields → D1_REDUCED_CONFIDENCE', () => {
+  const input = makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.oi.aggregate', healthState: 'H1_STRESSED' }),
+    makeField({ fieldId: 'derivatives.funding.aggregate' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.level, 'D1_REDUCED_CONFIDENCE');
+  assert.ok(result.confidencePenalty > 0);
+});
+
+test('Suppressed field → D2_PARTIAL_BLINDNESS', () => {
+  const input = makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.liquidation.orderflow', permissionState: 'SUPPRESS_CLAIM', healthState: 'H3_PARTIAL_BLINDNESS' }),
+    makeField({ fieldId: 'derivatives.funding.aggregate' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.level, 'D2_PARTIAL_BLINDNESS');
+});
+
+test('No-fallback triggered → D3_DOMAIN_DEGRADATION', () => {
+  const input = makeInput(TRUTH_CLASSES.PROTOCOL_SUBSTANCE, [
+    makeField({ fieldId: 'protocol.tvl.usd', healthState: 'H4_UNSAFE' }),
+    makeField({ fieldId: 'protocol.fees.daily', healthState: 'H4_UNSAFE' }),
+  ], { noFallbackTriggered: true });
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.level, 'D3_DOMAIN_DEGRADATION');
+  assert.strictEqual(result.directionalClaimsAllowed, false);
+});
+
+test('Mission-critical field blocked → D4_EPISTEMIC_LOCK', () => {
+  const input = makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({
+      fieldId: 'price.spot.canonical',
+      permissionState: 'BLOCK_OUTPUT', isMissionCritical: true,
+      healthState: 'H5_SUPPRESSED',
+    }),
+    makeField({ fieldId: 'price.ohlcv' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.level, 'D4_EPISTEMIC_LOCK');
+  assert.strictEqual(result.directionalClaimsAllowed, false);
+  assert.strictEqual(result.truthState, 'PROHIBITED_TRUTH');
+});
+
+test('Integrity broken on mission-critical → D4', () => {
+  const input = makeInput(TRUTH_CLASSES.STRUCTURAL_SAFETY, [
+    makeField({
+      fieldId: 'security.token.flags',
+      integrityState: 'I4_BROKEN', isMissionCritical: true,
+    }),
+    makeField({ fieldId: 'security.contract.risk' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.level, 'D4_EPISTEMIC_LOCK');
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Summary
+// 3. DISCLOSURE GENERATION
 // ═══════════════════════════════════════════════════════════════════════════════
-console.log('\n════════════════════════════════════════');
-console.log(`  L1.6 RESULTS: ${passed} passed, ${failed} failed`);
-console.log('════════════════════════════════════════\n');
-process.exit(failed > 0 ? 1 : 0);
+
+console.log('\n─── 3. Disclosure generation ───');
+
+test('D0 produces empty disclosure', () => {
+  const input = makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.userDisclosure, '');
+});
+
+test('D1 produces non-empty disclosure for derivatives', () => {
+  const input = makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.oi.aggregate', healthState: 'H1_STRESSED' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.ok(result.userDisclosure.length > 0, 'D1 must have disclosure');
+  assert.ok(result.userDisclosure.includes('Derivatives'), `Disclosure must name class: ${result.userDisclosure}`);
+});
+
+test('D4 produces strong disclosure for structural safety', () => {
+  const input = makeInput(TRUTH_CLASSES.STRUCTURAL_SAFETY, [
+    makeField({ fieldId: 'security.token.flags', permissionState: 'BLOCK_OUTPUT', isMissionCritical: true, healthState: 'H5_SUPPRESSED' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.ok(result.userDisclosure.includes('withheld'), `D4 safety disclosure must mention withholding`);
+});
+
+test('All disclosures name what is degraded and consequence', () => {
+  const assessments = [
+    evaluateDegradation(makeInput(TRUTH_CLASSES.ENTITY_CONTEXT, [
+      makeField({ fieldId: 'entity.wallet.labels', healthState: 'H1_STRESSED' }),
+    ])),
+  ];
+  const disclosures = getAllDisclosures(assessments);
+  for (const d of disclosures) {
+    assert.ok(d.disclosure.length > 10, `Disclosure too short for ${d.classId}`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. CLAIM RESTRICTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 4. Claim restrictions ───');
+
+test('D0 allows everything', () => {
+  const r = getClaimRestrictions('D0_NORMAL');
+  assert.strictEqual(r.directionalClaimsAllowed, true);
+  assert.strictEqual(r.thesisUseAllowed, true);
+  assert.strictEqual(r.scoringAllowed, true);
+  assert.strictEqual(r.chatCaveatRequired, false);
+});
+
+test('D2 blocks scoring but allows directional claims', () => {
+  const r = getClaimRestrictions('D2_PARTIAL_BLINDNESS');
+  assert.strictEqual(r.directionalClaimsAllowed, true);
+  assert.strictEqual(r.scoringAllowed, false);
+  assert.strictEqual(r.chatCaveatRequired, true);
+});
+
+test('D3 blocks directional, thesis, scenario, and scoring', () => {
+  const r = getClaimRestrictions('D3_DOMAIN_DEGRADATION');
+  assert.strictEqual(r.directionalClaimsAllowed, false);
+  assert.strictEqual(r.thesisUseAllowed, false);
+  assert.strictEqual(r.scenarioConfirmationAllowed, false);
+  assert.strictEqual(r.scoringAllowed, false);
+});
+
+test('D4 blocks everything including chat mention', () => {
+  const r = getClaimRestrictions('D4_EPISTEMIC_LOCK');
+  assert.strictEqual(r.directionalClaimsAllowed, false);
+  assert.strictEqual(r.chatMentionAllowed, false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. DOWNSTREAM PROPAGATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 5. Downstream propagation ───');
+
+test('D2 blocks SCORE_OUTPUT', () => {
+  const input = makeInput(TRUTH_CLASSES.ONCHAIN_BEHAVIOR, [
+    makeField({ fieldId: 'onchain.whale.flows', permissionState: 'SUPPRESS_CLAIM', healthState: 'H3_PARTIAL_BLINDNESS' }),
+    makeField({ fieldId: 'onchain.transfers.evm' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.ok(result.blockedDownstream.includes('SCORE_OUTPUT'));
+});
+
+test('D3 blocks SCENARIO_ENGINE and JUDGMENT_LAYER', () => {
+  const input = makeInput(TRUTH_CLASSES.ENTITY_CONTEXT, [
+    makeField({ fieldId: 'entity.wallet.labels', healthState: 'H4_UNSAFE' }),
+    makeField({ fieldId: 'entity.smart_money', healthState: 'H4_UNSAFE' }),
+  ], { noFallbackTriggered: true });
+  const result = evaluateDegradation(input);
+  assert.ok(result.blockedDownstream.includes('SCENARIO_ENGINE'));
+  assert.ok(result.blockedDownstream.includes('JUDGMENT_LAYER'));
+});
+
+test('D4 blocks CHAT_SYSTEM', () => {
+  const input = makeInput(TRUTH_CLASSES.NARRATIVE_ATTENTION, [
+    makeField({ fieldId: 'narrative.news.velocity', permissionState: 'BLOCK_OUTPUT', isMissionCritical: true }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.ok(result.blockedDownstream.includes('CHAT_SYSTEM'));
+});
+
+test('Propagation map shows effects per component', () => {
+  const assessments = evaluateAllDegradation([
+    makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+      makeField({ fieldId: 'derivatives.funding.aggregate', healthState: 'H1_STRESSED' }),
+    ]),
+    makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+      makeField({ fieldId: 'price.spot.canonical', permissionState: 'BLOCK_OUTPUT', isMissionCritical: true, healthState: 'H5_SUPPRESSED' }),
+    ]),
+  ]);
+  const map = buildPropagationMap(assessments);
+  assert.ok(map.length > 0, 'Propagation map should have entries');
+  assert.ok(map.some(e => e.effect === 'block'), 'Should have block effects for D4');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. FINGERPRINT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 6. Degradation fingerprint ───');
+
+test('Fingerprint captures all classes', () => {
+  const assessments = evaluateAllDegradation([
+    makeInput(TRUTH_CLASSES.MARKET_SURFACE, [makeField({ fieldId: 'price.spot.canonical' })]),
+    makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [makeField({ fieldId: 'derivatives.oi.aggregate', healthState: 'H1_STRESSED' })]),
+  ]);
+  const fp = buildDegradationFingerprint(assessments);
+  assert.strictEqual(fp.entries.length, 2);
+  assert.ok(fp.systemSpeakable, 'System should be speakable without D4');
+});
+
+test('D4 makes systemSpeakable=false', () => {
+  const assessments = evaluateAllDegradation([
+    makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+      makeField({ fieldId: 'price.spot.canonical', permissionState: 'BLOCK_OUTPUT', isMissionCritical: true, healthState: 'H5_SUPPRESSED' }),
+    ]),
+  ]);
+  const fp = buildDegradationFingerprint(assessments);
+  assert.strictEqual(fp.systemSpeakable, false);
+  assert.strictEqual(fp.classesAtD4, 1);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7. RESTORATION HYSTERESIS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 7. Restoration hysteresis ───');
+
+test('D4 cannot jump directly to D0', () => {
+  const constrained = constrainRestoration('D4_EPISTEMIC_LOCK', 'D0_NORMAL');
+  assert.strictEqual(constrained, 'D3_DOMAIN_DEGRADATION');
+});
+
+test('D3 can only step to D2', () => {
+  const constrained = constrainRestoration('D3_DOMAIN_DEGRADATION', 'D0_NORMAL');
+  assert.strictEqual(constrained, 'D2_PARTIAL_BLINDNESS');
+});
+
+test('D2 can only step to D1', () => {
+  const constrained = constrainRestoration('D2_PARTIAL_BLINDNESS', 'D0_NORMAL');
+  assert.strictEqual(constrained, 'D1_REDUCED_CONFIDENCE');
+});
+
+test('D1 can step to D0', () => {
+  const constrained = constrainRestoration('D1_REDUCED_CONFIDENCE', 'D0_NORMAL');
+  assert.strictEqual(constrained, 'D0_NORMAL');
+});
+
+test('Degradation-direction changes are not constrained', () => {
+  const constrained = constrainRestoration('D1_REDUCED_CONFIDENCE', 'D4_EPISTEMIC_LOCK');
+  assert.strictEqual(constrained, 'D4_EPISTEMIC_LOCK');
+});
+
+test('attemptRestoration enforces hysteresis', () => {
+  resetState();
+  const d4assessment = evaluateDegradation(makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.oi.aggregate', permissionState: 'BLOCK_OUTPUT', isMissionCritical: true, healthState: 'H5_SUPPRESSED' }),
+  ]));
+  recordDegradation(d4assessment);
+  assert.strictEqual(getCurrentLevel(TRUTH_CLASSES.DERIVATIVES_PRESSURE), 'D4_EPISTEMIC_LOCK');
+
+  const d0assessment = evaluateDegradation(makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.oi.aggregate' }),
+  ]));
+  attemptRestoration(TRUTH_CLASSES.DERIVATIVES_PRESSURE, d0assessment);
+  assert.strictEqual(getCurrentLevel(TRUTH_CLASSES.DERIVATIVES_PRESSURE), 'D3_DOMAIN_DEGRADATION');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 8. LEDGER AUDITABILITY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 8. Ledger auditability ───');
+
+test('Degradation events are logged', () => {
+  resetState();
+  const assessment = evaluateDegradation(makeInput(TRUTH_CLASSES.STRUCTURAL_SAFETY, [
+    makeField({ fieldId: 'security.token.flags', healthState: 'H1_STRESSED' }),
+  ]));
+  recordDegradation(assessment);
+  const events = getLedger();
+  assert.ok(events.length >= 1);
+  const last = events[events.length - 1];
+  assert.strictEqual(last.classId, TRUTH_CLASSES.STRUCTURAL_SAFETY);
+  assert.strictEqual(last.levelTo, 'D1_REDUCED_CONFIDENCE');
+});
+
+test('Degradation direction tracked correctly', () => {
+  resetState();
+  const d1 = evaluateDegradation(makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical', healthState: 'H1_STRESSED' }),
+  ]));
+  const evt1 = recordDegradation(d1);
+  assert.strictEqual(evt1.direction, 'DEGRADED');
+
+  const d0 = evaluateDegradation(makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical' }),
+  ]));
+  const evt2 = recordDegradation(d0);
+  assert.strictEqual(evt2.direction, 'RESTORED');
+});
+
+test('Batch recording works', () => {
+  resetState();
+  const assessments = evaluateAllDegradation([
+    makeInput(TRUTH_CLASSES.MARKET_SURFACE, [makeField({ fieldId: 'price.spot.canonical', healthState: 'H1_STRESSED' })]),
+    makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [makeField({ fieldId: 'derivatives.funding.aggregate' })]),
+  ]);
+  const events = recordDegradationBatch(assessments);
+  assert.strictEqual(events.length, 2);
+});
+
+test('Audit codes are human-meaningful', () => {
+  resetState();
+  const assessment = evaluateDegradation(makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.liquidation.orderflow', permissionState: 'SUPPRESS_CLAIM', healthState: 'H3_PARTIAL_BLINDNESS' }),
+    makeField({ fieldId: 'derivatives.funding.aggregate' }),
+  ]));
+  assert.ok(assessment.auditCode.length > 0, 'Non-D0 must have audit code');
+  assert.ok(assessment.auditCode.includes('DERIV') || assessment.auditCode.includes('D2'), `Audit code should be meaningful: ${assessment.auditCode}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9. ANTI-FAKE DEGRADATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 9. Anti-fake degradation ───');
+
+test('Level change always changes downstream behavior', () => {
+  const d0 = evaluateDegradation(makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical' }),
+  ]));
+  const d1 = evaluateDegradation(makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical', healthState: 'H1_STRESSED' }),
+  ]));
+
+  if (d0.level !== d1.level) {
+    const d0blocks = d0.blockedDownstream;
+    const d1blocks = d1.blockedDownstream;
+    const d0penalty = d0.confidencePenalty;
+    const d1penalty = d1.confidencePenalty;
+    const behaviorChanged =
+      d0blocks.length !== d1blocks.length ||
+      d0penalty !== d1penalty ||
+      d0.directionalClaimsAllowed !== d1.directionalClaimsAllowed ||
+      d0.userDisclosure !== d1.userDisclosure;
+    assert.ok(behaviorChanged, 'Level change must produce behavior change');
+  }
+});
+
+test('D2 actually blocks more than D1', () => {
+  const d1blocks = DOWNSTREAM_BLOCKS['D1_REDUCED_CONFIDENCE'];
+  const d2blocks = DOWNSTREAM_BLOCKS['D2_PARTIAL_BLINDNESS'];
+  assert.ok(d2blocks.length > d1blocks.length, 'D2 must block more components than D1');
+});
+
+test('D3 blocks more than D2', () => {
+  const d2blocks = DOWNSTREAM_BLOCKS['D2_PARTIAL_BLINDNESS'];
+  const d3blocks = DOWNSTREAM_BLOCKS['D3_DOMAIN_DEGRADATION'];
+  assert.ok(d3blocks.length > d2blocks.length, 'D3 must block more components than D2');
+});
+
+test('D4 blocks more than D3', () => {
+  const d3blocks = DOWNSTREAM_BLOCKS['D3_DOMAIN_DEGRADATION'];
+  const d4blocks = DOWNSTREAM_BLOCKS['D4_EPISTEMIC_LOCK'];
+  assert.ok(d4blocks.length > d3blocks.length, 'D4 must block more components than D3');
+});
+
+test('Confidence penalty monotonically increases with level', () => {
+  const levels: DegradationLevel[] = ['D0_NORMAL', 'D1_REDUCED_CONFIDENCE', 'D2_PARTIAL_BLINDNESS', 'D3_DOMAIN_DEGRADATION', 'D4_EPISTEMIC_LOCK'];
+  for (let i = 1; i < levels.length; i++) {
+    const [lo1] = CONFIDENCE_PENALTY_RANGE[levels[i - 1]];
+    const [lo2] = CONFIDENCE_PENALTY_RANGE[levels[i]];
+    assert.ok(lo2 >= lo1, `${levels[i]} penalty floor (${lo2}) must be >= ${levels[i-1]} floor (${lo1})`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 10. DOCTRINAL INVARIANTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log('\n─── 10. Doctrinal invariants ───');
+
+test('D4 is always PROHIBITED_TRUTH', () => {
+  const input = makeInput(TRUTH_CLASSES.STRUCTURAL_SAFETY, [
+    makeField({ fieldId: 'security.token.flags', integrityState: 'I4_BROKEN', isMissionCritical: true }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.truthState, 'PROHIBITED_TRUTH');
+});
+
+test('D0 is always FULL_TRUTH', () => {
+  const input = makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+    makeField({ fieldId: 'price.spot.canonical' }),
+  ]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.truthState, 'FULL_TRUTH');
+});
+
+test('Every non-D0 assessment has reasonCodes', () => {
+  const input = makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+    makeField({ fieldId: 'derivatives.oi.aggregate', healthState: 'H2_DEGRADED' }),
+  ]);
+  const result = evaluateDegradation(input);
+  if (result.level !== 'D0_NORMAL') {
+    assert.ok(result.reasonCodes.length > 0, 'Non-D0 must have reasons');
+  }
+});
+
+test('Every assessment has version', () => {
+  const input = makeInput(TRUTH_CLASSES.MARKET_SURFACE, [makeField({ fieldId: 'price.spot.canonical' })]);
+  const result = evaluateDegradation(input);
+  assert.strictEqual(result.version, L16_PLATFORM_VERSION);
+});
+
+test('getLockedClasses and getClassesUnsafeForThesis work correctly', () => {
+  const assessments = evaluateAllDegradation([
+    makeInput(TRUTH_CLASSES.MARKET_SURFACE, [
+      makeField({ fieldId: 'price.spot.canonical', permissionState: 'BLOCK_OUTPUT', isMissionCritical: true, healthState: 'H5_SUPPRESSED' }),
+    ]),
+    makeInput(TRUTH_CLASSES.DERIVATIVES_PRESSURE, [
+      makeField({ fieldId: 'derivatives.oi.aggregate' }),
+    ]),
+  ]);
+  const locked = getLockedClasses(assessments);
+  assert.strictEqual(locked.length, 1);
+  assert.strictEqual(locked[0].classId, TRUTH_CLASSES.MARKET_SURFACE);
+
+  const unsafe = getClassesUnsafeForThesis(assessments);
+  assert.ok(unsafe.length >= 1);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+console.log(`\n════════════════════════════════════════════════════`);
+console.log(`  L1.6 Source Degradation Semantics — Test Results`);
+console.log(`  Passed: ${passed}  Failed: ${failed}  Total: ${passed + failed}`);
+console.log(`════════════════════════════════════════════════════`);
+
+if (failed > 0) process.exit(1);

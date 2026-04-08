@@ -588,6 +588,322 @@ app.get('/api/quantum-risk/conflicts', async (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/source-systems/substitution', async (req: Request, res: Response) => {
+  try {
+    const { resolveSubstitution, validateSubstitutionAttempt, resolveAllSubstitutions } = await import('./services/source-systems/classes/substitution-engine');
+    const fieldId = req.query.field as string | undefined;
+    const validateProvider = req.query.validate as string | undefined;
+    if (fieldId && validateProvider) { res.json(validateSubstitutionAttempt(fieldId, validateProvider)); return; }
+    if (fieldId) { res.json(resolveSubstitution(fieldId)); return; }
+    const full = resolveAllSubstitutions();
+    res.json({ totalFields: full.totalFields, primaryUsed: full.primaryUsed, substituted: full.substituted, degradedSubstituted: full.degradedSubstituted, partialViewOnly: full.partialViewOnly, suppressed: full.suppressed, illegalBlocked: full.illegalBlocked, totalPenalty: full.totalPenalty, incidents: full.incidents.length });
+  } catch (error: any) { res.status(500).json({ error: 'Substitution query failed', message: error.message }); }
+});
+
+app.get('/api/source-systems/substitution/incidents', async (_req: Request, res: Response) => {
+  try {
+    const { getIncidents } = await import('./services/source-systems/classes/substitution-engine');
+    res.json(getIncidents());
+  } catch (error: any) { res.status(500).json({ error: 'Incident query failed', message: error.message }); }
+});
+
+// ── L1.4 Source Health & Quality Scoring ────────────────────────────────────
+app.get('/api/source-systems/health', async (req: Request, res: Response) => {
+  try {
+    const { computeFieldHealth, computeAllFieldHealth, getFieldsAtOrBelow } = await import('./services/source-systems/classes/field-health-engine');
+    const { computeClassHealth, computeAllClassHealth, buildHealthFingerprint, getEpistemicallyUnsafeClasses, getAllHealthImplications } = await import('./services/source-systems/classes/class-health-engine');
+
+    const view = req.query.view as string | undefined;
+    const fieldId = req.query.field as string | undefined;
+    const truthClass = req.query.class as string | undefined;
+    const state = req.query.state as string | undefined;
+
+    if (view === 'fingerprint') {
+      res.json(buildHealthFingerprint());
+      return;
+    }
+
+    if (view === 'unsafe') {
+      res.json(getEpistemicallyUnsafeClasses());
+      return;
+    }
+
+    if (view === 'implications') {
+      res.json(getAllHealthImplications());
+      return;
+    }
+
+    if (state) {
+      const validStates = ['H0_HEALTHY', 'H1_STRESSED', 'H2_DEGRADED', 'H3_PARTIAL_BLINDNESS', 'H4_UNSAFE', 'H5_SUPPRESSED'];
+      if (!validStates.includes(state)) {
+        res.status(400).json({ error: `Invalid state. Must be one of: ${validStates.join(', ')}` });
+        return;
+      }
+      res.json(getFieldsAtOrBelow(state as any));
+      return;
+    }
+
+    if (fieldId) {
+      const { getFieldAuthority } = await import('./services/source-systems/classes/authority-constitution');
+      const field = getFieldAuthority(fieldId);
+      if (!field) { res.status(404).json({ error: `Field not found: ${fieldId}` }); return; }
+      res.json(computeFieldHealth(fieldId, field.owner));
+      return;
+    }
+
+    if (truthClass) {
+      res.json(computeClassHealth(truthClass as any));
+      return;
+    }
+
+    res.json({
+      classes: computeAllClassHealth(),
+      fields: computeAllFieldHealth(),
+      fingerprint: buildHealthFingerprint(),
+    });
+  } catch (error: any) { res.status(500).json({ error: 'Health query failed', message: error.message }); }
+});
+
+// ── L1.4.1 Permissions, Integrity, Criticality, Recovery ────────────────────
+app.get('/api/source-systems/health/permissions', async (req: Request, res: Response) => {
+  try {
+    const { compilePermission, compileAllPermissions, getSuppressedFields, getDisclosureRequiredFields, getSpeakabilityReport } = await import('./services/source-systems/classes/claim-permission-compiler');
+
+    const fieldId = req.query.field as string | undefined;
+    const view = req.query.view as string | undefined;
+
+    if (view === 'suppressed') { res.json(getSuppressedFields()); return; }
+    if (view === 'disclosure') { res.json(getDisclosureRequiredFields()); return; }
+    if (view === 'report') { res.json(getSpeakabilityReport()); return; }
+
+    if (fieldId) { res.json(compilePermission(fieldId)); return; }
+
+    res.json({ report: getSpeakabilityReport(), permissions: compileAllPermissions() });
+  } catch (error: any) { res.status(500).json({ error: 'Permission query failed', message: error.message }); }
+});
+
+app.get('/api/source-systems/health/integrity', async (req: Request, res: Response) => {
+  try {
+    const { evaluateFieldIntegrity, evaluateBaselineIntegrity, getFieldTuple } = await import('./services/source-systems/classes/epistemic-integrity-engine');
+
+    const fieldId = req.query.field as string | undefined;
+
+    if (fieldId) {
+      const tuple = getFieldTuple(fieldId);
+      if (!tuple) { res.status(404).json({ error: `No representative tuple for: ${fieldId}` }); return; }
+      const { getFieldAuthority } = await import('./services/source-systems/classes/authority-constitution');
+      const field = getFieldAuthority(fieldId);
+      const record = evaluateFieldIntegrity({
+        fieldId, providerId: field?.owner ?? 'unknown',
+        unit: tuple.unit, quoteBasis: tuple.quoteBasis, venueScope: tuple.venueScope,
+        timeBasis: tuple.timeBasis, methodologyId: tuple.methodologyId,
+      });
+      res.json({ tuple, integrity: record });
+      return;
+    }
+
+    res.json(evaluateBaselineIntegrity());
+  } catch (error: any) { res.status(500).json({ error: 'Integrity query failed', message: error.message }); }
+});
+
+app.get('/api/source-systems/health/criticality', async (req: Request, res: Response) => {
+  try {
+    const { FIELD_CRITICALITY_MAP, getFieldsByCriticality, getMissionCriticalFields, getFieldsAffectedByLoss } = await import('./services/source-systems/classes/field-criticality-map');
+
+    const level = req.query.level as string | undefined;
+    const fieldId = req.query.field as string | undefined;
+
+    if (fieldId) {
+      const entry = FIELD_CRITICALITY_MAP[fieldId];
+      if (!entry) { res.status(404).json({ error: `No criticality entry for: ${fieldId}` }); return; }
+      res.json({ entry, affectedByLoss: getFieldsAffectedByLoss(fieldId) });
+      return;
+    }
+
+    if (level) {
+      res.json(getFieldsByCriticality(level as any));
+      return;
+    }
+
+    res.json({ missionCritical: getMissionCriticalFields(), all: FIELD_CRITICALITY_MAP });
+  } catch (error: any) { res.status(500).json({ error: 'Criticality query failed', message: error.message }); }
+});
+
+app.get('/api/source-systems/health/recovery', async (req: Request, res: Response) => {
+  try {
+    const { getRecoveryState, getAllRecoveryStates, getProvidersInRecovery } = await import('./services/source-systems/classes/recovery-governor');
+
+    const providerId = req.query.provider as string | undefined;
+    const view = req.query.view as string | undefined;
+
+    if (view === 'active') { res.json(getProvidersInRecovery()); return; }
+    if (providerId) { res.json(getRecoveryState(providerId)); return; }
+
+    res.json(getAllRecoveryStates());
+  } catch (error: any) { res.status(500).json({ error: 'Recovery query failed', message: error.message }); }
+});
+
+app.get('/api/source-systems/conflicts', async (req: Request, res: Response) => {
+  try {
+    const { adjudicateAll, getPreservedContradictions, buildConflictDiagnostics } = await import('./services/source-systems/classes/conflict-adjudicator');
+    const { getLedger, getLedgerSince, buildConflictFingerprint, detectCrossClassContradictions, detectLaunderingRisk } = await import('./services/source-systems/classes/conflict-ledger');
+    const { getAllFieldConflictRules, getFieldsWithHardBlockerOverride, getCrossClassPatterns } = await import('./services/source-systems/classes/conflict-constitution');
+    const { CONFLICT_THRESHOLDS } = await import('./services/source-systems/classes/conflict-types');
+
+    const view = req.query.view as string | undefined;
+
+    if (view === 'constitution') {
+      res.json({ rules: getAllFieldConflictRules(), hardBlockerFields: getFieldsWithHardBlockerOverride(), thresholds: CONFLICT_THRESHOLDS, crossClassPatterns: getCrossClassPatterns() });
+      return;
+    }
+    if (view === 'ledger') {
+      const since = req.query.since as string | undefined;
+      res.json(since ? getLedgerSince(since) : getLedger());
+      return;
+    }
+    if (view === 'contradictions') {
+      const ledger = getLedger();
+      res.json(ledger.filter(e => e.outcome === 'PRESERVE_CONTRADICTION'));
+      return;
+    }
+    if (view === 'blockers') {
+      const ledger = getLedger();
+      res.json(ledger.filter(e => e.blockers.length > 0));
+      return;
+    }
+    if (view === 'cross-class') {
+      res.json(getCrossClassPatterns());
+      return;
+    }
+
+    res.json({ rules: getAllFieldConflictRules().length, thresholds: Object.keys(CONFLICT_THRESHOLDS).length, crossClassPatterns: getCrossClassPatterns().length, hardBlockerFields: getFieldsWithHardBlockerOverride(), ledgerSize: getLedger().length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Conflict query failed', message: error.message });
+  }
+});
+
+app.get('/api/source-systems/degradation', async (req: Request, res: Response) => {
+  try {
+    const { getAllClassProfiles } = await import('./services/source-systems/classes/degradation-constitution');
+    const { DEGRADATION_LABELS, CLAIM_RESTRICTIONS, DISCLOSURE_TEMPLATES } = await import('./services/source-systems/classes/degradation-types');
+    const { getAllCurrentLevels, getLedger: getDegLedger, getDegradationEvents, getRestorationEvents } = await import('./services/source-systems/classes/degradation-ledger');
+
+    const view = req.query.view as string | undefined;
+    const classId = req.query.class as string | undefined;
+
+    if (view === 'constitution') {
+      res.json({ profiles: getAllClassProfiles(), labels: DEGRADATION_LABELS, claimRestrictions: CLAIM_RESTRICTIONS });
+      return;
+    }
+    if (view === 'claim-restrictions') {
+      res.json(CLAIM_RESTRICTIONS);
+      return;
+    }
+    if (view === 'disclosures') {
+      res.json(DISCLOSURE_TEMPLATES);
+      return;
+    }
+    if (view === 'ledger') {
+      const since = req.query.since as string | undefined;
+      const events = since ? getDegLedger().filter(e => e.timestamp >= since) : getDegLedger();
+      if (classId) { res.json(events.filter(e => e.classId === classId)); return; }
+      res.json(events);
+      return;
+    }
+    if (view === 'events') {
+      res.json({ degradations: getDegradationEvents(), restorations: getRestorationEvents() });
+      return;
+    }
+
+    res.json({ currentLevels: getAllCurrentLevels(), labels: DEGRADATION_LABELS, ledgerSize: getDegLedger().length });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Degradation query failed', message: error.message });
+  }
+});
+
+app.get('/api/source-systems/authority', async (req: Request, res: Response) => {
+  try {
+    const { getClassAuthority, getAllClassAuthorities, getFieldAuthority, getFieldsForClass, FIELD_AUTHORITY_MAP } = await import('./services/source-systems/classes/authority-constitution');
+    const { resolveFieldAuthority, resolveClassAuthority, resolveAllAuthority, validateProviderAuthority, detectCoPrimaryDisagreement } = await import('./services/source-systems/classes/authority-resolver');
+
+    const truthClass = req.query.class as string | undefined;
+    const fieldId = req.query.field as string | undefined;
+    const validateProvider = req.query.validate as string | undefined;
+
+    if (fieldId && validateProvider) {
+      const violations = validateProviderAuthority(fieldId, validateProvider);
+      const resolution = resolveFieldAuthority(fieldId);
+      res.json({ field: fieldId, provider: validateProvider, violations, resolution });
+      return;
+    }
+
+    if (fieldId) {
+      const resolution = resolveFieldAuthority(fieldId);
+      const authority = getFieldAuthority(fieldId);
+      res.json({ authority, resolution });
+      return;
+    }
+
+    if (truthClass) {
+      const constitution = getClassAuthority(truthClass as any);
+      if (!constitution) { res.status(404).json({ error: `No authority for class "${truthClass}"` }); return; }
+      const resolution = resolveClassAuthority(truthClass as any);
+      const coPrimary = detectCoPrimaryDisagreement(truthClass as any);
+      res.json({ constitution, resolution: resolution.summary, coPrimary });
+      return;
+    }
+
+    const full = resolveAllAuthority();
+    const summaries = Object.entries(full.classes).map(([tc, r]) => ({
+      truthClass: tc,
+      ...r.summary,
+    }));
+    res.json({
+      totalFields: full.totalFields,
+      totalSuppressed: full.totalSuppressed,
+      systemHealthy: full.systemHealthy,
+      classes: summaries,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Authority query failed', message: error.message });
+  }
+});
+
+app.get('/api/source-systems/doctrine', async (req: Request, res: Response) => {
+  try {
+    const { getAllFullDoctrines } = await import('./services/source-systems/classes/doctrine');
+    const { getDoctrineSummary, validateClaimAgainstDoctrine } = await import('./services/source-systems/doctrine-enforcer');
+    const truthClass = req.query.class as string | undefined;
+    const claim = req.query.claim as string | undefined;
+
+    if (truthClass && claim) {
+      const result = validateClaimAgainstDoctrine(truthClass as any, claim);
+      res.json(result);
+      return;
+    }
+
+    if (truthClass) {
+      const summary = getDoctrineSummary(truthClass as any);
+      if (!summary) { res.status(404).json({ error: `No doctrine for class "${truthClass}"` }); return; }
+      res.json(summary);
+      return;
+    }
+
+    const all = getAllFullDoctrines();
+    res.json(all.map(d => ({
+      id: d.id,
+      name: d.name,
+      cadence: d.cadence,
+      failureMode: d.failureMode,
+      productionRule: d.productionRule,
+      allowedClaims: d.allowedClaims.length,
+      forbiddenClaims: d.forbiddenClaims.length,
+    })));
+  } catch (error: any) {
+    res.status(500).json({ error: 'Doctrine query failed', message: error.message });
+  }
+});
+
 app.get('/api/quantum-risk/degradation', async (_req: Request, res: Response) => {
   try {
     const { runBtcQuantumRisk } = await import('./services/source-systems/classes/cryptographic-integrity/quantum-risk/pipeline');
@@ -819,6 +1135,341 @@ app.get('/api/connector-layer/diagnostics', async (_req: Request, res: Response)
     });
   } catch (error: any) {
     res.status(500).json({ error: 'Connector layer diagnostics failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.1 CONSTITUTIONAL ENVELOPE — Layer 2 ingress protocol
+// =============================================================================
+app.get('/api/connector-layer/envelope', async (req: Request, res: Response) => {
+  try {
+    const { L21_PROTOCOL_VERSION } = await import('./services/connector-layer/constitutional-envelope');
+    const { getReplayLedger, getAllBackfillBatches } = await import('./services/connector-layer/envelope-lineage');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'schema') {
+      res.json({
+        protocolVersion: L21_PROTOCOL_VERSION,
+        blocks: ['identity', 'sourceContext', 'canonicalContext', 'timing', 'routeContext', 'authorityContext', 'payloadContext', 'replayContext', 'validationContext', 'lineageContext'],
+        envelopeKinds: ['observation', 'correction', 'snapshot', 'event', 'backfill_record'],
+      });
+      return;
+    }
+    if (view === 'replay-ledger') {
+      res.json(getReplayLedger());
+      return;
+    }
+    if (view === 'backfill-batches') {
+      res.json(getAllBackfillBatches());
+      return;
+    }
+
+    res.json({
+      layer: 'L2.1 Constitutional Envelope Protocol',
+      protocolVersion: L21_PROTOCOL_VERSION,
+      replayLedgerSize: getReplayLedger().length,
+      backfillBatches: getAllBackfillBatches().length,
+      views: ['schema', 'replay-ledger', 'backfill-batches'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.1 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.2 FRESHNESS ONTOLOGY — Constitutional temporal fitness
+// =============================================================================
+app.get('/api/connector-layer/freshness', async (req: Request, res: Response) => {
+  try {
+    const { L22_VERSION } = await import('./services/connector-layer/freshness-ontology');
+    const { getAllPolicies } = await import('./services/connector-layer/freshness-policy-map');
+    const { getEvaluationLedger } = await import('./services/connector-layer/freshness-evaluator');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'policies') {
+      res.json(getAllPolicies());
+      return;
+    }
+    if (view === 'ledger') {
+      res.json(getEvaluationLedger());
+      return;
+    }
+
+    res.json({
+      layer: 'L2.2 Freshness Ontology',
+      version: L22_VERSION,
+      families: ['REALTIME', 'SCHEDULED', 'ON_DEMAND', 'HISTORICAL'],
+      states: ['F0_CURRENT', 'F1_SLIPPING', 'F2_STALE_BUT_USABLE', 'F3_STALE_AND_CONSTRAINED', 'F4_UNUSABLE', 'F5_UNKNOWN'],
+      policyCount: getAllPolicies().length,
+      ledgerSize: getEvaluationLedger().length,
+      views: ['policies', 'ledger'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.2 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.3 ROUTING MODE DOCTRINE — Constitutional route planning
+// =============================================================================
+app.get('/api/connector-layer/routing', async (req: Request, res: Response) => {
+  try {
+    const { L23_VERSION } = await import('./services/connector-layer/routing-mode-types');
+    const { ROUTE_CONSTITUTIONS } = await import('./services/connector-layer/routing-constitution');
+    const { getAllSelectionPolicies } = await import('./services/connector-layer/route-selection-policy');
+    const { getPlanningLedger } = await import('./services/connector-layer/route-planner');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'constitutions') {
+      res.json(ROUTE_CONSTITUTIONS);
+      return;
+    }
+    if (view === 'policies') {
+      res.json(getAllSelectionPolicies());
+      return;
+    }
+    if (view === 'ledger') {
+      res.json(getPlanningLedger());
+      return;
+    }
+
+    res.json({
+      layer: 'L2.3 Routing Mode Doctrine',
+      version: L23_VERSION,
+      modes: ['REALTIME', 'SCHEDULED', 'ON_DEMAND', 'BACKFILL'],
+      states: ['R0_PREFERRED', 'R1_AVAILABLE', 'R2_DEGRADED', 'R3_PARTIAL', 'R4_FALLBACK_ONLY', 'R5_PROHIBITED'],
+      selectionPolicyCount: getAllSelectionPolicies().length,
+      planningLedgerSize: getPlanningLedger().length,
+      views: ['constitutions', 'policies', 'ledger'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.3 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.4 IDEMPOTENCY & DEDUPLICATION — Constitutional arrival identity
+// =============================================================================
+app.get('/api/connector-layer/dedup', async (req: Request, res: Response) => {
+  try {
+    const { L24_VERSION } = await import('./services/connector-layer/event-fingerprint');
+    const { getAllDedupPolicies } = await import('./services/connector-layer/dedup-policy-map');
+    const { getIdentityLedger } = await import('./services/connector-layer/dedup-ledger');
+    const { getIdempotencyRegistrySize } = await import('./services/connector-layer/idempotency-engine');
+    const { getDedupStoreSize } = await import('./services/connector-layer/dedup-engine');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'policies') {
+      res.json(getAllDedupPolicies());
+      return;
+    }
+    if (view === 'ledger') {
+      res.json(getIdentityLedger());
+      return;
+    }
+
+    res.json({
+      layer: 'L2.4 Idempotency & Deduplication',
+      version: L24_VERSION,
+      arrivalClasses: ['ACCEPT_NEW', 'BLOCK_IDEMPOTENT_RETRY', 'ABSORB_SEMANTIC_DUPLICATE', 'APPLY_CORRECTION', 'ISOLATE_REPLAY', 'QUARANTINE', 'REJECT'],
+      policyCount: getAllDedupPolicies().length,
+      idempotencyRegistrySize: getIdempotencyRegistrySize(),
+      dedupStoreSize: getDedupStoreSize(),
+      identityLedgerSize: getIdentityLedger().length,
+      views: ['policies', 'ledger'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.4 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.5 REPLAY & FORENSIC RECOVERABILITY — Constitutional replay
+// =============================================================================
+app.get('/api/connector-layer/replay', async (req: Request, res: Response) => {
+  try {
+    const { L25_VERSION } = await import('./services/connector-layer/replay-types');
+    const { REPLAY_DOCTRINE } = await import('./services/connector-layer/replay-constitution');
+    const { getArchiveSize } = await import('./services/connector-layer/raw-payload-archive');
+    const { getIndexSize, getLineageEdgeCount } = await import('./services/connector-layer/replay-index');
+    const { getAllReplaySessions } = await import('./services/connector-layer/ingress-replay-engine');
+    const { getAllNormalizedArtifacts } = await import('./services/connector-layer/forensic-reconstruction');
+    const { getAllConstitutions } = await import('./services/connector-layer/backfill-reproducibility');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'sessions') {
+      res.json(getAllReplaySessions());
+      return;
+    }
+    if (view === 'constitutions') {
+      res.json(getAllConstitutions());
+      return;
+    }
+
+    res.json({
+      layer: 'L2.5 Replay & Forensic Recoverability',
+      version: L25_VERSION,
+      doctrine: REPLAY_DOCTRINE,
+      stores: {
+        rawArchiveSize: getArchiveSize(),
+        normalizedArtifactCount: getAllNormalizedArtifacts().length,
+        replayIndexSize: getIndexSize(),
+        lineageEdgeCount: getLineageEdgeCount(),
+      },
+      sessionCount: getAllReplaySessions().length,
+      backfillConstitutionCount: getAllConstitutions().length,
+      replayModes: ['STRICT_FORENSIC', 'STRUCTURAL_REPLAY', 'BATCH_REPLAY', 'DRY_RUN_AUDIT'],
+      views: ['sessions', 'constitutions'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.5 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.6 PER-REQUEST TRACEABILITY — Constitutional ingress lineage
+// =============================================================================
+app.get('/api/connector-layer/traces', async (req: Request, res: Response) => {
+  try {
+    const { L26_VERSION } = await import('./services/connector-layer/trace-graph');
+    const { getNodeCount: getTraceNodeCount, getEdgeCount: getTraceEdgeCount } = await import('./services/connector-layer/trace-graph');
+    const { getAllRequestTraces } = await import('./services/connector-layer/request-trace-builder');
+    const { getAllLineagePacks } = await import('./services/connector-layer/lineage-pack');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'requests') {
+      res.json(getAllRequestTraces());
+      return;
+    }
+    if (view === 'packs') {
+      res.json(getAllLineagePacks());
+      return;
+    }
+
+    res.json({
+      layer: 'L2.6 Per-Request Traceability',
+      version: L26_VERSION,
+      traceNodeCount: getTraceNodeCount(),
+      traceEdgeCount: getTraceEdgeCount(),
+      requestTraceCount: getAllRequestTraces().length,
+      lineagePackCount: getAllLineagePacks().length,
+      views: ['requests', 'packs'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.6 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// L2.7 FALLBACK & BLIND-SPOT SIGNALING — Constitutional ingress honesty
+// =============================================================================
+app.get('/api/connector-layer/blindspots', async (req: Request, res: Response) => {
+  try {
+    const { L27_VERSION } = await import('./services/connector-layer/fallback-semantics');
+    const { getBlindSpotLedger } = await import('./services/connector-layer/blindspot-engine');
+    const { getFingerprintCount } = await import('./services/connector-layer/blindspot-fingerprint');
+    const view = req.query.view as string | undefined;
+
+    const ledger = getBlindSpotLedger();
+
+    if (view === 'ledger') {
+      res.json(ledger);
+      return;
+    }
+    if (view === 'critical') {
+      res.json(ledger.filter(bs => bs.severity === 'CRITICAL'));
+      return;
+    }
+
+    const bySeverity = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    for (const bs of ledger) bySeverity[bs.severity]++;
+
+    res.json({
+      layer: 'L2.7 Fallback & Blind-Spot Signaling',
+      version: L27_VERSION,
+      totalBlindSpots: ledger.length,
+      bySeverity,
+      uniqueFingerprints: getFingerprintCount(),
+      views: ['ledger', 'critical'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'L2.7 query failed', message: error.message });
+  }
+});
+
+// =============================================================================
+// LAYER 2 CONTROL PLANE — Operational ingress visibility
+// =============================================================================
+app.get('/api/connector-layer/control-plane', async (req: Request, res: Response) => {
+  try {
+    const { LAYER2_CONSTITUTION_VERSION, captureLayer2Versions } = await import('./services/connector-layer/layer2-constitution');
+    const { summarizeLedger } = await import('./services/connector-layer/ingress-ledger');
+    const { summarizeIncidents, clusterIncidents } = await import('./services/connector-layer/connector-incidents');
+    const { summarizeRouteImpact } = await import('./services/connector-layer/route-impact-report');
+    const { getAverageLineageFitness, getLineageFitnessBelowThreshold } = await import('./services/connector-layer/lineage-fitness');
+    const view = req.query.view as string | undefined;
+
+    if (view === 'versions') {
+      res.json(captureLayer2Versions());
+      return;
+    }
+    if (view === 'ledger') {
+      res.json(summarizeLedger());
+      return;
+    }
+    if (view === 'incidents') {
+      res.json({ summary: summarizeIncidents(), clusters: clusterIncidents() });
+      return;
+    }
+    if (view === 'routes') {
+      res.json(summarizeRouteImpact());
+      return;
+    }
+    if (view === 'fitness') {
+      res.json({
+        averageFitness: getAverageLineageFitness(),
+        belowThreshold70: getLineageFitnessBelowThreshold(70).length,
+        belowThreshold50: getLineageFitnessBelowThreshold(50).length,
+      });
+      return;
+    }
+    if (view === 'shadow') {
+      const { computePlannerCorrectness } = await import('./services/connector-layer/shadow-routing');
+      res.json(computePlannerCorrectness());
+      return;
+    }
+    if (view === 'audits') {
+      const { summarizeAudits } = await import('./services/connector-layer/replay-audit-scheduler');
+      res.json(summarizeAudits());
+      return;
+    }
+    if (view === 'adversarial') {
+      const { summarizeLab } = await import('./services/connector-layer/adversarial-ingress-lab');
+      res.json(summarizeLab());
+      return;
+    }
+    if (view === 'slos') {
+      const { buildSLODashboard } = await import('./services/connector-layer/field-family-slos');
+      res.json(buildSLODashboard());
+      return;
+    }
+
+    res.json({
+      layer: 'Layer 2 Control Plane',
+      constitutionVersion: LAYER2_CONSTITUTION_VERSION,
+      versions: captureLayer2Versions(),
+      ingressSummary: summarizeLedger(),
+      incidentSummary: summarizeIncidents(),
+      routeImpactSummary: summarizeRouteImpact(),
+      averageLineageFitness: getAverageLineageFitness(),
+      shadowRouting: await import('./services/connector-layer/shadow-routing').then(m => m.computePlannerCorrectness()),
+      replayAudits: await import('./services/connector-layer/replay-audit-scheduler').then(m => m.summarizeAudits()),
+      adversarialLab: await import('./services/connector-layer/adversarial-ingress-lab').then(m => m.summarizeLab()),
+      sloDashboard: await import('./services/connector-layer/field-family-slos').then(m => m.buildSLODashboard()),
+      views: ['versions', 'ledger', 'incidents', 'routes', 'fitness', 'shadow', 'audits', 'adversarial', 'slos'],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Control plane query failed', message: error.message });
   }
 });
 
@@ -4293,10 +4944,63 @@ app.get('/', (_req: Request, res: Response) => {
       quantumRiskEdgeReport: '/api/quantum-risk/edge-report',
       chatAuditStats: '/api/chat-audit/stats',
       chatAuditLog: '/api/chat-audit/log?limit=50',
+      sourceSystemsHealthFingerprint: '/api/source-systems/health?view=fingerprint',
+      sourceSystemsHealthUnsafe: '/api/source-systems/health?view=unsafe',
+      sourceSystemsPermissions: '/api/source-systems/health/permissions?view=report',
+      sourceSystemsIntegrity: '/api/source-systems/health/integrity',
+      sourceSystemsCriticality: '/api/source-systems/health/criticality',
+      sourceSystemsRecovery: '/api/source-systems/health/recovery?view=active',
+      sourceSystemsConflicts: '/api/source-systems/conflicts',
+      sourceSystemsConflictsConstitution: '/api/source-systems/conflicts?view=constitution',
+      sourceSystemsConflictsContradictions: '/api/source-systems/conflicts?view=contradictions',
+      sourceSystemsConflictsBlockers: '/api/source-systems/conflicts?view=blockers',
+      sourceSystemsConflictsLedger: '/api/source-systems/conflicts?view=ledger',
+      sourceSystemsConflictsCrossClass: '/api/source-systems/conflicts?view=cross-class',
+      sourceSystemsDegradation: '/api/source-systems/degradation',
+      sourceSystemsDegradationConstitution: '/api/source-systems/degradation?view=constitution',
+      sourceSystemsDegradationClaimRestrictions: '/api/source-systems/degradation?view=claim-restrictions',
+      sourceSystemsDegradationLedger: '/api/source-systems/degradation?view=ledger',
+      sourceSystemsDegradationEvents: '/api/source-systems/degradation?view=events',
+      sourceSystemsSubstitution: '/api/source-systems/substitution',
+      sourceSystemsSubstitutionIncidents: '/api/source-systems/substitution/incidents',
+      sourceSystemsAuthority: '/api/source-systems/authority',
+      sourceSystemsDoctrine: '/api/source-systems/doctrine',
       truthDiagnostics: '/api/source-systems/truth-diagnostics?symbol=BTC',
       calibrationDashboard: '/api/calibration-spine/dashboard',
       calibrationRecompute: '/api/calibration-spine/recompute?window=24h',
       connectorDiagnostics: '/api/connector-layer/diagnostics',
+      connectorEnvelope: '/api/connector-layer/envelope',
+      connectorEnvelopeSchema: '/api/connector-layer/envelope?view=schema',
+      connectorEnvelopeReplayLedger: '/api/connector-layer/envelope?view=replay-ledger',
+      connectorEnvelopeBackfills: '/api/connector-layer/envelope?view=backfill-batches',
+      connectorFreshness: '/api/connector-layer/freshness',
+      connectorFreshnessPolicies: '/api/connector-layer/freshness?view=policies',
+      connectorFreshnessLedger: '/api/connector-layer/freshness?view=ledger',
+      connectorRouting: '/api/connector-layer/routing',
+      connectorRoutingConstitutions: '/api/connector-layer/routing?view=constitutions',
+      connectorRoutingPolicies: '/api/connector-layer/routing?view=policies',
+      connectorRoutingLedger: '/api/connector-layer/routing?view=ledger',
+      connectorDedup: '/api/connector-layer/dedup',
+      connectorDedupPolicies: '/api/connector-layer/dedup?view=policies',
+      connectorDedupLedger: '/api/connector-layer/dedup?view=ledger',
+      connectorReplay: '/api/connector-layer/replay',
+      connectorReplaySessions: '/api/connector-layer/replay?view=sessions',
+      connectorReplayConstitutions: '/api/connector-layer/replay?view=constitutions',
+      connectorTraces: '/api/connector-layer/traces',
+      connectorTraceRequests: '/api/connector-layer/traces?view=requests',
+      connectorTracePacks: '/api/connector-layer/traces?view=packs',
+      connectorBlindSpots: '/api/connector-layer/blindspots',
+      connectorBlindSpotLedger: '/api/connector-layer/blindspots?view=ledger',
+      connectorBlindSpotCritical: '/api/connector-layer/blindspots?view=critical',
+      connectorControlPlane: '/api/connector-layer/control-plane',
+      connectorControlVersions: '/api/connector-layer/control-plane?view=versions',
+      connectorControlIncidents: '/api/connector-layer/control-plane?view=incidents',
+      connectorControlRoutes: '/api/connector-layer/control-plane?view=routes',
+      connectorControlFitness: '/api/connector-layer/control-plane?view=fitness',
+      connectorControlShadow: '/api/connector-layer/control-plane?view=shadow',
+      connectorControlAudits: '/api/connector-layer/control-plane?view=audits',
+      connectorControlAdversarial: '/api/connector-layer/control-plane?view=adversarial',
+      connectorControlSLOs: '/api/connector-layer/control-plane?view=slos',
       keys: '/api/keys',
       testNeuroeconomic: '/api/test/neuroeconomic',
       testBehavioralFinance: '/api/test/behavioral-finance',

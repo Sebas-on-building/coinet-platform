@@ -144,6 +144,10 @@ export const JudgmentContradictionsSchema = z.object({
   load: z.number().min(0).max(1),
   /** Are any contradictions severe enough to warrant caution? */
   structural_warning: z.boolean(),
+  /** L3.3-B: if identity gate denied, explains why contradictions were suppressed */
+  identity_gate_denial: z.string().optional(),
+  /** L3.3-B: when gate allows with scar or conditional, surfaces disclosure */
+  identity_gate_note: z.string().optional(),
 });
 export type JudgmentContradictions = z.infer<typeof JudgmentContradictionsSchema>;
 
@@ -348,6 +352,19 @@ export const JudgmentOutputSchema = z.object({
     coverage: z.any(),
     configVersions: z.any(),
     auditNotes: z.array(z.string()),
+  }).optional(),
+
+  /** L3.3-B — Identity confidence gate results for this entity */
+  identity_confidence: z.object({
+    band: z.enum(['HIGH', 'MEDIUM', 'LOW', 'UNRESOLVED']),
+    epistemic_state: z.enum(['RESOLVED_CLEAN', 'RESOLVED_WITH_SCAR', 'CONTESTED', 'UNRESOLVED']),
+    scoring_gate: z.enum(['ALLOW', 'ALLOW_WITH_SCAR', 'CONDITIONAL', 'DENY']),
+    contradiction_gate: z.enum(['ALLOW', 'ALLOW_WITH_SCAR', 'CONDITIONAL', 'DENY']),
+    scenario_gate: z.enum(['ALLOW', 'ALLOW_WITH_SCAR', 'CONDITIONAL', 'DENY']),
+    judgment_gate: z.enum(['ALLOW', 'ALLOW_WITH_SCAR', 'CONDITIONAL', 'DENY']),
+    disclosure_required: z.boolean(),
+    active_scars: z.array(z.string()),
+    state_id: z.string(),
   }).optional(),
 });
 

@@ -1240,7 +1240,7 @@ IMPORTANT: Only use data from available sources. Do NOT guess values for failed 
 `);
           }
         }
-
+        
         if (contextParts.length > 0) {
           liveContextStr = contextParts.join('\n');
         }

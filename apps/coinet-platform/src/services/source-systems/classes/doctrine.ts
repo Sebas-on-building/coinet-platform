@@ -38,6 +38,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'fast',
     degradationImpact: 'high',
     downstreamConsumers: ['state_engine', 'timing_engine', 'scenario_engine', 'confidence_engine'],
+    cadence: 'seconds_to_minutes',
+    failureMode: 'Stale prices and phantom precision — system shows numbers that feel current but are lagged.',
+    productionRule: 'Market surface can describe what price did. It cannot explain why without help from other classes.',
     version: V,
   },
 
@@ -63,6 +66,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'fast',
     degradationImpact: 'medium',
     downstreamConsumers: ['state_engine', 'hypothesis_engine', 'timing_engine'],
+    cadence: 'near_realtime',
+    failureMode: 'Thin-pool distortion and discovery spam — noisy early signals masquerading as real demand.',
+    productionRule: 'DEX emergence is early and noisy. It is a detection class, not a truth monopoly.',
     version: V,
   },
 
@@ -90,6 +96,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'realtime',
     degradationImpact: 'high',
     downstreamConsumers: ['hypothesis_engine', 'contradiction_engine', 'timing_engine', 'confidence_engine'],
+    cadence: 'seconds',
+    failureMode: 'Exchange sampling gaps and normalization mismatches — partial exchange coverage creates distorted leverage picture.',
+    productionRule: 'Derivatives pressure is the leverage state of the market.',
     version: V,
   },
 
@@ -116,6 +125,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'scheduled',
     degradationImpact: 'medium',
     downstreamConsumers: ['hypothesis_engine', 'scenario_engine', 'confidence_engine'],
+    cadence: 'minutes_to_hours',
+    failureMode: 'Methodology drift, token pricing distortions, adapter lag — TVL numbers that look precise but are stale or mis-denominated.',
+    productionRule: 'Protocol substance measures economic substrate, not price reflexivity.',
     version: V,
   },
 
@@ -142,6 +154,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'realtime',
     degradationImpact: 'high',
     downstreamConsumers: ['hypothesis_engine', 'contradiction_engine', 'confidence_engine'],
+    cadence: 'block_time_to_minutes',
+    failureMode: 'Indexing lag, chain reorg edge cases, incomplete decoded semantics — raw events visible but meaning unclear.',
+    productionRule: 'Raw on-chain behavior is the most native event layer, but not the most interpretable.',
     version: V,
   },
 
@@ -168,6 +183,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'slow',
     degradationImpact: 'critical',
     downstreamConsumers: ['hypothesis_engine', 'confidence_engine', 'doctrine_enforcer'],
+    cadence: 'event_driven',
+    failureMode: 'Stale audits, missing bytecode context, chain-specific blind spots — safety data that looks complete but misses evolving risk.',
+    productionRule: 'Structural safety can veto trust, but it cannot alone predict market direction.',
     version: V,
   },
 
@@ -194,6 +212,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'fast',
     degradationImpact: 'low',
     downstreamConsumers: ['hypothesis_engine', 'scenario_engine'],
+    cadence: 'seconds_to_minutes',
+    failureMode: 'Bot inflation, duplicated headlines, engagement spoofing — attention metrics that look organic but are amplified.',
+    productionRule: 'Narrative attention is about attention state, not truth state.',
     version: V,
   },
 
@@ -219,6 +240,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'slow',
     degradationImpact: 'medium',
     downstreamConsumers: ['hypothesis_engine', 'on-chain interpretation'],
+    cadence: 'slower_than_chain',
+    failureMode: 'Label drift, stale clusters, false attribution confidence — wallet tags that look authoritative but are outdated.',
+    productionRule: 'Entity context is enrichment, but elite enrichment.',
     version: V,
   },
 
@@ -245,6 +269,9 @@ export const FULL_DOCTRINES: Record<string, FullSourceClassDoctrine> = {
     typicalFreshnessProfile: 'realtime',
     degradationImpact: 'low',
     downstreamConsumers: ['chat', 'token_page', 'alerts', 'reports'],
+    cadence: 'on_demand',
+    failureMode: 'Fluent hallucination — confident language that sounds authoritative but has no evidential basis.',
+    productionRule: 'Reasoning expression is not a source of external truth. It is a governed interpreter of other source classes.',
     version: V,
   },
 };

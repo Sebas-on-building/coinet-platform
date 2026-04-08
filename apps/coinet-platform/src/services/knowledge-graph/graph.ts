@@ -12,6 +12,8 @@
 import { registry } from '../canonical/registry';
 import type { AssetEntity, ProtocolEntity, ChainEntity } from '../canonical/types';
 import type { Relationship, RelationshipType, EntityContext, GraphNode } from './types';
+import type { EntityConfidenceState } from '../canonicalization/entity-confidence-model';
+import type { ConfidenceGateDecision } from '../canonicalization/confidence-gate';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH
@@ -187,6 +189,43 @@ class KnowledgeGraph {
     }
 
     return null;
+  }
+
+  /**
+   * L3.3-B confidence-gated relationship insertion.
+   * Checks the confidence gate before adding a graph edge.
+   * Denied mutations are blocked; conditional/scar-allowed are tagged.
+   */
+  addGatedRelationship(
+    rel: Relationship,
+    confidenceState: EntityConfidenceState | undefined,
+  ): { added: boolean; gateDecision?: ConfidenceGateDecision } {
+    if (!confidenceState) {
+      this.addRelationship(rel);
+      return { added: true };
+    }
+    try {
+      const { canUseForGraphRelation } =
+        require('../canonicalization/confidence-gate') as typeof import('../canonicalization/confidence-gate');
+      const gate = canUseForGraphRelation(rel.from, confidenceState.objectType, confidenceState);
+      if (!gate.allowed) {
+        return { added: false, gateDecision: gate };
+      }
+      if (gate.mode === 'ALLOW_WITH_SCAR' || gate.mode === 'CONDITIONAL') {
+        rel.meta = {
+          ...rel.meta,
+          confidence_gate_band: gate.band,
+          confidence_gate_mode: gate.mode,
+          confidence_gate_scars: gate.activeScars.map(s => s.code),
+          provisional: true,
+        };
+      }
+      this.addRelationship(rel);
+      return { added: true, gateDecision: gate };
+    } catch {
+      this.addRelationship(rel);
+      return { added: true };
+    }
   }
 
   get size(): { nodes: number; edges: number } {

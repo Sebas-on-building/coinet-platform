@@ -104,12 +104,16 @@ export {
   enforceR4R8CoverageTransparency,
   enforceMultiClassJudgment,
   auditDoctrine,
+  validateClaimAgainstDoctrine,
+  getDoctrineSummary,
+  validateClaimBatch,
 } from './doctrine-enforcer';
 
 export type {
   DoctrineViolationType,
   DoctrineViolation,
   DoctrineAuditResult,
+  ClaimValidationResult,
 } from './doctrine-enforcer';
 
 // ── Degradation Manager ─────────────────────────────────────────────────────
@@ -536,3 +540,260 @@ export type {
 } from './redundancy/types';
 
 export { L13_REDUNDANCY_VERSION } from './redundancy/types';
+
+// ── L1.4 Source Health & Quality Scoring ────────────────────────────────
+export {
+  computeFieldHealth,
+  computeFieldHealthForOwner,
+  computeAllFieldHealth,
+  getFieldsAtOrBelow,
+  deriveHealthState,
+} from './classes/field-health-engine';
+
+export {
+  computeClassHealth,
+  computeAllClassHealth,
+  buildHealthFingerprint,
+  getEpistemicallyUnsafeClasses,
+  getAllHealthImplications,
+} from './classes/class-health-engine';
+
+export type {
+  HealthState,
+  TrustClass as L14TrustClass,
+  PenaltyFamily,
+  HealthPenalty,
+  ClassWeightGroup,
+  HealthWeights,
+  FieldHealthRecord,
+  ClassHealthRecord,
+  ClassHealthImplication,
+  HealthFingerprint,
+  HealthEvent,
+} from './classes/health-types';
+
+export {
+  L14_PLATFORM_VERSION,
+  HEALTH_STATE_LABELS,
+  HEALTH_STATE_THRESHOLDS,
+  PROVIDER_TRUST_CLASS,
+  TRUST_CLASS_AUTHORITY_WEIGHT,
+  CLASS_WEIGHT_PROFILES,
+  CLASS_TO_WEIGHT_GROUP,
+  INTEGRITY_STATE_LABELS,
+  CLAIM_PERMISSION_LABELS,
+  CLAIM_PERMISSION_SPEAKABLE,
+  RECOVERY_STATE_LABELS,
+  RECOVERY_TRUST_HAIRCUT,
+  CRITICALITY_SUPPRESSION_WEIGHT,
+  DIVERGENCE_CONFIDENCE_PENALTY,
+} from './classes/health-types';
+
+export type {
+  IntegrityState,
+  IntegrityDimension,
+  FieldIntegrityRecord,
+  ClaimPermission,
+  HealthDecisionRecord,
+  FieldCriticality,
+  FieldCriticalityEntry,
+  RecoveryState,
+  RecoveryRecord,
+  DivergenceState,
+  DivergenceRecord,
+} from './classes/health-types';
+
+// ── L1.4.1 Epistemic Integrity Engine ───────────────────────────────────
+export {
+  evaluateFieldIntegrity,
+  isSameTruthType,
+  evaluateBaselineIntegrity,
+  getBrokenIntegrityFields,
+  getFieldTuple,
+  getAllFieldTuples,
+  FIELD_TUPLES,
+} from './classes/epistemic-integrity-engine';
+
+export type {
+  RepresentativeFieldTuple,
+  ObservedFieldMetadata,
+} from './classes/epistemic-integrity-engine';
+
+// ── L1.4.1 Claim Permission Compiler ────────────────────────────────────
+export {
+  compilePermission,
+  compileAllPermissions,
+  getSuppressedFields,
+  getDisclosureRequiredFields,
+  getSpeakabilityReport,
+} from './classes/claim-permission-compiler';
+
+// ── L1.4.1 Field Criticality Map ────────────────────────────────────────
+export {
+  FIELD_CRITICALITY_MAP,
+  getFieldCriticality,
+  getFieldsByCriticality,
+  getMissionCriticalFields,
+  getBlastRadius,
+  getFieldsAffectedByLoss,
+} from './classes/field-criticality-map';
+
+// ── L1.4.1 Recovery Governor ────────────────────────────────────────────
+export {
+  recordIncident,
+  recordCleanWindow,
+  recordRecoveryFailure,
+  evaluateRecoveryFromHealth,
+  getRecoveryState,
+  isInRecovery,
+  getRecoveryTrustHaircut,
+  getAllRecoveryStates,
+  getProvidersInRecovery,
+  resetRecoveryState,
+  resetAllRecoveryStates,
+} from './classes/recovery-governor';
+
+// ── L1.5 Conflict Resolution Logic ──────────────────────────────────────
+export {
+  L15_PLATFORM_VERSION,
+  CONFLICT_SEVERITY_RANK,
+  CONFLICT_OUTCOME_SPEAKABLE,
+  CONFLICT_THRESHOLDS,
+  getConflictThreshold,
+} from './classes/conflict-types';
+
+export type {
+  ConflictKind,
+  ConflictSeverity,
+  ConflictOutcome,
+  WinnerRule,
+  FusionGate,
+  FusionGateResult,
+  BlockerClass,
+  BlockerRecord,
+  ConflictClaim,
+  ConflictRecord,
+  PreservedContradiction,
+  CrossClassContradictionPattern,
+  ConflictDiagnostics,
+  ConflictThreshold,
+} from './classes/conflict-types';
+
+export {
+  FIELD_CONFLICT_RULES,
+  CROSS_CLASS_PATTERNS,
+  getFieldConflictRule,
+  getAllFieldConflictRules,
+  getCrossClassPatterns,
+  getCrossClassPatternsByClass,
+  getFieldsWithHardBlockerOverride,
+} from './classes/conflict-constitution';
+
+export type {
+  ContradictionPreservationPolicy,
+  FieldConflictRule,
+} from './classes/conflict-constitution';
+
+export {
+  classifyConflict,
+  classifySeverity,
+  evaluateFusionLegality,
+  isFusionLegal,
+  detectBlockers,
+  adjudicate,
+  adjudicateAll,
+  getPreservedContradictions,
+  buildConflictDiagnostics,
+} from './classes/conflict-adjudicator';
+
+export {
+  logConflict,
+  logConflictBatch,
+  getLedger,
+  getLedgerSince,
+  clearLedger,
+  buildConflictFingerprint,
+  detectCrossClassContradictions,
+  detectLaunderingRisk,
+} from './classes/conflict-ledger';
+
+export type {
+  ConflictLedgerEvent,
+  ConflictFingerprintEntry,
+  ConflictFingerprint,
+  ActiveCondition,
+} from './classes/conflict-ledger';
+
+// ── L1.6 Source Degradation Semantics ───────────────────────────────────
+export {
+  L16_PLATFORM_VERSION,
+  DEGRADATION_RANK,
+  DEGRADATION_LABELS,
+  TRUTH_STATE_TO_LEVEL,
+  DOWNSTREAM_BLOCKS,
+  CONFIDENCE_PENALTY_RANGE,
+  DISCLOSURE_TEMPLATES,
+  CLAIM_RESTRICTIONS,
+  getClaimRestrictions,
+} from './classes/degradation-types';
+
+export type {
+  DegradationLevel,
+  TruthState,
+  VisibilityLoss,
+  DownstreamComponent,
+  DegradationInput,
+  FieldDegradationInput,
+  DegradationAssessment,
+  DomainClaimRestriction,
+} from './classes/degradation-types';
+
+export {
+  CLASS_DEGRADATION_PROFILES,
+  getClassProfile,
+  getLevelProfile,
+  getAllClassProfiles,
+} from './classes/degradation-constitution';
+
+export type {
+  LevelProfile,
+  ClassDegradationProfile,
+} from './classes/degradation-constitution';
+
+export {
+  evaluateDegradation,
+  evaluateAllDegradation,
+  buildDegradationFingerprint,
+  buildPropagationMap,
+  getLockedClasses,
+  getDegradedClasses as getL16DegradedClasses,
+  getClassesUnsafeForThesis,
+  getAllDisclosures,
+} from './classes/degradation-evaluator';
+
+export type {
+  DegradationFingerprintEntry,
+  DegradationFingerprint,
+  PropagationEffect,
+} from './classes/degradation-evaluator';
+
+export {
+  getCurrentLevel,
+  getAllCurrentLevels,
+  recordDegradation,
+  recordDegradationBatch,
+  constrainRestoration,
+  attemptRestoration,
+  getLedger as getDegradationLedger,
+  getLedgerForClass as getDegradationLedgerForClass,
+  getLedgerSince as getDegradationLedgerSince,
+  getDegradationEvents,
+  getRestorationEvents,
+  clearLedger as clearDegradationLedger,
+  resetAllLevels,
+  resetState as resetDegradationState,
+} from './classes/degradation-ledger';
+
+export type {
+  DegradationLedgerEvent,
+} from './classes/degradation-ledger';

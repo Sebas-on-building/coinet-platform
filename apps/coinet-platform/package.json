@@ -24,7 +24,9 @@
     "db:verify": "npx ts-node scripts/verify-database.ts",
     "db:backup": "npx ts-node scripts/backup-chat-history.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:layer1": "tsc --project tsconfig.json && node dist/scripts/test-layer1-master.js --no-compile",
+    "test:layer1:quick": "node dist/scripts/test-layer1-master.js --no-compile"
   },
   "engines": {
     "node": ">=20.0.0",

@@ -20,6 +20,17 @@ import {
 import type { Contradiction, JudgmentContradictions } from './types';
 import type { SignalSnapshot } from './signal-snapshot';
 
+/**
+ * L3.3-B identity confidence context for contradiction gate enforcement.
+ * Supplied by the judgment orchestrator when L3.3 confidence state exists.
+ */
+export interface IdentityConfidenceContext {
+  band: string;
+  allowed: boolean;
+  mode: string;
+  scars: string[];
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN API
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -27,8 +38,24 @@ import type { SignalSnapshot } from './signal-snapshot';
 /**
  * Detect contradictions in the current signal state.
  * Returns a ranked list of contradictions with severity and affected scores.
+ *
+ * When identityGate is supplied, the engine enforces L3.3-B confidence rights:
+ * - DENY removes the entity from contradiction graph participation
+ * - CONDITIONAL/ALLOW_WITH_SCAR attaches a disclosure note
  */
-export function detectContradictions(signals: SignalSnapshot): JudgmentContradictions {
+export function detectContradictions(
+  signals: SignalSnapshot,
+  identityGate?: IdentityConfidenceContext,
+): JudgmentContradictions {
+  if (identityGate && !identityGate.allowed) {
+    return {
+      items: [],
+      load: 0,
+      structural_warning: false,
+      identity_gate_denial: `Identity confidence gate denied: band=${identityGate.band} mode=${identityGate.mode}`,
+    };
+  }
+
   const detected: Contradiction[] = [];
 
   detected.push(...checkLeverageVsSpot(signals));
@@ -50,11 +77,17 @@ export function detectContradictions(signals: SignalSnapshot): JudgmentContradic
     c => !c.resolvable && (c.severity === 'critical' || c.severity === 'high')
   );
 
-  return {
+  const result: JudgmentContradictions & { identity_gate_note?: string } = {
     items: top,
     load,
     structural_warning: structural,
   };
+
+  if (identityGate && (identityGate.mode === 'ALLOW_WITH_SCAR' || identityGate.mode === 'CONDITIONAL')) {
+    result.identity_gate_note = `Identity confidence: band=${identityGate.band} scars=[${identityGate.scars.join(',')}]`;
+  }
+
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

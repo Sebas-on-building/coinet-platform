@@ -26,6 +26,9 @@ import {
   type SourceProviderDef,
 } from './registry';
 import { getClassHealth } from './health-monitor';
+import { getFullDoctrine, getAllFullDoctrines } from './classes/doctrine';
+import { getClaimBoundary, canClassJustifyClaim } from './classes/claim-boundaries';
+import type { ClaimStrength } from './classes/types';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIOLATION TYPES
@@ -265,6 +268,131 @@ export function enforceMultiClassJudgment(
   }
 
   return violations;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLAIM VALIDATION AGAINST FULL DOCTRINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface ClaimValidationResult {
+  claim: string;
+  truthClass: TruthClass;
+  allowed: boolean;
+  forbidden: boolean;
+  maxStrength: ClaimStrength | null;
+  forbiddenReason: string | null;
+  requiredCompanions: TruthClass[];
+  violations: DoctrineViolation[];
+}
+
+/**
+ * Validate a specific claim against the doctrine for a truth class.
+ * Returns whether the claim is allowed, forbidden, or needs companions.
+ */
+export function validateClaimAgainstDoctrine(
+  truthClass: TruthClass,
+  claim: string,
+): ClaimValidationResult {
+  const doctrine = getFullDoctrine(truthClass);
+  const violations: DoctrineViolation[] = [];
+  const lowerClaim = claim.toLowerCase();
+
+  if (!doctrine) {
+    return {
+      claim, truthClass, allowed: false, forbidden: false,
+      maxStrength: null, forbiddenReason: 'No doctrine found for this truth class',
+      requiredCompanions: [], violations: [],
+    };
+  }
+
+  // Check forbidden claims first
+  for (const fc of doctrine.forbiddenClaims) {
+    if (lowerClaim.includes(fc.claim.toLowerCase().substring(0, 25))) {
+      violations.push({
+        type: 'truth_role_overreach',
+        severity: 'error',
+        rule: 3,
+        message: `Claim "${claim}" is FORBIDDEN for ${truthClass}: ${fc.reason}`,
+        correction: `This claim requires a different truth class or cross-layer confirmation`,
+      });
+      return {
+        claim, truthClass, allowed: false, forbidden: true,
+        maxStrength: null, forbiddenReason: fc.reason,
+        requiredCompanions: [], violations,
+      };
+    }
+  }
+
+  // Check allowed claims
+  for (const ac of doctrine.allowedClaims) {
+    if (lowerClaim.includes(ac.claim.toLowerCase().substring(0, 25))) {
+      return {
+        claim, truthClass, allowed: true, forbidden: false,
+        maxStrength: ac.maxStrengthAlone,
+        forbiddenReason: null,
+        requiredCompanions: ac.requiredCompanions ?? [],
+        violations: [],
+      };
+    }
+  }
+
+  // Fallback to claim boundaries
+  const strength = canClassJustifyClaim(truthClass, claim);
+  if (strength === 'never') {
+    return {
+      claim, truthClass, allowed: false, forbidden: true,
+      maxStrength: null,
+      forbiddenReason: `Claim boundary check: "${claim}" cannot be justified by ${truthClass}`,
+      requiredCompanions: [], violations: [],
+    };
+  }
+
+  return {
+    claim, truthClass, allowed: true, forbidden: false,
+    maxStrength: strength, forbiddenReason: null,
+    requiredCompanions: doctrine.requiredCompanionsForStrongClaims,
+    violations: [],
+  };
+}
+
+/**
+ * Get the complete doctrine summary for a truth class in a machine-readable format.
+ */
+export function getDoctrineSummary(truthClass: TruthClass): {
+  name: string;
+  cadence: string;
+  failureMode: string;
+  productionRule: string;
+  allowedClaims: string[];
+  forbiddenClaims: string[];
+  companions: TruthClass[];
+} | null {
+  const doctrine = getFullDoctrine(truthClass);
+  if (!doctrine) return null;
+  return {
+    name: doctrine.name,
+    cadence: doctrine.cadence,
+    failureMode: doctrine.failureMode,
+    productionRule: doctrine.productionRule,
+    allowedClaims: doctrine.allowedClaims.map(c => c.claim),
+    forbiddenClaims: doctrine.forbiddenClaims.map(c => `${c.claim} — ${c.reason}`),
+    companions: doctrine.requiredCompanionsForStrongClaims,
+  };
+}
+
+/**
+ * Validate an entire set of claims for a truth class.
+ */
+export function validateClaimBatch(
+  truthClass: TruthClass,
+  claims: string[],
+): { results: ClaimValidationResult[]; forbiddenCount: number; allowedCount: number } {
+  const results = claims.map(c => validateClaimAgainstDoctrine(truthClass, c));
+  return {
+    results,
+    forbiddenCount: results.filter(r => r.forbidden).length,
+    allowedCount: results.filter(r => r.allowed).length,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
