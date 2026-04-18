@@ -162,3 +162,16 @@ export {
   executeGraphQueryAtTime, executeHistoricalGraphQuery,
   resetGraphQuerySurfaces,
 } from './graph-query-surfaces';
+
+// L4.6 — Graph-Derived Context Packages
+export type {
+  PackageConfidenceLevel, ContextSection,
+  GraphContextPackage, GraphContextPackageOptions,
+} from './graph-context-packager';
+export {
+  buildGraphContextPackage, buildTokenContextPackage,
+  buildProtocolContextPackage, buildHistoricalGraphContextPackage,
+  summarizeProtocolContext, summarizeChainContext,
+  summarizeSectorContext, summarizeCompetitorContext,
+  summarizeNarrativeContext, resetGraphContextPackager,
+} from './graph-context-packager';
