@@ -1,0 +1,53 @@
+/**
+ * L8.1 — Constitutional Violation Codes
+ *
+ * Every constitutional boundary failure has a typed code so that audit
+ * records and validator decisions remain deterministic (§8.1.8.1 and
+ * §8.1.8.2 Band E).
+ */
+
+export enum L8ConstitutionalViolationCode {
+  UNREGISTERED_DEPENDENCY = 'L8_UNREG_DEPENDENCY',
+  UNREGISTERED_OUTPUT = 'L8_UNREG_OUTPUT',
+  ILLEGAL_DEPENDENCY_USAGE = 'L8_ILLEGAL_DEP_USAGE',
+  ILLEGAL_OUTPUT_CLASS = 'L8_ILLEGAL_OUTPUT_CLASS',
+  ILLEGAL_CAPABILITY_CLAIM = 'L8_ILLEGAL_CAPABILITY',
+  FORBIDDEN_JUDGMENT_SEMANTICS = 'L8_FORBIDDEN_JUDGMENT',
+  FORBIDDEN_RECOMMENDATION_SEMANTICS = 'L8_FORBIDDEN_RECOMMENDATION',
+  FORBIDDEN_SCENARIO_SEMANTICS = 'L8_FORBIDDEN_SCENARIO',
+  FORBIDDEN_ACTION_BIAS = 'L8_FORBIDDEN_ACTION_BIAS',
+  FORBIDDEN_SCORE_OVERRIDE = 'L8_FORBIDDEN_SCORE_OVERRIDE',
+  VALIDATION_TRUTH_REDEFINITION = 'L8_VALIDATION_TRUTH_REDEFINE',
+  CONTRADICTION_POSTURE_IGNORED = 'L8_CONTRADICTION_POSTURE_IGNORED',
+  RESTRICTION_POSTURE_IGNORED = 'L8_RESTRICTION_POSTURE_IGNORED',
+  RESTRICTION_BYPASS = 'L8_RESTRICTION_BYPASS',
+  AMBIGUITY_LAUNDERING = 'L8_AMBIGUITY_LAUNDERING',
+  STALE_REGIME_MASQUERADE = 'L8_STALE_REGIME_MASQUERADE',
+  RAW_DATA_REGIME_INVENTION = 'L8_RAW_DATA_REGIME_INVENTION',
+  RAW_L6_REVALIDATION_BYPASS = 'L8_RAW_L6_REVALIDATION_BYPASS',
+  LOWER_LAYER_REDEFINITION = 'L8_LOWER_LAYER_REDEFINE',
+  PRIMITIVE_REINTERPRETATION = 'L8_PRIMITIVE_REINTERPRETATION',
+  STORAGE_BYPASS = 'L8_STORAGE_BYPASS',
+  CONFIDENCE_LAW_OVERRIDE = 'L8_CONFIDENCE_LAW_OVERRIDE',
+  MISSING_LINEAGE = 'L8_MISSING_LINEAGE',
+  MULTIPLIER_WITHOUT_REGIME_GROUND = 'L8_MULTIPLIER_WITHOUT_GROUND',
+}
+
+export const ALL_L8_VIOLATION_CODES: readonly L8ConstitutionalViolationCode[] =
+  Object.values(L8ConstitutionalViolationCode);
+
+export class L8ConstitutionalError extends Error {
+  public readonly code: L8ConstitutionalViolationCode;
+  public readonly details: Record<string, unknown>;
+
+  constructor(
+    code: L8ConstitutionalViolationCode,
+    message: string,
+    details: Record<string, unknown> = {},
+  ) {
+    super(`[${code}] ${message}`);
+    this.name = 'L8ConstitutionalError';
+    this.code = code;
+    this.details = details;
+  }
+}
