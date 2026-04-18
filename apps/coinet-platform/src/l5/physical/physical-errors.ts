@@ -1,0 +1,32 @@
+/**
+ * L5.6 Physical Design — Error Codes
+ */
+
+export enum L5PhysicalErrorCode {
+  SCHEMA_NOT_DECLARED = 'L5_PHYS_SCHEMA_NOT_DECLARED',
+  TABLE_NOT_DECLARED = 'L5_PHYS_TABLE_NOT_DECLARED',
+  MISSING_REQUIRED_COLUMN = 'L5_PHYS_MISSING_REQUIRED_COLUMN',
+  MISSING_REQUIRED_INDEX = 'L5_PHYS_MISSING_REQUIRED_INDEX',
+  MISSING_FOREIGN_KEY = 'L5_PHYS_MISSING_FOREIGN_KEY',
+  UNIQUENESS_VIOLATION = 'L5_PHYS_UNIQUENESS_VIOLATION',
+  SHAPELESS_TABLE = 'L5_PHYS_SHAPELESS_TABLE',
+  JSONB_ON_PRIMARY_PATH = 'L5_PHYS_JSONB_ON_PRIMARY_PATH',
+  MISSING_LINEAGE_FIELD = 'L5_PHYS_MISSING_LINEAGE_FIELD',
+  REDIS_NAMESPACE_VIOLATION = 'L5_PHYS_REDIS_NAMESPACE_VIOLATION',
+  OBJECT_PATH_NONDETERMINISTIC = 'L5_PHYS_OBJECT_PATH_NONDETERMINISTIC',
+  OBJECT_MISSING_TAG = 'L5_PHYS_OBJECT_MISSING_TAG',
+  ARCHIVE_LINKAGE_BROKEN = 'L5_PHYS_ARCHIVE_LINKAGE_BROKEN',
+  CROSS_STORE_SPINE_BROKEN = 'L5_PHYS_CROSS_STORE_SPINE_BROKEN',
+}
+
+export class L5PhysicalError extends Error {
+  public readonly code: L5PhysicalErrorCode;
+  public readonly details: Record<string, unknown>;
+
+  constructor(code: L5PhysicalErrorCode, message: string, details: Record<string, unknown> = {}) {
+    super(`[${code}] ${message}`);
+    this.name = 'L5PhysicalError';
+    this.code = code;
+    this.details = details;
+  }
+}
