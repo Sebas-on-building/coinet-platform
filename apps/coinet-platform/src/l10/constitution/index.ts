@@ -23,3 +23,9 @@ export * from './l10-evidence-semantics-audit';
 
 // L10.6 — Family / template / rollout / state-legality audit
 export * from './l10-family-template-audit';
+
+// L10.7 — Reliance-governance audit
+export * from './l10-reliance-audit';
+
+// L10.8 — Persistence-and-serving audit
+export * from './l10-persistence-audit';

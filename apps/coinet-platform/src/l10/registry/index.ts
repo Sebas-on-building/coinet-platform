@@ -19,3 +19,7 @@ export * from './hypothesis-shift-condition.registry';
 export * from './hypothesis-family-definition.registry';
 export * from './hypothesis-template.registry';
 export * from './hypothesis-rollout.registry';
+
+// L10.8 — Durable and read surface registries
+export * from './l10-durable-surface.registry';
+export * from './l10-read-surface.registry';

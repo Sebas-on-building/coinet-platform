@@ -46,3 +46,11 @@ export * from './l10-family-definition.validator';
 export * from './l10-template-definition.validator';
 export * from './l10-family-rollout-state.validator';
 export * from './l10-template-state-legality.validator';
+
+// L10.7 — Reliance-governance violation codes + validators
+export * from './l10-reliance-violation-codes';
+export * from './hypothesis-confidence-policy.validator';
+export * from './hypothesis-cap-chain.validator';
+export * from './hypothesis-restriction-rights.validator';
+export * from './hypothesis-readiness.validator';
+export * from './hypothesis-reliance-profile.validator';

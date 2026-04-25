@@ -52,3 +52,17 @@ export * from './hypothesis-template-policy';
 export * from './hypothesis-family-definition';
 export * from './hypothesis-template-definition';
 export * from './hypothesis-family-rollout';
+
+// L10.7 — Reliance Governance: Confidence, Cap Chain, Restriction
+//         Rights, Readiness, and Reliance Profile
+export * from './hypothesis-confidence.policy';
+export * from './hypothesis-cap-chain';
+export * from './hypothesis-restriction-rights';
+export * from './hypothesis-readiness';
+export * from './hypothesis-reliance-profile';
+
+// L10.8 — Persistence, Read Surfaces, Current Authority, Evidence
+export * from './l10-persistence-surface';
+export * from './l10-current-authority';
+export * from './l10-evidence-storage';
+export * from './l10-read-surface';

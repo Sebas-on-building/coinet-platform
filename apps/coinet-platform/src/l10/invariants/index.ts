@@ -11,3 +11,6 @@ export * from './l10_5-fixtures';
 export * from './l10_5-invariants';
 export * from './l10_6-fixtures';
 export * from './l10_6-invariants';
+export * from './l10_7-fixtures';
+export * from './l10_7-invariants';
+export * from './l10_8-invariants';
