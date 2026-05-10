@@ -48,7 +48,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SystemLabel } from "@/components/coinet/TerminalPrimitives";
 
 export function Settings() {
   const { toast } = useToast();
@@ -245,9 +244,8 @@ export function Settings() {
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6 sm:space-y-8 pb-24 sm:pb-8">
       {/* Header */}
-      <div className="coinet-panel space-y-2 p-5 sm:space-y-3 sm:p-6">
-        <SystemLabel>Terminal Controls</SystemLabel>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Settings</h1>
+      <div className="space-y-2 sm:space-y-3">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Settings</h1>
         <div className="flex items-center gap-2 text-xs sm:text-sm text-primary">
           <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
           <p>All changes are saved automatically</p>
@@ -256,7 +254,7 @@ export function Settings() {
 
       {/* Tab Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 sm:space-y-8">
-        <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl border border-border/60 bg-surface/60 p-1 sm:h-14 sm:p-1.5">
+        <TabsList className="grid w-full grid-cols-3 h-auto sm:h-14 gap-1 bg-muted/30 p-1 sm:p-1.5 rounded-xl">
           <TabsTrigger value="appearance" className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2 py-2 sm:py-0 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md transition-all">
             <Sun className="w-4 h-4" />
             <span className="text-xs sm:text-sm">Appearance</span>
@@ -273,15 +271,15 @@ export function Settings() {
 
         {/* Appearance Tab */}
         <TabsContent value="appearance" className="space-y-6 sm:space-y-8 animate-in fade-in-50 duration-300">
-          <Card className="border-border/70 bg-card/70 shadow-glow backdrop-blur-sm transition-all duration-300 hover:border-primary/40">
+          <Card className="border-0 bg-card/50 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
             <CardHeader className="pb-6 sm:pb-8">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
                   <Sun className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg font-semibold sm:text-xl">Terminal Appearance</CardTitle>
-                  <CardDescription className="mt-1 text-xs sm:text-sm">Tune the Coinet judgment terminal surface.</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl font-semibold">Appearance</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm mt-1">Customize how Coinet AI looks and feels</CardDescription>
                 </div>
               </div>
             </CardHeader>

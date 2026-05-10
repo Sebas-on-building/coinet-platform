@@ -10,23 +10,24 @@ import {
   Search,
   Pin
 } from 'lucide-react';
+import coinetLogo from '@/assets/coinet-logo.png';
 import { Input } from '@/components/ui/input';
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
+  SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { CoinetMark, SystemLabel } from '@/components/coinet/TerminalPrimitives';
 
 // Simplified to 3 core navigation items
 const primaryFeatures = [
-  { id: 'chat', label: 'Judgment', icon: MessageSquare },
-  { id: 'agents', label: 'Modules', icon: Bot },
-  { id: 'alerts', label: 'Monitors', icon: Bell },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
 ];
 
 const secondaryFeatures = [
@@ -169,17 +170,18 @@ export function MobileNavigation({ activeItem, onItemClick, isOpen, onClose }: M
       </SheetTrigger>
       <SheetContent 
         side="left" 
-        className="w-80 border-r border-border/70 bg-[#030712]/95 p-0 backdrop-blur-xl"
+        className="w-80 p-0 bg-background/95 backdrop-blur-xl border-r border-border/20"
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <SheetHeader className="border-b border-border/50 p-6 pb-4 text-left">
+          <SheetHeader className="p-6 pb-4 text-left border-b border-border/10">
             <div className="flex items-center gap-3">
-              <CoinetMark showWordmark />
+              <img 
+                src={coinetLogo} 
+                alt="Coinet" 
+                className="w-14 h-14 object-contain"
+              />
             </div>
-            <SheetDescription asChild>
-              <SystemLabel>Terminal Navigation</SystemLabel>
-            </SheetDescription>
           </SheetHeader>
 
           {/* Navigation Content */}
@@ -193,7 +195,7 @@ export function MobileNavigation({ activeItem, onItemClick, isOpen, onClose }: M
                   placeholder="Search chats..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 border-border/50 bg-surface/60 pl-10 pr-10 transition-colors focus:border-primary/50"
+                  className="pl-10 pr-10 h-10 bg-background/50 border-border/10 focus:border-primary/20 transition-colors"
                 />
                 {searchQuery && (
                   <Button
@@ -214,10 +216,10 @@ export function MobileNavigation({ activeItem, onItemClick, isOpen, onClose }: M
                 <Button
                   key={item.id}
                   variant={isActive(item.id) ? 'default' : 'ghost'}
-                  className={`h-11 w-full justify-start text-left ${
+                  className={`w-full justify-start h-11 text-left ${
                     isActive(item.id)
-                      ? 'border border-primary/30 bg-primary/10 text-foreground shadow-glow'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      ? 'bg-primary/10'
+                      : 'hover:bg-accent'
                   } transition-all duration-150`}
                   onClick={() => handleItemClick(item.id)}
                 >
@@ -231,7 +233,7 @@ export function MobileNavigation({ activeItem, onItemClick, isOpen, onClose }: M
 
             {/* Secondary Features */}
             <div className="space-y-2">
-              <h3 className="px-2 mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              <h3 className="text-sm font-medium text-muted-foreground px-2 mb-3">
                 More Features
               </h3>
               {secondaryFeatures.map((item) => (

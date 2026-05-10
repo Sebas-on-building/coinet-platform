@@ -37,7 +37,7 @@ export function MobileLayout({
   };
 
   return (
-    <div className={`coinet-terminal-bg flex h-screen w-full max-w-screen flex-col overflow-x-hidden ${className}`}>
+    <div className={`flex flex-col h-screen w-full max-w-screen bg-background overflow-x-hidden ${className}`}>
       {/* Content area with proper padding for bottom nav */}
       <main className="flex-1 overflow-hidden pb-16 pt-safe">
         <div className="h-full overflow-y-auto overflow-x-hidden touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>

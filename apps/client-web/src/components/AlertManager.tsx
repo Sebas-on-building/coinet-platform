@@ -10,7 +10,6 @@ import { AlertCreationWizard } from "@/components/AlertCreationWizard";
 import { AlertList } from "@/components/AlertList";
 import { SemanticAlertCreator } from "@/components/SemanticAlertCreator";
 import { VoiceAlertInterface } from "@/components/VoiceAlertInterface";
-import { SystemLabel } from "@/components/coinet/TerminalPrimitives";
 
 export function AlertManager() {
   const { 
@@ -70,22 +69,21 @@ export function AlertManager() {
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6 pb-24 sm:pb-6">
       {/* Header with Hero Metric */}
-      <div className="coinet-panel flex flex-col gap-4 p-5 sm:p-6">
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <SystemLabel>Contradiction Monitors</SystemLabel>
-            <h1 className="mt-3 mb-1 text-xl font-bold sm:text-2xl">Monitor what can break the thesis</h1>
-            <p className="max-w-2xl text-xs text-muted-foreground sm:text-sm">
-              AI-powered market monitors for price, technical, source health, and contradiction events.
+            <h1 className="text-xl sm:text-2xl font-bold mb-1">Smart Alerts</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              AI-powered alerts that adapt to market conditions
             </p>
           </div>
           
           {/* Single Create Button - Mobile Optimized */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="default" className="coinet-cta shrink-0 gap-2 font-mono text-xs font-semibold uppercase tracking-[0.16em]">
+              <Button size="default" className="gap-2 shrink-0">
                 <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Create Monitor</span>
+                <span className="hidden sm:inline">Create Alert</span>
                 <span className="sm:hidden">Create</span>
               </Button>
             </DropdownMenuTrigger>
@@ -93,14 +91,14 @@ export function AlertManager() {
               <DropdownMenuItem onClick={() => setShowCreateWizard(true)}>
                 <Bell className="h-4 w-4 mr-2" />
                 <div>
-                  <div className="font-medium">Quick Monitor</div>
+                  <div className="font-medium">Quick Alert</div>
                   <div className="text-xs text-muted-foreground">Manual setup</div>
                 </div>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowSemanticCreator(true)}>
                 <Brain className="h-4 w-4 mr-2" />
                 <div>
-                  <div className="font-medium">Judgment-Assisted</div>
+                  <div className="font-medium">AI-Assisted</div>
                   <div className="text-xs text-muted-foreground">Describe in plain English</div>
                 </div>
               </DropdownMenuItem>
@@ -116,12 +114,12 @@ export function AlertManager() {
         </div>
         
         {/* Hero Metric - Active Alerts - Mobile Optimized */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-surface/55 p-3 sm:justify-start sm:gap-6">
+        <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-6 p-3 bg-muted/30 rounded-xl">
           <div className="text-center">
             <div className="text-2xl sm:text-4xl font-bold bg-gradient-to-br from-primary to-primary/80 bg-clip-text text-transparent mb-0.5">
               {activeAlerts.length}
             </div>
-            <div className="text-[10px] sm:text-sm font-medium text-muted-foreground">Active Monitors</div>
+            <div className="text-[10px] sm:text-sm font-medium text-muted-foreground">Active Alerts</div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-muted-foreground">
             <span className="flex items-center gap-0.5">

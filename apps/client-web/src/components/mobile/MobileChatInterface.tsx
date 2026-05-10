@@ -3,13 +3,14 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Mic, Send, MessageSquare, Volume2, Sparkles, Plus } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Bot, Mic, Send, MoreVertical, MessageSquare, Volume2, Sparkles, Plus } from 'lucide-react';
 import { SoundWaveIcon } from './SoundWaveIcon';
 import { toast } from '@/hooks/use-toast';
-import { MessageActions } from '@/components/ui/message-actions';
+import { MessageActions, CompactMessageActions } from '@/components/ui/message-actions';
 import { ConversationExport } from '@/components/ui/conversation-export';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
+import { useLongPress } from '@/hooks/useLongPress';
 import { triggerHaptic } from '@/utils/haptics';
 import { TradingViewChatChart } from '@/components/charts/TradingViewChatChart';
 import { OmniScoreQuadrantBoard, QuadrantProject } from '@/components/OmniScoreQuadrantBoard';
@@ -17,33 +18,27 @@ import { SourceCitation, Source } from '@/components/SourceCitation';
 import { SourcesPanel } from '@/components/SourcesPanel';
 import { apiClient } from '@/services/api-client';
 import { useAuthenticatedApi } from '@/hooks/useAuthenticatedApi';
-import {
-  CoinetMark,
-  ConfidenceMeter,
-  SignalStackCard,
-  SystemLabel,
-} from '@/components/coinet/TerminalPrimitives';
 
 const suggestedPrompts = [
   {
-    title: "BTC Judgment",
-    subtitle: "State, cause, contradiction, confidence",
-    prompt: "Run a structured judgment on Bitcoin: state, cause, thesis, contradictions, timing, and confidence."
+    title: "Analyze Bitcoin Trends",
+    subtitle: "Get insights on Bitcoin price movements",
+    prompt: "Can you analyze the current Bitcoin trends and provide insights on price movements?"
   },
   {
-    title: "Signal Stack",
-    subtitle: "Derivatives, on-chain, liquidity, sentiment",
-    prompt: "Build a signal stack across derivatives, on-chain, sentiment, liquidity, narratives, and risk."
+    title: "Market Opportunities",
+    subtitle: "Find trading opportunities in crypto",
+    prompt: "What are the best trading opportunities in the cryptocurrency market right now?"
   },
   {
-    title: "Contradictions",
-    subtitle: "Find what can break the thesis",
-    prompt: "Check what contradicts the current crypto market thesis and how much risk it creates."
+    title: "Risk Assessment",
+    subtitle: "Evaluate portfolio risk levels",
+    prompt: "Help me assess the risk levels of my current cryptocurrency portfolio"
   },
   {
-    title: "Scenario Paths",
-    subtitle: "Base, expansion, invalidation",
-    prompt: "Map base case, bullish expansion, and bearish invalidation scenarios for the current market."
+    title: "Technical Analysis",
+    subtitle: "Chart patterns and indicators",
+    prompt: "Provide technical analysis for the top cryptocurrencies using chart patterns"
   }
 ];
 
@@ -54,29 +49,9 @@ interface Message {
   timestamp: string;
   timestampMs: number;
   isRead?: boolean;
-  charts?: ChatChart[];
+  charts?: any[];
   sources?: Source[];
 }
-
-type ChatChartProject = {
-  name?: string;
-  ticker?: string;
-  qs?: number;
-  os?: number | null;
-  pos?: number;
-  posAdj?: number;
-  confidence?: number;
-  nmiTier?: string;
-};
-
-type ChatChart = {
-  type?: string;
-  symbol?: string;
-  interval?: string;
-  projects?: ChatChartProject[];
-};
-
-type TradingViewInterval = React.ComponentProps<typeof TradingViewChatChart>["interval"];
 
 interface MobileChatInterfaceProps {
   className?: string;
@@ -233,7 +208,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
       });
 
       // Convert backend response to frontend message format
-      const charts = apiResponse.data.message.charts as ChatChart[] | undefined;
+      const charts = apiResponse.data.message.charts as any[] | undefined;
       console.log('📊 Mobile: Charts received from backend:', charts);
       console.log('📊 Mobile: Chart types:', charts?.map(c => c?.type));
       
@@ -315,7 +290,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
         },
       });
 
-      const charts = apiResponse.data.message.charts as ChatChart[] | undefined;
+      const charts = apiResponse.data.message.charts as any[] | undefined;
       const newMessage: Message = {
         id: apiResponse.data.message.id,
         type: 'assistant',
@@ -369,7 +344,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
     toast({ title: "Message exported", description: "Message saved to file" });
   };
 
-  const renderCharts = (charts: ChatChart[]) => {
+  const renderCharts = (charts: any[]) => {
     if (!charts || charts.length === 0) return null;
     
     console.log('📊 Mobile: Rendering charts:', charts);
@@ -381,7 +356,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
           
           if (chart?.type === 'omniscore-quadrant' && Array.isArray(chart.projects)) {
             console.log('📊 Mobile: Rendering OmniScore quadrant with projects:', chart.projects);
-            const projects: QuadrantProject[] = chart.projects.map((p) => ({
+            const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
               name: p.ticker || p.name || 'Project',
               ticker: p.ticker,
               qs: p.qs ?? 0,
@@ -406,7 +381,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
               <TradingViewChatChart
                 key={`tradingview-${index}`}
                 symbol={chart.symbol || 'BTCUSD'}
-                interval={(chart.interval || '1H') as TradingViewInterval}
+                interval={(chart.interval || '1H') as any}
                 isMobile={true}
               />
             );
@@ -421,47 +396,35 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
   };
 
   return (
-    <div className={cn("coinet-terminal-bg flex h-full flex-col", className)}>
+    <div className={cn("flex flex-col h-full bg-background", className)}>
       {/* Main Chat Area */}
       <div className="flex-1 overflow-hidden relative">
         <ScrollArea ref={scrollAreaRef} className="h-full">
           <div className="flex flex-col gap-4 p-4 pb-24">
             {messages.length === 0 ? (
               /* Welcome State with Suggested Prompts */
-              <div className="flex min-h-[30vh] flex-col justify-center space-y-5">
-                <div className="space-y-4">
-                  <CoinetMark showWordmark />
-                  <SystemLabel>Crypto Judgment AI</SystemLabel>
-                  <h2 className="coinet-display text-3xl font-semibold leading-tight">
-                    Stop reading fragments.
+              <div className="flex flex-col items-center justify-center h-full min-h-[30vh] space-y-6">
+                <div className="text-center space-y-4">
+                  <div className="w-12 h-12 mx-auto bg-accent rounded-full flex items-center justify-center">
+                    <Bot className="w-6 h-6 text-foreground" />
+                  </div>
+                  <h2 className="text-2xl font-medium text-foreground">
+                    How can I help you today?
                   </h2>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Ask Coinet for market state, contradictions, scenarios, and earned confidence.
-                  </p>
                 </div>
-
-                <SignalStackCard
-                  signals={[
-                    { label: "Derivatives", value: "Pressure rising", tone: "risk" },
-                    { label: "On-chain", value: "Accumulation stable", tone: "positive" },
-                    { label: "AI Judgment", value: "Constructive, not clean" },
-                  ]}
-                  className="p-4"
-                />
-                <ConfidenceMeter value={74} description="Sample conviction layer for mobile terminal output." />
-
-                <div className="w-full space-y-3">
+                
+                <div className="w-full max-w-md space-y-3">
                   <div className="grid gap-2">
                     {suggestedPrompts.map((prompt, index) => (
                       <button
                         key={index}
                         onClick={() => handleSuggestedPrompt(prompt.prompt)}
-                        className="group rounded-xl border border-border/70 bg-surface/70 p-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-surface-secondary"
+                        className="group text-left p-4 rounded-xl border border-border bg-surface hover:bg-surface-secondary transition-all duration-200"
                       >
-                        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                        <div className="font-medium text-sm text-foreground">
                           {prompt.title}
                         </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground mt-1">
                           {prompt.subtitle}
                         </div>
                       </button>
@@ -493,10 +456,10 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                       message.type === 'user' ? 'text-right' : 'text-left'
                     )}>
                       <div className={cn(
-                        "inline-block rounded-2xl p-3 break-words sm:p-4",
+                        "inline-block p-3 sm:p-4 rounded-2xl break-words",
                         message.type === 'user'
-                          ? "ml-auto max-w-[85%] bg-primary text-primary-foreground shadow-brand"
-                          : "max-w-[95%] border border-border/70 bg-surface/75 text-foreground shadow-glow sm:max-w-[85%]"
+                          ? "bg-primary text-primary-foreground ml-auto max-w-[85%]"
+                          : "bg-surface text-foreground border border-border max-w-[95%] sm:max-w-[85%]"
                       )}>
                         {/* Charts first for assistant messages */}
                         {message.type === 'assistant' && message.charts && message.charts.length > 0 && (
@@ -561,7 +524,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
       {/* Simplified Chat Bar - Smooth Keyboard Handling */}
       <div 
         ref={composerRef}
-        className="fixed left-0 right-0 z-50 border-t border-border/70 bg-[#030712]/92 backdrop-blur-xl"
+        className="fixed left-0 right-0 bg-card border-t border-border z-50"
         style={{ 
           bottom: 0,
           paddingBottom: '8px',
@@ -579,17 +542,14 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
             <SheetTrigger asChild>
               <button
                 onClick={() => triggerHaptic('light')}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border/70 bg-surface/70 transition-colors hover:bg-muted/80"
+                className="flex-shrink-0 w-9 h-9 rounded-full bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center"
               >
                 <Plus className="w-5 h-5 text-muted-foreground" />
               </button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="h-[300px] border-border/70 bg-[#070B1F] pb-8">
+            <SheetContent side="bottom" className="h-[300px] pb-8">
               <SheetHeader className="text-center pb-4">
-                <SheetTitle className="text-lg font-semibold">Add Evidence</SheetTitle>
-                <SheetDescription>
-                  Attach evidence that can support a market judgment.
-                </SheetDescription>
+                <SheetTitle className="text-lg font-semibold">Add Attachment</SheetTitle>
               </SheetHeader>
               <div className="space-y-2 px-1">
                 <Button
@@ -598,7 +558,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                   onClick={() => toast({ title: "Photo", description: "Photo picker would open here." })}
                 >
                   <div className="text-left">
-                    <div className="font-medium text-foreground">Image Evidence</div>
+                    <div className="font-medium text-foreground">📷 Photo</div>
                     <div className="text-sm text-muted-foreground">Upload an image</div>
                   </div>
                 </Button>
@@ -608,7 +568,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                   onClick={() => toast({ title: "Document", description: "Document picker would open here." })}
                 >
                   <div className="text-left">
-                    <div className="font-medium text-foreground">Document Evidence</div>
+                    <div className="font-medium text-foreground">📄 Document</div>
                     <div className="text-sm text-muted-foreground">Upload a file</div>
                   </div>
                 </Button>
@@ -618,7 +578,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                   onClick={() => toast({ title: "Chart", description: "Chart selector would open here." })}
                 >
                   <div className="text-left">
-                    <div className="font-medium text-foreground">Market Chart</div>
+                    <div className="font-medium text-foreground">📊 Chart</div>
                     <div className="text-sm text-muted-foreground">Add market data</div>
                   </div>
                 </Button>
@@ -635,12 +595,12 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
               onKeyPress={handleKeyPress}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              placeholder="Ask for judgment..."
+              placeholder="Ask anything"
               autoResize
               minHeight={36}
               maxHeight={100}
               className={cn(
-                "min-h-[36px] max-h-[100px] resize-none rounded-[20px] border border-border/70 bg-surface/80 px-3 py-2 text-[15px] text-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/60 focus-visible:ring-offset-0",
+                "min-h-[36px] max-h-[100px] resize-none px-3 py-2 bg-muted text-foreground text-[15px] placeholder:text-muted-foreground rounded-[20px] border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
                 inputValue.trim() ? "pr-10" : "pr-3"
               )}
               disabled={isTyping}
@@ -654,7 +614,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                   handleSendMessage();
                 }}
                 disabled={isTyping}
-                className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-brand transition-colors hover:bg-brand-primary-light"
+                className="absolute right-1 bottom-1 w-7 h-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center justify-center"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>
@@ -669,10 +629,10 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                 handleVoiceInput();
               }}
               className={cn(
-                "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border/70 transition-colors",
+                "flex-shrink-0 w-9 h-9 rounded-full transition-colors flex items-center justify-center",
                 isRecording
                   ? "bg-red-500 text-white animate-pulse"
-                  : "bg-surface/70 text-muted-foreground hover:bg-muted/80"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
               )}
             >
               <Mic className="w-4 h-4" />
@@ -689,25 +649,22 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
             <SheetTrigger asChild>
               <button
                 onClick={() => triggerHaptic('light')}
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border/70 bg-surface/70 transition-colors hover:bg-muted/80"
+                className="flex-shrink-0 w-9 h-9 rounded-full bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center"
               >
                 <SoundWaveIcon className="w-5 h-5 text-muted-foreground" />
               </button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="h-[450px] border-border/70 bg-[#070B1F] pb-8">
+            <SheetContent side="bottom" className="h-[450px] pb-8">
               <SheetHeader className="text-center pb-4">
-                <SheetTitle className="text-lg font-semibold">Terminal Options</SheetTitle>
-                <SheetDescription>
-                  Manage the current judgment conversation and mobile terminal preferences.
-                </SheetDescription>
+                <SheetTitle className="text-lg font-semibold">Chat Options</SheetTitle>
               </SheetHeader>
               
               <ScrollArea className="h-full">
                 <div className="space-y-6 px-1">
                   {/* Chat Management */}
                   <div className="space-y-3">
-                    <h4 className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                      Judgment Management
+                    <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                      Chat Management
                     </h4>
                     
                     {/* Export Conversation */}

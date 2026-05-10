@@ -35,7 +35,6 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { triggerHaptic } from "@/utils/haptics";
-import { SystemLabel } from "@/components/coinet/TerminalPrimitives";
 
 interface AgentManagerProps {
   onCreateAgent: () => void;
@@ -96,34 +95,31 @@ export function AgentManager({ onCreateAgent, onEditAgent, onSelectAgent }: Agen
   return (
     <div className={`space-y-4 sm:space-y-6 ${isMobile ? 'p-4 pb-24' : 'p-6'}`}>
       {/* Header */}
-      <div className="coinet-panel p-5 sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+      <div className="flex flex-col gap-3 sm:gap-4">
         <div>
-          <SystemLabel>Judgment Modules</SystemLabel>
-          <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Build market judgment modules</h2>
-          <p className="mt-2 max-w-2xl text-xs text-muted-foreground sm:text-sm">
-            Specialized AI modules that monitor evidence, test contradictions, and structure market conviction.
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Agents</h2>
+          <p className="text-muted-foreground text-xs sm:text-sm">
+            Your specialized AI assistants
           </p>
         </div>
         <Button 
           onClick={onCreateAgent} 
           size="default"
-          className="coinet-cta w-full font-mono text-xs font-semibold uppercase tracking-[0.16em] sm:w-auto"
+          className="w-full sm:w-auto"
         >
           <Plus className="w-5 h-5 mr-2" />
-          Create Module
+          Create Agent
         </Button>
-      </div>
       </div>
 
       {/* Active Agent Card */}
       {activeAgent && (
-        <Card className="border-primary/40 bg-primary/10 shadow-glow">
+        <Card className="border-primary/50 bg-primary/5">
           <CardHeader className="p-3 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex items-center gap-3 flex-1">
-                  <div
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-primary/30 text-base font-bold text-white shadow-glow sm:h-14 sm:w-14 sm:text-xl"
+                <div 
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl flex items-center justify-center text-white font-bold text-base sm:text-xl shrink-0"
                   style={{ backgroundColor: activeAgent.color }}
                 >
                   {getAgentInitials(activeAgent.name)}
@@ -131,9 +127,9 @@ export function AgentManager({ onCreateAgent, onEditAgent, onSelectAgent }: Agen
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
                     <CardTitle className="text-base sm:text-xl truncate">{activeAgent.name}</CardTitle>
-                      <Badge variant="default" className="w-fit gap-1 text-xs">
+                    <Badge variant="default" className="gap-1 text-xs w-fit">
                       <Zap className="w-3 h-3" />
-                      Active Judgment
+                      Active
                     </Badge>
                   </div>
                   <p className="text-muted-foreground text-xs sm:text-sm line-clamp-2">{activeAgent.description}</p>
@@ -150,14 +146,14 @@ export function AgentManager({ onCreateAgent, onEditAgent, onSelectAgent }: Agen
       {/* Quick Switch - Wrapping Row */}
       {agents.length > 1 && (
         <div className="space-y-2">
-          <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Quick Switch</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">Quick Switch</h3>
           <div className="flex flex-wrap gap-2 overflow-x-hidden">
             {agents.map((agent) => (
               <button
                 key={agent.id}
                 onClick={() => handleActivateAgent(agent)}
                 className={`flex-shrink-0 flex flex-col items-center gap-1.5 p-2 rounded-lg border-2 transition-all hover:border-primary/50 ${
-                  activeAgent?.id === agent.id ? 'border-primary bg-primary/10 shadow-glow' : 'border-border/40 bg-surface/40'
+                  activeAgent?.id === agent.id ? 'border-primary bg-primary/5' : 'border-transparent'
                 }`}
               >
                 <Avatar className="w-10 h-10" style={{ backgroundColor: agent.color }}>
