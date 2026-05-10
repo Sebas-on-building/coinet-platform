@@ -25,12 +25,41 @@ import { SourcesPanel } from "@/components/SourcesPanel";
 import { apiClient } from "@/services/api-client";
 import { useAuthenticatedApi } from "@/hooks/useAuthenticatedApi";
 import { OmniScoreQuadrantBoard, QuadrantProject } from "@/components/OmniScoreQuadrantBoard";
+import {
+  CoinetMark,
+  ConfidenceMeter,
+  ContradictionCard,
+  JudgmentCard,
+  SignalStackCard,
+  SystemLabel,
+  TerminalPanel,
+} from "@/components/coinet/TerminalPrimitives";
+
+type ChatChartProject = {
+  name?: string;
+  ticker?: string;
+  qs?: number;
+  os?: number | null;
+  pos?: number;
+  posAdj?: number;
+  confidence?: number;
+  nmiTier?: string;
+};
+
+type ChatChart = {
+  type?: string;
+  symbol?: string;
+  interval?: string;
+  projects?: ChatChartProject[];
+};
+
+type TradingViewInterval = React.ComponentProps<typeof TradingViewChatChart>["interval"];
 
 interface Message {
   id: string;
   type: "user" | "assistant";
   content: string;
-  charts?: any[];
+  charts?: ChatChart[];
   timestamp: number;
   isRead?: boolean;
   sources?: Source[];
@@ -39,6 +68,51 @@ interface Message {
 interface ChatInterfaceProps {
   activeAgent?: CustomAgent | null;
 }
+
+const terminalPrompts = [
+  {
+    label: "RUN JUDGMENT",
+    title: "BTC market state",
+    prompt: "Run a structured judgment on Bitcoin: state, cause, thesis, contradictions, timing, and confidence.",
+  },
+  {
+    label: "CHECK CONTRADICTIONS",
+    title: "Leverage risk",
+    prompt: "Check whether the current crypto market thesis is weakened by leverage, liquidity, or sentiment contradictions.",
+  },
+  {
+    label: "VIEW THE STACK",
+    title: "Signal stack",
+    prompt: "Build a signal stack across derivatives, on-chain, sentiment, liquidity, narratives, and risk.",
+  },
+];
+
+const sampleJudgmentRows = [
+  {
+    label: "State",
+    value: "BTC remains structurally strong, but short-term leverage is crowded.",
+  },
+  {
+    label: "Cause",
+    value: "Spot demand is stable while derivatives pressure is rising faster than liquidity support.",
+  },
+  {
+    label: "Thesis",
+    value: "Continuation is possible, but cleaner after a leverage reset.",
+  },
+  {
+    label: "Timing",
+    value: "Short-term risk. Mid-term structure intact.",
+  },
+];
+
+const sampleSignals = [
+  { label: "Derivatives", value: "Pressure rising", tone: "risk" as const },
+  { label: "On-chain", value: "Accumulation stable", tone: "positive" as const },
+  { label: "Sentiment", value: "Attention cooling" },
+  { label: "Liquidity", value: "Support intact", tone: "positive" as const },
+  { label: "AI Judgment", value: "Constructive, not clean" },
+];
 
 export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
   // Sync Clerk auth with API client
@@ -117,7 +191,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
     return null;
   };
 
-  const renderChatCharts = (charts: any[]) => {
+  const renderChatCharts = (charts: ChatChart[]) => {
     if (!charts || charts.length === 0) {
       console.log('📊 ChatInterface: No charts to render');
       return null;
@@ -139,7 +213,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
         if (chart?.type === "omniscore-quadrant" && Array.isArray(chart.projects)) {
           console.log('📊 ChatInterface: Rendering OmniScore quadrant with projects:', chart.projects);
           
-          const projects: QuadrantProject[] = chart.projects.map((p: any) => ({
+          const projects: QuadrantProject[] = chart.projects.map((p) => ({
             name: p.ticker || p.name || "Project",
             ticker: p.ticker,
             qs: p.qs ?? 0,
@@ -176,7 +250,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
           <div key={index} className={cn("mb-6", isMobile ? "mb-4" : "mb-6")}>
             <TradingViewChatChart
               symbol={chart.symbol || "BTCUSD"}
-              interval={(chart.interval || "1H") as any}
+              interval={(chart.interval || "1H") as TradingViewInterval}
               isMobile={isMobile}
             />
           </div>
@@ -203,7 +277,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
               type: msg.role === 'assistant' ? 'assistant' : 'user',
               content: msg.content,
               sources: msg.sources,
-              charts: msg.charts as any[] | undefined,
+              charts: msg.charts as ChatChart[] | undefined,
               timestamp: new Date(msg.createdAt).getTime(),
               isRead: true,
             }));
@@ -261,7 +335,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
       }
 
       // Convert backend response to frontend message format
-      const charts = apiResponse.data.message.charts as any[] | undefined;
+      const charts = apiResponse.data.message.charts as ChatChart[] | undefined;
       console.log('📊 Charts received from backend:', charts);
       console.log('📊 Charts type:', typeof charts);
       console.log('📊 Charts is array:', Array.isArray(charts));
@@ -416,11 +490,11 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
 
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="coinet-terminal-bg flex h-full flex-col overflow-hidden">
       {/* Responsive centered layout */}
       <div className={cn(
         "flex-1 flex flex-col overflow-hidden w-full relative",
-        !isMobile && "max-w-4xl mx-auto"
+        !isMobile && "max-w-6xl mx-auto"
       )}>
         {/* Subtle Agent Pill - Top Right (Only when agent active) */}
         {activeAgent && (
@@ -431,7 +505,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 px-3 rounded-full bg-background/95 backdrop-blur-sm border-border/50 hover:bg-accent/50 transition-all duration-200 shadow-sm"
+                    className="h-8 rounded-full border-border/70 bg-surface/90 px-3 font-mono text-[11px] uppercase tracking-[0.14em] shadow-glow backdrop-blur-sm transition-all duration-200 hover:bg-accent/50"
                   >
                     <div 
                       className="w-2 h-2 rounded-full mr-2"
@@ -468,45 +542,56 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
           {/* Messages Container */}
           <ScrollArea className="flex-1">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 px-4">
-                {/* Primary Heading */}
-                <div className="text-center mb-12">
-                  <h1 className="text-5xl font-bold text-foreground mb-4 animate-fade-in">
-                    {activeAgent ? `${activeAgent.name}` : 'What can I analyze for you?'}
-                  </h1>
-                  
-                  <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                    {activeAgent 
-                      ? activeAgent.personality
-                      : 'Get AI-powered market insights and trading intelligence'}
-                  </p>
-                </div>
-                
-                {/* 3 Visual Quick Action Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-3xl">
-                  <button
-                    onClick={() => setInputValue("Show me the current market overview")}
-                    className="group p-8 rounded-2xl border-2 border-border/50 bg-gradient-to-br from-card to-card/50 hover:from-accent/50 hover:to-accent/30 hover:border-primary/50 transition-all duration-300 hover:scale-105 hover:shadow-xl"
-                  >
-                    <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">📊</div>
-                    <h3 className="text-lg font-semibold text-foreground">Market Overview</h3>
-                  </button>
-                  
-                  <button
-                    onClick={() => setInputValue("Create an alert for Bitcoin")}
-                    className="group p-8 rounded-2xl border-2 border-border/50 bg-gradient-to-br from-card to-card/50 hover:from-accent/50 hover:to-accent/30 hover:border-primary/50 transition-all duration-300 hover:scale-105 hover:shadow-xl"
-                  >
-                    <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎯</div>
-                    <h3 className="text-lg font-semibold text-foreground">Create Alert</h3>
-                  </button>
-                  
-                  <button
-                    onClick={() => setInputValue("Build a custom trading agent")}
-                    className="group p-8 rounded-2xl border-2 border-border/50 bg-gradient-to-br from-card to-card/50 hover:from-accent/50 hover:to-accent/30 hover:border-primary/50 transition-all duration-300 hover:scale-105 hover:shadow-xl"
-                  >
-                    <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🤖</div>
-                    <h3 className="text-lg font-semibold text-foreground">Custom Agent</h3>
-                  </button>
+              <div className="px-4 py-10 sm:px-6 lg:py-14">
+                <div className="grid gap-8 lg:grid-cols-[1.04fr_0.96fr] lg:items-center">
+                  <div className="space-y-8">
+                    <div className="space-y-5">
+                      <CoinetMark showWordmark size="lg" />
+                      <SystemLabel>Market Intelligence Terminal</SystemLabel>
+                      <div className="space-y-4">
+                        <h1 className="coinet-display max-w-4xl text-5xl font-semibold leading-[0.94] sm:text-6xl lg:text-7xl">
+                          {activeAgent ? activeAgent.name : "Crypto Judgment AI"}
+                        </h1>
+                        <p className="coinet-body-copy max-w-2xl text-base sm:text-lg">
+                          {activeAgent
+                            ? activeAgent.personality
+                            : "Coinet turns fragmented crypto data into ranked market judgment, showing what is happening, why it matters, what contradicts it, and how much confidence it deserves."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {terminalPrompts.map((item) => (
+                        <button
+                          key={item.label}
+                          onClick={() => setInputValue(item.prompt)}
+                          className="group coinet-panel-subtle p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-brand"
+                        >
+                          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+                            {item.label}
+                          </div>
+                          <div className="mt-3 text-sm font-medium text-foreground">{item.title}</div>
+                          <div className="mt-4 coinet-signal-line opacity-40 transition-opacity group-hover:opacity-100" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4">
+                    <JudgmentCard rows={sampleJudgmentRows} />
+                    <div className="grid gap-4 sm:grid-cols-[1fr_0.78fr]">
+                      <SignalStackCard signals={sampleSignals} />
+                      <div className="grid gap-4">
+                        <ConfidenceMeter
+                          value={74}
+                          description="High conviction, but dependent on liquidity support holding."
+                        />
+                        <ContradictionCard>
+                          Bullish structure remains valid, but leverage is becoming crowded. A flush becomes more likely before continuation.
+                        </ContradictionCard>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -523,8 +608,8 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                     isMobile ? "gap-3 max-w-full" : "gap-6 max-w-5xl mx-auto"
                   )}>
                     {message.type === 'assistant' && (
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 md:w-5 md:h-5 text-primary-foreground" />
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 shadow-glow md:h-10 md:w-10">
+                        <Bot className="h-4 w-4 text-primary md:h-5 md:w-5" />
                       </div>
                     )}
                     
@@ -536,10 +621,10 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                          </div>
                        )}
                        
-                       <div className={`rounded-2xl md:rounded-3xl px-4 md:px-6 py-3 md:py-4 ${
+                       <div className={`rounded-2xl px-4 py-3 md:px-6 md:py-4 ${
                          message.type === 'user'
-                           ? 'bg-primary text-primary-foreground shadow-sm'
-                           : 'bg-background/80 backdrop-blur-sm border border-border/50 text-foreground shadow-sm'
+                           ? 'bg-primary text-primary-foreground shadow-brand'
+                           : 'border border-border/70 bg-surface/70 text-foreground shadow-glow backdrop-blur-sm'
                        }`}>
                          {/* Text explanation */}
                          {message.content && (
@@ -581,8 +666,8 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                      </div>
                     
                     {message.type === 'user' && (
-                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                        <User className="w-5 h-5 text-muted-foreground" />
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-muted/80">
+                        <User className="h-5 w-5 text-muted-foreground" />
                       </div>
                     )}
                   </div>
@@ -600,8 +685,8 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
             <div ref={messagesEndRef} />
           </ScrollArea>
           
-          {/* ChatGPT-style floating input area */}
-          <div className="border-t border-border/50 bg-background/50 backdrop-blur-sm sticky bottom-0 md:relative">
+          {/* Judgment terminal input area */}
+          <div className="sticky bottom-0 border-t border-border/60 bg-[#030712]/82 backdrop-blur-xl md:relative">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
               <div className="relative">
                 {/* Attached Files Preview */}
@@ -628,13 +713,13 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
 
                 <div className="relative group">
                   {/* Gradient Glow Effect on Focus */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl sm:rounded-3xl blur-xl opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/10 to-[#7B61FF]/10 blur-xl opacity-0 transition-opacity duration-300 group-focus-within:opacity-100 sm:rounded-3xl" />
                   
                   <div className={cn(
-                    "relative flex items-center gap-2 bg-background/20 border-2 rounded-2xl sm:rounded-3xl p-4 min-h-[64px] shadow-lg transition-all duration-300",
+                    "relative flex min-h-[64px] items-center gap-2 rounded-2xl border p-4 shadow-glow transition-all duration-300 sm:rounded-3xl",
                     inputValue.trim() || isFocused
-                      ? "ring-2 ring-blue-500/60 ring-offset-2 ring-offset-background border-transparent shadow-[0_0_20px_rgba(59,130,246,0.3)]"
-                      : "border-border/30 hover:border-border/50"
+                      ? "border-primary/70 bg-surface/90 ring-1 ring-primary/50 shadow-brand"
+                      : "border-border/70 bg-surface/70 hover:border-primary/40"
                   )}>
                   {/* Hidden File Input */}
                   <input
@@ -653,7 +738,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="shrink-0 h-10 w-10 rounded-full hover:bg-muted/70 mobile-tap-target transition-colors"
+                          className="mobile-tap-target h-10 w-10 shrink-0 rounded-full hover:bg-muted/70"
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isLoading}
                           aria-label="Attach file"
@@ -674,7 +759,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="shrink-0 h-10 w-10 rounded-full hover:bg-muted/70 mobile-tap-target transition-colors"
+                          className="mobile-tap-target h-10 w-10 shrink-0 rounded-full hover:bg-muted/70"
                           disabled={isLoading}
                           aria-label="Voice input"
                         >
@@ -697,12 +782,12 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                       placeholder={
                         activeAgent 
                           ? `Ask ${activeAgent.name} anything...` 
-                          : "What would you like to analyze?"
+                          : "Ask Coinet to run judgment..."
                       }
                       autoResize
                       minHeight={48}
                       maxHeight={160}
-                      className="min-h-[48px] max-h-[160px] resize-none border-0 bg-transparent px-0 py-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-base leading-7 placeholder:text-muted-foreground/50 w-full"
+                      className="min-h-[48px] max-h-[160px] w-full resize-none border-0 bg-transparent px-0 py-0 text-base leading-7 placeholder:text-muted-foreground/55 focus-visible:ring-0 focus-visible:ring-offset-0"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
@@ -721,10 +806,10 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                           disabled={!inputValue.trim() || isLoading}
                           size="sm"
                           className={cn(
-                            "h-11 w-11 p-0 rounded-full flex-shrink-0 transition-all duration-200 relative mobile-tap-target",
+                            "mobile-tap-target relative h-11 w-11 flex-shrink-0 rounded-full p-0 transition-all duration-200",
                             !inputValue.trim() || isLoading
-                              ? "bg-zinc-800/50 text-zinc-600 cursor-not-allowed opacity-40"
-                              : "bg-white text-black hover:bg-zinc-100 active:scale-90 shadow-lg hover:shadow-xl"
+                              ? "cursor-not-allowed bg-muted/60 text-muted-foreground opacity-50"
+                              : "bg-primary text-primary-foreground shadow-brand hover:bg-brand-primary-light active:scale-90"
                           )}
                           aria-label="Send message"
                         >
@@ -741,8 +826,8 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                 </div>
               </div>
 
-              <p className="text-xs text-muted-foreground/30 mt-3 sm:mt-4 text-center hidden sm:block">
-                {activeAgent ? `${activeAgent.name} AI` : 'Coinet AI'} can make mistakes. Consider checking important information.
+              <p className="mt-3 hidden text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/50 sm:mt-4 sm:block">
+                Judgment is structured conviction, not certainty. Verify important market decisions.
               </p>
             </div>
           </div>

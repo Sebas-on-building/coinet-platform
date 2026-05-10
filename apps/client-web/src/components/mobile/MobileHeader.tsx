@@ -1,5 +1,5 @@
 import { MobileNavigation } from './MobileNavigation';
-import coinetLogo from '@/assets/coinet-logo.png';
+import { CoinetMark } from '@/components/coinet/TerminalPrimitives';
 
 interface MobileHeaderProps {
   activeItem: string;
@@ -9,7 +9,7 @@ interface MobileHeaderProps {
 
 export function MobileHeader({ activeItem, onItemClick, title = "Coinet AI" }: MobileHeaderProps) {
   return (
-    <header className="lg:hidden sticky top-0 z-40 w-full bg-surface border-b border-border safe-area-top">
+    <header className="safe-area-top sticky top-0 z-40 w-full border-b border-border/70 bg-[#030712]/90 backdrop-blur-xl lg:hidden">
       <div className="flex h-12 items-center justify-between px-4">
         {/* Left - Hamburger Menu */}
         <div data-mobile-menu-trigger>
@@ -20,11 +20,7 @@ export function MobileHeader({ activeItem, onItemClick, title = "Coinet AI" }: M
         </div>
         
         {/* Center - Logo */}
-        <img 
-          src={coinetLogo} 
-          alt="Coinet" 
-          className="h-10 object-contain"
-        />
+        <CoinetMark showWordmark size="sm" />
         
         {/* Right - Empty space for balance */}
         <div className="w-9 h-9" />

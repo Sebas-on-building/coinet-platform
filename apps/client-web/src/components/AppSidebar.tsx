@@ -1,18 +1,13 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { 
   MessageSquare, 
   Bot, 
   Bell,
   BellRing,
   Pin,
-  Crown,
-  ChevronDown
 } from "lucide-react";
-import coinetLogo from "@/assets/coinet-logo.png";
-import { useLocation } from "react-router-dom";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CoinetMark, SystemLabel } from "@/components/coinet/TerminalPrimitives";
 import {
   Sidebar,
   SidebarContent,
@@ -28,14 +23,13 @@ import {
   useSidebar,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 // Core navigation - Simplified to 3 primary actions
 const coreFeatures = [
-  { id: "chat", label: "Chat", icon: MessageSquare },
-  { id: "agents", label: "Agents", icon: Bot },
-  { id: "alerts", label: "Alerts", icon: Bell },
+  { id: "chat", label: "Judgment", icon: MessageSquare },
+  { id: "agents", label: "Modules", icon: Bot },
+  { id: "alerts", label: "Monitors", icon: Bell },
 ];
 
 // Mock recent chats data with timestamps (newest first)
@@ -106,44 +100,23 @@ interface AppSidebarProps {
   onToggleNotifications?: () => void;
 }
 
-export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotifications = false, onToggleNotifications }: AppSidebarProps) {
+export function AppSidebar({ activeItem, onItemClick, onToggleNotifications }: AppSidebarProps) {
   const { state } = useSidebar();
-  const location = useLocation();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [pinnedChats, setPinnedChats] = useState<string[]>(() => {
     const stored = localStorage.getItem('pinnedChats');
     return stored ? JSON.parse(stored) : mockRecentChats.filter(chat => chat.pinned).map(chat => chat.id);
   });
   const [hoveredChat, setHoveredChat] = useState<string | null>(null);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  // Debounce search query (300ms)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const unreadCount = 0;
 
   // Filter and organize recent chats (pinned first, then by date)
   const { pinnedChats: filteredPinned, regularChats: filteredRegular } = useMemo(() => {
-    let chats = mockRecentChats;
-    
-    if (debouncedSearchQuery.trim()) {
-      chats = chats.filter(chat => 
-        chat.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        chat.preview.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-      );
-    }
-    
+    const chats = mockRecentChats;
     const pinned = chats.filter(chat => pinnedChats.includes(chat.id));
     const regular = chats.filter(chat => !pinnedChats.includes(chat.id));
     
     return { pinnedChats: pinned, regularChats: regular };
-  }, [debouncedSearchQuery, pinnedChats]);
+  }, [pinnedChats]);
 
   const handleItemClick = (itemId: string) => {
     onItemClick(itemId);
@@ -153,23 +126,6 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
     // Handle individual chat selection
     console.log("Selected chat:", chatId);
     onItemClick("recent-chats");
-  };
-
-  const formatTimeAgo = (timestamp: Date) => {
-    const now = new Date();
-    const diffInMinutes = Math.floor((now.getTime() - timestamp.getTime()) / (1000 * 60));
-    
-    if (diffInMinutes < 60) {
-      return `${diffInMinutes}m ago`;
-    } else if (diffInMinutes < 1440) {
-      return `${Math.floor(diffInMinutes / 60)}h ago`;
-    } else {
-      return `${Math.floor(diffInMinutes / 1440)}d ago`;
-    }
-  };
-
-  const clearSearch = () => {
-    setSearchQuery("");
   };
 
   const togglePin = (chatId: string, e: React.MouseEvent) => {
@@ -187,7 +143,7 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
 
   return (
     <Sidebar 
-      className="bg-card border-r border-border"
+      className="border-r border-border bg-[#030712]/95"
       collapsible="icon"
       style={{
         "--sidebar-width-icon": "4.5rem" // 72px for better breathing room
@@ -208,31 +164,19 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
           <div className={cn(
             "flex items-center transition-all duration-200",
             state === "collapsed" 
-              ? "justify-center h-11 w-11 rounded-xl bg-primary/10 hover:bg-primary/20" 
+              ? "justify-center h-11 w-11 rounded-xl border border-primary/20 bg-primary/10 hover:bg-primary/20"
               : "gap-2"
           )}>
-            <div className={cn(
-              "flex items-center justify-center transition-all duration-200",
-              state === "collapsed" ? "" : "w-8 h-8"
-            )}>
-              <img 
-                src={coinetLogo} 
-                alt="Coinet AI" 
-                className={cn(
-                  "transition-all duration-200",
-                  state === "collapsed" ? "w-6 h-6" : "w-7 h-7"
-                )} 
-              />
-            </div>
+            <CoinetMark size={state === "collapsed" ? "sm" : "md"} showWordmark={state !== "collapsed"} />
             {state !== "collapsed" && (
-              <span className="text-sm font-semibold">Coinet AI</span>
+              <div className="hidden" aria-hidden="true" />
             )}
           </div>
 
           {/* Toggle Button */}
           <SidebarTrigger 
             className={cn(
-              "h-9 w-9 rounded-lg hover:bg-accent/80 transition-all duration-200"
+              "h-9 w-9 rounded-lg border border-border/60 hover:bg-accent/80 transition-all duration-200"
             )}
           />
         </div>
@@ -241,6 +185,11 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
       <SidebarContent className="flex-1">
         {/* Core Navigation - 3 Primary Actions */}
         <SidebarGroup>
+          {state !== "collapsed" && (
+            <SidebarGroupLabel asChild>
+              <SystemLabel className="px-4 pb-2">Terminal</SystemLabel>
+            </SidebarGroupLabel>
+          )}
           <SidebarGroupContent>
             <SidebarMenu className="gap-2 px-2">
               {coreFeatures.map((item) => {
@@ -250,17 +199,17 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
                     <SidebarMenuButton
                       onClick={() => handleItemClick(item.id)}
                       className={cn(
-                        "transition-all duration-200",
+                        "transition-all duration-200 font-medium",
                         state === "collapsed" 
                           ? "h-11 w-11 p-0 rounded-xl flex items-center justify-center" 
                           : "h-10",
                         isActive(item.id)
                           ? state === "collapsed"
-                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                            : "bg-primary/10"
+                            ? "bg-primary text-primary-foreground shadow-brand"
+                            : "border border-primary/30 bg-primary/10 text-foreground shadow-glow"
                           : state === "collapsed"
                             ? "hover:bg-accent/80 hover:shadow-md"
-                            : "hover:bg-accent"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
                       )}
                       tooltip={state === "collapsed" ? item.label : undefined}
                     >
@@ -283,8 +232,8 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
         {/* Recent Chats Section */}
         {state !== "collapsed" && (
           <SidebarGroup className="flex-1 pt-4">
-            <SidebarGroupLabel className="text-xs text-muted-foreground font-normal px-4 pb-2">
-              Recent
+            <SidebarGroupLabel className="px-4 pb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+              Evidence Trail
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="flex-1">
@@ -292,7 +241,7 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
                   {filteredPinned.length === 0 && filteredRegular.length === 0 ? (
                     <div className="px-4 py-8 text-center">
                       <p className="text-xs text-muted-foreground">
-                        {searchQuery ? "No chats found" : "No recent chats"}
+                        No recent chats
                       </p>
                     </div>
                   ) : (
@@ -306,7 +255,7 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
                             onMouseLeave={() => setHoveredChat(null)}
                           >
                             <SidebarMenuButton 
-                              className="h-9 w-full justify-start gap-2 hover:bg-accent transition-colors px-2 pr-8"
+                              className="h-9 w-full justify-start gap-2 px-2 pr-8 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                               onClick={() => handleChatClick(chat.id)}
                             >
                               <MessageSquare className="w-4 h-4 flex-shrink-0" />
@@ -331,7 +280,7 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
                             onMouseLeave={() => setHoveredChat(null)}
                           >
                             <SidebarMenuButton 
-                              className="h-9 w-full justify-start gap-2 hover:bg-accent transition-colors px-2 pr-8"
+                              className="h-9 w-full justify-start gap-2 px-2 pr-8 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                               onClick={() => handleChatClick(chat.id)}
                             >
                               <MessageSquare className="w-4 h-4 flex-shrink-0" />
@@ -425,16 +374,13 @@ export function AppSidebar({ activeItem, onItemClick, onNavigate, showNotificati
               tooltip={state === "collapsed" ? "User Profile" : undefined}
             >
               {state === "collapsed" ? (
-                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center ring-2 ring-primary/20">
-                  <img src={coinetLogo} alt="User" className="w-4 h-4 object-contain" />
-                </div>
+                <CoinetMark size="sm" />
               ) : (
                 <>
-                  <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
-                    <img src={coinetLogo} alt="User" className="w-5 h-5 object-contain" />
-                  </div>
+                  <CoinetMark size="sm" />
                   <div className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-medium leading-tight">Coinet User</p>
+                    <p className="text-sm font-medium leading-tight">Terminal Access</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Settings</p>
                   </div>
                 </>
               )}

@@ -19,6 +19,7 @@ import {
 import { CustomAgent } from "@/types/agents";
 import { useCustomAgents } from "@/hooks/useCustomAgents";
 import { useToast } from "@/hooks/use-toast";
+import { SystemLabel } from "@/components/coinet/TerminalPrimitives";
 
 interface AgentBuilderProps {
   onClose: () => void;
@@ -31,9 +32,9 @@ const colorOptions = [
 ];
 
 const examplePrompts = [
-  "Create an agent that buys Bitcoin when the price drops 5% and RSI is below 30",
+  "Create a module that judges Bitcoin reset risk when price drops 5% and RSI is below 30",
   "Monitor Ethereum whale transactions and alert me when transfers above $10M happen",
-  "Build a DCA agent that doubles purchases when Fear & Greed index is below 25",
+  "Build a DCA judgment module that increases conviction when Fear & Greed is below 25",
 ];
 
 export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
@@ -61,7 +62,7 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
     if (!nlDescription.trim()) {
       toast({
         title: "Description Required",
-        description: "Please describe what you want your agent to do.",
+        description: "Please describe what market judgment this module should produce.",
         variant: "destructive",
       });
       return;
@@ -73,7 +74,7 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
     // Auto-populate form data
     setFormData(prev => ({
       ...prev,
-      name: prev.name || "Smart Trading Agent",
+      name: prev.name || "Market Judgment Module",
       description: nlDescription,
       systemPrompt: `You are a specialized trading assistant. ${nlDescription}\n\nProvide clear, data-driven recommendations.`,
       expertise: ["Trading", "Market Analysis", "Risk Management"],
@@ -83,8 +84,8 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
     setWizardStep(2);
 
     toast({
-      title: "Agent Interpreted",
-      description: "Your description has been processed.",
+      title: "Module Interpreted",
+      description: "Your judgment module has been structured.",
     });
   };
 
@@ -118,13 +119,13 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
     if (editAgent) {
       updateAgent(editAgent.id, formData);
       toast({
-        title: "Agent Updated",
+        title: "Module Updated",
         description: `${formData.name} has been updated successfully.`,
       });
     } else {
       createAgent(formData);
       toast({
-        title: "Agent Created",
+        title: "Module Created",
         description: `${formData.name} has been created successfully.`,
       });
     }
@@ -133,24 +134,25 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-background/95 backdrop-blur-xl z-50 overflow-auto">
+    <div className="coinet-terminal-bg fixed inset-0 z-50 overflow-auto backdrop-blur-xl">
       <div className="min-h-full p-4 sm:p-6 pb-24 sm:pb-6">
         <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
           {/* Header */}
-          <div className="flex items-center gap-3">
+          <div className="coinet-panel flex items-center gap-3 p-4">
             <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">
-                {editAgent ? "Edit Agent" : "Create Agent"}
+              <SystemLabel>{editAgent ? "Edit Module" : "Module Builder"}</SystemLabel>
+              <h1 className="mt-1 truncate text-xl font-bold sm:text-2xl">
+                {editAgent ? "Edit judgment module" : "Create judgment module"}
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground">
                 {editAgent ? "Update agent configuration" : (
                   <>
-                    {wizardStep === 1 && "What should your agent do?"}
-                    {wizardStep === 2 && "Configure details"}
-                    {wizardStep === 3 && "Review and create"}
+                    {wizardStep === 1 && "Describe what market judgment this module should produce."}
+                    {wizardStep === 2 && "Configure evidence, tone, and operating boundaries."}
+                    {wizardStep === 3 && "Review the module before it enters the terminal."}
                   </>
                 )}
               </p>
@@ -172,17 +174,17 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
 
           {/* Edit Mode - Single Form */}
           {editAgent && (
-            <Card>
+            <Card className="border-border/70 bg-card/80 shadow-glow">
               <CardHeader>
                 <CardTitle className="text-xl flex items-center gap-2">
                   <Bot className="w-5 h-5 text-primary" />
-                  Edit Agent
+                  Edit Judgment Module
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="edit-name">Agent Name</Label>
+                    <Label htmlFor="edit-name">Module Name</Label>
                     <Input
                       id="edit-name"
                       value={formData.name}
@@ -259,7 +261,7 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
                 <div className="flex items-center justify-end pt-4 border-t">
                   <Button onClick={handleSubmit} size="lg">
                     <Sparkles className="w-4 h-4 mr-2" />
-                    Update Agent
+                    Update Module
                   </Button>
                 </div>
               </CardContent>
@@ -272,10 +274,10 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
               <CardHeader>
                 <CardTitle className="text-xl flex items-center gap-2">
                   <Brain className="w-5 h-5 text-primary" />
-                  What should your agent do?
+                  What judgment should this module produce?
                 </CardTitle>
                 <CardDescription>
-                  Describe your agent's purpose in plain English
+                  Describe the market evidence it should read in plain English.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -335,17 +337,17 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
               <CardHeader>
                 <CardTitle className="text-xl flex items-center gap-2">
                   <Bot className="w-5 h-5 text-primary" />
-                  Agent Configuration
+                  Module Configuration
                 </CardTitle>
                 <CardDescription>
-                  Customize your agent's identity and capabilities
+                  Customize the module identity, evidence scope, and response style.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Name and Color */}
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Agent Name</Label>
+                    <Label htmlFor="name">Module Name</Label>
                     <Input
                       id="name"
                       placeholder="e.g., Portfolio Optimizer"
@@ -387,7 +389,7 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
                   <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
-                    placeholder="What does this agent do?"
+                    placeholder="What judgment does this module produce?"
                     value={formData.description}
                     onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                     rows={3}
@@ -444,14 +446,14 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
               <CardHeader>
                 <CardTitle className="text-xl flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-primary" />
-                  Review Agent
+                  Review Module
                 </CardTitle>
                 <CardDescription>
-                  Confirm your agent configuration
+                  Confirm the judgment module before activation.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Agent Preview */}
+                {/* Module Preview */}
                 <div className="flex items-center gap-4 p-4 rounded-lg border bg-muted/30">
                   <div 
                     className="w-16 h-16 rounded-xl flex items-center justify-center text-white font-bold text-2xl"
@@ -493,7 +495,7 @@ export function AgentBuilder({ onClose, editAgent }: AgentBuilderProps) {
                   </Button>
                   <Button onClick={handleSubmit} size="lg">
                     <Sparkles className="w-4 h-4 mr-2" />
-                    {editAgent ? "Update" : "Create"} Agent
+                    {editAgent ? "Update" : "Create"} Module
                   </Button>
                 </div>
               </CardContent>

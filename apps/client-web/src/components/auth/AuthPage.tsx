@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Mail, Lock, User, Loader2 } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { toast } from "sonner";
-import coinetLogo from "@/assets/coinet-logo.png";
+import { CoinetMark, SystemLabel, TerminalPanel } from "@/components/coinet/TerminalPrimitives";
 
 export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -137,20 +137,42 @@ export function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <div className="w-full max-w-[440px] space-y-6">
-        {/* Minimal Logo Header */}
-        <div className="flex items-center justify-center space-x-2">
-          <img src={coinetLogo} alt="Coinet AI" className="w-10 h-10 object-contain" />
-          <span className="text-xl font-semibold text-foreground">Coinet AI</span>
+    <div className="coinet-terminal-bg flex min-h-screen items-center justify-center p-6">
+      <div className="grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_440px] lg:items-center">
+        <div className="hidden space-y-8 lg:block">
+          <CoinetMark showWordmark size="lg" />
+          <div className="space-y-4">
+            <SystemLabel>Market Intelligence Terminal</SystemLabel>
+            <h1 className="coinet-display max-w-2xl text-6xl font-semibold leading-[0.94]">
+              Stop reading the market in fragments.
+            </h1>
+            <p className="coinet-body-copy max-w-xl text-lg">
+              Coinet turns fragmented crypto data into ranked judgment: what is happening, why it matters, what contradicts it, and how much confidence it deserves.
+            </p>
+          </div>
+          <TerminalPanel className="max-w-xl p-5">
+            <SystemLabel>Access Layer</SystemLabel>
+            <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+              {["Judgment", "Stack", "Scenarios"].map((item) => (
+                <div key={item} className="rounded-lg border border-border/60 bg-surface/55 p-3 text-foreground-secondary">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </TerminalPanel>
         </div>
 
+        <div className="space-y-6">
         {/* Auth Card */}
-        <Card className="border-border/40 shadow-lg bg-card">
+        <Card className="border-border/70 bg-card/80 shadow-glow backdrop-blur-xl">
           <CardHeader className="space-y-1 pb-6">
-            <CardTitle className="text-2xl font-bold">Get started</CardTitle>
+            <div className="mb-4 flex justify-center lg:hidden">
+              <CoinetMark showWordmark />
+            </div>
+            <SystemLabel>Terminal Access</SystemLabel>
+            <CardTitle className="text-2xl font-bold">Enter Coinet</CardTitle>
             <CardDescription className="text-base">
-              Sign in to your account or create a new one
+              Access Crypto Judgment AI and the market intelligence stack.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -201,13 +223,13 @@ export function AuthPage() {
 
                   <Button 
                     type="submit" 
-                    className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                    className="coinet-cta h-12 w-full font-mono text-xs font-semibold uppercase tracking-[0.18em] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     disabled={isLoading}
                   >
                     {isLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     ) : null}
-                    Sign In
+                    Enter Terminal
                   </Button>
                 </form>
               </TabsContent>
@@ -282,17 +304,13 @@ export function AuthPage() {
 
                   <Button 
                     type="submit" 
-                    className="w-full h-12 font-medium transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                    style={{
-                      background: 'linear-gradient(135deg, hsl(282 70% 55%), hsl(192 80% 50%))',
-                      color: 'white'
-                    }}
+                    className="coinet-cta h-12 w-full font-mono text-xs font-semibold uppercase tracking-[0.18em] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                     disabled={isLoading}
                   >
                     {isLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
                     ) : null}
-                    Create Account
+                    Request Access
                   </Button>
                 </form>
               </TabsContent>
@@ -304,7 +322,7 @@ export function AuthPage() {
                 <div className="w-full border-t border-border/20" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-4 text-muted-foreground font-medium">Or continue with</span>
+                <span className="bg-card px-4 font-mono text-[10px] font-semibold tracking-[0.22em] text-muted-foreground">Or continue with</span>
               </div>
             </div>
 
@@ -342,16 +360,16 @@ export function AuthPage() {
                 <div className="w-full border-t border-border/20" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-4 text-muted-foreground font-medium">Development</span>
+                <span className="bg-card px-4 font-mono text-[10px] font-semibold tracking-[0.22em] text-muted-foreground">Development</span>
               </div>
             </div>
 
             <Button
               onClick={handleDemoMode}
               disabled={isLoading}
-              className="w-full h-12 bg-primary/80 hover:bg-primary text-primary-foreground transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] font-medium"
+              className="h-12 w-full border border-primary/30 bg-primary/10 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-primary transition-all duration-200 hover:scale-[1.02] hover:bg-primary/20 active:scale-[0.98]"
             >
-              🚀 Enter Demo Mode
+              Enter Demo Terminal
             </Button>
 
           </CardContent>
@@ -377,6 +395,7 @@ export function AuthPage() {
           >
             Privacy Policy
           </a>
+        </div>
         </div>
       </div>
     </div>
