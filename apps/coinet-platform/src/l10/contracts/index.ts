@@ -66,3 +66,12 @@ export * from './l10-persistence-surface';
 export * from './l10-current-authority';
 export * from './l10-evidence-storage';
 export * from './l10-read-surface';
+
+// L10.9 — Closure: Final Definition, Completion, Freeze, Extension,
+//         Downstream Dependency, Ratification Artifact
+export * from './l10-final-definition';
+export * from './l10-completion-standard';
+export * from './l10-freeze-policy';
+export * from './l10-extension-policy';
+export * from './l10-downstream-dependency';
+export * from './l10-ratification-artifact';

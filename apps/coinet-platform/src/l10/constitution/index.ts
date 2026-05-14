@@ -29,3 +29,6 @@ export * from './l10-reliance-audit';
 
 // L10.8 — Persistence-and-serving audit
 export * from './l10-persistence-audit';
+
+// L10.9 — Final / closure audit
+export * from './l10-final-audit';
