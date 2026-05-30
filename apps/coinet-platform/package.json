@@ -9,7 +9,8 @@
   },
   "scripts": {
     "prebuild": "prisma generate --schema=./prisma/schema.prisma",
-    "build": "(tsc --skipLibCheck || true) && echo 'Build completed'",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
     "dev": "pnpm build && pnpm start",
     "dev:ts": "ts-node --transpile-only --files src/index.ts",
     "dev:quick": "pnpm build && node dist/index.js",

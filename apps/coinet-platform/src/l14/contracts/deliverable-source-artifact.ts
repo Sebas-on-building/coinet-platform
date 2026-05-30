@@ -1,0 +1,40 @@
+/**
+ * L14.2 — Deliverable Source Artifact Contract
+ *
+ * §14.2.10 — Closed enumeration of source artifact classes that
+ * may legally feed delivery channels.
+ */
+
+export enum L14DeliverableSourceArtifactClass {
+  L10_HYPOTHESIS_SUMMARY = 'L10_HYPOTHESIS_SUMMARY',
+  L10_HYPOTHESIS_SHIFT_SURFACE = 'L10_HYPOTHESIS_SHIFT_SURFACE',
+  L11_SCORE_SNAPSHOT = 'L11_SCORE_SNAPSHOT',
+  L11_SCORE_ATTRIBUTION_SUMMARY = 'L11_SCORE_ATTRIBUTION_SUMMARY',
+  L12_SCENARIO_SUMMARY = 'L12_SCENARIO_SUMMARY',
+  L12_TRIGGER_INVALIDATION_SUMMARY = 'L12_TRIGGER_INVALIDATION_SUMMARY',
+  L13_FINAL_CHAT_OUTPUT = 'L13_FINAL_CHAT_OUTPUT',
+  L13_FINAL_ALERT_OUTPUT = 'L13_FINAL_ALERT_OUTPUT',
+  L13_FINAL_REPORT_OUTPUT = 'L13_FINAL_REPORT_OUTPUT',
+  L13_FINAL_COMPARISON_OUTPUT = 'L13_FINAL_COMPARISON_OUTPUT',
+  L13_OUTPUT_QUALITY_FACT = 'L13_OUTPUT_QUALITY_FACT',
+  L13_FEEDBACK_SUMMARY_FACT = 'L13_FEEDBACK_SUMMARY_FACT',
+  L13_AUDIT_FACT = 'L13_AUDIT_FACT',
+  L14_CALIBRATION_REVIEW_FACT = 'L14_CALIBRATION_REVIEW_FACT',
+}
+
+export const ALL_L14_DELIVERABLE_SOURCE_ARTIFACT_CLASSES:
+  readonly L14DeliverableSourceArtifactClass[] =
+  Object.values(L14DeliverableSourceArtifactClass);
+
+const FINAL_L13_USER_EMITTABLE = new Set<L14DeliverableSourceArtifactClass>([
+  L14DeliverableSourceArtifactClass.L13_FINAL_CHAT_OUTPUT,
+  L14DeliverableSourceArtifactClass.L13_FINAL_ALERT_OUTPUT,
+  L14DeliverableSourceArtifactClass.L13_FINAL_REPORT_OUTPUT,
+  L14DeliverableSourceArtifactClass.L13_FINAL_COMPARISON_OUTPUT,
+]);
+
+export function l14SourceIsFinalL13UserEmittable(
+  cls: L14DeliverableSourceArtifactClass,
+): boolean {
+  return FINAL_L13_USER_EMITTABLE.has(cls);
+}

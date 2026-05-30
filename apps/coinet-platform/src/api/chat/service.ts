@@ -14,6 +14,44 @@ import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/market-data';
 import { produceJudgment, buildSignalSnapshot } from '../../services/judgment';
 import { formatJudgmentForAI } from '../../services/judgment/debug-view';
+// BTAR-003 — Judgment availability state (Plan 2.1 §4 / Plan 2.2 §7.3 P2-S10).
+// This is a bounded live-path trust modification, not a chat service rewrite.
+// This is judgment availability/failure classification, not a new judgment engine.
+import {
+  createAvailableJudgmentState,
+  createUnavailableJudgmentState,
+  buildUnavailableJudgmentContextForAI,
+} from './judgment-availability';
+import type { JudgmentAvailabilityResult } from './judgment-availability.types';
+// BTAR-004 + FRP-001 — Typed CoinetJudgmentPromptPackage (Plan 2.2 §7.2 P2-S09).
+// This is a bounded live-path trust modification, not a chat service rewrite.
+// This is a prompt bridge replacement, not a new judgment engine and not a
+// new AI service. The LLM still receives text — the text is now deterministically
+// rendered from the typed package rather than from ad-hoc ASCII stuffing.
+import {
+  buildCoinetJudgmentPromptPackage,
+  // BTAR-006: renderCoinetJudgmentPromptPackageForAI is no longer called
+  // directly from service.ts — buildChatTrustContext now owns rendering.
+  // buildCoinetJudgmentPromptPackage remains used for the default-fallback
+  // (no-judgment-block-ran) package at the gate site.
+} from './judgment-prompt-package';
+import type { CoinetJudgmentPromptPackage } from './judgment-prompt-package.types';
+// BTAR-005 — AI Output Safety / Expression Gate (Plan 2.2 §7.4 P2-S11).
+// BTAR-006 note: applyAIOutputSafetyGate is no longer called directly from
+// service.ts — finalizeChatAIResponse now wraps it. The import is preserved
+// here as a documentation reference; the symbol is unused at runtime.
+//   import { applyAIOutputSafetyGate } from './ai-output-safety-gate';
+// BTAR-006 — Bounded trust-seam extraction (Plan 2.2 §7.5 P2-S12).
+// This is a bounded live-path trust extraction, not a chat service rewrite.
+// These modules extract trust-critical seams only; they do not create a new
+// chat runtime, new AI service, or new judgment engine.
+import { buildChatTrustContext, type ChatTrustContext } from './chat-trust-context';
+import { finalizeChatAIResponse } from './chat-ai-response-finalizer';
+// BTAR-008 — Runtime trust evidence (Plan 2.2 §7.5 P2-S12 / §15 telemetry cap).
+// This is minimal runtime trust evidence, not L14 telemetry, not analytics,
+// and not a calibration system. Evidence is metadata-only and never carries
+// raw prompt / rendered context / user message / API keys / provider payloads.
+import { buildChatRuntimeTrustEvidence } from './chat-runtime-trust-evidence';
 import { resolve as resolveCanonical } from '../../services/canonical';
 import { graph as knowledgeGraph } from '../../services/knowledge-graph';
 import { getWhaleContextForAI } from '../../services/whale-data';
@@ -122,6 +160,17 @@ export class ChatService {
 
     // Clear tracked sources at the start of each request
     clearTrackedSources();
+
+    // BTAR-005 — hoisted reference to the CoinetJudgmentPromptPackage built
+    // by the judgment block (BTAR-004). The AI output safety gate consumes
+    // this at the final-output region around line ~1525. If the judgment
+    // block does not run (e.g., no detected coins), this stays undefined and
+    // the gate falls back to a default UNAVAILABLE/UNKNOWN-scope package.
+    let chatJudgmentPackage: CoinetJudgmentPromptPackage | undefined = undefined;
+    // BTAR-008 — hoisted reference to the ChatTrustContext built by the
+    // judgment block (BTAR-006). The runtime trust evidence builder consumes
+    // this at the final-output region for sanitized observability logging.
+    let chatTrustContext: ChatTrustContext | undefined = undefined;
 
     try {
       logger.info('💬 Processing chat message', {
@@ -1112,6 +1161,9 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               },
             });
 
+            // BTAR-003: track judgment availability so the AI prompt cannot
+            // silently pretend structured judgment exists when it does not.
+            let judgmentAvailability: JudgmentAvailabilityResult;
             const judgment = produceJudgment({
               entity_id: judgmentEntityId,
               symbol: resolvedSymbol,
@@ -1127,32 +1179,91 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               } : undefined,
             });
 
-            const judgmentContext = formatJudgmentForAI(judgment);
-            contextParts.push(`
-╔═══════════════════════════════════════════════════════════════════════════════╗
-║  STRUCTURED MARKET JUDGMENT — ${resolvedSymbol}${graphCtx?.sector ? ` (${graphCtx.sector.replace('sector:', '')})` : ''}${graphCtx?.ecosystem ? ` on ${graphCtx.ecosystem.replace('chain:', '')}` : ''}
-╚═══════════════════════════════════════════════════════════════════════════════╝
+            // BTAR-004 + FRP-001 — Build a typed CoinetJudgmentPromptPackage on
+            // every branch. The package is the authoritative AI prompt source for
+            // structured judgment. formatJudgmentForAI() remains exported (FRP-001
+            // §4) but is no longer the authoritative chat bridge.
+            const judgmentScope = {
+              kind: 'ASSET' as const,
+              asset_symbol: resolvedSymbol,
+              asset_name: primaryCoin.symbol,
+            };
 
-${judgmentContext}
+            if (!judgment) {
+              // BTAR-003 §11.1 — falsy judgment must NOT be silently promoted.
+              judgmentAvailability = createUnavailableJudgmentState({
+                reason: 'JUDGMENT_RESULT_EMPTY',
+                component: 'produceJudgment',
+              });
+              // BTAR-006 — bounded trust-seam extraction: trust context (package +
+              // rendered AI context) is now built by chat-trust-context.ts.
+              const trustContext = buildChatTrustContext({
+                availability: judgmentAvailability,
+                judgment: undefined,
+                scope: judgmentScope,
+                source_refs: [],
+              });
+              chatJudgmentPackage = trustContext.promptPackage; // BTAR-005 hoist
+              chatTrustContext = trustContext; // BTAR-008 hoist
+              contextParts.push(trustContext.renderedAIContext);
+              // BTAR-003 compatibility: also push the BTAR-003 marker so any
+              // downstream consumer / test scanning for the BTAR-003 oracle
+              // continues to find it. Both signals are the same truth.
+              contextParts.push(buildUnavailableJudgmentContextForAI(judgmentAvailability));
+              logger.warn('Judgment engine returned empty result — AI prompt marked UNAVAILABLE', {
+                symbol: primaryCoin.symbol,
+                package_id: trustContext.promptPackage.package_id,
+              });
+            } else {
+              judgmentAvailability = createAvailableJudgmentState();
+              // BTAR-006 — bounded trust-seam extraction (see falsy branch above).
+              const trustContext = buildChatTrustContext({
+                availability: judgmentAvailability,
+                judgment,
+                scope: judgmentScope,
+                source_refs: ['produceJudgment', 'buildSignalSnapshot'],
+              });
+              chatJudgmentPackage = trustContext.promptPackage; // BTAR-005 hoist
+              chatTrustContext = trustContext; // BTAR-008 hoist
+              contextParts.push(trustContext.renderedAIContext);
 
-═══════════════════════════════════════════════════════════════════════════════
-IMPORTANT: This is the engine's structured analysis. Use it to ground your
-response. Reference the state, thesis, contradictions, and timing when
-answering questions about this asset. Do NOT contradict this judgment
-without explicit evidence.
-═══════════════════════════════════════════════════════════════════════════════
-`);
-
-            logger.info('Judgment engine context added', {
-              symbol: primaryCoin.symbol,
-              state: judgment.state.primary,
-              thesis: judgment.thesis.primary.hypothesis,
-              confidence: judgment.confidence.overall,
-              contradictions: judgment.contradictions.items.length,
-            });
+              logger.info('Judgment engine context added (package-derived)', {
+                symbol: primaryCoin.symbol,
+                state: judgment.state.primary,
+                thesis: judgment.thesis.primary.hypothesis,
+                confidence: judgment.confidence.overall,
+                contradictions: judgment.contradictions.items.length,
+                availability: judgmentAvailability.state,
+                package_id: trustContext.promptPackage.package_id,
+                policy_version: trustContext.promptPackage.policy_version,
+              });
+            }
           } catch (judgmentError) {
-            logger.warn('Judgment engine failed — continuing without structured judgment', {
+            // BTAR-003 §15 — replace silent fallback with explicit UNAVAILABLE
+            // context block. The AI must NOT receive a prompt that lets it
+            // pretend structured judgment exists when produceJudgment() threw.
+            // BTAR-004 + FRP-001 — emit the typed package on this branch too.
+            const judgmentAvailability = createUnavailableJudgmentState({
+              reason: 'JUDGMENT_ENGINE_THROW',
+              component: 'produceJudgment',
+              error: judgmentError,
+            });
+            // BTAR-006 — bounded trust-seam extraction (see falsy branch above).
+            const trustContext = buildChatTrustContext({
+              availability: judgmentAvailability,
+              judgment: undefined,
+              scope: { kind: 'ASSET', asset_symbol: detectedCoins[0]?.symbol?.toUpperCase() ?? 'UNKNOWN' },
+              source_refs: [],
+            });
+            chatJudgmentPackage = trustContext.promptPackage; // BTAR-005 hoist
+            chatTrustContext = trustContext; // BTAR-008 hoist
+            contextParts.push(trustContext.renderedAIContext);
+            // BTAR-003 compatibility marker (see falsy branch above).
+            contextParts.push(buildUnavailableJudgmentContextForAI(judgmentAvailability));
+            logger.warn('Judgment engine failed — AI prompt marked UNAVAILABLE (no silent fallback)', {
               error: judgmentError instanceof Error ? judgmentError.message : String(judgmentError),
+              availability: judgmentAvailability.state,
+              package_id: trustContext.promptPackage.package_id,
             });
           }
         }
@@ -1441,10 +1552,63 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         : [];
 
       // 7. Prepare assistant response
-      const assistantContent = aiResponse.data.thesis || 
-                               aiResponse.data.summary || 
-                               (aiResponse.data as any).recommendation || 
-                               'I apologize, but I couldn\'t generate a response.';
+      const rawAssistantContent = aiResponse.data.thesis ||
+                                  aiResponse.data.summary ||
+                                  (aiResponse.data as any).recommendation ||
+                                  'I apologize, but I couldn\'t generate a response.';
+
+      // BTAR-005 — Apply AI output safety / expression gate before user delivery.
+      // BTAR-006 — bounded trust-seam extraction: gate orchestration is now
+      // wrapped in `finalizeChatAIResponse` so the same logic is testable in
+      // isolation. If no judgment block ran (no detected coins), fall back to a
+      // default UNAVAILABLE/UNKNOWN-scope package so the gate still enforces
+      // baseline expression rules.
+      const judgmentPackageForGate = chatJudgmentPackage ?? buildCoinetJudgmentPromptPackage({
+        availability: createUnavailableJudgmentState({
+          reason: 'SIGNAL_SNAPSHOT_UNAVAILABLE',
+          component: 'no-judgment-block-ran',
+        }),
+        judgment: undefined,
+        scope: { kind: 'UNKNOWN' },
+        source_refs: [],
+      });
+      const finalized = finalizeChatAIResponse({
+        rawOutput: rawAssistantContent,
+        judgmentPackage: judgmentPackageForGate,
+      });
+      const assistantContent = finalized.finalOutput;
+      if (finalized.gate.decision !== 'ALLOW') {
+        logger.warn('AI output safety gate intervened', {
+          decision: finalized.gate.decision,
+          violations: finalized.gate.violations,
+          policy_version: finalized.gate.policy_version,
+          judgment_status: judgmentPackageForGate.judgment_status,
+          changed: finalized.changed,
+        });
+      }
+
+      // BTAR-008 — Build minimal runtime trust evidence and log it. The
+      // evidence is metadata-only and never carries raw prompt / rendered
+      // context / user message / API keys / provider payloads
+      // (`sensitive_fields_stored` is the literal `false`). If the judgment
+      // block did not run, we use the BTAR-008 builder against a synthesized
+      // UNAVAILABLE/UNKNOWN trust context derived from the same default
+      // package the gate already used.
+      const trustContextForEvidence: ChatTrustContext =
+        chatTrustContext ?? buildChatTrustContext({
+          availability: createUnavailableJudgmentState({
+            reason: 'SIGNAL_SNAPSHOT_UNAVAILABLE',
+            component: 'no-judgment-block-ran',
+          }),
+          judgment: undefined,
+          scope: { kind: 'UNKNOWN' },
+          source_refs: [],
+        });
+      const runtimeTrustEvidence = buildChatRuntimeTrustEvidence({
+        trustContext: trustContextForEvidence,
+        finalization: finalized,
+      });
+      logger.info('Chat runtime trust evidence', runtimeTrustEvidence);
 
       // 8. Store assistant message
       const quadrantChart = (request as any)._omniscoreQuadrantChart;

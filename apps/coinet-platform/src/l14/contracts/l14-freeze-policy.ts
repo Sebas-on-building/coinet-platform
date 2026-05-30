@@ -1,0 +1,99 @@
+/**
+ * L14.10 — Freeze and Extension Policy Contracts
+ *
+ * §14.10.28 / §14.10.29 / §14.10.31 / §14.10.32 / §14.10.33 / §14.10.34
+ */
+
+export enum L14FreezeClass {
+  CONTRACT_FROZEN = 'CONTRACT_FROZEN',
+  POLICY_FROZEN = 'POLICY_FROZEN',
+  GOVERNANCE_FROZEN = 'GOVERNANCE_FROZEN',
+  OUTPUT_SURFACE_FROZEN = 'OUTPUT_SURFACE_FROZEN',
+  LIVE_ROLLOUT_FROZEN = 'LIVE_ROLLOUT_FROZEN',
+}
+
+export enum L14ProhibitedPostFreezeChange {
+  ALLOW_ENGAGEMENT_AS_TRUTH = 'ALLOW_ENGAGEMENT_AS_TRUTH',
+  ALLOW_AUTOMATIC_LOWER_LAYER_MUTATION = 'ALLOW_AUTOMATIC_LOWER_LAYER_MUTATION',
+  ALLOW_PROPOSAL_AUTO_APPLICATION = 'ALLOW_PROPOSAL_AUTO_APPLICATION',
+  ALLOW_REPAIR_FACT_FABRICATION = 'ALLOW_REPAIR_FACT_FABRICATION',
+  ALLOW_EXPERIMENT_SAFETY_WEAKENING = 'ALLOW_EXPERIMENT_SAFETY_WEAKENING',
+  ALLOW_PUSH_RESERVED_BYPASS = 'ALLOW_PUSH_RESERVED_BYPASS',
+  ALLOW_USER_PREFERENCE_BYPASS = 'ALLOW_USER_PREFERENCE_BYPASS',
+}
+export const ALL_L14_PROHIBITED_POST_FREEZE_CHANGES: readonly L14ProhibitedPostFreezeChange[] =
+  Object.values(L14ProhibitedPostFreezeChange);
+
+export enum L14RecertificationRequiredChange {
+  ADD_NEW_PRODUCTION_DELIVERY_CHANNEL = 'ADD_NEW_PRODUCTION_DELIVERY_CHANNEL',
+  ENABLE_PUSH_ALERTS = 'ENABLE_PUSH_ALERTS',
+  ADD_NEW_ALERT_CLASS = 'ADD_NEW_ALERT_CLASS',
+  CHANGE_PRIORITY_SUPPRESSION_PRECEDENCE = 'CHANGE_PRIORITY_SUPPRESSION_PRECEDENCE',
+  CHANGE_OUTCOME_ALIGNMENT_SEMANTICS = 'CHANGE_OUTCOME_ALIGNMENT_SEMANTICS',
+  CHANGE_EVIDENCE_CONFIDENCE_LADDER = 'CHANGE_EVIDENCE_CONFIDENCE_LADDER',
+  CHANGE_PROPOSAL_RECERTIFICATION_MAPPING = 'CHANGE_PROPOSAL_RECERTIFICATION_MAPPING',
+  CHANGE_REPLAY_REPAIR_HONESTY_LAW = 'CHANGE_REPLAY_REPAIR_HONESTY_LAW',
+  CHANGE_EXPERIMENT_ALLOWED_SURFACES = 'CHANGE_EXPERIMENT_ALLOWED_SURFACES',
+}
+
+export interface L14FreezePolicy {
+  readonly freeze_policy_id: string;
+  readonly freeze_activated: boolean;
+  readonly freeze_activation_level_required:
+    | 'FROZEN_LIVE'
+    | 'ARCHITECTURE_COMPLETE';
+  readonly frozen_surface_refs: readonly string[];
+  readonly frozen_freeze_classes: readonly L14FreezeClass[];
+  readonly prohibited_post_freeze_changes: readonly L14ProhibitedPostFreezeChange[];
+  readonly recertification_required_changes: readonly L14RecertificationRequiredChange[];
+  readonly lineage_refs: readonly string[];
+  readonly replay_hash: string;
+  readonly policy_version: string;
+}
+
+// ── Extension policy ─────────────────────────────────────────────
+
+export enum L14ExtensionClassification {
+  COMPATIBLE_NO_RECERTIFICATION = 'COMPATIBLE_NO_RECERTIFICATION',
+  COMPATIBLE_WITH_LOCAL_RECERTIFICATION = 'COMPATIBLE_WITH_LOCAL_RECERTIFICATION',
+  LAYER_WIDE_RECERTIFICATION_REQUIRED = 'LAYER_WIDE_RECERTIFICATION_REQUIRED',
+  LOWER_LAYER_RATIFICATION_REQUIRED = 'LOWER_LAYER_RATIFICATION_REQUIRED',
+  PROHIBITED = 'PROHIBITED',
+}
+
+export enum L14ProposedChangeClass {
+  ADD_UI_READ_SURFACE = 'ADD_UI_READ_SURFACE',
+  ADD_INTERNAL_DASHBOARD_METRIC = 'ADD_INTERNAL_DASHBOARD_METRIC',
+  ADD_OPERATIONAL_SIGNAL_CLASS = 'ADD_OPERATIONAL_SIGNAL_CLASS',
+  ENABLE_NEW_DELIVERY_CHANNEL = 'ENABLE_NEW_DELIVERY_CHANNEL',
+  MODIFY_SUPPRESSION_POLICY = 'MODIFY_SUPPRESSION_POLICY',
+  MODIFY_CALIBRATION_EVIDENCE_LOGIC = 'MODIFY_CALIBRATION_EVIDENCE_LOGIC',
+  MODIFY_EXPERIMENTATION_SURFACE = 'MODIFY_EXPERIMENTATION_SURFACE',
+  WEAKEN_USER_CONTROL = 'WEAKEN_USER_CONTROL',
+  WEAKEN_TRUTH_BOUNDARY = 'WEAKEN_TRUTH_BOUNDARY',
+}
+
+export interface L14ExtensionRequest {
+  readonly extension_request_id: string;
+  readonly changed_surface_ref: string;
+  readonly change_summary: string;
+  readonly proposed_change_class: L14ProposedChangeClass;
+  readonly expected_semantic_effects: readonly string[];
+  readonly lineage_refs: readonly string[];
+  readonly replay_hash: string;
+  readonly policy_version: string;
+}
+
+// Canonical class → classification mapping.
+export const L14_EXTENSION_CLASSIFICATION_MAP:
+  Readonly<Record<L14ProposedChangeClass, L14ExtensionClassification>> = {
+  [L14ProposedChangeClass.ADD_UI_READ_SURFACE]: L14ExtensionClassification.COMPATIBLE_NO_RECERTIFICATION,
+  [L14ProposedChangeClass.ADD_INTERNAL_DASHBOARD_METRIC]: L14ExtensionClassification.COMPATIBLE_NO_RECERTIFICATION,
+  [L14ProposedChangeClass.ADD_OPERATIONAL_SIGNAL_CLASS]: L14ExtensionClassification.COMPATIBLE_WITH_LOCAL_RECERTIFICATION,
+  [L14ProposedChangeClass.ENABLE_NEW_DELIVERY_CHANNEL]: L14ExtensionClassification.LAYER_WIDE_RECERTIFICATION_REQUIRED,
+  [L14ProposedChangeClass.MODIFY_SUPPRESSION_POLICY]: L14ExtensionClassification.LAYER_WIDE_RECERTIFICATION_REQUIRED,
+  [L14ProposedChangeClass.MODIFY_CALIBRATION_EVIDENCE_LOGIC]: L14ExtensionClassification.LAYER_WIDE_RECERTIFICATION_REQUIRED,
+  [L14ProposedChangeClass.MODIFY_EXPERIMENTATION_SURFACE]: L14ExtensionClassification.LAYER_WIDE_RECERTIFICATION_REQUIRED,
+  [L14ProposedChangeClass.WEAKEN_USER_CONTROL]: L14ExtensionClassification.PROHIBITED,
+  [L14ProposedChangeClass.WEAKEN_TRUTH_BOUNDARY]: L14ExtensionClassification.PROHIBITED,
+};

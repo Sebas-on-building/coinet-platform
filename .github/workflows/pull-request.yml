@@ -35,12 +35,11 @@ jobs:
         env:
           DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/ci_db?schema=public'
           POSTGRES_URL: 'postgresql://postgres:postgres@localhost:5432/ci_db?schema=public'
-      - name: Typecheck
-        run: |
-          timeout 120s pnpm -r --if-present run typecheck || echo "Typecheck timed out - continuing..."
-      - name: Build
-        run: |
-          timeout 300s pnpm -r --if-present run build || echo "Build timed out - continuing..."
+      - name: Backend typecheck (BTAR-CI-001 — truthful gate, Option C blocking)
+        run: pnpm check:backend
+        timeout-minutes: 5
+      - name: Build (BTAR-CI-001 — failure-masking removed; multi-package coverage retained)
+        run: timeout 300s pnpm -r --if-present run build
       - name: Unit Tests
         run: |
           timeout 180s pnpm -r --if-present run test || echo "Tests timed out - continuing..."

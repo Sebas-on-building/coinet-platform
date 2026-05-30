@@ -1,0 +1,60 @@
+/**
+ * L13.6 — Runtime Stage Taxonomy
+ *
+ * §13.6.4 — Closed set of stage names for the deterministic
+ * runtime DAG (§13.6.3.1). The runtime is forward-only and stage-
+ * sealed; arbitrary jumps and bypass around grounding or
+ * expression governance are illegal (§13.6.3.2).
+ */
+
+export enum L13RuntimeStage {
+  REQUEST_INTAKE = 'REQUEST_INTAKE',
+  INTENT_CLASSIFICATION = 'INTENT_CLASSIFICATION',
+  SCOPE_RESOLUTION = 'SCOPE_RESOLUTION',
+  READ_SURFACE_SELECTION = 'READ_SURFACE_SELECTION',
+  INPUT_PACKAGE_BUILD = 'INPUT_PACKAGE_BUILD',
+  PROMPT_TEMPLATE_SELECTION = 'PROMPT_TEMPLATE_SELECTION',
+  PROMPT_ASSEMBLY = 'PROMPT_ASSEMBLY',
+  MODEL_GATEWAY_REQUEST = 'MODEL_GATEWAY_REQUEST',
+  MODEL_RESPONSE_CAPTURE = 'MODEL_RESPONSE_CAPTURE',
+  DRAFT_OUTPUT_PARSE = 'DRAFT_OUTPUT_PARSE',
+  OUTPUT_OBJECT_BUILD = 'OUTPUT_OBJECT_BUILD',
+  GROUNDING_VERIFICATION = 'GROUNDING_VERIFICATION',
+  EXPRESSION_GOVERNANCE = 'EXPRESSION_GOVERNANCE',
+  STYLE_LENGTH_PASS = 'STYLE_LENGTH_PASS',
+  REWRITE_REFUSAL_BLOCK_DECISION = 'REWRITE_REFUSAL_BLOCK_DECISION',
+  FINAL_OUTPUT_GATE = 'FINAL_OUTPUT_GATE',
+  AUDIT_FEEDBACK_HOOK = 'AUDIT_FEEDBACK_HOOK',
+}
+
+export const ALL_L13_RUNTIME_STAGES: readonly L13RuntimeStage[] =
+  Object.values(L13RuntimeStage);
+
+/**
+ * §13.6.3.2 — Forward-only stage order. Used by the runtime audit
+ * to detect bypass attempts.
+ */
+export const L13_RUNTIME_STAGE_ORDER:
+  readonly L13RuntimeStage[] = [
+  L13RuntimeStage.REQUEST_INTAKE,
+  L13RuntimeStage.INTENT_CLASSIFICATION,
+  L13RuntimeStage.SCOPE_RESOLUTION,
+  L13RuntimeStage.READ_SURFACE_SELECTION,
+  L13RuntimeStage.INPUT_PACKAGE_BUILD,
+  L13RuntimeStage.PROMPT_TEMPLATE_SELECTION,
+  L13RuntimeStage.PROMPT_ASSEMBLY,
+  L13RuntimeStage.MODEL_GATEWAY_REQUEST,
+  L13RuntimeStage.MODEL_RESPONSE_CAPTURE,
+  L13RuntimeStage.DRAFT_OUTPUT_PARSE,
+  L13RuntimeStage.OUTPUT_OBJECT_BUILD,
+  L13RuntimeStage.GROUNDING_VERIFICATION,
+  L13RuntimeStage.EXPRESSION_GOVERNANCE,
+  L13RuntimeStage.STYLE_LENGTH_PASS,
+  L13RuntimeStage.REWRITE_REFUSAL_BLOCK_DECISION,
+  L13RuntimeStage.FINAL_OUTPUT_GATE,
+  L13RuntimeStage.AUDIT_FEEDBACK_HOOK,
+];
+
+export function l13RuntimeStageRank(stage: L13RuntimeStage): number {
+  return L13_RUNTIME_STAGE_ORDER.indexOf(stage);
+}
