@@ -159,6 +159,9 @@ checkpoints/
 *.parquet
 data/
 datasets/
+# Exception: omniscore_v3/data is real source code, not a dataset — keep tracked.
+!apps/coinet-platform/src/services/omniscore_v3/data/
+!apps/coinet-platform/src/services/omniscore_v3/data/**
 
 # Jupyter Notebooks
 .ipynb_checkpoints
