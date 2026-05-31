@@ -131,12 +131,13 @@ export function validateEnv(): void {
   // ── AI: at least one key required for chat to work ──────────────────────
   // Graceful mode — warn only; chat will degrade gracefully when both absent.
   const hasAiKey =
+    !!process.env.ANTHROPIC_API_KEY?.trim() ||
     !!process.env.XAI_API_KEY?.trim() ||
     !!process.env.GROK_API_KEY?.trim() ||
     !!process.env.OPENAI_API_KEY?.trim();
   if (!hasAiKey) {
     logger.warn(
-      '[env] XAI_API_KEY / GROK_API_KEY / OPENAI_API_KEY: No AI key configured — ' +
+      '[env] ANTHROPIC_API_KEY / XAI_API_KEY / GROK_API_KEY / OPENAI_API_KEY: No AI key configured — ' +
         'chat endpoints will return degraded responses. ' +
         'Set at least one to enable AI features.'
     );
@@ -178,6 +179,7 @@ export function validateEnv(): void {
     NODE_ENV: process.env.NODE_ENV ?? 'development',
     DATABASE_URL: 'configured',
     JWT_SECRET: jwtUsable ? 'configured' : 'absent (Clerk-only)',
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'configured' : 'absent',
     XAI_API_KEY: process.env.XAI_API_KEY ? 'configured' : 'absent',
     OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'configured' : 'absent',
     CORS_ORIGIN: process.env.CORS_ORIGIN ? 'configured' : 'absent',

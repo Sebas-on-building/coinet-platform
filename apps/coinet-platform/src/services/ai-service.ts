@@ -10,6 +10,7 @@
  */
 
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../utils/logger';
 import { validateAIResponse, quickHallucinationCheck } from './ai-hallucination-guard';
 import { 
@@ -1111,26 +1112,36 @@ ${COINET_JSON_RESPONSE_CONTRACT}
 
 export class AIService {
   private client: OpenAI | null = null;
+  private anthropicClient: Anthropic | null = null;
   private isConfigured: boolean = false;
-  private provider: 'grok' | 'openai' = 'grok';
+  private provider: 'anthropic' | 'grok' | 'openai' = 'anthropic';
 
   constructor() {
-    // Try Grok (xAI) first, then fall back to OpenAI
+    // Provider chain: Anthropic (primary) → Grok (xAI) → OpenAI (fallback).
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
     const grokApiKey = process.env.XAI_API_KEY || process.env.GROK_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
-    
+
     // Log which keys are detected (without exposing the actual key)
     logger.info('🔑 AI Service key detection:', {
+      hasAnthropicKey: !!process.env.ANTHROPIC_API_KEY,
       hasXaiKey: !!process.env.XAI_API_KEY,
       hasGrokKey: !!process.env.GROK_API_KEY,
       hasOpenaiKey: !!process.env.OPENAI_API_KEY,
+      anthropicKeyLength: process.env.ANTHROPIC_API_KEY?.length || 0,
       xaiKeyLength: process.env.XAI_API_KEY?.length || 0,
       openaiKeyLength: process.env.OPENAI_API_KEY?.length || 0,
     });
-    
+
+    const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
     const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    if (grokApiKey) {
-      this.client = new OpenAI({ 
+    if (anthropicApiKey) {
+      this.anthropicClient = new Anthropic({ apiKey: anthropicApiKey });
+      this.provider = 'anthropic';
+      this.isConfigured = true;
+      logger.info('✅ Anthropic (Claude) AI Service initialized', { keyLength: anthropicApiKey.length, model: anthropicModel });
+    } else if (grokApiKey) {
+      this.client = new OpenAI({
         apiKey: grokApiKey,
         baseURL: 'https://api.x.ai/v1',
       });
@@ -1143,8 +1154,84 @@ export class AIService {
       this.isConfigured = true;
       logger.info('✅ OpenAI AI Service initialized', { keyLength: openaiApiKey.length, model: openaiModel });
     } else {
-      logger.error('❌ No AI API key configured! Add XAI_API_KEY or OPENAI_API_KEY to Railway environment variables');
+      logger.error('❌ No AI API key configured! Add ANTHROPIC_API_KEY, XAI_API_KEY, or OPENAI_API_KEY to Railway environment variables');
     }
+  }
+
+  /**
+   * Resolve the active model id for the configured provider.
+   */
+  private resolveModel(): string {
+    if (this.provider === 'anthropic') {
+      return process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+    }
+    if (this.provider === 'grok') {
+      return process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning';
+    }
+    return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  }
+
+  /**
+   * Provider-agnostic chat completion. Dispatches to Anthropic's Messages API
+   * or the OpenAI-compatible Chat Completions API (used by both OpenAI and
+   * Grok via baseURL) and returns a normalized result.
+   *
+   * Anthropic has no native `response_format: json_object`; when jsonMode is
+   * requested we rely on the prompt's JSON instruction + the existing
+   * parseJsonResponse() fence stripping, same as the enforcement-retry path.
+   */
+  private async createChatCompletion(
+    messages: OpenAI.Chat.ChatCompletionMessageParam[],
+    opts: { model: string; temperature?: number; maxTokens: number; jsonMode?: boolean },
+  ): Promise<{ content: string; model: string; totalTokens?: number }> {
+    if (this.provider === 'anthropic') {
+      if (!this.anthropicClient) throw new Error('Anthropic client not configured');
+
+      // Anthropic takes a top-level system string; user/assistant turns go in messages.
+      const systemPrompt = messages
+        .filter((m) => m.role === 'system')
+        .map((m) => (typeof m.content === 'string' ? m.content : ''))
+        .join('\n\n');
+      const turns = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: typeof m.content === 'string' ? m.content : '',
+        }));
+
+      const response = await this.anthropicClient.messages.create({
+        model: opts.model,
+        max_tokens: opts.maxTokens,
+        ...(systemPrompt ? { system: systemPrompt } : {}),
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        messages: turns,
+      });
+
+      const content = response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+      const totalTokens =
+        (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0);
+      return { content, model: response.model, totalTokens };
+    }
+
+    if (!this.client) throw new Error('AI client not configured');
+
+    // GPT-5.2 only supports default temperature (1) - omit for compatibility
+    const isGpt52 = opts.model?.includes('gpt-5.2');
+    const response = await this.client.chat.completions.create({
+      model: opts.model,
+      messages,
+      ...(!isGpt52 && opts.temperature !== undefined && { temperature: opts.temperature }),
+      max_completion_tokens: opts.maxTokens,
+      ...(opts.jsonMode && { response_format: { type: 'json_object' } }),
+    });
+    return {
+      content: response.choices[0]?.message?.content || '',
+      model: response.model,
+      totalTokens: response.usage?.total_tokens,
+    };
   }
 
   /**
@@ -1156,7 +1243,7 @@ export class AIService {
     const useJsonMode = request.useJsonContract ?? false;
 
     try {
-      if (!this.client || !this.isConfigured) {
+      if (!this.isConfigured) {
         throw new Error('AI not configured');
       }
 
@@ -1215,23 +1302,17 @@ export class AIService {
       messages.push({ role: 'user', content: userContent });
 
       // Select model based on provider
-      const model = this.provider === 'grok' 
-        ? (process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning')
-        : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
-
-      // GPT-5.2 only supports default temperature (1) - omit for compatibility
-      const isGpt52 = model?.includes('gpt-5.2');
+      const model = this.resolveModel();
 
       // Call AI with response format for JSON mode
-      const response = await this.client.chat.completions.create({
+      const response = await this.createChatCompletion(messages, {
         model,
-        messages,
-        ...(!isGpt52 && { temperature: useJsonMode ? 0.5 : 0.7 }),
-        max_completion_tokens: 1500,
-        ...(useJsonMode && { response_format: { type: 'json_object' } }), // Force JSON output
+        temperature: useJsonMode ? 0.5 : 0.7,
+        maxTokens: 1500,
+        jsonMode: useJsonMode, // Force JSON output (OpenAI/Grok); prompt-driven for Anthropic
       });
 
-      let content = response.choices[0]?.message?.content || 'I apologize, but I could not generate a response.';
+      let content = response.content || 'I apologize, but I could not generate a response.';
       const processingTime = Date.now() - startTime;
       
       // ═══════════════════════════════════════════════════════════════════════
@@ -1276,17 +1357,12 @@ export class AIService {
             );
             
             // Call AI again with enforcement prompt
-            const enforcementResponse = await this.client.chat.completions.create({
-              model,
-              messages: [
-                { role: 'system', content: enforcementPrompt },
-              ],
-              ...(!isGpt52 && { temperature: 0.3 }),
-              max_completion_tokens: 1500,
-              response_format: { type: 'json_object' },
-            });
-            
-            const enforcementContent = enforcementResponse.choices[0]?.message?.content || '';
+            const enforcementResponse = await this.createChatCompletion(
+              [{ role: 'system', content: enforcementPrompt }],
+              { model, temperature: 0.3, maxTokens: 1500, jsonMode: true },
+            );
+
+            const enforcementContent = enforcementResponse.content || '';
             const enforcementParseResult = parseJsonResponse(enforcementContent);
             
             if (enforcementParseResult.success && enforcementParseResult.data) {
@@ -1388,7 +1464,7 @@ export class AIService {
         processingTime,
         provider: this.provider,
         model: response.model,
-        tokens: response.usage?.total_tokens,
+        tokens: response.totalTokens,
         hallucinationWarnings: hallucinationWarnings.length > 0 ? hallucinationWarnings : undefined,
         jsonMode: useJsonMode,
         jsonIntent: jsonContract?.intent,
@@ -1451,29 +1527,22 @@ export class AIService {
     options: StreamRenderOptions = {}
   ): Promise<string> {
     // Fast path: use local rendering (no AI call)
-    if (!options.useAIPolish || !this.isConfigured || !this.client) {
+    if (!options.useAIPolish || !this.isConfigured) {
       return renderFinalAnswer(jsonContract);
     }
 
     // Slow path: use AI for polish pass
     try {
-      const model = this.provider === 'grok' 
-        ? (process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning')
-        : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
-      const isGpt52 = model?.includes('gpt-5.2');
+      const model = this.resolveModel();
 
       const prompt = buildStreamRendererPrompt(jsonContract);
-      
-      const response = await this.client.chat.completions.create({
-        model,
-        messages: [
-          { role: 'system', content: prompt },
-        ],
-        ...(!isGpt52 && { temperature: 0.3 }),
-        max_completion_tokens: 800,
-      });
 
-      let rendered = response.choices[0]?.message?.content || '';
+      const response = await this.createChatCompletion(
+        [{ role: 'system', content: prompt }],
+        { model, temperature: 0.3, maxTokens: 800 },
+      );
+
+      let rendered = response.content || '';
       
       // Strip any JSON or markdown that might have leaked through
       rendered = rendered.trim();
@@ -1512,7 +1581,16 @@ export class AIService {
 
     try {
       const start = Date.now();
-      await this.client?.models.list();
+      if (this.provider === 'anthropic') {
+        // Anthropic SDK has no models.list; a minimal messages call confirms reachability.
+        await this.anthropicClient?.messages.create({
+          model: this.resolveModel(),
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'ping' }],
+        });
+      } else {
+        await this.client?.models.list();
+      }
       const latency = Date.now() - start;
       return { healthy: true, latency, provider: this.provider };
     } catch (error) {
