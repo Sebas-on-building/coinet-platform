@@ -1150,21 +1150,6 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
-  services/backup-encryption-service:
-    devDependencies:
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.46.1
-        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.46.1
-        version: 8.54.0(eslint@8.57.1)(typescript@5.9.3)
-      eslint:
-        specifier: ^8.57.1
-        version: 8.57.1
-      typescript:
-        specifier: ^5.5.0
-        version: 5.9.3
-
   services/coinet-ai:
     dependencies:
       '@google/generative-ai':
@@ -1489,25 +1474,6 @@ importers:
       ts-node:
         specifier: ^10.9.1
         version: 10.9.2(@swc/core@1.15.11(@swc/helpers@0.5.18))(@types/node@20.19.30)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.5.0
-        version: 5.9.3
-
-  services/encryption-service:
-    dependencies:
-      axios:
-        specifier: ^1.6.0
-        version: 1.13.4
-    devDependencies:
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.46.1
-        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.46.1
-        version: 8.54.0(eslint@8.57.1)(typescript@5.9.3)
-      eslint:
-        specifier: ^8.57.1
-        version: 8.57.1
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -2012,21 +1978,6 @@ importers:
       tsx:
         specifier: ^4.1.4
         version: 4.21.0
-      typescript:
-        specifier: ^5.5.0
-        version: 5.9.3
-
-  services/key-management-service:
-    devDependencies:
-      '@typescript-eslint/eslint-plugin':
-        specifier: ^8.46.1
-        version: 8.54.0(@typescript-eslint/parser@8.54.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
-      '@typescript-eslint/parser':
-        specifier: ^8.46.1
-        version: 8.54.0(eslint@8.57.1)(typescript@5.9.3)
-      eslint:
-        specifier: ^8.57.1
-        version: 8.57.1
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
