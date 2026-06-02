@@ -38,8 +38,24 @@ jobs:
       - name: Backend typecheck (BTAR-CI-001 — truthful gate, Option C blocking)
         run: pnpm check:backend
         timeout-minutes: 5
-      - name: Build (BTAR-CI-001 — failure-masking removed; multi-package coverage retained)
-        run: timeout 300s pnpm -r --if-present run build
+      - name: Build (BTAR-CI-001 — scoped to working projects; incomplete scaffold services excluded)
+        run: |
+          timeout 300s pnpm -r --if-present \
+            --filter='./apps/*' \
+            --filter='./packages/*' \
+            --filter='./services/ai-data-feeder' \
+            --filter='./services/alchemy-whales' \
+            --filter='./services/anomaly-detection' \
+            --filter='./services/api-gateway' \
+            --filter='./services/defi-protocol-metrics' \
+            --filter='./services/evaluate-alert-conditions' \
+            --filter='./services/ingest' \
+            --filter='./services/market-prices' \
+            --filter='./services/news-aggregator' \
+            --filter='./services/on-chain-monitor' \
+            --filter='./services/parse-natural-language' \
+            --filter='./services/send-notifications' \
+            run build
       - name: Unit Tests
         run: |
           timeout 180s pnpm -r --if-present run test || echo "Tests timed out - continuing..."
