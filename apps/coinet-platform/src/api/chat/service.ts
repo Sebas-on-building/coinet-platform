@@ -705,6 +705,13 @@ export class ChatService {
           });
         }
 
+        // BTAR-010 — capture the primary coin's OmniScore (risk + concentration)
+        // computed in the block below so the judgment SignalSnapshot can consume
+        // real security-risk + holder-concentration instead of hardcoded zeros.
+        // Stays null when OmniScore is unavailable (e.g. BTC low-coverage) → the
+        // snapshot then falls back to neutral rather than a false zero.
+        let primaryOmniScore: any = null;
+
         // 14. Add OmniScore v2.3.2 - Production Hardened + Stability Guard
         // Provides: Quality Score (QS), Opportunity Score (OS), Narrative vs Reality Gap (NRG)
         // Features: Reflexivity firewall, 12 production invariants, stability guard, fail-closed
@@ -764,6 +771,8 @@ export class ChatService {
               
               // Include synthetic scores (they have success: true)
               const validScores = omniScores.filter(s => s && s.success);
+              // BTAR-010 — omniScores[i] maps to coinsToAnalyze[i]; [0] is the primary coin.
+              if (omniScores[0] && omniScores[0].success) primaryOmniScore = omniScores[0];
               
               logger.debug('🔍 OmniScore: Valid scores', {
                 count: validScores.length,
@@ -909,6 +918,7 @@ DO NOT improvise or estimate OmniScore values. Instead, inform the user that:
                 });
                 
                 if (omniScore && omniScore.success) {
+                  primaryOmniScore = omniScore; // BTAR-010 capture for judgment snapshot
                   // SUCCESS PATH: OmniScore calculated successfully
                   logger.info('✅ [OmniScore Chat] Using successful OmniScore data', {
                     symbol: primaryCoin.symbol,
@@ -1138,6 +1148,23 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             // available per token; exchange flows + active addresses are not.
             const whaleActivity = await getWhaleActivityForToken(resolvedSymbol).catch(() => null);
 
+            // BTAR-010 — real liquidity (DexScreener-sourced) + OmniScore-derived
+            // security risk & holder concentration. All resolve to undefined when
+            // unavailable so buildSignalSnapshot uses neutral defaults instead of
+            // a false zero. OmniScore risk.score is 0-100, higher = more risk —
+            // direction-aligned with the snapshot's security_risk.
+            const liqRaw: any = (coinPrice as any)?.liquidity;
+            const liquidityUsd = typeof liqRaw === 'number'
+              ? liqRaw
+              : (typeof liqRaw?.usd === 'number' ? liqRaw.usd : 0);
+            const omniRiskScore: number | undefined =
+              typeof primaryOmniScore?.risk?.score === 'number' ? primaryOmniScore.risk.score : undefined;
+            const top10HoldersPct: number | undefined = (() => {
+              const dp = primaryOmniScore?.risk?.segments?.CONC?.dataPoints
+                ?.find((p: any) => p?.key === 'top10_holders_percent');
+              return typeof dp?.raw === 'number' ? dp.raw : undefined;
+            })();
+
             const signals = buildSignalSnapshot({
               dexscreener: {
                 price_change_24h: coinPrice?.changePercent24h ?? coinPrice?.priceChangePercent24h ?? 0,
@@ -1145,7 +1172,7 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                 volume_24h_usd: coinPrice?.volume24h ?? 0,
                 txns_buys_24h: 0,
                 txns_sells_24h: 0,
-                liquidity_usd: 0,
+                liquidity_usd: liquidityUsd, // BTAR-010: real (DexScreener), 0 if unavailable (e.g. BTC majors)
                 pair_age_hours: undefined,
               },
               derivatives: {
@@ -1169,8 +1196,9 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                 exchange_outflow_24h: 0,
                 active_addresses_24h: 0,
               },
-              security: { risk_score: 0 },
-              holders: { top_10_percentage: 0 },
+              // BTAR-010: OmniScore-derived (undefined → neutral fallback, not false 0).
+              security: { risk_score: omniRiskScore },
+              holders: { top_10_percentage: top10HoldersPct },
               sentiment: {
                 score: (sentiment as any)?.overall ?? 0,
                 volume_mentions_24h: (socialV2Result as any)?.volume?.totalMentions24h ?? 0,
