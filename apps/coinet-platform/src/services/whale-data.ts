@@ -358,6 +358,31 @@ export async function getWhaleActivityForToken(symbol: string): Promise<{
 }
 
 /**
+ * Derive a signed 24h whale net-flow in USD from token whale activity.
+ *
+ * Positive = net accumulation (whales net-buying), negative = net distribution
+ * (whales net-selling), 0 = neutral or no data. `volumeUSD24h` is the 24h whale
+ * volume and `netFlow` is the directional classification from alchemy-whales.
+ *
+ * NOTE (honesty): this is the ONLY on-chain flow value alchemy-whales exposes
+ * per token. Exchange inflow/outflow and active-address counts are NOT
+ * available from this source and must not be fabricated by callers.
+ */
+export function deriveWhaleNetFlowUSD(
+  activity: { netFlow?: 'accumulating' | 'distributing' | 'neutral'; volumeUSD24h?: number } | null | undefined,
+): number {
+  if (!activity) return 0;
+  const volume =
+    typeof activity.volumeUSD24h === 'number' && activity.volumeUSD24h > 0
+      ? activity.volumeUSD24h
+      : 0;
+  if (volume === 0) return 0;
+  if (activity.netFlow === 'accumulating') return volume;
+  if (activity.netFlow === 'distributing') return -volume;
+  return 0;
+}
+
+/**
  * Get overall whale activity summary
  */
 export async function getWhaleSummary(): Promise<{

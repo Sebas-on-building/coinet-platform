@@ -54,7 +54,7 @@ import { finalizeChatAIResponse } from './chat-ai-response-finalizer';
 import { buildChatRuntimeTrustEvidence } from './chat-runtime-trust-evidence';
 import { resolve as resolveCanonical } from '../../services/canonical';
 import { graph as knowledgeGraph } from '../../services/knowledge-graph';
-import { getWhaleContextForAI } from '../../services/whale-data';
+import { getWhaleContextForAI, getWhaleActivityForToken, deriveWhaleNetFlowUSD } from '../../services/whale-data';
 import { getEnrichedNewsForCoins, formatEnrichedNewsForAI } from '../../services/news-service';
 import { getMarketSentiment, formatSentimentForAI } from '../../services/sentiment-service';
 import { getSocialSentiment, formatSocialForAI } from '../../services/social-service';
@@ -441,8 +441,15 @@ export class ChatService {
           }
         }
         
+        // BTAR-009 — Context-assembly backstop. A malformed data source must
+        // never abort the whole context block, because the judgment engine runs
+        // AFTER this block — an uncaught throw here would skip produceJudgment()
+        // and surface as "structured judgment unavailable". Per-section
+        // conditions use optional chaining for graceful degradation; this
+        // try/catch is the safety net for any other unforeseen formatter throw.
+        try {
         // 1. Add market data (prefer Enterprise Pipeline with Cache - Step 1.4.1 + 1.4.2)
-        if (enterpriseMarketData && enterpriseMarketData.prices.length > 0) {
+        if (enterpriseMarketData && (enterpriseMarketData.prices?.length ?? 0) > 0) {
           contextParts.push(formatEnterpriseMarketDataForAI(enterpriseMarketData));
           logger.debug('⚡ Enterprise Market Data (Cached) used', { 
             requested: enterpriseMarketData.requestedSymbols.length,
@@ -458,7 +465,7 @@ export class ChatService {
             cacheLatencyMs: (enterpriseMarketData as any).cacheInfo?.latencyMs || 0,
             cacheStale: (enterpriseMarketData as any).cacheInfo?.stale || false,
           });
-        } else if (marketData && marketData.prices.length > 0) {
+        } else if (marketData && (marketData.prices?.length ?? 0) > 0) {
           // Fallback to standard market data
           contextParts.push(formatMarketDataForAI(marketData));
           logger.debug('📊 Standard market data used (fallback)', { 
@@ -478,7 +485,7 @@ export class ChatService {
         }
         
         // 3. Add AI-enriched news intelligence context
-        if (enrichedNews && enrichedNews.articles.length > 0) {
+        if (enrichedNews && (enrichedNews.articles?.length ?? 0) > 0) {
           contextParts.push(formatEnrichedNewsForAI(enrichedNews));
           logger.debug('🧠📰 Enriched news intelligence added', { 
             count: enrichedNews.articles.length,
@@ -499,7 +506,7 @@ export class ChatService {
         }
         
         // 5. Add multi-platform social intelligence context (Step 1.2.1)
-        if (socialIntel && socialIntel.coins.length > 0) {
+        if (socialIntel && (socialIntel.coins?.length ?? 0) > 0) {
           contextParts.push(formatSocialIntelligenceForAI(socialIntel));
           logger.debug('🌐 Social intelligence added', { 
             platforms: socialIntel.activePlatforms.join(','),
@@ -561,7 +568,7 @@ export class ChatService {
         }
         
         // 6.3 Legacy perps data (kept for backward compatibility)
-        if (perpsData && (perpsData.liquidations.length > 0 || perpsData.fundingRates.length > 0)) {
+        if (perpsData && ((perpsData.liquidations?.length ?? 0) > 0 || (perpsData.fundingRates?.length ?? 0) > 0)) {
           // Skip if we already have v2 context
           if (!derivativesV2) {
             contextParts.push(formatPerpsForAI(perpsData));
@@ -574,7 +581,7 @@ export class ChatService {
         }
         
         // 7. Add influencer intelligence context (Step 1.2.3)
-        if (influencerIntel && (influencerIntel.recentPosts.length > 0 || influencerIntel.activeAlerts.length > 0)) {
+        if (influencerIntel && ((influencerIntel.recentPosts?.length ?? 0) > 0 || (influencerIntel.activeAlerts?.length ?? 0) > 0)) {
           contextParts.push(formatInfluencerIntelligenceForAI(influencerIntel));
           logger.debug('👤 Influencer intelligence added', {
             activeInfluencers: influencerIntel.activeInfluencers,
@@ -689,6 +696,15 @@ export class ChatService {
           });
         }
         
+        } catch (contextFormatError) {
+          // Degraded, not fatal: keep whatever context was already assembled and
+          // fall through to the judgment engine below. This guarantees the
+          // judgment block always runs even if a single formatter threw.
+          logger.warn('⚠️ Context formatting failed — degraded, judgment still runs', {
+            error: contextFormatError instanceof Error ? contextFormatError.message : String(contextFormatError),
+          });
+        }
+
         // 14. Add OmniScore v2.3.2 - Production Hardened + Stability Guard
         // Provides: Quality Score (QS), Opportunity Score (OS), Narrative vs Reality Gap (NRG)
         // Features: Reflexivity firewall, 12 production invariants, stability guard, fail-closed
@@ -1117,6 +1133,11 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               return r && r.success && r.duration && r.duration > 5000;
             }).length;
 
+            // Real on-chain whale net-flow from alchemy-whales (best-effort:
+            // returns null on miss/timeout and never throws). Only net-flow is
+            // available per token; exchange flows + active addresses are not.
+            const whaleActivity = await getWhaleActivityForToken(resolvedSymbol).catch(() => null);
+
             const signals = buildSignalSnapshot({
               dexscreener: {
                 price_change_24h: coinPrice?.changePercent24h ?? coinPrice?.priceChangePercent24h ?? 0,
@@ -1140,7 +1161,10 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                 revenue_usd: 0,
               },
               onchain: {
-                whale_net_flow_24h: 0,
+                // Wired from alchemy-whales (real net-flow). Exchange inflow/
+                // outflow + active addresses are NOT exposed by that source —
+                // left at 0 rather than fabricated.
+                whale_net_flow_24h: deriveWhaleNetFlowUSD(whaleActivity),
                 exchange_inflow_24h: 0,
                 exchange_outflow_24h: 0,
                 active_addresses_24h: 0,
