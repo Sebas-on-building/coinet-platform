@@ -1110,11 +1110,26 @@ ${COINET_CORE_PERSONA}
 ${COINET_JSON_RESPONSE_CONTRACT}
 `;
 
+type AIProviderName = 'anthropic' | 'grok' | 'openai';
+
+/**
+ * A configured AI provider with its initialized client and model resolver.
+ * The service holds one entry per available API key, in failover priority
+ * order (Anthropic → Grok → OpenAI).
+ */
+interface ConfiguredProvider {
+  name: AIProviderName;
+  resolveModel: () => string;
+  anthropic?: Anthropic;
+  openai?: OpenAI;
+}
+
 export class AIService {
-  private client: OpenAI | null = null;
-  private anthropicClient: Anthropic | null = null;
+  // Configured providers in failover priority order: Anthropic → Grok → OpenAI.
+  private providers: ConfiguredProvider[] = [];
   private isConfigured: boolean = false;
-  private provider: 'anthropic' | 'grok' | 'openai' = 'anthropic';
+  // Primary (highest-priority configured) provider name; used for metadata/health.
+  private provider: AIProviderName = 'anthropic';
 
   constructor() {
     // Provider chain: Anthropic (primary) → Grok (xAI) → OpenAI (fallback).
@@ -1133,59 +1148,109 @@ export class AIService {
       openaiKeyLength: process.env.OPENAI_API_KEY?.length || 0,
     });
 
-    const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
-    const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    // Initialize every provider whose key is present, in priority order, so a
+    // failed call can fail over to the next at request time (createChatCompletion).
     if (anthropicApiKey) {
-      this.anthropicClient = new Anthropic({ apiKey: anthropicApiKey });
-      this.provider = 'anthropic';
-      this.isConfigured = true;
-      logger.info('✅ Anthropic (Claude) AI Service initialized', { keyLength: anthropicApiKey.length, model: anthropicModel });
-    } else if (grokApiKey) {
-      this.client = new OpenAI({
-        apiKey: grokApiKey,
-        baseURL: 'https://api.x.ai/v1',
+      this.providers.push({
+        name: 'anthropic',
+        anthropic: new Anthropic({ apiKey: anthropicApiKey }),
+        resolveModel: () => process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       });
-      this.provider = 'grok';
-      this.isConfigured = true;
-      logger.info('✅ Grok (xAI) AI Service initialized', { keyLength: grokApiKey.length });
-    } else if (openaiApiKey) {
-      this.client = new OpenAI({ apiKey: openaiApiKey });
-      this.provider = 'openai';
-      this.isConfigured = true;
-      logger.info('✅ OpenAI AI Service initialized', { keyLength: openaiApiKey.length, model: openaiModel });
+    }
+    if (grokApiKey) {
+      this.providers.push({
+        name: 'grok',
+        openai: new OpenAI({ apiKey: grokApiKey, baseURL: 'https://api.x.ai/v1' }),
+        resolveModel: () => process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning',
+      });
+    }
+    if (openaiApiKey) {
+      this.providers.push({
+        name: 'openai',
+        openai: new OpenAI({ apiKey: openaiApiKey }),
+        resolveModel: () => process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      });
+    }
+
+    this.isConfigured = this.providers.length > 0;
+    this.provider = this.providers[0]?.name ?? 'anthropic';
+
+    if (this.isConfigured) {
+      logger.info('✅ AI Service initialized', {
+        primary: this.provider,
+        primaryModel: this.providers[0]?.resolveModel(),
+        failoverChain: this.providers.map((p) => p.name),
+      });
     } else {
       logger.error('❌ No AI API key configured! Add ANTHROPIC_API_KEY, XAI_API_KEY, or OPENAI_API_KEY to Railway environment variables');
     }
   }
 
   /**
-   * Resolve the active model id for the configured provider.
+   * Provider-agnostic chat completion with runtime failover. Attempts each
+   * configured provider in priority order (Anthropic → Grok → OpenAI); if a
+   * call throws, it fails over to the next provider and retries the same
+   * request. Returns the result of the first provider that succeeds, including
+   * which provider actually served it. Throws the last error only if every
+   * provider fails.
    */
-  private resolveModel(): string {
-    if (this.provider === 'anthropic') {
-      return process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+  private async createChatCompletion(
+    messages: OpenAI.Chat.ChatCompletionMessageParam[],
+    opts: { temperature?: number; maxTokens: number; jsonMode?: boolean },
+  ): Promise<{ content: string; model: string; totalTokens?: number; provider: AIProviderName }> {
+    if (this.providers.length === 0) throw new Error('AI client not configured');
+
+    let lastError: unknown;
+    for (let i = 0; i < this.providers.length; i++) {
+      const entry = this.providers[i];
+      try {
+        const result = await this.callProvider(entry, messages, opts);
+        if (i > 0) {
+          logger.warn('⚠️ AI failover succeeded', {
+            failedProviders: this.providers.slice(0, i).map((p) => p.name),
+            servedBy: entry.name,
+          });
+        }
+        return { ...result, provider: entry.name };
+      } catch (error: any) {
+        lastError = error;
+        logger.error('❌ AI provider call failed', {
+          provider: entry.name,
+          attempt: i + 1,
+          totalProviders: this.providers.length,
+          willFailover: i < this.providers.length - 1,
+          errorMessage: error?.message,
+          errorStatus: error?.status,
+          errorCode: error?.code,
+        });
+      }
     }
-    if (this.provider === 'grok') {
-      return process.env.GROK_MODEL || 'grok-4-1-fast-non-reasoning';
-    }
-    return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('All AI providers failed');
   }
 
   /**
-   * Provider-agnostic chat completion. Dispatches to Anthropic's Messages API
-   * or the OpenAI-compatible Chat Completions API (used by both OpenAI and
-   * Grok via baseURL) and returns a normalized result.
+   * Execute a single chat completion against one provider (no failover —
+   * createChatCompletion handles that). Dispatches to Anthropic's Messages API
+   * or the OpenAI-compatible Chat Completions API (OpenAI and Grok via baseURL)
+   * and returns a normalized result. Throws on any failure so the caller can
+   * fail over.
    *
    * Anthropic has no native `response_format: json_object`; when jsonMode is
    * requested we rely on the prompt's JSON instruction + the existing
    * parseJsonResponse() fence stripping, same as the enforcement-retry path.
    */
-  private async createChatCompletion(
+  private async callProvider(
+    entry: ConfiguredProvider,
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
-    opts: { model: string; temperature?: number; maxTokens: number; jsonMode?: boolean },
+    opts: { temperature?: number; maxTokens: number; jsonMode?: boolean },
   ): Promise<{ content: string; model: string; totalTokens?: number }> {
-    if (this.provider === 'anthropic') {
-      if (!this.anthropicClient) throw new Error('Anthropic client not configured');
+    const model = entry.resolveModel();
+
+    if (entry.name === 'anthropic') {
+      if (!entry.anthropic) throw new Error('Anthropic client not configured');
 
       // Anthropic takes a top-level system string; user/assistant turns go in messages.
       const systemPrompt = messages
@@ -1199,8 +1264,8 @@ export class AIService {
           content: typeof m.content === 'string' ? m.content : '',
         }));
 
-      const response = await this.anthropicClient.messages.create({
-        model: opts.model,
+      const response = await entry.anthropic.messages.create({
+        model,
         max_tokens: opts.maxTokens,
         ...(systemPrompt ? { system: systemPrompt } : {}),
         ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
@@ -1216,12 +1281,12 @@ export class AIService {
       return { content, model: response.model, totalTokens };
     }
 
-    if (!this.client) throw new Error('AI client not configured');
+    if (!entry.openai) throw new Error('AI client not configured');
 
     // GPT-5.2 only supports default temperature (1) - omit for compatibility
-    const isGpt52 = opts.model?.includes('gpt-5.2');
-    const response = await this.client.chat.completions.create({
-      model: opts.model,
+    const isGpt52 = model?.includes('gpt-5.2');
+    const response = await entry.openai.chat.completions.create({
+      model,
       messages,
       ...(!isGpt52 && opts.temperature !== undefined && { temperature: opts.temperature }),
       max_completion_tokens: opts.maxTokens,
@@ -1301,12 +1366,9 @@ export class AIService {
       // Add current message with market data and conversation rules
       messages.push({ role: 'user', content: userContent });
 
-      // Select model based on provider
-      const model = this.resolveModel();
-
-      // Call AI with response format for JSON mode
+      // Call AI with response format for JSON mode. The provider and model are
+      // resolved per-attempt inside createChatCompletion, with runtime failover.
       const response = await this.createChatCompletion(messages, {
-        model,
         temperature: useJsonMode ? 0.5 : 0.7,
         maxTokens: 1500,
         jsonMode: useJsonMode, // Force JSON output (OpenAI/Grok); prompt-driven for Anthropic
@@ -1359,7 +1421,7 @@ export class AIService {
             // Call AI again with enforcement prompt
             const enforcementResponse = await this.createChatCompletion(
               [{ role: 'system', content: enforcementPrompt }],
-              { model, temperature: 0.3, maxTokens: 1500, jsonMode: true },
+              { temperature: 0.3, maxTokens: 1500, jsonMode: true },
             );
 
             const enforcementContent = enforcementResponse.content || '';
@@ -1462,7 +1524,7 @@ export class AIService {
         requestId,
         type: request.type,
         processingTime,
-        provider: this.provider,
+        provider: response.provider,
         model: response.model,
         tokens: response.totalTokens,
         hallucinationWarnings: hallucinationWarnings.length > 0 ? hallucinationWarnings : undefined,
@@ -1533,13 +1595,11 @@ export class AIService {
 
     // Slow path: use AI for polish pass
     try {
-      const model = this.resolveModel();
-
       const prompt = buildStreamRendererPrompt(jsonContract);
 
       const response = await this.createChatCompletion(
         [{ role: 'system', content: prompt }],
-        { model, temperature: 0.3, maxTokens: 800 },
+        { temperature: 0.3, maxTokens: 800 },
       );
 
       let rendered = response.content || '';
@@ -1575,26 +1635,27 @@ export class AIService {
    * Health check
    */
   async healthCheck(): Promise<{ healthy: boolean; latency?: number; provider?: string }> {
-    if (!this.isConfigured) {
+    const primary = this.providers[0];
+    if (!primary) {
       return { healthy: false };
     }
 
     try {
       const start = Date.now();
-      if (this.provider === 'anthropic') {
+      if (primary.name === 'anthropic') {
         // Anthropic SDK has no models.list; a minimal messages call confirms reachability.
-        await this.anthropicClient?.messages.create({
-          model: this.resolveModel(),
+        await primary.anthropic?.messages.create({
+          model: primary.resolveModel(),
           max_tokens: 1,
           messages: [{ role: 'user', content: 'ping' }],
         });
       } else {
-        await this.client?.models.list();
+        await primary.openai?.models.list();
       }
       const latency = Date.now() - start;
-      return { healthy: true, latency, provider: this.provider };
+      return { healthy: true, latency, provider: primary.name };
     } catch (error) {
-      return { healthy: false, provider: this.provider };
+      return { healthy: false, provider: primary.name };
     }
   }
 

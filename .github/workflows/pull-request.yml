@@ -56,6 +56,9 @@ jobs:
             --filter='./services/parse-natural-language' \
             --filter='./services/send-notifications' \
             run build
-      - name: Unit Tests
+      - name: Backend trust-suite tests (BTAR-CI-002 — GATING; deterministic chat + judgment-truth + provider-failover suites)
+        run: pnpm --filter coinet-platform run test:ci
+        timeout-minutes: 6
+      - name: Full workspace tests (non-gating smoke; DB/network-dependent suites not yet stabilized)
         run: |
-          timeout 180s pnpm -r --if-present run test || echo "Tests timed out - continuing..."
+          timeout 180s pnpm -r --if-present run test || echo "Non-gating smoke: some tests failed/timed out - continuing..."
