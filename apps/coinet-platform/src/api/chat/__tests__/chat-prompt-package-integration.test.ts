@@ -112,6 +112,13 @@ vi.mock('../../../services/market-data', () => ({
     fetchTime: 0,
   }),
   formatMarketDataForAI: vi.fn().mockReturnValue(''),
+  getGlobalMarketData: vi.fn().mockResolvedValue({
+    btcDominance: 52.4,
+    ethDominance: 17.1,
+    totalMarketCapUsd: 2_300_000_000_000,
+    totalVolume24hUsd: 90_000_000_000,
+    totalMarketCapChange24h: 1.5,
+  }),
 }));
 vi.mock('../../../services/enterprise-market-data-pipeline', () => ({
   fetchCachedEnterpriseMarketPrices: vi.fn().mockResolvedValue({
