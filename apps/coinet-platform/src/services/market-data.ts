@@ -882,6 +882,64 @@ function formatPrice(price: number): string {
 }
 
 // ============================================================================
+// GLOBAL MARKET SNAPSHOT (BTC dominance, total market cap)
+// ============================================================================
+
+export interface GlobalMarketData {
+  btcDominance: number;            // % of total market cap
+  ethDominance: number;            // %
+  totalMarketCapUsd: number;
+  totalVolume24hUsd: number;
+  totalMarketCapChange24h: number; // % change in total market cap (24h)
+}
+
+let globalMarketCache: { data: GlobalMarketData | null; timestamp: number } = { data: null, timestamp: 0 };
+const GLOBAL_MARKET_TTL_MS = 5 * 60 * 1000; // global metrics move slowly; 5-min cache
+
+/**
+ * Real CoinGecko /global fetch — BTC dominance + total market cap.
+ * Returns null on any failure (never throws, never fabricates). Cached 5 min.
+ */
+export async function getGlobalMarketData(): Promise<GlobalMarketData | null> {
+  if (globalMarketCache.data && Date.now() - globalMarketCache.timestamp < GLOBAL_MARKET_TTL_MS) {
+    return globalMarketCache.data;
+  }
+  try {
+    const isPro = !!CONFIG.COINGECKO_API_KEY;
+    const rateLimit = isPro ? CONFIG.RATE_LIMITS.COINGECKO_PRO : CONFIG.RATE_LIMITS.COINGECKO_FREE;
+    await rateLimiter.waitForSlot('COINGECKO', rateLimit);
+
+    const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
+    const headers: Record<string, string> = { 'Accept': 'application/json' };
+    if (isPro) headers['x-cg-pro-api-key'] = CONFIG.COINGECKO_API_KEY;
+
+    const response = await axios.get(`${baseUrl}/global`, { headers, timeout: CONFIG.TIMEOUTS.COINGECKO });
+    const d = response.data?.data;
+    if (!d || typeof d !== 'object') {
+      logger.warn('CoinGecko /global returned no usable data');
+      return null;
+    }
+
+    const result: GlobalMarketData = {
+      btcDominance: typeof d.market_cap_percentage?.btc === 'number' ? d.market_cap_percentage.btc : 0,
+      ethDominance: typeof d.market_cap_percentage?.eth === 'number' ? d.market_cap_percentage.eth : 0,
+      totalMarketCapUsd: typeof d.total_market_cap?.usd === 'number' ? d.total_market_cap.usd : 0,
+      totalVolume24hUsd: typeof d.total_volume?.usd === 'number' ? d.total_volume.usd : 0,
+      totalMarketCapChange24h: typeof d.market_cap_change_percentage_24h_usd === 'number' ? d.market_cap_change_percentage_24h_usd : 0,
+    };
+    globalMarketCache = { data: result, timestamp: Date.now() };
+    logger.debug('🌍 CoinGecko /global fetched', {
+      btcDominance: result.btcDominance,
+      totalMcapChange24h: result.totalMarketCapChange24h,
+    });
+    return result;
+  } catch (error: any) {
+    logger.warn('CoinGecko /global fetch failed', { error: error?.message });
+    return null;
+  }
+}
+
+// ============================================================================
 // DIAGNOSTICS
 // ============================================================================
 

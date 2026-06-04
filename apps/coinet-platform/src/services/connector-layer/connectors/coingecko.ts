@@ -38,17 +38,28 @@ export class CoinGeckoConnector extends BaseConnector<MarketStatusRaw, MarketSna
     _params: ConnectorAcquireParams,
     timeoutMs: number,
   ): Promise<RawAcquisition<MarketStatusRaw>> {
-    const { getMarketDataStatus } = await import('../../market-data');
+    // Real CoinGecko /global snapshot (dominance + total market cap). Previously
+    // this read getMarketDataStatus() — a rate-limit/cache DIAGNOSTICS function
+    // that has no market fields — so dominance/market-cap were silently 0. Now
+    // sourced from the real /global endpoint; missing fields stay undefined
+    // rather than fabricated. (btc/eth price + fear/greed are not part of
+    // /global and remain unset here.)
+    const { getGlobalMarketData } = await import('../../market-data');
 
     const data = await Promise.race([
-      Promise.resolve(getMarketDataStatus()),
+      getGlobalMarketData(),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`CoinGecko timeout after ${timeoutMs}ms`)), timeoutMs),
       ),
     ]);
 
-    if (!data) return { ok: false, error: 'No market data returned from CoinGecko' };
-    return { ok: true, data: data as unknown as MarketStatusRaw, raw: data };
+    if (!data) return { ok: false, error: 'No global market data returned from CoinGecko' };
+    const raw: MarketStatusRaw = {
+      btcDominance: data.btcDominance,
+      totalMarketCap: data.totalMarketCapUsd,
+      totalVolume24h: data.totalVolume24hUsd,
+    };
+    return { ok: true, data: raw, raw };
   }
 
   protected validate(raw: MarketStatusRaw): string[] {

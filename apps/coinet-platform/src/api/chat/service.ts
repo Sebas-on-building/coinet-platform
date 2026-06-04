@@ -11,8 +11,8 @@
 
 import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
-import { fetchPricesForMessage, formatMarketDataForAI } from '../../services/market-data';
-import { produceJudgment, buildSignalSnapshot } from '../../services/judgment';
+import { fetchPricesForMessage, formatMarketDataForAI, getGlobalMarketData } from '../../services/market-data';
+import { produceJudgment, buildSignalSnapshot, type MarketWideInputs } from '../../services/judgment';
 import { formatJudgmentForAI } from '../../services/judgment/debug-view';
 // BTAR-003 — Judgment availability state (Plan 2.1 §4 / Plan 2.2 §7.3 P2-S10).
 // This is a bounded live-path trust modification, not a chat service rewrite.
@@ -324,7 +324,7 @@ export class ChatService {
         // This ensures AI always has SOME context to work with
         const shouldFetchMarketData = ds.fetchMarketData || coinSymbols.length > 0 || request.message.toLowerCase().trim() === 'hey';
         
-        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal] = await Promise.all([
+        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket] = await Promise.all([
           trackFetch('userContext', buildUserContextForAI(userId), true),
           trackFetch('marketData', fetchPricesForMessage(request.message), shouldFetchMarketData),
           trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), (ds.fetchEnterpriseData && coinSymbols.length > 0) || coinSymbols.length > 0),
@@ -341,6 +341,7 @@ export class ChatService {
           trackFetch('derivativesV2', calculateDerivativesIntelligenceV2(), ds.fetchDerivatives),
           trackFetch('comprehensiveDerivatives', calculateComprehensiveDerivativesIntelligence(), ds.fetchDerivatives),
           trackFetch('derivativesFinal', calculateDerivativesIntelligenceFinal(), ds.fetchDerivatives),
+          trackFetch('globalMarket', getGlobalMarketData(), coinSymbols.length > 0), // BTAR-011: real CoinGecko /global (dominance + total mcap)
         ]);
         
         const dataFetchDuration = Date.now() - dataFetchStartTime;
@@ -1216,11 +1217,36 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             // BTAR-003: track judgment availability so the AI prompt cannot
             // silently pretend structured judgment exists when it does not.
             let judgmentAvailability: JudgmentAvailabilityResult;
+
+            // BTAR-011 — Market-wide / regime inputs from already-fetched data.
+            // Only set fields that have a real value; the rest stay defaulted in
+            // the regime engine. These real fields lift macro coverage past the
+            // 0.3 floor so the regime escapes "data_unavailable".
+            const marketWide: Partial<MarketWideInputs> = {};
+            const fearGreedVal = (sentiment as any)?.fearGreed?.value;
+            if (typeof fearGreedVal === 'number') marketWide.fear_greed_index = fearGreedVal;
+            const aggFunding = (derivativesFinal as any)?.funding?.avgRate;
+            if (typeof aggFunding === 'number') marketWide.aggregate_funding_rate = aggFunding;
+            const aggLongShort = (derivativesFinal as any)?.positioning?.ratio;
+            if (typeof aggLongShort === 'number') marketWide.aggregate_long_short_ratio = aggLongShort;
+            const aggOiChange = (derivativesFinal as any)?.openInterest?.total?.change24h;
+            if (typeof aggOiChange === 'number') marketWide.total_open_interest_change_24h = aggOiChange;
+            // BTC 24h change is only a real macro signal when the queried asset
+            // IS BTC (coinPrice is then BTC's own price). Omit otherwise.
+            const btc24h = (coinPrice as any)?.changePercent24h ?? (coinPrice as any)?.priceChangePercent24h;
+            if (resolvedSymbol === 'BTC' && typeof btc24h === 'number') marketWide.btc_price_change_24h = btc24h;
+            // Real global metrics from CoinGecko /global (BTAR-011).
+            const btcDom = (globalMarket as any)?.btcDominance;
+            if (typeof btcDom === 'number' && btcDom > 0) marketWide.btc_dominance = btcDom;
+            const globalMcapChange = (globalMarket as any)?.totalMarketCapChange24h;
+            if (typeof globalMcapChange === 'number') marketWide.total_market_cap_change_24h = globalMcapChange;
+
             const judgment = produceJudgment({
               entity_id: judgmentEntityId,
               symbol: resolvedSymbol,
               chain: resolvedChain,
               signals,
+              marketWide,
               entityContext: graphCtx ? {
                 ecosystem: graphCtx.ecosystem,
                 sector: graphCtx.sector,
