@@ -415,7 +415,13 @@ export class ChatService {
         let contextParts: string[] = [];
         
         // 0. Add user profile context (highest priority - personalization!)
-        if (userContext.hasProfile && userContext.contextString) {
+        // Null-safe: trackFetch returns null if buildUserContextForAI throws
+        // (e.g. a missing / drifted DB table like user_portfolios). This block is
+        // BEFORE the BTAR-009 backstop try, so an unguarded deref here would abort
+        // the entire context assembly and skip produceJudgment() → surface as
+        // "structured judgment unavailable". Judgment does NOT depend on
+        // userContext, so degrade gracefully (skip personalization) instead.
+        if (userContext?.hasProfile && userContext.contextString) {
           contextParts.push(userContext.contextString);
           logger.debug('🧠 User context added', { 
             hasPortfolio: userContext.portfolio.totalHoldings > 0,
@@ -498,7 +504,9 @@ export class ChatService {
         }
         
         // 4. Add whale intelligence context
-        if (whaleContext.isAvailable && whaleContext.contextForAI) {
+        // Null-safe (trackFetch may return null); already inside the BTAR-009
+        // backstop try, so this guard is defense-in-depth for consistency with 418.
+        if (whaleContext?.isAvailable && whaleContext.contextForAI) {
           contextParts.push(whaleContext.contextForAI);
           logger.debug('🐋 Whale context added', { 
             chains: whaleContext.monitoredChains,
