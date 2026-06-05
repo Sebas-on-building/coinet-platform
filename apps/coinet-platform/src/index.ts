@@ -5964,44 +5964,20 @@ async function startServer() {
           const latency = 'latency' in dbHealth ? dbHealth.latency : 0;
           logger.info('✅ Database connected', { latency });
           
-          // Sync database schema automatically (using db push instead of migrations)
-          // Note: This is a safety check - migrations should handle schema changes
-          // db push can fail if there are foreign key constraint violations from orphaned data
-          try {
-            logger.info('🔄 Syncing database schema...');
-            const { execSync } = require('child_process');
-            const path = require('path');
-            const schemaPath = path.join(__dirname, '../prisma/schema.prisma');
-            // Quote schema path to handle spaces in directory names
-            const quotedSchemaPath = `"${schemaPath}"`;
-            // Suppress npm production warning by setting loglevel and filtering stderr
-            // Prisma doesn't install dependencies, so this is safe
-            const env: Record<string, string | undefined> = {
-              ...process.env,
-              npm_config_loglevel: 'error',
-              npm_config_production: 'false',
-            };
-            // Remove NODE_ENV from environment to prevent npm production warning
-            delete env.NODE_ENV;
-            // Use env -u NODE_ENV and filter npm warnings from stderr
-            // Skip foreign key checks temporarily to avoid errors from orphaned data
-            // Migrations should handle data cleanup, this is just a schema sync
-            const command = `env -u NODE_ENV npx prisma db push --schema=${quotedSchemaPath} --accept-data-loss --skip-generate 2>&1 | grep -vE "(npm warn|foreign key)" || { EXIT_CODE=\${PIPESTATUS[0]}; if [ \$EXIT_CODE -ne 0 ] && [ \$EXIT_CODE -ne 141 ]; then exit \$EXIT_CODE; fi; }`;
-            execSync(command, {
-              stdio: 'inherit',
-              env,
-              cwd: path.join(__dirname, '..'),
-              shell: '/bin/bash',
-            });
-            logger.info('✅ Database schema synced');
-          } catch (migrationError) {
-            // Don't fail startup if schema sync fails - migrations handle schema changes
-            // db push is just a safety check and can fail if foreign keys exist but data is orphaned
-            logger.warn('⚠️  Database schema sync skipped (migrations handle schema changes)', {
-              error: migrationError instanceof Error ? migrationError.message : 'Unknown error',
-              note: 'This is expected if migrations have already been applied',
-            });
-          }
+          // Schema changes are applied exclusively by `prisma migrate deploy`,
+          // which runs in the start command (scripts/resolve-failed-migration.sh)
+          // and is the single source of truth for production schema.
+          //
+          // The previous boot-time `prisma db push --accept-data-loss` was REMOVED:
+          //   - It could not apply pending destructive drifts (chat_messages.role,
+          //     user_memories.category type changes, users.passwordHash) without
+          //     --force-reset, so it aborted every boot.
+          //   - It nonetheless ALWAYS logged "✅ Database schema synced", masking the
+          //     failure and creating false confidence that prod schema == schema.prisma.
+          //   - Because it aborted, it never created tables the schema expects.
+          //
+          // Do NOT reintroduce a runtime `db push` against production. Schema drift
+          // must be resolved with reviewed, data-preserving migrations.
         }
       } catch (error) {
         logger.warn('⚠️  Database health check failed or timed out. Server will start anyway.');
