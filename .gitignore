@@ -1,3 +1,7 @@
+# Database backups / dumps (may contain production data — never commit)
+*.dump
+*.sql.gz
+
 # Environment variables
 .env
 .env.local
