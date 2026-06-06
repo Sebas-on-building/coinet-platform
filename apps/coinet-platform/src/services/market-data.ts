@@ -56,12 +56,17 @@ const CONFIG = {
 
   // API Keys (optional - enables pro features)
   COINGECKO_API_KEY: process.env.COINGECKO_API_KEY || '',
+  // CoinGecko plan selector: 'demo' (default when a key is present) or 'pro'.
+  // Demo keys are rejected by the Pro host, so we must route them to the free
+  // host with the demo header. Pro is opt-in only (set COINGECKO_API_PLAN=pro).
+  COINGECKO_API_PLAN: (process.env.COINGECKO_API_PLAN || '').toLowerCase(),
   CMC_API_KEY: process.env.CMC_API_KEY || '',
 
   // Rate Limits (requests per minute)
   RATE_LIMITS: {
     MARKET_PRICES: 60,      // Internal service, generous
-    COINGECKO_FREE: 10,     // Conservative for free tier
+    COINGECKO_FREE: 10,     // Conservative for anonymous/no-key
+    COINGECKO_DEMO: 30,     // Demo (free) key tier
     COINGECKO_PRO: 500,     // Pro tier
     CMC: 30,                // CMC basic tier
     DEXSCREENER: 300,       // DexScreener is generous
@@ -78,6 +83,49 @@ const CONFIG = {
   // Cache TTL (ms)
   CACHE_TTL: 30000,  // 30 seconds
 };
+
+// ============================================================================
+// COINGECKO REQUEST ROUTING (single source of truth)
+// ============================================================================
+
+type CoinGeckoPlan = 'none' | 'demo' | 'pro';
+
+/**
+ * Resolve the active CoinGecko plan. A Demo (free) key is the default whenever a
+ * key is present — Demo keys are rejected by the Pro host, so Pro must be opt-in
+ * via COINGECKO_API_PLAN=pro. No key → anonymous free tier.
+ */
+function resolveCoinGeckoPlan(): CoinGeckoPlan {
+  if (!CONFIG.COINGECKO_API_KEY) return 'none';
+  return CONFIG.COINGECKO_API_PLAN === 'pro' ? 'pro' : 'demo';
+}
+
+/**
+ * Single source of truth for CoinGecko host + auth header + rate limit. Both the
+ * /simple/price and /global call sites use this so routing can never drift.
+ *   - pro  → pro host + x-cg-pro-api-key
+ *   - demo → free host + x-cg-demo-api-key
+ *   - none → free host, no auth header
+ */
+function getCoinGeckoRequest(): {
+  plan: CoinGeckoPlan;
+  baseUrl: string;
+  headers: Record<string, string>;
+  rateLimit: number;
+} {
+  const plan = resolveCoinGeckoPlan();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+
+  if (plan === 'pro') {
+    headers['x-cg-pro-api-key'] = CONFIG.COINGECKO_API_KEY;
+    return { plan, baseUrl: CONFIG.COINGECKO_PRO_URL, headers, rateLimit: CONFIG.RATE_LIMITS.COINGECKO_PRO };
+  }
+  if (plan === 'demo') {
+    headers['x-cg-demo-api-key'] = CONFIG.COINGECKO_API_KEY;
+    return { plan, baseUrl: CONFIG.COINGECKO_BASE_URL, headers, rateLimit: CONFIG.RATE_LIMITS.COINGECKO_DEMO };
+  }
+  return { plan, baseUrl: CONFIG.COINGECKO_BASE_URL, headers, rateLimit: CONFIG.RATE_LIMITS.COINGECKO_FREE };
+}
 
 // ============================================================================
 // TYPES
@@ -318,21 +366,13 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 1: RATE LIMITING
     // ═══════════════════════════════════════════════════════════════════════
-    const isPro = !!CONFIG.COINGECKO_API_KEY;
-    const rateLimit = isPro ? CONFIG.RATE_LIMITS.COINGECKO_PRO : CONFIG.RATE_LIMITS.COINGECKO_FREE;
-    
+    const { plan, baseUrl, headers, rateLimit } = getCoinGeckoRequest();
+
     await rateLimiter.waitForSlot('COINGECKO', rateLimit);
 
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 2: API CALL (with validated IDs only)
     // ═══════════════════════════════════════════════════════════════════════
-    const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
-    const headers: Record<string, string> = { 'Accept': 'application/json' };
-    
-    if (isPro) {
-      headers['x-cg-pro-api-key'] = CONFIG.COINGECKO_API_KEY;
-    }
-
     const response = await axios.get(`${baseUrl}/simple/price`, {
       params: {
         ids: validCoinIds.join(','), // ✅ Only validated IDs
@@ -396,9 +436,9 @@ async function fetchFromCoinGecko(coinIds: string[]): Promise<MarketPrice[]> {
 
     logger.debug('📊 CoinGecko fetch complete', { 
       requested: coinIds.length,
-      validated: validCoinIds.length, 
-      found: prices.length, 
-      isPro,
+      validated: validCoinIds.length,
+      found: prices.length,
+      plan,
       preValidated: validation.cached,
     });
     
@@ -905,13 +945,8 @@ export async function getGlobalMarketData(): Promise<GlobalMarketData | null> {
     return globalMarketCache.data;
   }
   try {
-    const isPro = !!CONFIG.COINGECKO_API_KEY;
-    const rateLimit = isPro ? CONFIG.RATE_LIMITS.COINGECKO_PRO : CONFIG.RATE_LIMITS.COINGECKO_FREE;
+    const { baseUrl, headers, rateLimit } = getCoinGeckoRequest();
     await rateLimiter.waitForSlot('COINGECKO', rateLimit);
-
-    const baseUrl = isPro ? CONFIG.COINGECKO_PRO_URL : CONFIG.COINGECKO_BASE_URL;
-    const headers: Record<string, string> = { 'Accept': 'application/json' };
-    if (isPro) headers['x-cg-pro-api-key'] = CONFIG.COINGECKO_API_KEY;
 
     const response = await axios.get(`${baseUrl}/global`, { headers, timeout: CONFIG.TIMEOUTS.COINGECKO });
     const d = response.data?.data;

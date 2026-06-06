@@ -25,6 +25,12 @@ ETHERSCAN_API_KEY=your_etherscan_key
 OPENAI_API_KEY=sk-your_openai_key
 TELEGRAM_BOT_TOKEN=123456:ABC-your_telegram_token
 
+# CoinGecko — COINGECKO_API_PLAN defaults to 'demo' when COINGECKO_API_KEY is set
+# (Demo keys use api.coingecko.com + x-cg-demo-api-key). Set to 'pro' ONLY after
+# upgrading to a paid Pro key (routes to pro-api.coingecko.com + x-cg-pro-api-key).
+COINGECKO_API_KEY=CG-your_demo_or_pro_key
+COINGECKO_API_PLAN=demo
+
 # Email
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
