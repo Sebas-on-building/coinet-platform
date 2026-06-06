@@ -201,16 +201,21 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
       apiClient.getConversationHistory(currentConversationId)
         .then((response) => {
           if (response.success) {
-            const loadedMessages: Message[] = response.data.conversation.messages.map(msg => ({
-              id: msg.id,
-              type: msg.role === 'assistant' ? 'assistant' : 'user',
-              content: msg.content,
-              sources: msg.sources,
-              charts: msg.charts as any[] | undefined,
-              timestamp: new Date(msg.createdAt).getTime(),
-              isRead: true,
-            }));
-            setMessages(loadedMessages);
+            // Preserve live-only fields (verdict) that aren't persisted to history,
+            // so reloading history right after a send doesn't wipe a rendered verdict.
+            setMessages(prev => {
+              const prevById = new Map(prev.map(m => [m.id, m]));
+              return response.data.conversation.messages.map(msg => ({
+                id: msg.id,
+                type: (msg.role === 'assistant' ? 'assistant' : 'user') as Message['type'],
+                content: msg.content,
+                sources: msg.sources,
+                charts: msg.charts as any[] | undefined,
+                timestamp: new Date(msg.createdAt).getTime(),
+                isRead: true,
+                verdict: prevById.get(msg.id)?.verdict,
+              }));
+            });
           }
         })
         .catch((error) => {
