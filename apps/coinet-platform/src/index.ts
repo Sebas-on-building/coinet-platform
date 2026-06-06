@@ -18,7 +18,7 @@ import authRoutes from './api/auth/routes';
 import feedbackRoutes from './api/feedback/routes';
 import portfolioRoutes from './api/portfolios/routes';
 import { symbolDetector } from './services/symbol-detector';
-import { fetchPricesForMessage, getMarketDataStatus } from './services/market-data';
+import { fetchPricesForMessage, getMarketDataStatus, getCoinGeckoPlanLabel } from './services/market-data';
 import { getWhaleContextForAI } from './services/whale-data';
 import { getMarketSentiment } from './services/sentiment-service';
 import { fetchNews, getNewsServiceStatus, warmNewsCache, startNewsRefreshInterval } from './services/news-service';
@@ -1496,7 +1496,7 @@ app.get('/api/diagnostic', async (req: Request, res: Response) => {
     GROK_API_KEY: process.env.GROK_API_KEY ? '✅ configured' : '⚠️ missing (Grok AI alt)',
     OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '✅ configured' : '⚠️ missing (fallback AI)',
     // Market Data Keys
-    COINGECKO_API_KEY: process.env.COINGECKO_API_KEY ? '✅ pro tier' : '⚠️ free tier (rate limited)',
+    COINGECKO_API_KEY: getCoinGeckoPlanLabel(),
     CMC_API_KEY: process.env.CMC_API_KEY ? '✅ configured' : '⚠️ missing (backup)',
     // News Service Keys
     CRYPTOPANIC_API_KEY: process.env.CRYPTOPANIC_API_KEY ? '✅ pro tier' : '⚠️ free tier (limited)',

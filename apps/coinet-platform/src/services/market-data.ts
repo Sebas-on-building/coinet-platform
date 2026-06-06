@@ -101,6 +101,22 @@ function resolveCoinGeckoPlan(): CoinGeckoPlan {
 }
 
 /**
+ * Human-readable label for the *actually resolved* CoinGecko plan — for the env
+ * diagnostic. Reports real routing, not just key presence (a Demo key is not
+ * "pro tier").
+ */
+export function getCoinGeckoPlanLabel(): string {
+  switch (resolveCoinGeckoPlan()) {
+    case 'pro':
+      return '✅ pro tier (pro host)';
+    case 'demo':
+      return '✅ demo tier (free host + demo header)';
+    default:
+      return '⚠️ no key — anonymous free tier (rate limited)';
+  }
+}
+
+/**
  * Single source of truth for CoinGecko host + auth header + rate limit. Both the
  * /simple/price and /global call sites use this so routing can never drift.
  *   - pro  → pro host + x-cg-pro-api-key
