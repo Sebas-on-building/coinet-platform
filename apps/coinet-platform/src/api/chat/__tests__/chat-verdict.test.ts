@@ -37,8 +37,21 @@ const FULL_JUDGMENT = {
       },
     ],
   },
-  contradictions: { items: [{}] },
-  timing: { phase: 'LATE' },
+  contradictions: {
+    items: [
+      { class: 'volume_vs_liquidity', severity: 'high', summary: 'volume exceeds liquidity', resolvable: false },
+    ],
+    load: 0.36,
+    structural_warning: true,
+  },
+  timing: {
+    phase: 'LATE',
+    score: 72,
+    sequence_position: 7,
+    sequence_total: 9,
+    maturity_warning: true,
+    maturity_note: 'late-cycle positioning',
+  },
   scenario: {
     base_case: 'continuation risk if support breaks',
     bullish_confirmation: 'reclaim of prior range with spot-led volume',
@@ -46,7 +59,13 @@ const FULL_JUDGMENT = {
     next_trigger: 'funding reset toward neutral',
     scenario_confidence: 0.4,
   },
-  confidence: { overall: 0.2 },
+  // Real engine emits a band STRING; score/breakdown carry the numeric depth.
+  confidence: {
+    overall: 'very_low',
+    score: 0.2,
+    breakdown: { market: 0.3, fundamentals: 0.9, onchain: 0.2, narrative: 0.5 },
+    primary_uncertainty: 'on-chain data',
+  },
 };
 
 describe('toChatVerdict', () => {
@@ -65,7 +84,7 @@ describe('toChatVerdict', () => {
       expect(verdict.policyVersion).toBe('coinet-judgment-prompt-package.v1');
     });
 
-    it('projects the structured judgment fields', () => {
+    it('projects the structured judgment fields (headline)', () => {
       expect(verdict.fields).toBeDefined();
       expect(verdict.fields?.state).toBe('thin_liquidity_risk');
       expect(verdict.fields?.thesis).toBe('leverage_driven_squeeze');
@@ -73,7 +92,24 @@ describe('toChatVerdict', () => {
       expect(verdict.fields?.contradiction_summary).toContain('contradiction');
       expect(verdict.fields?.timing_phase).toBe('LATE');
       expect(verdict.fields?.scenario_summary).toContain('continuation');
-      expect(verdict.fields?.confidence_band).toBeTruthy();
+      expect(verdict.fields?.confidence_band).toBe('very_low');
+    });
+
+    it('carries the Phase-2 structured depth through to the client', () => {
+      const f = verdict.fields!;
+      expect(f.cause_detail?.dominant_cluster).toBe('structural_fragility');
+      expect(f.cause_detail?.drivers?.[0]).toMatchObject({ direction: 'negative', family: 'structural_fragility' });
+      expect(f.contradiction_items).toEqual([
+        { class: 'volume_vs_liquidity', severity: 'high', summary: 'volume exceeds liquidity', resolvable: false },
+      ]);
+      expect(f.contradiction_structural_warning).toBe(true);
+      expect(f.timing_detail).toMatchObject({ score: 72, position: 7, total: 9, maturity_warning: true });
+      expect(f.scenario_detail?.bearish_failure).toContain('support');
+      expect(f.confidence_detail?.score).toBe(0.2);
+      expect(f.confidence_detail?.breakdown).toEqual({ market: 0.3, fundamentals: 0.9, onchain: 0.2, narrative: 0.5 });
+      // derived whitepaper fields (no horizons → scenario-branch fallback)
+      expect(f.signal_24h).toContain('reclaim of prior range');
+      expect(f.failure_condition).toContain('loss of support');
     });
 
     it('does not leak internal package fields', () => {

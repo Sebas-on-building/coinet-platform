@@ -149,6 +149,25 @@ vi.mock('../../../services/enterprise-market-data-pipeline', () => ({
 }));
 vi.mock('../../../services/whale-data', () => ({
   getWhaleContextForAI: vi.fn().mockResolvedValue(''),
+  // F-8 fix: service.ts imports getWhaleActivityForToken + deriveWhaleNetFlowUSD
+  // for buildSignalSnapshot. Without these the judgment block threw and the test
+  // silently exercised the UNAVAILABLE path. Provide a realistic AVAILABLE shape.
+  getWhaleActivityForToken: vi.fn().mockResolvedValue({
+    transfers24h: 12,
+    volumeUSD24h: 2_500_000,
+    netFlow: 'accumulating',
+    topBuyers: [],
+    topSellers: [],
+  }),
+  deriveWhaleNetFlowUSD: vi.fn(
+    (activity?: { netFlow?: string; volumeUSD24h?: number } | null) => {
+      const volume = activity && typeof activity.volumeUSD24h === 'number' ? activity.volumeUSD24h : 0;
+      if (volume <= 0) return 0;
+      if (activity?.netFlow === 'accumulating') return volume;
+      if (activity?.netFlow === 'distributing') return -volume;
+      return 0;
+    },
+  ),
 }));
 vi.mock('../../../services/news-service', () => ({
   getEnrichedNewsForCoins: vi.fn().mockResolvedValue([]),
@@ -278,11 +297,24 @@ describe('chat prompt-package integration (BTAR-004)', () => {
       chain: null,
       judged_at: '2026-05-25T00:00:00Z',
       state: { primary: 'Accumulation' },
-      cause: { primary: 'Test cause', summary: 'Test cause summary' },
+      cause: {
+        dominant_cluster: 'spot_demand',
+        secondary_cluster: null,
+        positive_drivers: [
+          { family: 'spot_demand', strength: 0.6, summary: 'Test cause summary', supporting_features: [] },
+        ],
+        negative_drivers: [],
+      },
       thesis: { primary: { hypothesis: 'Trend reversal in early stage' } },
       contradictions: { items: [{ kind: 'test' }] },
       timing: { phase: 'EARLY' },
-      scenario: { primary: { summary: 'Base case continuation' } },
+      scenario: {
+        base_case: 'Base case continuation',
+        bullish_confirmation: 'spot follow-through',
+        bearish_failure: 'rejection at range high',
+        next_trigger: 'volume confirmation',
+        scenario_confidence: 0.5,
+      },
       confidence: { overall: 0.62 },
       evidence: { positive: [], negative: [], unresolved: [], stale: [] },
       scores: {},

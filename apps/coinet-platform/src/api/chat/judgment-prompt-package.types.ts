@@ -40,12 +40,44 @@ export interface CoinetJudgmentPromptPackageScope {
   market_context_ref?: string;
 }
 
+/** One causal driver projected from JudgmentCause.{positive,negative}_drivers[]. */
+export interface CoinetJudgmentDriver {
+  family: string;
+  direction: 'positive' | 'negative';
+  strength?: number;
+  summary?: string;
+}
+
+/** One contradiction projected from JudgmentContradictions.items[]. */
+export interface CoinetJudgmentContradictionItem {
+  class: string;
+  severity: string;
+  summary?: string;
+  resolvable?: boolean;
+}
+
+/** One per-horizon scenario projected from JudgmentScenario.horizons[]. */
+export interface CoinetJudgmentHorizon {
+  horizon: string;
+  confirmation?: string;
+  failure?: string;
+  trigger?: string;
+  invalidation?: string;
+}
+
 /**
  * Projection of judgment fields safe for AI prompt rendering. Every field is
  * optional. The builder MUST NOT invent values that are not present on the
  * underlying judgment object.
+ *
+ * The seven top-level scalar fields are the one-line "headline" projection
+ * (kept stable since BTAR-004). The `*_detail` groups + the two derived
+ * whitepaper fields (`signal_24h`, `failure_condition`) carry the structured
+ * depth (Verdict-depth Phase 2). All are pure projections of an existing
+ * JudgmentOutput — nothing is invented.
  */
 export interface CoinetJudgmentPromptPackageJudgment {
+  // ── Headline (one-liners) ──────────────────────────────────────────────
   state?: string;
   thesis?: string;
   cause?: string;
@@ -53,6 +85,53 @@ export interface CoinetJudgmentPromptPackageJudgment {
   timing_phase?: string;
   scenario_summary?: string;
   confidence_band?: string;
+
+  // ── Structured depth (Phase 2) ─────────────────────────────────────────
+  state_detail?: { secondary?: string; confidence?: number };
+  cause_detail?: {
+    dominant_cluster?: string;
+    secondary_cluster?: string;
+    drivers?: CoinetJudgmentDriver[];
+  };
+  thesis_detail?: {
+    support_score?: number;
+    contradiction_score?: number;
+    confidence?: number;
+    secondary?: string;
+    clarity?: number;
+    ambiguous?: boolean;
+  };
+  contradiction_items?: CoinetJudgmentContradictionItem[];
+  contradiction_load?: number;
+  contradiction_structural_warning?: boolean;
+  timing_detail?: {
+    score?: number;
+    position?: number;
+    total?: number;
+    maturity_warning?: boolean;
+    maturity_note?: string;
+  };
+  scenario_detail?: {
+    bullish_confirmation?: string;
+    bearish_failure?: string;
+    next_trigger?: string;
+    confidence?: number;
+    horizons?: CoinetJudgmentHorizon[];
+  };
+  confidence_detail?: {
+    score?: number;
+    breakdown?: {
+      market?: number;
+      fundamentals?: number;
+      onchain?: number;
+      narrative?: number;
+    };
+    primary_uncertainty?: string;
+  };
+
+  // ── Derived whitepaper fields (projections of scenario fields) ─────────
+  signal_24h?: string;
+  failure_condition?: string;
 }
 
 export interface CoinetJudgmentPromptPackageDegradation {

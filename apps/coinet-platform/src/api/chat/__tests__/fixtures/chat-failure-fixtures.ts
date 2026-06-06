@@ -41,19 +41,60 @@ export const unavailableEmptyAvailabilityFixture = () =>
 
 // ── Judgment shapes (BTAR-004-shape compatible) ────────────────────────────
 
+// Real JudgmentOutput shape: cause = drivers + dominant_cluster; scenario =
+// base_case + branches; confidence.overall = controlled band STRING (the engine
+// never emits a numeric here). NOT the legacy primary.summary / numeric shapes.
 export const availableJudgmentFixture = () => ({
-  state: { primary: 'Accumulation' },
-  thesis: { primary: { hypothesis: 'Trend reversal in early stage' } },
-  contradictions: { items: [{ kind: 'test-contradiction' }] },
-  timing: { phase: 'EARLY' },
-  scenario: { primary: { summary: 'Base case continuation' } },
-  confidence: { overall: 0.62 },
+  state: { primary: 'Accumulation', secondary: null, confidence: 0.55 },
+  thesis: {
+    primary: {
+      hypothesis: 'Trend reversal in early stage',
+      support_score: 0.6,
+      contradiction_score: 0.2,
+      confidence: 0.5,
+    },
+    secondary: null,
+    clarity: 0.4,
+    ambiguity_flag: false,
+  },
+  cause: {
+    dominant_cluster: 'spot_demand',
+    secondary_cluster: null,
+    positive_drivers: [{ family: 'spot_demand', strength: 0.6, summary: 'spot demand building' }],
+    negative_drivers: [],
+  },
+  contradictions: {
+    items: [{ class: 'leverage_vs_spot', severity: 'moderate', summary: 'leverage outpaces spot', resolvable: true }],
+    load: 0.2,
+    structural_warning: false,
+  },
+  timing: {
+    phase: 'EARLY',
+    score: 25,
+    sequence_position: 2,
+    sequence_total: 9,
+    maturity_warning: false,
+    maturity_note: null,
+  },
+  scenario: {
+    base_case: 'Base case continuation',
+    bullish_confirmation: 'spot follow-through',
+    bearish_failure: 'demand fades on rising supply',
+    next_trigger: 'volume confirmation',
+    scenario_confidence: 0.5,
+  },
+  confidence: {
+    overall: 'medium',
+    score: 0.62,
+    breakdown: { market: 0.5, fundamentals: 0.7, onchain: 0.4, narrative: 0.6 },
+    primary_uncertainty: 'on-chain data',
+  },
 });
 
 export const degradedJudgmentFixture = () => ({
   state: { primary: 'Accumulation' },
   thesis: { primary: { hypothesis: 'Partial-context cautious read' } },
-  confidence: { overall: 0.42 },
+  confidence: { overall: 'low' },
 });
 
 export const emptyJudgmentFixture = () => undefined;

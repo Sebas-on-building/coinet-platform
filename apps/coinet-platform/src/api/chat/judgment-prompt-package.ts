@@ -28,6 +28,9 @@
 
 import type {
   BuildCoinetJudgmentPromptPackageInput,
+  CoinetJudgmentContradictionItem,
+  CoinetJudgmentDriver,
+  CoinetJudgmentHorizon,
   CoinetJudgmentPromptPackage,
   CoinetJudgmentPromptPackageDegradation,
   CoinetJudgmentPromptPackageExpressionRules,
@@ -265,6 +268,7 @@ export function renderCoinetJudgmentPromptPackageForAI(
       lines.push(`  Scenario: ${pkg.judgment.scenario_summary}`);
     if (pkg.judgment.confidence_band)
       lines.push(`  Confidence: ${pkg.judgment.confidence_band}`);
+    appendJudgmentDepthLines(lines, pkg.judgment);
   } else if (pkg.judgment_status === 'UNAVAILABLE') {
     lines.push('Judgment:');
     lines.push('  (No governed judgment fields are available.)');
@@ -313,6 +317,105 @@ export function renderCoinetJudgmentPromptPackageForAI(
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Append the Phase-2 structured-depth lines to the rendered AI prompt. Each
+ * block is emitted only when present, in a fixed deterministic order. Keeps the
+ * AI prompt and the ChatVerdict card sourced from the same package.
+ */
+function appendJudgmentDepthLines(
+  lines: string[],
+  j: CoinetJudgmentPromptPackageJudgment,
+): void {
+  if (j.state_detail) {
+    const parts: string[] = [];
+    if (j.state_detail.secondary) parts.push(`secondary ${j.state_detail.secondary}`);
+    if (j.state_detail.confidence !== undefined)
+      parts.push(`state confidence ${j.state_detail.confidence}`);
+    if (parts.length > 0) lines.push(`  State Detail: ${parts.join('; ')}`);
+  }
+
+  if (j.cause_detail) {
+    if (j.cause_detail.dominant_cluster)
+      lines.push(`  Cause Dominant Cluster: ${j.cause_detail.dominant_cluster}`);
+    if (j.cause_detail.secondary_cluster)
+      lines.push(`  Cause Secondary Cluster: ${j.cause_detail.secondary_cluster}`);
+    for (const d of j.cause_detail.drivers ?? []) {
+      const strength = d.strength !== undefined ? ` (${d.strength})` : '';
+      lines.push(`  Cause Driver [${d.direction}] ${d.family}${strength}: ${d.summary ?? ''}`.trimEnd());
+    }
+  }
+
+  if (j.thesis_detail) {
+    const t = j.thesis_detail;
+    const parts: string[] = [];
+    if (t.support_score !== undefined) parts.push(`support ${t.support_score}`);
+    if (t.contradiction_score !== undefined) parts.push(`contradiction ${t.contradiction_score}`);
+    if (t.confidence !== undefined) parts.push(`confidence ${t.confidence}`);
+    if (t.clarity !== undefined) parts.push(`clarity ${t.clarity}`);
+    if (t.ambiguous !== undefined) parts.push(`ambiguous ${t.ambiguous}`);
+    if (parts.length > 0) lines.push(`  Thesis Detail: ${parts.join(', ')}`);
+    if (t.secondary) lines.push(`  Secondary Thesis: ${t.secondary}`);
+  }
+
+  if (j.contradiction_items && j.contradiction_items.length > 0) {
+    lines.push('  Contradictions:');
+    for (const c of j.contradiction_items) {
+      const resolvable = c.resolvable !== undefined ? ` [${c.resolvable ? 'resolvable' : 'structural'}]` : '';
+      const summary = c.summary ? `: ${c.summary}` : '';
+      lines.push(`    - ${c.class} (${c.severity})${resolvable}${summary}`);
+    }
+  }
+  if (j.contradiction_load !== undefined)
+    lines.push(`  Contradiction Load: ${j.contradiction_load}`);
+  if (j.contradiction_structural_warning !== undefined)
+    lines.push(`  Structural Warning: ${j.contradiction_structural_warning}`);
+
+  if (j.timing_detail) {
+    const t = j.timing_detail;
+    const parts: string[] = [];
+    if (t.score !== undefined) parts.push(`score ${t.score}`);
+    if (t.position !== undefined && t.total !== undefined)
+      parts.push(`step ${t.position}/${t.total}`);
+    if (t.maturity_warning !== undefined) parts.push(`maturity warning ${t.maturity_warning}`);
+    if (parts.length > 0) lines.push(`  Timing Detail: ${parts.join(', ')}`);
+    if (t.maturity_note) lines.push(`  Maturity Note: ${t.maturity_note}`);
+  }
+
+  if (j.scenario_detail) {
+    const s = j.scenario_detail;
+    if (s.bullish_confirmation) lines.push(`  Bullish Confirmation: ${s.bullish_confirmation}`);
+    if (s.bearish_failure) lines.push(`  Bearish Failure: ${s.bearish_failure}`);
+    if (s.next_trigger) lines.push(`  Next Trigger: ${s.next_trigger}`);
+    if (s.confidence !== undefined) lines.push(`  Scenario Confidence: ${s.confidence}`);
+    for (const h of s.horizons ?? []) {
+      const segs: string[] = [];
+      if (h.confirmation) segs.push(`confirm: ${h.confirmation}`);
+      if (h.failure) segs.push(`fail: ${h.failure}`);
+      if (h.trigger) segs.push(`trigger: ${h.trigger}`);
+      if (h.invalidation) segs.push(`invalidation: ${h.invalidation}`);
+      if (segs.length > 0) lines.push(`  Horizon ${h.horizon}: ${segs.join(' | ')}`);
+    }
+  }
+
+  if (j.confidence_detail) {
+    const c = j.confidence_detail;
+    if (c.score !== undefined) lines.push(`  Confidence Score: ${c.score}`);
+    if (c.breakdown) {
+      const b = c.breakdown;
+      const parts: string[] = [];
+      if (b.market !== undefined) parts.push(`market ${b.market}`);
+      if (b.fundamentals !== undefined) parts.push(`fundamentals ${b.fundamentals}`);
+      if (b.onchain !== undefined) parts.push(`onchain ${b.onchain}`);
+      if (b.narrative !== undefined) parts.push(`narrative ${b.narrative}`);
+      if (parts.length > 0) lines.push(`  Confidence Breakdown: ${parts.join(', ')}`);
+    }
+    if (c.primary_uncertainty) lines.push(`  Primary Uncertainty: ${c.primary_uncertainty}`);
+  }
+
+  if (j.signal_24h) lines.push(`  24h Signal: ${j.signal_24h}`);
+  if (j.failure_condition) lines.push(`  Failure Condition: ${j.failure_condition}`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -381,9 +484,9 @@ function projectJudgmentFields(
   const causeSummary = deriveCauseSummary(j);
   if (causeSummary) out.cause = causeSummary;
 
-  const contradictionItems = (j.contradictions as { items?: unknown[] } | undefined)?.items;
-  if (Array.isArray(contradictionItems) && contradictionItems.length > 0) {
-    out.contradiction_summary = `${contradictionItems.length} contradiction(s) present`;
+  const contradictionItemsRaw = (j.contradictions as { items?: unknown[] } | undefined)?.items;
+  if (Array.isArray(contradictionItemsRaw) && contradictionItemsRaw.length > 0) {
+    out.contradiction_summary = `${contradictionItemsRaw.length} contradiction(s) present`;
   }
 
   const timingPhase =
@@ -394,12 +497,47 @@ function projectJudgmentFields(
   const scenarioSummary = deriveScenarioSummary(j);
   if (scenarioSummary) out.scenario_summary = scenarioSummary;
 
+  // confidence.overall is a controlled band string on the real engine output
+  // (toConfidenceBand). The numeric path was dead code and has been removed.
   const confidenceOverall = (j.confidence as { overall?: unknown } | undefined)?.overall;
-  if (typeof confidenceOverall === 'number') {
-    out.confidence_band = describeConfidenceBand(confidenceOverall);
-  } else if (typeof confidenceOverall === 'string') {
+  if (typeof confidenceOverall === 'string' && confidenceOverall.length > 0) {
     out.confidence_band = confidenceOverall;
   }
+
+  // ── Structured depth (Phase 2) — pure projections of existing fields ─────
+  const stateDetail = projectStateDetail(j);
+  if (stateDetail) out.state_detail = stateDetail;
+
+  const causeDetail = projectCauseDetail(j);
+  if (causeDetail) out.cause_detail = causeDetail;
+
+  const thesisDetail = projectThesisDetail(j);
+  if (thesisDetail) out.thesis_detail = thesisDetail;
+
+  const contradictionItems = projectContradictionItems(j);
+  if (contradictionItems) out.contradiction_items = contradictionItems;
+  const contradictionLoad = numberPath(j, ['contradictions', 'load']);
+  if (contradictionLoad !== undefined) out.contradiction_load = contradictionLoad;
+  const structuralWarning = boolPath(j, ['contradictions', 'structural_warning']);
+  if (structuralWarning !== undefined) {
+    out.contradiction_structural_warning = structuralWarning;
+  }
+
+  const timingDetail = projectTimingDetail(j);
+  if (timingDetail) out.timing_detail = timingDetail;
+
+  const scenarioDetail = projectScenarioDetail(j);
+  if (scenarioDetail) out.scenario_detail = scenarioDetail;
+
+  const confidenceDetail = projectConfidenceDetail(j);
+  if (confidenceDetail) out.confidence_detail = confidenceDetail;
+
+  // ── Derived whitepaper fields (24h signal + failure condition) ──────────
+  const signal24h = deriveSignal24h(j);
+  if (signal24h) out.signal_24h = signal24h;
+
+  const failureCondition = deriveFailureCondition(j);
+  if (failureCondition) out.failure_condition = failureCondition;
 
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -493,7 +631,270 @@ function deriveScenarioSummary(j: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+// ── Phase 2 structured-detail projectors (pure, tolerant of unknown input) ──
+
+function asObject(v: unknown): Record<string, unknown> | undefined {
+  return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : undefined;
+}
+
+function strOrUndef(v: unknown): string | undefined {
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+function numOrUndef(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+function numberPath(obj: Record<string, unknown>, path: string[]): number | undefined {
+  let cur: unknown = obj;
+  for (const key of path) {
+    const o = asObject(cur);
+    if (!o) return undefined;
+    cur = o[key];
+  }
+  return numOrUndef(cur);
+}
+
+function boolPath(obj: Record<string, unknown>, path: string[]): boolean | undefined {
+  let cur: unknown = obj;
+  for (const key of path) {
+    const o = asObject(cur);
+    if (!o) return undefined;
+    cur = o[key];
+  }
+  return typeof cur === 'boolean' ? cur : undefined;
+}
+
+function projectStateDetail(
+  j: Record<string, unknown>,
+): CoinetJudgmentPromptPackageJudgment['state_detail'] {
+  const state = asObject(j.state);
+  if (!state) return undefined;
+  const out: NonNullable<CoinetJudgmentPromptPackageJudgment['state_detail']> = {};
+  const secondary = strOrUndef(state.secondary);
+  if (secondary) out.secondary = secondary;
+  const confidence = numOrUndef(state.confidence);
+  if (confidence !== undefined) out.confidence = confidence;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function projectCauseDetail(
+  j: Record<string, unknown>,
+): CoinetJudgmentPromptPackageJudgment['cause_detail'] {
+  const cause = asObject(j.cause);
+  if (!cause) return undefined;
+  const out: NonNullable<CoinetJudgmentPromptPackageJudgment['cause_detail']> = {};
+  const dominant = strOrUndef(cause.dominant_cluster);
+  if (dominant) out.dominant_cluster = dominant;
+  const secondary = strOrUndef(cause.secondary_cluster);
+  if (secondary) out.secondary_cluster = secondary;
+
+  const drivers: CoinetJudgmentDriver[] = [];
+  const groups: Array<[string, 'positive' | 'negative']> = [
+    ['positive_drivers', 'positive'],
+    ['negative_drivers', 'negative'],
+  ];
+  for (const [key, direction] of groups) {
+    const arr = cause[key];
+    if (!Array.isArray(arr)) continue;
+    for (const d of arr) {
+      const o = asObject(d);
+      const family = o ? strOrUndef(o.family) : undefined;
+      if (!o || !family) continue;
+      const driver: CoinetJudgmentDriver = { family, direction };
+      const strength = numOrUndef(o.strength);
+      if (strength !== undefined) driver.strength = strength;
+      const summary = strOrUndef(o.summary);
+      if (summary) driver.summary = summary;
+      drivers.push(driver);
+    }
+  }
+  if (drivers.length > 0) out.drivers = drivers;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function projectThesisDetail(
+  j: Record<string, unknown>,
+): CoinetJudgmentPromptPackageJudgment['thesis_detail'] {
+  const thesis = asObject(j.thesis);
+  if (!thesis) return undefined;
+  const out: NonNullable<CoinetJudgmentPromptPackageJudgment['thesis_detail']> = {};
+  const primary = asObject(thesis.primary);
+  if (primary) {
+    const support = numOrUndef(primary.support_score);
+    if (support !== undefined) out.support_score = support;
+    const contradiction = numOrUndef(primary.contradiction_score);
+    if (contradiction !== undefined) out.contradiction_score = contradiction;
+    const confidence = numOrUndef(primary.confidence);
+    if (confidence !== undefined) out.confidence = confidence;
+  }
+  const secondary = asObject(thesis.secondary);
+  const secondaryHyp = secondary ? strOrUndef(secondary.hypothesis) : undefined;
+  if (secondaryHyp) out.secondary = secondaryHyp;
+  const clarity = numOrUndef(thesis.clarity);
+  if (clarity !== undefined) out.clarity = clarity;
+  if (typeof thesis.ambiguity_flag === 'boolean') out.ambiguous = thesis.ambiguity_flag;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function projectContradictionItems(
+  j: Record<string, unknown>,
+): CoinetJudgmentContradictionItem[] | undefined {
+  const contradictions = asObject(j.contradictions);
+  const items = contradictions?.items;
+  if (!Array.isArray(items)) return undefined;
+  const out: CoinetJudgmentContradictionItem[] = [];
+  for (const it of items) {
+    const o = asObject(it);
+    if (!o) continue;
+    const cls = strOrUndef(o.class);
+    const severity = strOrUndef(o.severity);
+    // class + severity are the identifying pair; skip shapeless/placeholder items
+    if (!cls || !severity) continue;
+    const item: CoinetJudgmentContradictionItem = { class: cls, severity };
+    const summary = strOrUndef(o.summary);
+    if (summary) item.summary = summary;
+    if (typeof o.resolvable === 'boolean') item.resolvable = o.resolvable;
+    out.push(item);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function projectTimingDetail(
+  j: Record<string, unknown>,
+): CoinetJudgmentPromptPackageJudgment['timing_detail'] {
+  const timing = asObject(j.timing);
+  if (!timing) return undefined;
+  const out: NonNullable<CoinetJudgmentPromptPackageJudgment['timing_detail']> = {};
+  const score = numOrUndef(timing.score);
+  if (score !== undefined) out.score = score;
+  const position = numOrUndef(timing.sequence_position);
+  if (position !== undefined) out.position = position;
+  const total = numOrUndef(timing.sequence_total);
+  if (total !== undefined) out.total = total;
+  if (typeof timing.maturity_warning === 'boolean') out.maturity_warning = timing.maturity_warning;
+  const note = strOrUndef(timing.maturity_note);
+  if (note) out.maturity_note = note;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function projectHorizons(v: unknown): CoinetJudgmentHorizon[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: CoinetJudgmentHorizon[] = [];
+  for (const h of v) {
+    const o = asObject(h);
+    const horizon = o ? strOrUndef(o.horizon) : undefined;
+    if (!o || !horizon) continue;
+    const item: CoinetJudgmentHorizon = { horizon };
+    const confirmation = strOrUndef(o.confirmation);
+    if (confirmation) item.confirmation = confirmation;
+    const failure = strOrUndef(o.failure);
+    if (failure) item.failure = failure;
+    const trigger = strOrUndef(o.trigger);
+    if (trigger) item.trigger = trigger;
+    const invalidation = strOrUndef(o.invalidation);
+    if (invalidation) item.invalidation = invalidation;
+    out.push(item);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function projectScenarioDetail(
+  j: Record<string, unknown>,
+): CoinetJudgmentPromptPackageJudgment['scenario_detail'] {
+  const scenario = asObject(j.scenario);
+  if (!scenario) return undefined;
+  const out: NonNullable<CoinetJudgmentPromptPackageJudgment['scenario_detail']> = {};
+  const bull = strOrUndef(scenario.bullish_confirmation);
+  if (bull) out.bullish_confirmation = bull;
+  const bear = strOrUndef(scenario.bearish_failure);
+  if (bear) out.bearish_failure = bear;
+  const trigger = strOrUndef(scenario.next_trigger);
+  if (trigger) out.next_trigger = trigger;
+  const confidence = numOrUndef(scenario.scenario_confidence);
+  if (confidence !== undefined) out.confidence = confidence;
+  const horizons = projectHorizons(scenario.horizons);
+  if (horizons) out.horizons = horizons;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function projectConfidenceDetail(
+  j: Record<string, unknown>,
+): CoinetJudgmentPromptPackageJudgment['confidence_detail'] {
+  const confidence = asObject(j.confidence);
+  if (!confidence) return undefined;
+  const out: NonNullable<CoinetJudgmentPromptPackageJudgment['confidence_detail']> = {};
+  const score = numOrUndef(confidence.score);
+  if (score !== undefined) out.score = score;
+  const bd = asObject(confidence.breakdown);
+  if (bd) {
+    const breakdown: NonNullable<
+      NonNullable<CoinetJudgmentPromptPackageJudgment['confidence_detail']>['breakdown']
+    > = {};
+    for (const axis of ['market', 'fundamentals', 'onchain', 'narrative'] as const) {
+      const val = numOrUndef(bd[axis]);
+      if (val !== undefined) breakdown[axis] = val;
+    }
+    if (Object.keys(breakdown).length > 0) out.breakdown = breakdown;
+  }
+  const pu = strOrUndef(confidence.primary_uncertainty);
+  if (pu) out.primary_uncertainty = pu;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** The 24h horizon entry from scenario.horizons[], if present. */
+function find24hHorizon(j: Record<string, unknown>): Record<string, unknown> | undefined {
+  const scenario = asObject(j.scenario);
+  const horizons = scenario?.horizons;
+  if (!Array.isArray(horizons)) return undefined;
+  for (const h of horizons) {
+    const o = asObject(h);
+    if (o && o.horizon === '24h') return o;
+  }
+  return undefined;
+}
+
+/**
+ * 24h confirmation signal. Prefers the rich `horizons['24h']` (confirmation +
+ * trigger); falls back to the guaranteed `scenario.bullish_confirmation`
+ * (+ next_trigger). Pure projection — never invents.
+ */
+function deriveSignal24h(j: Record<string, unknown>): string | undefined {
+  const h = find24hHorizon(j);
+  if (h) {
+    const confirmation = strOrUndef(h.confirmation);
+    if (confirmation) {
+      const trigger = strOrUndef(h.trigger);
+      return trigger ? `${confirmation} ${trigger}` : confirmation;
+    }
+  }
+  const scenario = asObject(j.scenario);
+  const bull = scenario ? strOrUndef(scenario.bullish_confirmation) : undefined;
+  if (!bull) return undefined;
+  const trig = scenario ? strOrUndef(scenario.next_trigger) : undefined;
+  return trig ? `${bull} ${trig}` : bull;
+}
+
+/**
+ * Failure condition. Prefers `horizons['24h'].failure` (then `.invalidation`);
+ * falls back to the guaranteed `scenario.bearish_failure`. Never invents.
+ */
+function deriveFailureCondition(j: Record<string, unknown>): string | undefined {
+  const h = find24hHorizon(j);
+  if (h) {
+    const failure = strOrUndef(h.failure);
+    if (failure) return failure;
+    const invalidation = strOrUndef(h.invalidation);
+    if (invalidation) return invalidation;
+  }
+  const scenario = asObject(j.scenario);
+  return scenario ? strOrUndef(scenario.bearish_failure) : undefined;
+}
+
 function hasAnyJudgmentField(j: CoinetJudgmentPromptPackageJudgment): boolean {
+  // Must cover EVERY field (headline + structured + derived) so the UNAVAILABLE
+  // invariant (a package with no judgment) cannot be bypassed by a package that
+  // carries only structured-depth fields. Keep in sync with the type.
   return (
     !!j.state ||
     !!j.thesis ||
@@ -501,15 +902,19 @@ function hasAnyJudgmentField(j: CoinetJudgmentPromptPackageJudgment): boolean {
     !!j.contradiction_summary ||
     !!j.timing_phase ||
     !!j.scenario_summary ||
-    !!j.confidence_band
+    !!j.confidence_band ||
+    !!j.state_detail ||
+    !!j.cause_detail ||
+    !!j.thesis_detail ||
+    !!j.contradiction_items ||
+    j.contradiction_load !== undefined ||
+    j.contradiction_structural_warning !== undefined ||
+    !!j.timing_detail ||
+    !!j.scenario_detail ||
+    !!j.confidence_detail ||
+    !!j.signal_24h ||
+    !!j.failure_condition
   );
-}
-
-function describeConfidenceBand(overall: number): string {
-  if (overall >= 0.75) return `HIGH (${overall.toFixed(2)})`;
-  if (overall >= 0.5) return `MODERATE (${overall.toFixed(2)})`;
-  if (overall >= 0.25) return `LOW (${overall.toFixed(2)})`;
-  return `VERY_LOW (${overall.toFixed(2)})`;
 }
 
 // Re-export the availability type for convenience to callers.

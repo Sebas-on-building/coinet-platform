@@ -45,14 +45,143 @@ describe('CoinetJudgmentPromptPackage (BTAR-004)', () => {
           state: { primary: 'Accumulation' },
           thesis: { primary: { hypothesis: 'Trend reversal in early stage' } },
           contradictions: { items: [{}, {}] },
-          confidence: { overall: 0.62 },
+          // Real engine emits confidence.overall as a controlled band STRING
+          // (toConfidenceBand). The numeric path was dead code and is removed.
+          confidence: { overall: 'medium' },
         },
         scope: { kind: 'ASSET', asset_symbol: 'BTC' },
       });
       expect(pkg.judgment?.state).toBe('Accumulation');
       expect(pkg.judgment?.thesis).toBe('Trend reversal in early stage');
       expect(pkg.judgment?.contradiction_summary).toContain('2 contradiction');
-      expect(pkg.judgment?.confidence_band).toContain('MODERATE');
+      expect(pkg.judgment?.confidence_band).toBe('medium');
+    });
+
+    it('does not set confidence_band from a numeric overall (dead path removed)', () => {
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: { state: { primary: 'Accumulation' }, confidence: { overall: 0.62 } },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      expect(pkg.judgment?.confidence_band).toBeUndefined();
+    });
+
+    // Phase 2 — structured depth projection from the real JudgmentOutput shape.
+    it('projects the full structured depth (Phase 2)', () => {
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: {
+          state: { primary: 'thin_liquidity_risk', secondary: 'crowded_continuation', confidence: 0.41 },
+          thesis: {
+            primary: {
+              hypothesis: 'leverage_driven_squeeze',
+              support_score: 0.62,
+              contradiction_score: 0.18,
+              confidence: 0.44,
+            },
+            secondary: { hypothesis: 'narrative_only_pump' },
+            clarity: 0.12,
+            ambiguity_flag: true,
+          },
+          cause: {
+            dominant_cluster: 'structural_fragility',
+            secondary_cluster: 'leverage_expansion',
+            positive_drivers: [{ family: 'leverage_expansion', strength: 0.4, summary: 'OI building' }],
+            negative_drivers: [{ family: 'structural_fragility', strength: 0.8, summary: 'thin books' }],
+          },
+          contradictions: {
+            items: [
+              { class: 'volume_vs_liquidity', severity: 'high', summary: 'volume exceeds liquidity', resolvable: false },
+              { class: 'leverage_vs_spot', severity: 'moderate', summary: 'leverage outpaces spot', resolvable: true },
+            ],
+            load: 0.36,
+            structural_warning: true,
+          },
+          timing: {
+            phase: 'crowded',
+            score: 64,
+            sequence_position: 6,
+            sequence_total: 9,
+            maturity_warning: true,
+            maturity_note: 'late-cycle positioning',
+          },
+          scenario: {
+            base_case: 'continuation risk if support breaks',
+            bullish_confirmation: 'reclaim of range high',
+            bearish_failure: 'support loss on rising liquidations',
+            next_trigger: 'funding reset',
+            scenario_confidence: 0.4,
+            horizons: [
+              { horizon: '24h', confirmation: 'spot follow-through confirms', failure: 'leveraged unwind on thin demand', trigger: 'watch funding', invalidation: 'range low breaks' },
+              { horizon: '7d', confirmation: 'weekly strength', failure: '7d failure', trigger: '7d trigger', invalidation: '7d invalidation' },
+            ],
+          },
+          confidence: {
+            overall: 'very_low',
+            score: 0.19,
+            breakdown: { market: 0.3, fundamentals: 0.9, onchain: 0.2, narrative: 0.5 },
+            primary_uncertainty: 'on-chain data',
+          },
+        },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      const j = pkg.judgment!;
+      // state / thesis detail
+      expect(j.state_detail).toEqual({ secondary: 'crowded_continuation', confidence: 0.41 });
+      expect(j.thesis_detail).toMatchObject({
+        support_score: 0.62, contradiction_score: 0.18, confidence: 0.44,
+        secondary: 'narrative_only_pump', clarity: 0.12, ambiguous: true,
+      });
+      // cause drivers flattened with direction
+      expect(j.cause_detail?.dominant_cluster).toBe('structural_fragility');
+      expect(j.cause_detail?.secondary_cluster).toBe('leverage_expansion');
+      expect(j.cause_detail?.drivers).toEqual([
+        { family: 'leverage_expansion', direction: 'positive', strength: 0.4, summary: 'OI building' },
+        { family: 'structural_fragility', direction: 'negative', strength: 0.8, summary: 'thin books' },
+      ]);
+      // contradictions as items (not just count)
+      expect(j.contradiction_summary).toContain('2 contradiction');
+      expect(j.contradiction_items).toEqual([
+        { class: 'volume_vs_liquidity', severity: 'high', summary: 'volume exceeds liquidity', resolvable: false },
+        { class: 'leverage_vs_spot', severity: 'moderate', summary: 'leverage outpaces spot', resolvable: true },
+      ]);
+      expect(j.contradiction_load).toBe(0.36);
+      expect(j.contradiction_structural_warning).toBe(true);
+      // timing detail
+      expect(j.timing_detail).toEqual({
+        score: 64, position: 6, total: 9, maturity_warning: true, maturity_note: 'late-cycle positioning',
+      });
+      // scenario branches + horizons
+      expect(j.scenario_detail?.bullish_confirmation).toBe('reclaim of range high');
+      expect(j.scenario_detail?.bearish_failure).toBe('support loss on rising liquidations');
+      expect(j.scenario_detail?.next_trigger).toBe('funding reset');
+      expect(j.scenario_detail?.confidence).toBe(0.4);
+      expect(j.scenario_detail?.horizons).toHaveLength(2);
+      // confidence 4-axis breakdown
+      expect(j.confidence_band).toBe('very_low');
+      expect(j.confidence_detail?.score).toBe(0.19);
+      expect(j.confidence_detail?.breakdown).toEqual({ market: 0.3, fundamentals: 0.9, onchain: 0.2, narrative: 0.5 });
+      expect(j.confidence_detail?.primary_uncertainty).toBe('on-chain data');
+      // derived whitepaper fields — prefer the 24h horizon
+      expect(j.signal_24h).toBe('spot follow-through confirms watch funding');
+      expect(j.failure_condition).toBe('leveraged unwind on thin demand');
+    });
+
+    it('derives signal_24h/failure_condition from scenario branches when horizons absent', () => {
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: {
+          scenario: {
+            base_case: 'base',
+            bullish_confirmation: 'spot demand sustains',
+            bearish_failure: 'breakdown on inflows',
+            next_trigger: 'volume confirmation',
+          },
+        },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      expect(pkg.judgment?.signal_24h).toBe('spot demand sustains volume confirmation');
+      expect(pkg.judgment?.failure_condition).toBe('breakdown on inflows');
     });
 
     // Phase 1 regression lock — cause/scenario must be projected from the REAL
@@ -338,6 +467,26 @@ describe('CoinetJudgmentPromptPackage (BTAR-004)', () => {
       const violated = {
         ...pkg,
         judgment: { thesis: 'FAKE THESIS' },
+      } as CoinetJudgmentPromptPackage;
+      expect(() => assertCoinetJudgmentPromptPackageInvariants(violated)).toThrow(
+        /invariant 2/i,
+      );
+    });
+
+    it('rejects UNAVAILABLE package carrying ONLY a Phase-2 structured field', () => {
+      // hasAnyJudgmentField must cover the new fields, else a package with only
+      // structured depth (e.g. contradiction_items) would bypass invariant 2.
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createUnavailableJudgmentState({
+          reason: 'JUDGMENT_RESULT_EMPTY',
+          component: 'produceJudgment',
+        }),
+        judgment: undefined,
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      const violated = {
+        ...pkg,
+        judgment: { contradiction_items: [{ class: 'leverage_vs_spot', severity: 'high' }] },
       } as CoinetJudgmentPromptPackage;
       expect(() => assertCoinetJudgmentPromptPackageInvariants(violated)).toThrow(
         /invariant 2/i,

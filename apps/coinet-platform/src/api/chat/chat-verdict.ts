@@ -24,21 +24,14 @@ export function toChatVerdict(pkg: CoinetJudgmentPromptPackage): ChatVerdict {
   // builder only populates `judgment` for AVAILABLE today, so DEGRADED naturally
   // yields no fields. This defensive gate guarantees the invariant holds even
   // if a future package change populates `judgment` on an UNAVAILABLE package.
+  // The package's judgment projection is already the safe client-facing shape
+  // (headline one-liners + Phase-2 structured depth + derived fields). Pass it
+  // through wholesale, except under UNAVAILABLE where the invariant forbids any
+  // fields. A shallow copy decouples the top-level object from the package.
   const j = status === 'UNAVAILABLE' ? undefined : pkg.judgment;
 
-  const fields = j
-    ? {
-        ...(j.state ? { state: j.state } : {}),
-        ...(j.cause ? { cause: j.cause } : {}),
-        ...(j.thesis ? { thesis: j.thesis } : {}),
-        ...(j.contradiction_summary
-          ? { contradiction_summary: j.contradiction_summary }
-          : {}),
-        ...(j.timing_phase ? { timing_phase: j.timing_phase } : {}),
-        ...(j.scenario_summary ? { scenario_summary: j.scenario_summary } : {}),
-        ...(j.confidence_band ? { confidence_band: j.confidence_band } : {}),
-      }
-    : undefined;
+  const fields =
+    j && Object.keys(j).length > 0 ? ({ ...j } as typeof j) : undefined;
 
   const disclosures = pkg.expression_rules.required_disclosures;
 

@@ -1,8 +1,10 @@
 /**
  * 💬 Chat API - TypeScript Types
- * 
+ *
  * Divine type definitions for chat system with full type safety.
  */
+
+import type { CoinetJudgmentPromptPackageJudgment } from './judgment-prompt-package.types';
 
 export interface ChatMessageRequest {
   message: string;
@@ -81,16 +83,13 @@ export interface OmniScoreQuadrantData {
 export interface ChatVerdict {
   status: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
   symbol?: string;
-  /** Lightweight package projection. Each field is optional; never invented. */
-  fields?: {
-    state?: string;
-    cause?: string;
-    thesis?: string;
-    contradiction_summary?: string;
-    timing_phase?: string;
-    scenario_summary?: string;
-    confidence_band?: string;
-  };
+  /**
+   * Structured package projection (headline one-liners + Phase-2 structured
+   * depth + derived 24h-signal / failure-condition). Each field is optional and
+   * is a pure projection of an existing JudgmentOutput — never invented. Mirrors
+   * the governed package's judgment shape so card + AI prompt stay in lockstep.
+   */
+  fields?: CoinetJudgmentPromptPackageJudgment;
   /** required_disclosures from the package (DEGRADED/UNAVAILABLE guidance). */
   disclosures?: string[];
   policyVersion: string;
