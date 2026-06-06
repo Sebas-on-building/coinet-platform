@@ -25,6 +25,8 @@ import { SourcesPanel } from "@/components/SourcesPanel";
 import { apiClient } from "@/services/api-client";
 import { useAuthenticatedApi } from "@/hooks/useAuthenticatedApi";
 import { OmniScoreQuadrantBoard, QuadrantProject } from "@/components/OmniScoreQuadrantBoard";
+import { JudgmentVerdictCard } from "@/components/JudgmentVerdictCard";
+import type { ChatVerdict } from "@/types/api";
 
 interface Message {
   id: string;
@@ -34,6 +36,7 @@ interface Message {
   timestamp: number;
   isRead?: boolean;
   sources?: Source[];
+  verdict?: ChatVerdict;
 }
 
 interface ChatInterfaceProps {
@@ -280,6 +283,7 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
         timestamp: new Date(apiResponse.data.message.createdAt).getTime(),
         isRead: true,
         sources: apiResponse.data.message.sources,
+        verdict: apiResponse.data.message.verdict,
       };
       
       console.log('📊 Assistant message created with charts:', assistantMessage.charts);
@@ -535,7 +539,12 @@ export function ChatInterface({ activeAgent }: ChatInterfaceProps) {
                            {renderChatCharts(message.charts)}
                          </div>
                        )}
-                       
+
+                       {/* Structured 7-field judgment verdict — alongside the prose, not instead */}
+                       {message.type === 'assistant' && message.verdict && (
+                         <JudgmentVerdictCard verdict={message.verdict} />
+                       )}
+
                        <div className={`rounded-2xl md:rounded-3xl px-4 md:px-6 py-3 md:py-4 ${
                          message.type === 'user'
                            ? 'bg-primary text-primary-foreground shadow-sm'

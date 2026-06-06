@@ -46,6 +46,7 @@ import type { CoinetJudgmentPromptPackage } from './judgment-prompt-package.type
 // These modules extract trust-critical seams only; they do not create a new
 // chat runtime, new AI service, or new judgment engine.
 import { buildChatTrustContext, type ChatTrustContext } from './chat-trust-context';
+import { toChatVerdict } from './chat-verdict';
 import { finalizeChatAIResponse } from './chat-ai-response-finalizer';
 // BTAR-008 — Runtime trust evidence (Plan 2.2 §7.5 P2-S12 / §15 telemetry cap).
 // This is minimal runtime trust evidence, not L14 telemetry, not analytics,
@@ -1807,6 +1808,12 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
             sources: sources.length > 0 ? sources : undefined,
             charts: responseCharts,
             confidence: aiResponse.data.confidence,
+            // Structured judgment verdict (option b): a first-class projection of
+            // the governed CoinetJudgmentPromptPackage, sent alongside the prose.
+            // Present only for asset-scoped requests where the judgment block ran
+            // (chatJudgmentPackage is set); omitted for non-token chats. UNAVAILABLE
+            // packages carry status but no fields (governance invariant preserved).
+            verdict: chatJudgmentPackage ? toChatVerdict(chatJudgmentPackage) : undefined,
             createdAt: assistantMessage.createdAt.toISOString(),
           },
           conversationId: conversation.id,

@@ -25,6 +25,7 @@ export interface ChatMessageResponse {
       sources?: Source[];
       charts?: (ChartConfig | OmniScoreQuadrantData)[];
       confidence?: number;
+      verdict?: ChatVerdict;
       createdAt: string;
     };
     conversationId: string;
@@ -68,6 +69,33 @@ export interface OmniScoreQuadrantData {
   }>;
 }
 
+/**
+ * Structured Coinet judgment verdict — a first-class, reusable projection of the
+ * governed CoinetJudgmentPromptPackage, sent to the client alongside the prose
+ * `content` (never instead of it). Sourced from the package so the AVAILABLE/
+ * DEGRADED/UNAVAILABLE status + governance carry to the UI.
+ *
+ * Governance invariant (mirrors the package): when `status === 'UNAVAILABLE'`,
+ * `fields` is omitted — the client can never render a fabricated verdict.
+ */
+export interface ChatVerdict {
+  status: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
+  symbol?: string;
+  /** Lightweight package projection. Each field is optional; never invented. */
+  fields?: {
+    state?: string;
+    cause?: string;
+    thesis?: string;
+    contradiction_summary?: string;
+    timing_phase?: string;
+    scenario_summary?: string;
+    confidence_band?: string;
+  };
+  /** required_disclosures from the package (DEGRADED/UNAVAILABLE guidance). */
+  disclosures?: string[];
+  policyVersion: string;
+}
+
 export interface ConversationHistoryResponse {
   success: boolean;
   data: {
@@ -88,6 +116,8 @@ export interface ChatMessage {
   sources?: Source[];
   charts?: (ChartConfig | OmniScoreQuadrantData)[];
   confidence?: number;
+  // Live-only: present on fresh responses, not persisted to history (MVP).
+  verdict?: ChatVerdict;
   createdAt: string;
 }
 

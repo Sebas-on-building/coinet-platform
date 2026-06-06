@@ -14,6 +14,8 @@ import { useLongPress } from '@/hooks/useLongPress';
 import { triggerHaptic } from '@/utils/haptics';
 import { TradingViewChatChart } from '@/components/charts/TradingViewChatChart';
 import { OmniScoreQuadrantBoard, QuadrantProject } from '@/components/OmniScoreQuadrantBoard';
+import { JudgmentVerdictCard } from '@/components/JudgmentVerdictCard';
+import type { ChatVerdict } from '@/types/api';
 import { SourceCitation, Source } from '@/components/SourceCitation';
 import { SourcesPanel } from '@/components/SourcesPanel';
 import { apiClient } from '@/services/api-client';
@@ -51,6 +53,7 @@ interface Message {
   isRead?: boolean;
   charts?: any[];
   sources?: Source[];
+  verdict?: ChatVerdict;
 }
 
 interface MobileChatInterfaceProps {
@@ -221,6 +224,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
         timestampMs: new Date(apiResponse.data.message.createdAt).getTime(),
         isRead: true,
         sources: apiResponse.data.message.sources,
+        verdict: apiResponse.data.message.verdict,
       };
 
       // Mark user message as read
@@ -300,6 +304,7 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
         timestampMs: new Date(apiResponse.data.message.createdAt).getTime(),
         isRead: true,
         sources: apiResponse.data.message.sources,
+        verdict: apiResponse.data.message.verdict,
       };
 
       setMessages(prev => {
@@ -455,6 +460,11 @@ export function MobileChatInterface({ className }: MobileChatInterfaceProps) {
                       "flex-1 min-w-0 space-y-2",
                       message.type === 'user' ? 'text-right' : 'text-left'
                     )}>
+                      {/* Structured 7-field judgment verdict — alongside the prose, not instead */}
+                      {message.type === 'assistant' && message.verdict && (
+                        <JudgmentVerdictCard verdict={message.verdict} />
+                      )}
+
                       <div className={cn(
                         "inline-block p-3 sm:p-4 rounded-2xl break-words",
                         message.type === 'user'

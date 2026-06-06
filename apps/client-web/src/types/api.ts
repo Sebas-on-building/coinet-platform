@@ -40,7 +40,29 @@ export interface ChatMessage {
   sources?: Source[];
   charts?: ChartConfig[];
   confidence?: number;
+  verdict?: ChatVerdict;
   createdAt: string;
+}
+
+/**
+ * Structured Coinet judgment verdict — mirrors the backend ChatVerdict DTO
+ * (api/chat/types.ts). Sent alongside the prose `content`. When
+ * `status === 'UNAVAILABLE'`, `fields` is absent (governance invariant).
+ */
+export interface ChatVerdict {
+  status: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
+  symbol?: string;
+  fields?: {
+    state?: string;
+    cause?: string;
+    thesis?: string;
+    contradiction_summary?: string;
+    timing_phase?: string;
+    scenario_summary?: string;
+    confidence_band?: string;
+  };
+  disclosures?: string[];
+  policyVersion: string;
 }
 
 export interface Source {
