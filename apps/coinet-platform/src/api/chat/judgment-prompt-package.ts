@@ -378,10 +378,7 @@ function projectJudgmentFields(
   const thesisHypothesis = safeStringPath(j, ['thesis', 'primary', 'hypothesis']);
   if (thesisHypothesis) out.thesis = thesisHypothesis;
 
-  const causeSummary =
-    safeStringPath(j, ['cause', 'primary', 'summary']) ??
-    safeStringPath(j, ['cause', 'summary']) ??
-    safeStringPath(j, ['cause', 'primary']);
+  const causeSummary = deriveCauseSummary(j);
   if (causeSummary) out.cause = causeSummary;
 
   const contradictionItems = (j.contradictions as { items?: unknown[] } | undefined)?.items;
@@ -394,9 +391,7 @@ function projectJudgmentFields(
     safeStringPath(j, ['timing', 'current_phase']);
   if (timingPhase) out.timing_phase = timingPhase;
 
-  const scenarioSummary =
-    safeStringPath(j, ['scenario', 'primary', 'summary']) ??
-    safeStringPath(j, ['scenario', 'summary']);
+  const scenarioSummary = deriveScenarioSummary(j);
   if (scenarioSummary) out.scenario_summary = scenarioSummary;
 
   const confidenceOverall = (j.confidence as { overall?: unknown } | undefined)?.overall;
@@ -419,6 +414,82 @@ function safeStringPath(
     cur = (cur as Record<string, unknown>)[key];
   }
   if (typeof cur === 'string' && cur.length > 0) return cur;
+  return undefined;
+}
+
+/**
+ * Derive a single-line cause summary from a JudgmentCause shape
+ * ({ dominant_cluster, positive_drivers[], negative_drivers[] }, each driver
+ * { family, strength, summary }). Read-only, pure, never invents:
+ *   1. driver whose family === dominant_cluster (its summary),
+ *   2. else the highest-strength driver's summary,
+ *   3. else the dominant_cluster value as a label.
+ */
+function deriveCauseSummary(j: Record<string, unknown>): string | undefined {
+  const cause = j.cause;
+  if (cause === undefined || cause === null || typeof cause !== 'object') {
+    return undefined;
+  }
+  const c = cause as Record<string, unknown>;
+  const dominant =
+    typeof c.dominant_cluster === 'string' && c.dominant_cluster.length > 0
+      ? c.dominant_cluster
+      : undefined;
+
+  const drivers: Record<string, unknown>[] = [];
+  for (const key of ['positive_drivers', 'negative_drivers']) {
+    const arr = c[key];
+    if (Array.isArray(arr)) {
+      for (const d of arr) {
+        if (d && typeof d === 'object') drivers.push(d as Record<string, unknown>);
+      }
+    }
+  }
+
+  const summaryOf = (d: Record<string, unknown>): string | undefined =>
+    typeof d.summary === 'string' && d.summary.length > 0 ? d.summary : undefined;
+
+  // 1. driver aligned with the dominant cluster
+  if (dominant) {
+    for (const d of drivers) {
+      if (d.family === dominant) {
+        const s = summaryOf(d);
+        if (s) return s;
+      }
+    }
+  }
+
+  // 2. highest-strength driver that has a summary
+  let best: { strength: number; summary: string } | undefined;
+  for (const d of drivers) {
+    const s = summaryOf(d);
+    if (!s) continue;
+    const strength = typeof d.strength === 'number' ? d.strength : -Infinity;
+    if (best === undefined || strength > best.strength) {
+      best = { strength, summary: s };
+    }
+  }
+  if (best) return best.summary;
+
+  // 3. dominant cluster label fallback
+  return dominant;
+}
+
+/**
+ * Derive a single-line scenario summary from a JudgmentScenario shape
+ * ({ base_case, bullish_confirmation, bearish_failure, next_trigger, ... }).
+ * base_case is the natural summary; fall back to next_trigger. Never invents.
+ */
+function deriveScenarioSummary(j: Record<string, unknown>): string | undefined {
+  const scenario = j.scenario;
+  if (scenario === undefined || scenario === null || typeof scenario !== 'object') {
+    return undefined;
+  }
+  const s = scenario as Record<string, unknown>;
+  if (typeof s.base_case === 'string' && s.base_case.length > 0) return s.base_case;
+  if (typeof s.next_trigger === 'string' && s.next_trigger.length > 0) {
+    return s.next_trigger;
+  }
   return undefined;
 }
 

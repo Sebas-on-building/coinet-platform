@@ -18,13 +18,34 @@ import {
 } from '../judgment-availability';
 import type { CoinetJudgmentPromptPackage } from '../judgment-prompt-package.types';
 
+// Real JudgmentOutput shape (cause = drivers + dominant_cluster; scenario = base_case
+// + branches). NOT the legacy `cause.primary.summary` / `scenario.primary.summary`
+// shape, which never existed on the engine output and silently projected to nothing.
 const FULL_JUDGMENT = {
   state: { primary: 'thin_liquidity_risk' },
   thesis: { primary: { hypothesis: 'leverage_driven_squeeze' } },
-  cause: { primary: { summary: 'forced de-leveraging into thin books' } },
+  cause: {
+    dominant_cluster: 'structural_fragility',
+    secondary_cluster: null,
+    positive_drivers: [],
+    negative_drivers: [
+      {
+        family: 'structural_fragility',
+        strength: 0.8,
+        summary: 'forced de-leveraging into thin books',
+        supporting_features: ['liquidity_usd', 'funding_rate'],
+      },
+    ],
+  },
   contradictions: { items: [{}] },
   timing: { phase: 'LATE' },
-  scenario: { primary: { summary: 'continuation risk if support breaks' } },
+  scenario: {
+    base_case: 'continuation risk if support breaks',
+    bullish_confirmation: 'reclaim of prior range with spot-led volume',
+    bearish_failure: 'loss of support on rising liquidations',
+    next_trigger: 'funding reset toward neutral',
+    scenario_confidence: 0.4,
+  },
   confidence: { overall: 0.2 },
 };
 

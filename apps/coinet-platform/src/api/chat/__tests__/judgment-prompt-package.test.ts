@@ -55,6 +55,92 @@ describe('CoinetJudgmentPromptPackage (BTAR-004)', () => {
       expect(pkg.judgment?.confidence_band).toContain('MODERATE');
     });
 
+    // Phase 1 regression lock — cause/scenario must be projected from the REAL
+    // JudgmentOutput shape (cause = drivers + dominant_cluster; scenario =
+    // base_case + branches), not the legacy cause.primary.summary /
+    // scenario.primary.summary paths that never existed on the engine output.
+    it('projects cause from the dominant-cluster driver and scenario from base_case', () => {
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: {
+          state: { primary: 'thin_liquidity_risk' },
+          cause: {
+            dominant_cluster: 'structural_fragility',
+            secondary_cluster: 'leverage_expansion',
+            positive_drivers: [
+              { family: 'leverage_expansion', strength: 0.4, summary: 'open interest building' },
+            ],
+            negative_drivers: [
+              { family: 'structural_fragility', strength: 0.8, summary: 'forced de-leveraging into thin books' },
+            ],
+          },
+          scenario: {
+            base_case: 'continuation risk if support breaks',
+            bullish_confirmation: 'reclaim of range high',
+            bearish_failure: 'support loss on rising liquidations',
+            next_trigger: 'funding reset',
+          },
+        },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      // dominant_cluster (structural_fragility) wins over the higher-listed driver
+      expect(pkg.judgment?.cause).toBe('forced de-leveraging into thin books');
+      expect(pkg.judgment?.scenario_summary).toBe('continuation risk if support breaks');
+    });
+
+    it('falls back to highest-strength driver, then dominant_cluster label, for cause', () => {
+      // No driver matches dominant_cluster → highest-strength driver summary wins.
+      const byStrength = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: {
+          cause: {
+            dominant_cluster: 'spot_demand',
+            positive_drivers: [
+              { family: 'narrative_acceleration', strength: 0.3, summary: 'social buzz rising' },
+              { family: 'liquidity_emergence', strength: 0.9, summary: 'fresh liquidity forming' },
+            ],
+            negative_drivers: [],
+          },
+        },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      expect(byStrength.judgment?.cause).toBe('fresh liquidity forming');
+
+      // No driver summaries at all → dominant_cluster value used as a label.
+      const byLabel = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: {
+          cause: { dominant_cluster: 'distribution_pressure', positive_drivers: [], negative_drivers: [] },
+        },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      expect(byLabel.judgment?.cause).toBe('distribution_pressure');
+    });
+
+    it('falls back to next_trigger when scenario.base_case is absent', () => {
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: { scenario: { next_trigger: 'awaiting volume confirmation' } },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      expect(pkg.judgment?.scenario_summary).toBe('awaiting volume confirmation');
+    });
+
+    it('does not project cause/scenario from the legacy primary.summary shape', () => {
+      // The shape the buggy projector used to read must now yield nothing —
+      // proving the fix reads the real engine paths, not the fabricated ones.
+      const pkg = buildCoinetJudgmentPromptPackage({
+        availability: createAvailableJudgmentState(),
+        judgment: {
+          cause: { primary: { summary: 'legacy cause' } },
+          scenario: { primary: { summary: 'legacy scenario' } },
+        },
+        scope: { kind: 'ASSET', asset_symbol: 'BTC' },
+      });
+      expect(pkg.judgment?.cause).toBeUndefined();
+      expect(pkg.judgment?.scenario_summary).toBeUndefined();
+    });
+
     it('forbidden_claims includes financial-advice restriction', () => {
       const pkg = buildCoinetJudgmentPromptPackage({
         availability: createAvailableJudgmentState(),
