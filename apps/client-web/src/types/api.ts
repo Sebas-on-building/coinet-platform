@@ -44,15 +44,43 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+/** One causal driver (mirrors backend CoinetJudgmentDriver). */
+export interface JudgmentDriver {
+  family: string;
+  direction: 'positive' | 'negative';
+  strength?: number;
+  summary?: string;
+}
+
+/** One contradiction item (mirrors backend CoinetJudgmentContradictionItem). */
+export interface JudgmentContradictionItem {
+  class: string;
+  severity: string;
+  summary?: string;
+  resolvable?: boolean;
+}
+
+/** One per-horizon scenario (mirrors backend CoinetJudgmentHorizon). */
+export interface JudgmentHorizon {
+  horizon: string;
+  confirmation?: string;
+  failure?: string;
+  trigger?: string;
+  invalidation?: string;
+}
+
 /**
  * Structured Coinet judgment verdict — mirrors the backend ChatVerdict DTO
- * (api/chat/types.ts). Sent alongside the prose `content`. When
- * `status === 'UNAVAILABLE'`, `fields` is absent (governance invariant).
+ * (api/chat/types.ts → CoinetJudgmentPromptPackageJudgment). Sent alongside the
+ * prose `content`. When `status === 'UNAVAILABLE'`, `fields` is absent
+ * (governance invariant). Headline one-liners + Phase-2 structured depth +
+ * derived whitepaper fields.
  */
 export interface ChatVerdict {
   status: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE';
   symbol?: string;
   fields?: {
+    // headline one-liners
     state?: string;
     cause?: string;
     thesis?: string;
@@ -60,6 +88,51 @@ export interface ChatVerdict {
     timing_phase?: string;
     scenario_summary?: string;
     confidence_band?: string;
+    // structured depth
+    state_detail?: { secondary?: string; confidence?: number };
+    cause_detail?: {
+      dominant_cluster?: string;
+      secondary_cluster?: string;
+      drivers?: JudgmentDriver[];
+    };
+    thesis_detail?: {
+      support_score?: number;
+      contradiction_score?: number;
+      confidence?: number;
+      secondary?: string;
+      clarity?: number;
+      ambiguous?: boolean;
+    };
+    contradiction_items?: JudgmentContradictionItem[];
+    contradiction_load?: number;
+    contradiction_structural_warning?: boolean;
+    timing_detail?: {
+      score?: number;
+      position?: number;
+      total?: number;
+      maturity_warning?: boolean;
+      maturity_note?: string;
+    };
+    scenario_detail?: {
+      bullish_confirmation?: string;
+      bearish_failure?: string;
+      next_trigger?: string;
+      confidence?: number;
+      horizons?: JudgmentHorizon[];
+    };
+    confidence_detail?: {
+      score?: number;
+      breakdown?: {
+        market?: number;
+        fundamentals?: number;
+        onchain?: number;
+        narrative?: number;
+      };
+      primary_uncertainty?: string;
+    };
+    // derived whitepaper fields
+    signal_24h?: string;
+    failure_condition?: string;
   };
   disclosures?: string[];
   policyVersion: string;

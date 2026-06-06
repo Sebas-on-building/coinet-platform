@@ -54,11 +54,66 @@ const FIELD_ROWS: FieldRow[] = [
   { key: "scenario_summary", label: "Scenario" },
 ];
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span style={LABEL_STYLE}>{label}</span>
+      <span className="text-sm leading-snug" style={{ color: TEXT_PRIMARY }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const fmtNum = (n: number) => (Number.isInteger(n) ? `${n}` : n.toFixed(2));
+
 export function JudgmentVerdictCard({ verdict }: { verdict: ChatVerdict }) {
   const fields = verdict.fields;
   const hasFields = !!fields && Object.keys(fields).length > 0;
   const presentRows = FIELD_ROWS.filter((r) => fields?.[r.key]);
   const statusColor = STATUS_COLOR[verdict.status];
+
+  // ── Phase 2 derived display strings (functional; styling rebuilt later) ──
+  const thesisDetailParts: string[] = [];
+  if (fields?.thesis_detail) {
+    const t = fields.thesis_detail;
+    if (t.support_score !== undefined) thesisDetailParts.push(`support ${fmtNum(t.support_score)}`);
+    if (t.contradiction_score !== undefined) thesisDetailParts.push(`contradiction ${fmtNum(t.contradiction_score)}`);
+    if (t.confidence !== undefined) thesisDetailParts.push(`confidence ${fmtNum(t.confidence)}`);
+    if (t.clarity !== undefined) thesisDetailParts.push(`clarity ${fmtNum(t.clarity)}`);
+    if (t.ambiguous) thesisDetailParts.push("ambiguous");
+  }
+
+  const timingDetailParts: string[] = [];
+  if (fields?.timing_detail) {
+    const t = fields.timing_detail;
+    if (t.score !== undefined) timingDetailParts.push(`score ${fmtNum(t.score)}`);
+    if (t.position !== undefined && t.total !== undefined) timingDetailParts.push(`step ${t.position}/${t.total}`);
+    if (t.maturity_warning) timingDetailParts.push("maturity warning");
+  }
+
+  const breakdownParts: string[] = [];
+  if (fields?.confidence_detail?.breakdown) {
+    const b = fields.confidence_detail.breakdown;
+    if (b.market !== undefined) breakdownParts.push(`market ${fmtNum(b.market)}`);
+    if (b.fundamentals !== undefined) breakdownParts.push(`fundamentals ${fmtNum(b.fundamentals)}`);
+    if (b.onchain !== undefined) breakdownParts.push(`onchain ${fmtNum(b.onchain)}`);
+    if (b.narrative !== undefined) breakdownParts.push(`narrative ${fmtNum(b.narrative)}`);
+  }
+
+  const scenario = fields?.scenario_detail;
+  const horizons = scenario?.horizons ?? [];
+  const hasDepth =
+    !!fields &&
+    (!!fields.signal_24h ||
+      !!fields.failure_condition ||
+      (fields.contradiction_items?.length ?? 0) > 0 ||
+      !!fields.cause_detail ||
+      thesisDetailParts.length > 0 ||
+      timingDetailParts.length > 0 ||
+      !!scenario ||
+      breakdownParts.length > 0 ||
+      !!fields.confidence_detail?.primary_uncertainty);
 
   return (
     <div
@@ -119,6 +174,119 @@ export function JudgmentVerdictCard({ verdict }: { verdict: ChatVerdict }) {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Structured depth (Phase 2) — functional layout, no styling investment */}
+      {hasDepth && (
+        <div
+          className="flex flex-col gap-3 px-4 md:px-5 py-4"
+          style={{ borderTop: HAIRLINE }}
+        >
+          {fields?.signal_24h && (
+            <DetailRow label="24h Signal" value={fields.signal_24h} />
+          )}
+          {fields?.failure_condition && (
+            <DetailRow label="Failure Condition" value={fields.failure_condition} />
+          )}
+
+          {fields?.contradiction_items && fields.contradiction_items.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span style={LABEL_STYLE}>Contradictions</span>
+              <ul className="space-y-1">
+                {fields.contradiction_items.map((c, i) => (
+                  <li
+                    key={i}
+                    className="text-sm leading-snug"
+                    style={{ color: TEXT_PRIMARY }}
+                  >
+                    <span style={{ color: TEXT_SECONDARY }}>
+                      {c.class} · {c.severity}
+                      {c.resolvable !== undefined
+                        ? ` · ${c.resolvable ? "resolvable" : "structural"}`
+                        : ""}
+                    </span>
+                    {c.summary ? ` — ${c.summary}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {fields?.cause_detail && (
+            <div className="flex flex-col gap-1">
+              <span style={LABEL_STYLE}>Cause Detail</span>
+              {fields.cause_detail.dominant_cluster && (
+                <span className="text-sm leading-snug" style={{ color: TEXT_PRIMARY }}>
+                  Dominant: {fields.cause_detail.dominant_cluster}
+                  {fields.cause_detail.secondary_cluster
+                    ? ` · Secondary: ${fields.cause_detail.secondary_cluster}`
+                    : ""}
+                </span>
+              )}
+              {(fields.cause_detail.drivers ?? []).map((d, i) => (
+                <span
+                  key={i}
+                  className="text-sm leading-snug"
+                  style={{ color: TEXT_SECONDARY }}
+                >
+                  [{d.direction}] {d.family}
+                  {d.strength !== undefined ? ` (${fmtNum(d.strength)})` : ""}
+                  {d.summary ? `: ${d.summary}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {thesisDetailParts.length > 0 && (
+            <DetailRow label="Thesis Detail" value={thesisDetailParts.join(" · ")} />
+          )}
+          {fields?.thesis_detail?.secondary && (
+            <DetailRow label="Secondary Thesis" value={fields.thesis_detail.secondary} />
+          )}
+
+          {timingDetailParts.length > 0 && (
+            <DetailRow label="Timing Detail" value={timingDetailParts.join(" · ")} />
+          )}
+          {fields?.timing_detail?.maturity_note && (
+            <DetailRow label="Maturity Note" value={fields.timing_detail.maturity_note} />
+          )}
+
+          {scenario?.bullish_confirmation && (
+            <DetailRow label="Bullish Confirmation" value={scenario.bullish_confirmation} />
+          )}
+          {scenario?.bearish_failure && (
+            <DetailRow label="Bearish Failure" value={scenario.bearish_failure} />
+          )}
+          {scenario?.next_trigger && (
+            <DetailRow label="Next Trigger" value={scenario.next_trigger} />
+          )}
+          {horizons.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span style={LABEL_STYLE}>Horizons</span>
+              {horizons.map((h, i) => (
+                <span
+                  key={i}
+                  className="text-sm leading-snug"
+                  style={{ color: TEXT_PRIMARY }}
+                >
+                  <span style={{ color: TEXT_SECONDARY }}>{h.horizon}</span>
+                  {h.confirmation ? ` · confirm: ${h.confirmation}` : ""}
+                  {h.failure ? ` · fail: ${h.failure}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {breakdownParts.length > 0 && (
+            <DetailRow label="Confidence Breakdown" value={breakdownParts.join(" · ")} />
+          )}
+          {fields?.confidence_detail?.primary_uncertainty && (
+            <DetailRow
+              label="Primary Uncertainty"
+              value={fields.confidence_detail.primary_uncertainty}
+            />
+          )}
         </div>
       )}
 
