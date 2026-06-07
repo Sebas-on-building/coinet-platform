@@ -31,6 +31,16 @@ TELEGRAM_BOT_TOKEN=123456:ABC-your_telegram_token
 COINGECKO_API_KEY=CG-your_demo_or_pro_key
 COINGECKO_API_PLAN=demo
 
+# CMC AI Agent Hub (MCP) — macro/derivatives co-primary Layer-1 source.
+# CMC_MCP_API_KEY is preferred; if unset, CMC_API_KEY is reused. With no key the
+# Agent Hub is simply skipped (degrades to null, never blocks judgment).
+# CMC_MCP_URL / CMC_MCP_TOOL_* only need overriding if the published MCP endpoint
+# or tool slugs change.
+CMC_MCP_API_KEY=your_coinmarketcap_key
+# CMC_MCP_URL=https://mcp.coinmarketcap.com/mcp
+# CMC_MCP_TOOL_GLOBAL=getGlobalMetrics
+# CMC_MCP_TOOL_DERIVATIVES=getDerivativesData
+
 # Email
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587

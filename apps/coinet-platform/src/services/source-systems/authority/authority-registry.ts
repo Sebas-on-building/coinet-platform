@@ -28,6 +28,20 @@ export const AUTHORITY_RULES: TruthAtomAuthorityRule[] = [
   { truthAtomId: 'liquidity.usd', sourceId: 'dexscreener', role: 'CHALLENGER', strength: 'HIGH',     conditions: {}, mayChallenge: ['coingecko'], challengeType: 'metric', notes: ['May show different DEX-native liquidity'], version: V },
 
   // ═══════════════════════════════════════════════════════════════════════
+  // MACRO SURFACE — market-wide regime inputs (CMC + CoinGecko co-primary)
+  // CMC AI Agent Hub and CoinGecko both have first-class authority over the
+  // macro atoms; neither overrides the other (the wiring fills gaps, it does
+  // not arbitrate). Authority is atom-scoped — CMC has no global authority.
+  // ═══════════════════════════════════════════════════════════════════════
+  { truthAtomId: 'macro.btc_dominance',           sourceId: 'coingecko',     role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 600_000 }, notes: ['/global dominance'],            version: V },
+  { truthAtomId: 'macro.btc_dominance',           sourceId: 'coinmarketcap', role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 600_000 }, maySubstituteFor: ['coingecko'], notes: ['Agent Hub global metrics'], version: V },
+  { truthAtomId: 'macro.total_market_cap',        sourceId: 'coingecko',     role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 600_000 }, notes: [],                              version: V },
+  { truthAtomId: 'macro.total_market_cap',        sourceId: 'coinmarketcap', role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 600_000 }, maySubstituteFor: ['coingecko'], notes: ['Agent Hub global metrics'], version: V },
+  { truthAtomId: 'macro.total_market_cap_change', sourceId: 'coingecko',     role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 600_000 }, notes: [],                              version: V },
+  { truthAtomId: 'macro.total_market_cap_change', sourceId: 'coinmarketcap', role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 600_000 }, maySubstituteFor: ['coingecko'], notes: ['Agent Hub global metrics'], version: V },
+  { truthAtomId: 'macro.fear_greed',              sourceId: 'coinmarketcap', role: 'PRIMARY', strength: 'HIGH',   conditions: { freshnessMaxMs: 3_600_000 }, notes: ['Agent Hub Fear & Greed'],     version: V },
+
+  // ═══════════════════════════════════════════════════════════════════════
   // DEX EMERGENCE
   // ═══════════════════════════════════════════════════════════════════════
   { truthAtomId: 'pair.newly_created',   sourceId: 'dexscreener',    role: 'PRIMARY',    strength: 'HIGH',     conditions: { freshnessMaxMs: 60_000 }, notes: ['Fastest new pair detection'],     version: V },
@@ -47,6 +61,11 @@ export const AUTHORITY_RULES: TruthAtomAuthorityRule[] = [
   { truthAtomId: 'liq.short.usd',  sourceId: 'coinglass', role: 'PRIMARY', strength: 'ABSOLUTE', conditions: { freshnessMaxMs: 120_000 }, notes: [],                           version: V },
   { truthAtomId: 'crowding.index',  sourceId: 'coinglass', role: 'PRIMARY', strength: 'ABSOLUTE', conditions: { freshnessMaxMs: 120_000 }, notes: [],                           version: V },
   { truthAtomId: 'long_short.ratio', sourceId: 'coinglass', role: 'PRIMARY', strength: 'HIGH',    conditions: {},                          notes: [],                           version: V },
+  // CMC AI Agent Hub challenges Coinglass on derivatives (Coinglass remains the
+  // ABSOLUTE primary; CMC widens coverage / cross-checks, never overrides).
+  { truthAtomId: 'funding.rate',     sourceId: 'coinmarketcap', role: 'CHALLENGER', strength: 'MEDIUM', conditions: {}, mayChallenge: ['coinglass'], challengeType: 'metric', notes: ['Agent Hub derivatives'], version: V },
+  { truthAtomId: 'oi.velocity',      sourceId: 'coinmarketcap', role: 'CHALLENGER', strength: 'MEDIUM', conditions: {}, mayChallenge: ['coinglass'], challengeType: 'metric', notes: ['Agent Hub derivatives'], version: V },
+  { truthAtomId: 'long_short.ratio', sourceId: 'coinmarketcap', role: 'CHALLENGER', strength: 'MEDIUM', conditions: {}, mayChallenge: ['coinglass'], challengeType: 'metric', notes: ['Agent Hub derivatives'], version: V },
 
   // ═══════════════════════════════════════════════════════════════════════
   // PROTOCOL SUBSTANCE

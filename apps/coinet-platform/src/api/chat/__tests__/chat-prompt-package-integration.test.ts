@@ -133,6 +133,26 @@ vi.mock('../../../services/market-data', () => ({
     totalMarketCapChange24h: 1.5,
   }),
 }));
+// CMC Agent Hub (Layer-1 macro/derivatives). Mock proactively so the pipeline
+// never attempts a real MCP call and the success path is deterministic.
+vi.mock('../../../services/cmc-agent-hub', () => ({
+  getCmcGlobalMetrics: vi.fn().mockResolvedValue({
+    fearGreed: 40,
+    btcDominance: 52.4,
+    totalMarketCap: 2_300_000_000_000,
+    totalMarketCapChange24h: 1.5,
+    btcPriceChange7d: 2.1,
+    btcDominanceChange7d: 0.3,
+    stablecoinMcapChange7d: -0.4,
+  }),
+  getCmcDerivatives: vi.fn().mockResolvedValue({
+    aggFunding: 0.01,
+    oiChange24h: 3.2,
+    longShortRatio: 1.1,
+    liquidations24h: 50_000_000,
+  }),
+  isCmcAgentHubConfigured: vi.fn().mockReturnValue(true),
+}));
 vi.mock('../../../services/enterprise-market-data-pipeline', () => ({
   fetchCachedEnterpriseMarketPrices: vi.fn().mockResolvedValue({
     prices: [],

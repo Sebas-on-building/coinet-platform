@@ -12,6 +12,7 @@
 import { prisma } from '../../db/client';
 import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI, getGlobalMarketData } from '../../services/market-data';
+import { getCmcGlobalMetrics, getCmcDerivatives } from '../../services/cmc-agent-hub';
 import { produceJudgment, buildSignalSnapshot, type MarketWideInputs } from '../../services/judgment';
 import { formatJudgmentForAI } from '../../services/judgment/debug-view';
 // BTAR-003 — Judgment availability state (Plan 2.1 §4 / Plan 2.2 §7.3 P2-S10).
@@ -325,7 +326,11 @@ export class ChatService {
         // This ensures AI always has SOME context to work with
         const shouldFetchMarketData = ds.fetchMarketData || coinSymbols.length > 0 || request.message.toLowerCase().trim() === 'hey';
         
-        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket] = await Promise.all([
+        // CMC AI Agent Hub (Layer-1 macro + derivatives). Co-primary with
+        // CoinGecko on macro atoms, challenger on derivatives. trackFetch-guarded
+        // → null on any failure, so it degrades honestly without aborting judgment.
+        const cmcSymbolForDeriv = coinSymbols[0] || 'BTC';
+        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket, cmcGlobal, cmcDerivatives] = await Promise.all([
           trackFetch('userContext', buildUserContextForAI(userId), true),
           trackFetch('marketData', fetchPricesForMessage(request.message), shouldFetchMarketData),
           trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), (ds.fetchEnterpriseData && coinSymbols.length > 0) || coinSymbols.length > 0),
@@ -343,6 +348,8 @@ export class ChatService {
           trackFetch('comprehensiveDerivatives', calculateComprehensiveDerivativesIntelligence(), ds.fetchDerivatives),
           trackFetch('derivativesFinal', calculateDerivativesIntelligenceFinal(), ds.fetchDerivatives),
           trackFetch('globalMarket', getGlobalMarketData(), coinSymbols.length > 0), // BTAR-011: real CoinGecko /global (dominance + total mcap)
+          trackFetch('cmcGlobal', getCmcGlobalMetrics(), coinSymbols.length > 0), // CMC Agent Hub: macro co-primary (F&G, dominance, total mcap, 7d coverage)
+          trackFetch('cmcDerivatives', getCmcDerivatives(cmcSymbolForDeriv), (ds.fetchDerivatives || needsPerpsData) && coinSymbols.length > 0), // CMC Agent Hub: derivatives challenger
         ]);
         
         const dataFetchDuration = Date.now() - dataFetchStartTime;
@@ -1249,6 +1256,46 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             if (typeof btcDom === 'number' && btcDom > 0) marketWide.btc_dominance = btcDom;
             const globalMcapChange = (globalMarket as any)?.totalMarketCapChange24h;
             if (typeof globalMcapChange === 'number') marketWide.total_market_cap_change_24h = globalMcapChange;
+
+            // CMC Agent Hub — co-primary macro fill. CMC and CoinGecko/Coinglass
+            // are co-primary per-atom (governance: authority-registry macro.* +
+            // funding.rate challenger), so CMC FILLS atoms an existing primary
+            // didn't provide rather than overriding one that did. It is also the
+            // sole provider of the three 7-day coverage-win fields the regime
+            // engine otherwise leaves defaulted.
+            const cmcFearGreed = (cmcGlobal as any)?.fearGreed;
+            if (marketWide.fear_greed_index === undefined && typeof cmcFearGreed === 'number') {
+              marketWide.fear_greed_index = cmcFearGreed;
+            }
+            const cmcBtcDom = (cmcGlobal as any)?.btcDominance;
+            if (marketWide.btc_dominance === undefined && typeof cmcBtcDom === 'number' && cmcBtcDom > 0) {
+              marketWide.btc_dominance = cmcBtcDom;
+            }
+            const cmcMcapChange = (cmcGlobal as any)?.totalMarketCapChange24h;
+            if (marketWide.total_market_cap_change_24h === undefined && typeof cmcMcapChange === 'number') {
+              marketWide.total_market_cap_change_24h = cmcMcapChange;
+            }
+            const cmcAggFunding = (cmcDerivatives as any)?.aggFunding;
+            if (marketWide.aggregate_funding_rate === undefined && typeof cmcAggFunding === 'number') {
+              marketWide.aggregate_funding_rate = cmcAggFunding;
+            }
+            const cmcLongShort = (cmcDerivatives as any)?.longShortRatio;
+            if (marketWide.aggregate_long_short_ratio === undefined && typeof cmcLongShort === 'number') {
+              marketWide.aggregate_long_short_ratio = cmcLongShort;
+            }
+            const cmcOiChange = (cmcDerivatives as any)?.oiChange24h;
+            if (marketWide.total_open_interest_change_24h === undefined && typeof cmcOiChange === 'number') {
+              marketWide.total_open_interest_change_24h = cmcOiChange;
+            }
+            // Coverage-win fields: CMC is the sole provider today (CoinGecko
+            // /global doesn't expose these), so the regime engine no longer has
+            // to default them to neutral.
+            const cmcBtc7d = (cmcGlobal as any)?.btcPriceChange7d;
+            if (typeof cmcBtc7d === 'number') marketWide.btc_price_change_7d = cmcBtc7d;
+            const cmcDom7d = (cmcGlobal as any)?.btcDominanceChange7d;
+            if (typeof cmcDom7d === 'number') marketWide.btc_dominance_change_7d = cmcDom7d;
+            const cmcStable7d = (cmcGlobal as any)?.stablecoinMcapChange7d;
+            if (typeof cmcStable7d === 'number') marketWide.stablecoin_market_cap_change_7d = cmcStable7d;
 
             const judgment = produceJudgment({
               entity_id: judgmentEntityId,

@@ -19,6 +19,12 @@ export const TRUTH_ATOMS: TruthAtomDef[] = [
   { id: 'fdv',                   truthClass: TC.MARKET_SURFACE,       name: 'FDV',                   description: 'Fully diluted valuation',                       metricType: 'numeric',     refreshSensitivity: 'scheduled' },
   { id: 'liquidity.usd',         truthClass: TC.MARKET_SURFACE,       name: 'Liquidity Depth',       description: 'Available liquidity depth in USD',              metricType: 'numeric',     refreshSensitivity: 'fast' },
 
+  // ── Macro Surface (market-wide regime inputs) ─────────────────────────
+  { id: 'macro.btc_dominance',          truthClass: TC.MARKET_SURFACE, name: 'BTC Dominance',          description: 'Bitcoin share of total crypto market cap',      metricType: 'numeric', refreshSensitivity: 'scheduled' },
+  { id: 'macro.total_market_cap',       truthClass: TC.MARKET_SURFACE, name: 'Total Market Cap',       description: 'Aggregate crypto market capitalization (USD)',  metricType: 'numeric', refreshSensitivity: 'scheduled' },
+  { id: 'macro.total_market_cap_change',truthClass: TC.MARKET_SURFACE, name: 'Total Market Cap Δ24h',  description: 'Aggregate market-cap percentage change (24h)',  metricType: 'numeric', refreshSensitivity: 'scheduled' },
+  { id: 'macro.fear_greed',             truthClass: TC.MARKET_SURFACE, name: 'Fear & Greed Index',     description: 'Composite market fear/greed sentiment (0–100)', metricType: 'numeric', refreshSensitivity: 'scheduled' },
+
   // ── DEX Emergence ─────────────────────────────────────────────────────
   { id: 'pair.newly_created',    truthClass: TC.DEX_EMERGENCE,        name: 'New Pair',              description: 'Whether a pair was recently created on DEX',    metricType: 'boolean',     refreshSensitivity: 'fast' },
   { id: 'pair.age',              truthClass: TC.DEX_EMERGENCE,        name: 'Pair Age',              description: 'Time since pair creation',                      metricType: 'numeric',     refreshSensitivity: 'scheduled' },
