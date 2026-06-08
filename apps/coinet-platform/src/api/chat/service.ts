@@ -1320,37 +1320,6 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               },
             });
 
-            // TEMPORARY per-token diagnostic — proves the snapshot is token-specific
-            // (BTC vs PEPE should differ). Remove after live re-verification.
-            logger.info('🔬 per-token judgment signals', {
-              symbol: resolvedSymbol,
-              sector: resolvedAssetSector,
-              price_volume24h: (coinPrice as any)?.volume24h ?? null,
-              market_cap_usd: typeof (coinPrice as any)?.marketCap === 'number' ? (coinPrice as any).marketCap : null,
-              turnover_ratio: (() => {
-                const v = (coinPrice as any)?.volume24h;
-                const m = (coinPrice as any)?.marketCap;
-                return typeof v === 'number' && typeof m === 'number' && m > 0 ? +(v / m).toFixed(4) : null;
-              })(),
-              price_change24h: (coinPrice as any)?.changePercent24h ?? (coinPrice as any)?.priceChangePercent24h ?? null,
-              liquidity_usd: liquidityUsd,
-              perp_oi: d_oi ?? null,
-              perp_oi_change24h: d_oiChange ?? null,
-              funding_rate: d_funding ?? null,
-              liquidations_24h: d_liq ?? null,
-              long_short_ratio: d_ls ?? null,
-              social_score: s_score ?? null,
-              social_mentions: s_mentions ?? null,
-              // Path C OmniScore signals + the engine's normalized snapshot fields.
-              omni_qs: omniQs ?? null,
-              omni_circulating_ratio: omniCircRatio ?? null,
-              snap_volume_24h: +signals.volume_24h.toFixed(4),
-              snap_fundamentals_strength: +signals.fundamentals_strength.toFixed(4),
-              snap_unlock_pressure: +signals.unlock_pressure.toFixed(4),
-              derivatives_present: !!perTokenDerivatives,
-              sentiment_present: !!perTokenSentiment,
-            });
-
             // BTAR-003: track judgment availability so the AI prompt cannot
             // silently pretend structured judgment exists when it does not.
             let judgmentAvailability: JudgmentAvailabilityResult;
