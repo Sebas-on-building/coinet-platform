@@ -18,6 +18,12 @@ import { computeConfidence } from './confidence-engine';
 import { classifyTimingFull, type FullTimingResult } from './timing-engine';
 import { buildSignalSnapshot, type SignalSnapshot } from './signal-snapshot';
 import {
+  familyApplicability,
+  deriveFamilyDataPresence,
+  mapGraphSectorToOmniSector,
+} from './asset-applicability';
+import type { Sector, CapBucket } from '../omniscore_v3';
+import {
   CAUSAL_FAMILIES,
   FEATURE_TO_CAUSAL_FAMILY,
   HYPOTHESIS_CLASSES,
@@ -87,6 +93,15 @@ export interface ProduceJudgmentInput {
     competitors: string[];
     capBucket: string | null;
   };
+  /**
+   * OmniScore asset Sector (L1/DeFi/Memecoin/Stablecoin/…), resolved upstream
+   * where the CoinGecko id is known. Drives per-family applicability so each
+   * asset is judged by the right lens. Falls back to the knowledge-graph sector,
+   * then 'Unknown' (conservative — all families applicable).
+   */
+  assetSector?: Sector;
+  /** OmniScore market-cap bucket — reserved for confidence expectation calibration. */
+  capBucket?: CapBucket;
   /** L3.3-B: identity confidence state for gate enforcement */
   identityConfidenceState?: EntityConfidenceState;
 }
@@ -106,7 +121,26 @@ export interface ProduceJudgmentInput {
  * 9. Run quality checks
  */
 export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
-  const { entity_id, symbol, chain, signals, scores, marketWide, entityContext } = input;
+  const { entity_id, symbol, chain, scores, marketWide, entityContext } = input;
+
+  // ── Asset applicability (purpose → lens) ───────────────────────────────────
+  // Resolve the asset's Sector and annotate the snapshot with per-family
+  // applicability BEFORE the engines run, so confidence/contradiction/hypothesis
+  // all judge by the same purpose→lens map. Sector priority: OmniScore (supplied)
+  // → knowledge-graph sector → 'Unknown' (conservative: all families applicable).
+  // Annotate a COPY — never mutate the caller's input.signals (keeps input-side
+  // fingerprints and other downstream consumers byte-stable); the engines below
+  // read this annotated copy.
+  const resolvedSector: Sector =
+    input.assetSector ?? mapGraphSectorToOmniSector(entityContext?.sector) ?? 'Unknown';
+  const signals: SignalSnapshot = {
+    ...input.signals,
+    _applicability: familyApplicability(
+      resolvedSector,
+      input.capBucket ?? (entityContext?.capBucket as CapBucket | null) ?? null,
+      deriveFamilyDataPresence(input.signals),
+    ),
+  };
 
   // L3.3-B gate enforcement — compute gate decisions before engines run
   let identityConfidenceOutput: JudgmentOutput['identity_confidence'];
@@ -296,6 +330,21 @@ export function produceJudgment(input: ProduceJudgmentInput): JudgmentOutput {
   };
 }
 
+/**
+ * Applicability gate for fundamentals-based "missing evidence" notes. We only
+ * tell the user that fundamentals are missing/weak when fundamentals are the
+ * right lens for this asset AND we have real data (SCORED). For assets where
+ * fundamentals are NOT_APPLICABLE (e.g. memecoins) or we lack a source
+ * (APPLICABLE_NO_DATA — e.g. BTC network fundamentals), surfacing "fundamental
+ * backing would strengthen thesis" is misleading. Legacy fallback: when no
+ * applicability is attached, behave as before.
+ */
+function fundamentalsLensScored(s: SignalSnapshot): boolean {
+  const a = s._applicability;
+  if (!a) return true;
+  return a.fundamentals_protocol === 'SCORED' || a.fundamentals_network === 'SCORED';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CAUSE ATTRIBUTION
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -449,7 +498,7 @@ const HYPOTHESIS_PROFILES: HypothesisProfile[] = [
     getMissingEvidence(s) {
       const m: string[] = [];
       if (s.volume_24h < 0.2) m.push('Spot volume confirmation needed');
-      if (s.fundamentals_strength < 0.3) m.push('Fundamental backing would strengthen thesis');
+      if (fundamentalsLensScored(s) && s.fundamentals_strength < 0.3) m.push('Fundamental backing would strengthen thesis');
       if (s.liquidity < 0.2) m.push('Liquidity depth needed for sustainability');
       return m;
     },
@@ -475,7 +524,7 @@ const HYPOTHESIS_PROFILES: HypothesisProfile[] = [
     weakenedBy: new Set(['price_vs_fundamentals', 'price_vs_spot_structure', 'leverage_vs_spot']),
     getMissingEvidence(s) {
       const m: string[] = [];
-      if (s.fundamentals_strength < 0.3) m.push('Fundamental validation would confirm real breakout');
+      if (fundamentalsLensScored(s) && s.fundamentals_strength < 0.3) m.push('Fundamental validation would confirm real breakout');
       if (s.whale_activity < 0.3) m.push('Smart money participation not yet confirmed');
       if (s.exchange_outflow < 0.2) m.push('Exchange outflow conviction signal absent');
       return m;
@@ -526,7 +575,7 @@ const HYPOTHESIS_PROFILES: HypothesisProfile[] = [
     getMissingEvidence(s) {
       const m: string[] = [];
       if (s.volume_24h < 0.3) m.push('Spot volume confirmation would de-risk the setup');
-      if (s.fundamentals_strength < 0.2) m.push('No fundamental backing increases fragility');
+      if (fundamentalsLensScored(s) && s.fundamentals_strength < 0.2) m.push('No fundamental backing increases fragility');
       if (s.whale_activity < 0.2) m.push('No smart money participation detected');
       return m;
     },
@@ -623,7 +672,7 @@ const HYPOTHESIS_PROFILES: HypothesisProfile[] = [
     getMissingEvidence(s) {
       const m: string[] = [];
       if (s.exchange_inflow < 0.3) m.push('Exchange inflow signal is moderate — distribution thesis uncertain');
-      if (s.fundamentals_strength < 0.2) m.push('Fundamental health assessment needed');
+      if (fundamentalsLensScored(s) && s.fundamentals_strength < 0.2) m.push('Fundamental health assessment needed');
       return m;
     },
   },
@@ -670,7 +719,7 @@ const HYPOTHESIS_PROFILES: HypothesisProfile[] = [
     getMissingEvidence(s) {
       const m: string[] = [];
       if (s.volume_24h < 0.3) m.push('Spot participation unclear — volume confirmation needed');
-      if (s.fundamentals_strength < 0.2) m.push('No fundamental anchor for continuation');
+      if (fundamentalsLensScored(s) && s.fundamentals_strength < 0.2) m.push('No fundamental anchor for continuation');
       if (s.whale_activity < 0.2) m.push('No smart money participation to absorb liquidation cascades');
       return m;
     },

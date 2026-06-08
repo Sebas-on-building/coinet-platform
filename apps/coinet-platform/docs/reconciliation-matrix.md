@@ -7,7 +7,7 @@
 **Supersedes informal divergence claims:** YES
 **Authority over future cross-pipeline work:** YES — every cross-pipeline change MUST cite an RCN row
 **Replay basis:**
-- AJP.1 fingerprint: `ajp1.fp.aec692be` (80/80 GREEN — active product pipeline)
+- AJP.1 fingerprint: `ajp1.fp.f61b2c30` (80/80 GREEN — active product pipeline)
 - CIP.0.5 fingerprint: `cip05.fp.cc76c0e9` (109/109 GREEN — certified L13+L14 downstream runtime)
 - Bridge comparison ledger: `bridge.ledger.fa2d884e` (4 episode comparisons, 6 standing divergence signals)
 
@@ -56,7 +56,7 @@ Without this matrix, every future cross-pipeline change becomes ad-hoc and risks
 
 | Evidence | Location | Fingerprint | What it proves |
 |---|---|---|---|
-| AJP.1 certification | `apps/coinet-platform/src/scripts/test-ajp1-active-judgment-pipeline.ts` | `ajp1.fp.aec692be` | Active product pipeline runs deterministically across 4 episode families × 20 runs and satisfies AJP-INV-A..J |
+| AJP.1 certification | `apps/coinet-platform/src/scripts/test-ajp1-active-judgment-pipeline.ts` | `ajp1.fp.f61b2c30` | Active product pipeline runs deterministically across 4 episode families × 20 runs and satisfies AJP-INV-A..J |
 | CIP.0.5 certification | `apps/coinet-platform/src/scripts/test-cip05-certified-runtime.ts` | `cip05.fp.cc76c0e9` | Certified L13(synthetic upstream) + L14 chain runs deterministically and satisfies CIP05-INV-A..L; L13 runtime invocation honestly deferred to CIP.0.6 |
 | Bridge comparison ledger | `apps/coinet-platform/src/scripts/build-bridge-comparison-ledger.ts` | `bridge.ledger.fa2d884e` | 4 per-episode comparisons + 6 standing divergence signals; encodes which dimensions are comparable vs honestly non-comparable |
 | CIP Readiness Report | `apps/coinet-platform/docs/cip-readiness-report.md` | (doc) | Establishes the two-pipeline truth and the Implementation Reality Matrix |

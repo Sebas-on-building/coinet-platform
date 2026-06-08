@@ -14,6 +14,7 @@ import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI, getGlobalMarketData } from '../../services/market-data';
 import { getCmcGlobalMetrics, getCmcDerivatives } from '../../services/cmc-agent-hub';
 import { produceJudgment, buildSignalSnapshot, type MarketWideInputs } from '../../services/judgment';
+import { getAssetSector } from '../../services/omniscore_v3';
 import { formatJudgmentForAI } from '../../services/judgment/debug-view';
 // BTAR-003 — Judgment availability state (Plan 2.1 §4 / Plan 2.2 §7.3 P2-S10).
 // This is a bounded live-path trust modification, not a chat service rewrite.
@@ -1303,6 +1304,9 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               chain: resolvedChain,
               signals,
               marketWide,
+              // Resolve the asset's OmniScore Sector (keyed on the CoinGecko id)
+              // so judgment is evaluated by the lens that fits its purpose.
+              assetSector: getAssetSector((primaryCoin.coinGeckoId || resolvedSymbol).toLowerCase()),
               entityContext: graphCtx ? {
                 ecosystem: graphCtx.ecosystem,
                 sector: graphCtx.sector,

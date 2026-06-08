@@ -60,6 +60,15 @@ export interface SignalSnapshot {
    * When non-empty, downstream engines apply coverage penalties.
    */
   _missing?: Set<string>;
+
+  /**
+   * Per-family applicability for THIS asset's purpose (SCORED / APPLICABLE_NO_DATA
+   * / NOT_APPLICABLE), computed by produceJudgment from the asset's Sector. Lets
+   * the confidence/contradiction/hypothesis engines judge each asset by the right
+   * lens — never penalizing it for a metric that's the wrong lens for its type.
+   * Optional: when absent, engines fall back to legacy (all-applicable) behavior.
+   */
+  _applicability?: import('./asset-applicability').FamilyApplicability;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

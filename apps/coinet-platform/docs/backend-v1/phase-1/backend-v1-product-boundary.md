@@ -315,7 +315,7 @@ This is already present in the active judgment engine at:
 apps/coinet-platform/src/services/judgment/produceJudgment()
 ```
 
-AJP.1 (`ajp1.fp.aec692be`) demonstrates that the active path produces structured judgments end-to-end under synthetic inputs. The point of later Phase 1 and Phase 2 work is **not** to invent Asset Judgment, but to make the current implementation launch-grade.
+AJP.1 (`ajp1.fp.f61b2c30`) demonstrates that the active path produces structured judgments end-to-end under synthetic inputs. The point of later Phase 1 and Phase 2 work is **not** to invent Asset Judgment, but to make the current implementation launch-grade.
 
 ### 1.2.6.6 Explicit Boundary
 

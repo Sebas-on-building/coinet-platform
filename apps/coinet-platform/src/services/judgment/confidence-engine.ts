@@ -18,6 +18,7 @@
 import { toConfidenceBand } from './taxonomies';
 import type { JudgmentConfidence, ConfidenceBreakdown, JudgmentContradictions, JudgmentState } from './types';
 import type { SignalSnapshot } from './signal-snapshot';
+import { isAxisApplicable, type ConfidenceAxis } from './asset-applicability';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // WEIGHTS — how much each category contributes to overall confidence
@@ -55,11 +56,21 @@ export function computeConfidence(input: ConfidenceInput): JudgmentConfidence {
 
   const breakdown = computeBreakdown(signals);
 
-  let raw =
-    breakdown.market * CATEGORY_WEIGHTS.market +
-    breakdown.fundamentals * CATEGORY_WEIGHTS.fundamentals +
-    breakdown.onchain * CATEGORY_WEIGHTS.onchain +
-    breakdown.narrative * CATEGORY_WEIGHTS.narrative;
+  // Weighted average over APPLICABLE axes only. An axis whose every family is
+  // NOT_APPLICABLE for this asset (e.g. a stablecoin's fundamentals axis) is
+  // excluded and the remaining weights renormalize — so an asset is never dragged
+  // down by a lens that doesn't apply to it. When all four axes apply (the common
+  // case) the divisor is 1.0 and this is identical to the prior weighted sum.
+  const applicability = signals._applicability;
+  const axes: ConfidenceAxis[] = ['market', 'fundamentals', 'onchain', 'narrative'];
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const axis of axes) {
+    if (applicability && !isAxisApplicable(axis, applicability)) continue;
+    weightedSum += breakdown[axis] * CATEGORY_WEIGHTS[axis];
+    totalWeight += CATEGORY_WEIGHTS[axis];
+  }
+  let raw = totalWeight > 0 ? weightedSum / totalWeight : 0;
 
   // --- Penalties ---
 

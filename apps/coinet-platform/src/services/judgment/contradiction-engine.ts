@@ -114,8 +114,23 @@ function checkLeverageVsSpot(s: SignalSnapshot): Contradiction[] {
   return results;
 }
 
+/**
+ * Applicability gate for fundamentals-based contradictions. A "weak fundamentals"
+ * contradiction is only honest when fundamentals are the RIGHT lens for this asset
+ * AND we actually have the data. For assets where fundamentals are NOT_APPLICABLE
+ * (e.g. memecoins) or we lack a source (APPLICABLE_NO_DATA — e.g. BTC's network
+ * fundamentals), absence is not a contradiction — we must never invent weakness.
+ * Legacy fallback: when no applicability is attached, behave as before.
+ */
+function fundamentalsJudgeable(s: SignalSnapshot): boolean {
+  const a = s._applicability;
+  if (!a) return true;
+  return a.fundamentals_protocol === 'SCORED' || a.fundamentals_network === 'SCORED';
+}
+
 function checkPriceVsFundamentals(s: SignalSnapshot): Contradiction[] {
   const results: Contradiction[] = [];
+  if (!fundamentalsJudgeable(s)) return results;
   const priceBullish = s.price_momentum_24h > 0.15;
   const fundamentalsWeak = s.fundamentals_strength < 0.2;
 
@@ -154,6 +169,7 @@ function checkSentimentVsOnchain(s: SignalSnapshot): Contradiction[] {
 
 function checkTvlVsInflows(s: SignalSnapshot): Contradiction[] {
   const results: Contradiction[] = [];
+  if (!fundamentalsJudgeable(s)) return results;
   const tvlUp = s.tvl_trend > 0.4;
   const revenueWeak = s.revenue_quality < 0.15;
 
@@ -173,6 +189,7 @@ function checkTvlVsInflows(s: SignalSnapshot): Contradiction[] {
 
 function checkNarrativeBeforeFundamentals(s: SignalSnapshot): Contradiction[] {
   const results: Contradiction[] = [];
+  if (!fundamentalsJudgeable(s)) return results;
   const narrativeHot = s.narrative_intensity > 0.5;
   const fundamentalsLagging = s.fundamentals_strength < 0.25;
 
