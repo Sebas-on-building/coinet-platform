@@ -9,6 +9,8 @@
  */
 
 import type { SignalSnapshot } from './types';
+import type { Sector } from '../omniscore_v3';
+import { sectorFundamentalsApplicable } from './asset-applicability';
 
 export type { SignalSnapshot } from './types';
 
@@ -24,6 +26,9 @@ export function buildSignalSnapshot(input: {
     price_change_24h?: number;
     price_change_1h?: number;
     volume_24h_usd?: number;
+    /** Market cap (USD) — enables market-cap-RELATIVE volume (turnover ratio),
+     *  so a mega-cap's huge raw volume doesn't saturate the same as a micro-cap's. */
+    market_cap_usd?: number;
     liquidity_usd?: number;
     pair_age_hours?: number;
     txns_buys_24h?: number;
@@ -71,6 +76,23 @@ export function buildSignalSnapshot(input: {
     next_unlock_usd?: number;
     market_cap_usd?: number;
   };
+  /**
+   * Per-token OmniScore-derived signals. The richest per-token source we already
+   * compute — threaded here so two different assets produce genuinely different
+   * snapshots even when derivatives/social are absent.
+   *   - quality_score          : OmniScore QS (0–100), sector-aware quality. Maps
+   *                              to `fundamentals_strength` ONLY when fundamentals
+   *                              are the right lens for `asset_sector` (gated).
+   *   - circulating_supply_ratio: circulating / total supply (0–1). Lower ⇒ more
+   *                              locked supply ⇒ more emission/unlock overhang.
+   *                              Drives `unlock_pressure` for all asset types.
+   */
+  omniscore?: {
+    quality_score?: number;
+    circulating_supply_ratio?: number;
+  };
+  /** OmniScore Sector — gates the QS → fundamentals_strength projection by purpose. */
+  asset_sector?: Sector;
   coverage?: {
     available_count: number;
     total_count: number;
@@ -86,6 +108,7 @@ export function buildSignalSnapshot(input: {
   const oc = input.onchain ?? {};
   const proto = input.protocol ?? {};
   const unlock = input.unlock ?? {};
+  const omni = input.omniscore ?? {};
   const cov = input.coverage ?? { available_count: 0, total_count: 8, stale_count: 0 };
 
   const _missing = new Set<string>();
@@ -125,7 +148,15 @@ export function buildSignalSnapshot(input: {
   const addressSignal = oc.active_addresses_24h != null
     ? clamp(oc.active_addresses_24h / 50_000, 0, 1)
     : 0;
-  const fundamentalsStrength = (tvlSignal * 0.3 + feeSignal * 0.25 + revSignal * 0.25 + addressSignal * 0.2);
+  let fundamentalsStrength = (tvlSignal * 0.3 + feeSignal * 0.25 + revSignal * 0.25 + addressSignal * 0.2);
+  // OmniScore Quality Score is the per-token fundamentals proxy. Project it into
+  // `fundamentals_strength` ONLY when fundamentals are the right lens for this
+  // asset's purpose (gated by applicability). A memecoin / stablecoin must never
+  // pull a "fundamentals" signal from QS — that judges it by the wrong lens.
+  // Take the max so a real protocol signal (TVL/fees/rev) is never diluted by QS.
+  if (omni.quality_score != null && sectorFundamentalsApplicable(input.asset_sector)) {
+    fundamentalsStrength = Math.max(fundamentalsStrength, clamp(omni.quality_score / 100, 0, 1));
+  }
 
   const whaleNet = oc.whale_net_flow_24h ?? 0;
   const whaleActivity = clamp((whaleNet + 1_000_000) / 2_000_000, 0, 1);
@@ -141,18 +172,39 @@ export function buildSignalSnapshot(input: {
     0, 1
   );
 
-  const unlockPressure = unlock.next_unlock_usd != null && unlock.market_cap_usd != null && unlock.market_cap_usd > 0
+  let unlockPressure = unlock.next_unlock_usd != null && unlock.market_cap_usd != null && unlock.market_cap_usd > 0
     ? clamp(unlock.next_unlock_usd / unlock.market_cap_usd, 0, 1)
     : 0;
+  // Supply overhang from OmniScore circulating-supply ratio: the lower the
+  // share already circulating, the more future emission/unlock pressure. A
+  // supply-dynamics signal that applies to every asset type (applicability
+  // gating excludes it downstream for stablecoins, whose tokenomics is N/A).
+  if (omni.circulating_supply_ratio != null) {
+    const supplyOverhang = clamp(1 - omni.circulating_supply_ratio, 0, 1);
+    unlockPressure = Math.max(unlockPressure, supplyOverhang);
+  }
 
   const holderConc = hld.top_10_percentage != null
     ? clamp(hld.top_10_percentage / 100, 0, 1)
     : (sec.top_10_percentage != null ? clamp(sec.top_10_percentage / 100, 0, 1) : 0.5);
 
+  // Market-cap-RELATIVE volume (turnover ratio = 24h volume / market cap). A
+  // healthy turnover is ~5–30%; >30% is hyperactive. This de-saturates so
+  // assets of vastly different size genuinely differ: BTC (~3% turnover → low)
+  // vs a hot meme (~60% → maxed). The old linear /10M saturated at 10M, so a
+  // $39B-volume coin and a $221M-volume coin both read 1.0. When market cap is
+  // absent, fall back to a LOG scale of absolute USD volume (1M → 0, 10B → 1)
+  // rather than the saturating linear divisor.
+  const volUsd = d.volume_24h_usd ?? 0;
+  const mcapForVol = d.market_cap_usd;
+  const volumeSignal = mcapForVol != null && mcapForVol > 0
+    ? clamp((volUsd / mcapForVol) / 0.30, 0, 1)
+    : (volUsd > 0 ? clamp((Math.log10(volUsd) - 6) / 4, 0, 1) : 0);
+
   return {
     price_momentum_24h: clamp((d.price_change_24h ?? 0) / 30, -1, 1),
     price_momentum_1h: clamp((d.price_change_1h ?? 0) / 10, -1, 1),
-    volume_24h: clamp((d.volume_24h_usd ?? 0) / 10_000_000, 0, 1),
+    volume_24h: volumeSignal,
     buy_sell_ratio: totalTxns > 0 ? buys / totalTxns : 0.5,
 
     liquidity: clamp((d.liquidity_usd ?? 0) / 5_000_000, 0, 1),

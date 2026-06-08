@@ -14,7 +14,7 @@ import { aiService } from '../../services/ai-service';
 import { fetchPricesForMessage, formatMarketDataForAI, getGlobalMarketData } from '../../services/market-data';
 import { getCmcGlobalMetrics, getCmcDerivatives } from '../../services/cmc-agent-hub';
 import { produceJudgment, buildSignalSnapshot, type MarketWideInputs } from '../../services/judgment';
-import { getAssetSector } from '../../services/omniscore_v3';
+import { getAssetSector, type Sector } from '../../services/omniscore_v3';
 import { formatJudgmentForAI } from '../../services/judgment/debug-view';
 // BTAR-003 — Judgment availability state (Plan 2.1 §4 / Plan 2.2 §7.3 P2-S10).
 // This is a bounded live-path trust modification, not a chat service rewrite.
@@ -1183,6 +1183,47 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               return typeof dp?.raw === 'number' ? dp.raw : undefined;
             })();
 
+            // ── PER-TOKEN OmniScore signals (Path C — lean on what we compute) ──
+            // OmniScore is the richest per-token source we already calculate every
+            // call but largely discard. Thread QS (sector-aware quality → gated
+            // fundamentals proxy), circulating-supply ratio (→ unlock/emission
+            // overhang), and the scores bundle into the judgment so two different
+            // assets diverge on state/thesis/cause, not just confidence.
+            const resolvedAssetSector: Sector =
+              getAssetSector((primaryCoin.coinGeckoId || resolvedSymbol).toLowerCase());
+            const omniQs: number | undefined =
+              typeof primaryOmniScore?.qualityScore?.score === 'number'
+                ? primaryOmniScore.qualityScore.score
+                : undefined;
+            const omniOs: number | null =
+              typeof primaryOmniScore?.opportunityScore?.score === 'number'
+                ? primaryOmniScore.opportunityScore.score
+                : null;
+            const omniPos: number | null =
+              typeof (primaryOmniScore as any)?.pos?.adjusted === 'number'
+                ? (primaryOmniScore as any).pos.adjusted
+                : null;
+            // circulating_supply_ratio is an OmniScore dataPoint; scan all segment
+            // groups (qualityScore / opportunityScore / risk) for it defensively.
+            const omniCircRatio: number | undefined = (() => {
+              const groups = [
+                primaryOmniScore?.qualityScore,
+                primaryOmniScore?.opportunityScore,
+                primaryOmniScore?.risk,
+              ];
+              for (const g of groups) {
+                const segs = (g as any)?.segments;
+                if (!segs) continue;
+                for (const segKey of Object.keys(segs)) {
+                  const dp = segs[segKey]?.dataPoints?.find(
+                    (p: any) => p?.key === 'circulating_supply_ratio',
+                  );
+                  if (dp && typeof dp.raw === 'number') return dp.raw;
+                }
+              }
+              return undefined;
+            })();
+
             // ── PER-TOKEN derivatives + sentiment (token-judgment fix) ──────────
             // The judgment snapshot MUST be token-specific. Index the already-
             // fetched per-token sources by the queried symbol: Coinglass perps
@@ -1226,29 +1267,14 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                 ? { score: s_score ?? 0, volume_mentions_24h: s_mentions ?? 0, social_dominance: 0 }
                 : undefined;
 
-            // TEMPORARY per-token diagnostic — proves the snapshot is token-specific
-            // (BTC vs PEPE should differ). Remove after live re-verification.
-            logger.info('🔬 per-token judgment signals', {
-              symbol: resolvedSymbol,
-              price_volume24h: (coinPrice as any)?.volume24h ?? null,
-              price_change24h: (coinPrice as any)?.changePercent24h ?? (coinPrice as any)?.priceChangePercent24h ?? null,
-              liquidity_usd: liquidityUsd,
-              perp_oi: d_oi ?? null,
-              perp_oi_change24h: d_oiChange ?? null,
-              funding_rate: d_funding ?? null,
-              liquidations_24h: d_liq ?? null,
-              long_short_ratio: d_ls ?? null,
-              social_score: s_score ?? null,
-              social_mentions: s_mentions ?? null,
-              derivatives_present: !!perTokenDerivatives,
-              sentiment_present: !!perTokenSentiment,
-            });
-
             const signals = buildSignalSnapshot({
               dexscreener: {
                 price_change_24h: coinPrice?.changePercent24h ?? coinPrice?.priceChangePercent24h ?? 0,
                 price_change_1h: coinPrice?.priceChange1h ?? 0,
                 volume_24h_usd: coinPrice?.volume24h ?? 0,
+                // Market cap enables market-cap-relative turnover (de-saturates
+                // mega-caps vs micro-caps). undefined → log-scale volume fallback.
+                market_cap_usd: typeof (coinPrice as any)?.marketCap === 'number' ? (coinPrice as any).marketCap : undefined,
                 txns_buys_24h: 0,
                 txns_sells_24h: 0,
                 liquidity_usd: liquidityUsd, // BTAR-010: real (DexScreener), 0 if unavailable (e.g. BTC majors)
@@ -1279,11 +1305,50 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               sentiment: perTokenSentiment,
               news: { item_count: (enrichedNews as any)?.articles?.length ?? 0 },
               unlock: {},
+              // Per-token OmniScore: QS → gated fundamentals proxy (only when the
+              // sector has a fundamentals thesis), circulating ratio → unlock
+              // overhang. asset_sector gates the QS projection by purpose.
+              omniscore: {
+                quality_score: omniQs,
+                circulating_supply_ratio: omniCircRatio,
+              },
+              asset_sector: resolvedAssetSector,
               coverage: {
                 available_count: availableSources,
                 total_count: dataSourceNames.length,
                 stale_count: staleSources,
               },
+            });
+
+            // TEMPORARY per-token diagnostic — proves the snapshot is token-specific
+            // (BTC vs PEPE should differ). Remove after live re-verification.
+            logger.info('🔬 per-token judgment signals', {
+              symbol: resolvedSymbol,
+              sector: resolvedAssetSector,
+              price_volume24h: (coinPrice as any)?.volume24h ?? null,
+              market_cap_usd: typeof (coinPrice as any)?.marketCap === 'number' ? (coinPrice as any).marketCap : null,
+              turnover_ratio: (() => {
+                const v = (coinPrice as any)?.volume24h;
+                const m = (coinPrice as any)?.marketCap;
+                return typeof v === 'number' && typeof m === 'number' && m > 0 ? +(v / m).toFixed(4) : null;
+              })(),
+              price_change24h: (coinPrice as any)?.changePercent24h ?? (coinPrice as any)?.priceChangePercent24h ?? null,
+              liquidity_usd: liquidityUsd,
+              perp_oi: d_oi ?? null,
+              perp_oi_change24h: d_oiChange ?? null,
+              funding_rate: d_funding ?? null,
+              liquidations_24h: d_liq ?? null,
+              long_short_ratio: d_ls ?? null,
+              social_score: s_score ?? null,
+              social_mentions: s_mentions ?? null,
+              // Path C OmniScore signals + the engine's normalized snapshot fields.
+              omni_qs: omniQs ?? null,
+              omni_circulating_ratio: omniCircRatio ?? null,
+              snap_volume_24h: +signals.volume_24h.toFixed(4),
+              snap_fundamentals_strength: +signals.fundamentals_strength.toFixed(4),
+              snap_unlock_pressure: +signals.unlock_pressure.toFixed(4),
+              derivatives_present: !!perTokenDerivatives,
+              sentiment_present: !!perTokenSentiment,
             });
 
             // BTAR-003: track judgment availability so the AI prompt cannot
@@ -1358,10 +1423,15 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               symbol: resolvedSymbol,
               chain: resolvedChain,
               signals,
+              // Per-token OmniScore scores bundle (QS/OS/risk/POS) for engine
+              // reference — the richest per-token differentiator we compute.
+              scores: omniQs != null
+                ? { qs: omniQs, os: omniOs, risk: omniRiskScore ?? 0, pos: omniPos }
+                : undefined,
               marketWide,
               // Resolve the asset's OmniScore Sector (keyed on the CoinGecko id)
               // so judgment is evaluated by the lens that fits its purpose.
-              assetSector: getAssetSector((primaryCoin.coinGeckoId || resolvedSymbol).toLowerCase()),
+              assetSector: resolvedAssetSector,
               entityContext: graphCtx ? {
                 ecosystem: graphCtx.ecosystem,
                 sector: graphCtx.sector,

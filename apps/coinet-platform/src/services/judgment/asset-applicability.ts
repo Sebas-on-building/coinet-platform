@@ -158,6 +158,18 @@ export function familyApplicability(
   return out;
 }
 
+/**
+ * True when EITHER fundamentals lens (protocol or network) applies to this
+ * sector. Used at the snapshot-build boundary to gate the OmniScore
+ * Quality-Score → `fundamentals_strength` projection: a memecoin or stablecoin
+ * (no fundamentals thesis) must NOT pull a "fundamentals" signal from QS — that
+ * would be judging it by the wrong lens. Unknown → true (conservative).
+ */
+export function sectorFundamentalsApplicable(sector: Sector | null | undefined): boolean {
+  const lens = SECTOR_LENS[sector ?? 'Unknown'] ?? SECTOR_LENS.Unknown;
+  return lens.includes('fundamentals_protocol') || lens.includes('fundamentals_network');
+}
+
 /** Convenience predicates for the consuming engines. */
 export function isScored(state: ApplicabilityState): boolean {
   return state === 'SCORED';
@@ -217,15 +229,21 @@ export function deriveFamilyDataPresence(s: SignalSnapshot): FamilyDataPresence 
     derivatives:
       notMissing('derivatives') &&
       (s.leverage_pressure !== 0.5 || s.funding_rate !== 0.5 || s.liquidation_density > 0),
-    fundamentals_protocol:
-      notMissing('protocol') &&
-      (s.tvl_trend > 0 || s.revenue_quality > 0 || s.fundamentals_strength > 0),
-    // No network-fundamentals (chain fees / active addresses) source exists yet.
-    fundamentals_network: false,
+    // Fundamentals presence is carried by `fundamentals_strength`, which the
+    // snapshot builder fills from real protocol metrics (TVL/fees/revenue) OR
+    // from the OmniScore Quality Score — but only when fundamentals are the right
+    // lens for the asset (gated upstream). The applicability table then routes it
+    // to the correct lens (protocol for DeFi/L2/infra; network for L1/Payment/
+    // Privacy) and marks the other NOT_APPLICABLE, so a present proxy registers as
+    // SCORED on whichever family actually applies — never on the wrong one.
+    fundamentals_protocol: s.tvl_trend > 0 || s.revenue_quality > 0 || s.fundamentals_strength > 0,
+    fundamentals_network: s.fundamentals_strength > 0,
     onchain_flows: notMissing('onchain') && (s.exchange_inflow > 0 || s.exchange_outflow > 0),
-    // No dedicated valuation / tokenomics / peg snapshot fields yet (threaded in a
-    // later phase from OmniScore) — honestly absent for now.
+    // No dedicated valuation / peg snapshot fields yet — honestly absent for now.
     valuation: false,
+    // Tokenomics (supply dynamics) is carried by `unlock_pressure`, filled from
+    // the OmniScore circulating-supply ratio (lower circulating ⇒ more overhang)
+    // or a real next-unlock figure.
     tokenomics: s.unlock_pressure > 0,
     narrative: notMissing('narrative') && (s.narrative_intensity > 0 || s.sentiment !== 0),
     peg: false,
