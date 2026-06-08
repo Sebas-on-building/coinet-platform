@@ -1183,6 +1183,67 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               return typeof dp?.raw === 'number' ? dp.raw : undefined;
             })();
 
+            // ── PER-TOKEN derivatives + sentiment (token-judgment fix) ──────────
+            // The judgment snapshot MUST be token-specific. Index the already-
+            // fetched per-token sources by the queried symbol: Coinglass perps
+            // (perpsData[symbol]) backfilled by the CMC Agent Hub (cmcDerivatives,
+            // per-primary-token), and per-token social (socialIntel.coins[symbol]).
+            // NO market-wide fallback — when a token has no perp/social data the
+            // family resolves to undefined → APPLICABLE_NO_DATA (honest), never the
+            // generic market aggregate. The market-wide services remain for AI prose.
+            const symU = resolvedSymbol.toUpperCase();
+            const bySym = (arr: any): any =>
+              Array.isArray(arr) ? arr.find((d: any) => (d?.symbol ?? '').toUpperCase() === symU) : undefined;
+            const perpLiq = bySym((perpsData as any)?.liquidations);
+            const perpFund = bySym((perpsData as any)?.fundingRates);
+            const perpOI = bySym((perpsData as any)?.openInterest);
+            const cmcD = cmcDerivatives as any;
+
+            const num = (v: any): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+            const d_oi = num(perpOI?.openInterest);
+            const d_oiChange = num(perpOI?.change24h) ?? num(cmcD?.oiChange24h);
+            const d_funding = num(perpFund?.rate) ?? num(cmcD?.aggFunding);
+            const d_liq = num(perpLiq?.totalLiquidations24h) ?? num(cmcD?.liquidations24h);
+            const d_ls = num(perpLiq?.longShortRatio) ?? num(cmcD?.longShortRatio);
+            // Only build a derivatives object when SOMETHING real is present for
+            // this token; otherwise undefined → snapshot marks it missing.
+            const perTokenDerivatives =
+              [d_oi, d_oiChange, d_funding, d_liq, d_ls].some((v) => v !== undefined)
+                ? {
+                    open_interest_usd: d_oi ?? 0,
+                    open_interest_change_24h: d_oiChange ?? 0,
+                    funding_rate: d_funding ?? 0,
+                    liquidations_24h_usd: d_liq ?? 0,
+                    long_short_ratio: d_ls ?? 1,
+                  }
+                : undefined;
+
+            const socialCoin = bySym((socialIntel as any)?.coins);
+            const s_score = num(socialCoin?.sentiment?.score);
+            const s_mentions = num(socialCoin?.mentions);
+            const perTokenSentiment =
+              s_score !== undefined || s_mentions !== undefined
+                ? { score: s_score ?? 0, volume_mentions_24h: s_mentions ?? 0, social_dominance: 0 }
+                : undefined;
+
+            // TEMPORARY per-token diagnostic — proves the snapshot is token-specific
+            // (BTC vs PEPE should differ). Remove after live re-verification.
+            logger.info('🔬 per-token judgment signals', {
+              symbol: resolvedSymbol,
+              price_volume24h: (coinPrice as any)?.volume24h ?? null,
+              price_change24h: (coinPrice as any)?.changePercent24h ?? (coinPrice as any)?.priceChangePercent24h ?? null,
+              liquidity_usd: liquidityUsd,
+              perp_oi: d_oi ?? null,
+              perp_oi_change24h: d_oiChange ?? null,
+              funding_rate: d_funding ?? null,
+              liquidations_24h: d_liq ?? null,
+              long_short_ratio: d_ls ?? null,
+              social_score: s_score ?? null,
+              social_mentions: s_mentions ?? null,
+              derivatives_present: !!perTokenDerivatives,
+              sentiment_present: !!perTokenSentiment,
+            });
+
             const signals = buildSignalSnapshot({
               dexscreener: {
                 price_change_24h: coinPrice?.changePercent24h ?? coinPrice?.priceChangePercent24h ?? 0,
@@ -1193,13 +1254,9 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                 liquidity_usd: liquidityUsd, // BTAR-010: real (DexScreener), 0 if unavailable (e.g. BTC majors)
                 pair_age_hours: undefined,
               },
-              derivatives: {
-                open_interest_usd: (derivativesFinal as any)?.openInterest?.total?.value ?? 0,
-                open_interest_change_24h: (derivativesFinal as any)?.openInterest?.total?.change24h ?? 0,
-                funding_rate: (derivativesFinal as any)?.funding?.avgRate ?? 0,
-                liquidations_24h_usd: (derivativesFinal as any)?.liquidations?.total24h ?? 0,
-                long_short_ratio: (derivativesFinal as any)?.positioning?.ratio ?? 1,
-              },
+              // PER-TOKEN (perps[symbol] + CMC backfill). undefined when this token
+              // has no derivatives data → APPLICABLE_NO_DATA, NOT the market aggregate.
+              derivatives: perTokenDerivatives,
               protocol: {
                 tvl_usd: 0,
                 fees_usd: 0,
@@ -1217,11 +1274,9 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               // BTAR-010: OmniScore-derived (undefined → neutral fallback, not false 0).
               security: { risk_score: omniRiskScore },
               holders: { top_10_percentage: top10HoldersPct },
-              sentiment: {
-                score: (sentiment as any)?.overall ?? 0,
-                volume_mentions_24h: (socialV2Result as any)?.volume?.totalMentions24h ?? 0,
-                social_dominance: 0,
-              },
+              // PER-TOKEN social (socialIntel.coins[symbol]). undefined when this
+              // token has no social data → honest no-data, NOT the market aggregate.
+              sentiment: perTokenSentiment,
               news: { item_count: (enrichedNews as any)?.articles?.length ?? 0 },
               unlock: {},
               coverage: {
