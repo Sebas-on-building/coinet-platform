@@ -31,13 +31,28 @@ describe('mapCmcGlobalPayload', () => {
         },
       },
       sentiment: { fear_greed: { current: { index: 15 } } },
+      dominance: { btc: { current: 58.35, history: { last_week: 59.23 } } },
+      // Present in the live payload but deliberately NOT mapped (engine can't
+      // consume them yet): rotation.altcoin_season, trad_fi_flows.etf_aum.
+      rotation: { altcoin_season: { current: { index: 47 } } },
+      trad_fi_flows: { etf_aum: { btc: { current: 102_050_000_000 } } },
     };
     const out = mapCmcGlobalPayload(payload);
-    expect(out).toEqual({
-      totalMarketCap: 2_300_000_000_000,
-      totalMarketCapChange24h: 1.36,
-      fearGreed: 15,
-    });
+    expect(out?.totalMarketCap).toBe(2_300_000_000_000);
+    expect(out?.totalMarketCapChange24h).toBe(1.36);
+    expect(out?.fearGreed).toBe(15);
+    expect(out?.btcDominance).toBe(58.35);
+    // Derived 7d delta: 58.35 − 59.23 = −0.88 (percentage points).
+    expect(out?.btcDominanceChange7d).toBeCloseTo(-0.88, 5);
+    // Not-consumable signals stay unmapped.
+    expect(out).not.toHaveProperty('stablecoinMcapChange7d');
+    expect(out).not.toHaveProperty('btcPriceChange7d');
+  });
+
+  it('only sets btcDominanceChange7d when both current and last_week exist', () => {
+    const out = mapCmcGlobalPayload({ dominance: { btc: { current: 58.35 } } });
+    expect(out).toEqual({ btcDominance: 58.35 });
+    expect(out).not.toHaveProperty('btcDominanceChange7d');
   });
 
   it('still maps the CMC REST fallback shape (data.quote.USD.*)', () => {

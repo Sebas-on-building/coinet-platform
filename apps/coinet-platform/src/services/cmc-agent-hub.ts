@@ -35,9 +35,10 @@ const TTL_MS = 5 * 60 * 1000; // 5-min cache (global + per-symbol derivatives)
 const CONNECT_TIMEOUT_MS = 8000;
 
 // Tool names per the documented CMC Agent Hub tool set. Overridable via env in
-// case the published tool slugs differ from what we pin here (verified live).
-const TOOL_GLOBAL = process.env.CMC_MCP_TOOL_GLOBAL || 'getGlobalMetrics';
-const TOOL_DERIVATIVES = process.env.CMC_MCP_TOOL_DERIVATIVES || 'getDerivativesData';
+// case the published tool slugs differ from what we pin here. Defaults are the
+// REAL official mcp.coinmarketcap.com slugs, confirmed live via tools/list.
+const TOOL_GLOBAL = process.env.CMC_MCP_TOOL_GLOBAL || 'get_global_metrics_latest';
+const TOOL_DERIVATIVES = process.env.CMC_MCP_TOOL_DERIVATIVES || 'get_global_crypto_derivatives_metrics';
 
 // ── Public shapes (all fields optional — present only when really mapped) ──────
 export interface CmcGlobalMetrics {
@@ -275,22 +276,29 @@ export async function getCmcGlobalMetrics(): Promise<CmcGlobalMetrics | null> {
  * Exported for unit testing the field-path mapping with zero network.
  */
 export function mapCmcGlobalPayload(payload: unknown): CmcGlobalMetrics | null {
-  // Defensive candidate paths spanning documented CMC global-metrics shapes.
+  // All confirmed against the live get_global_metrics_latest payload (section-
+  // based composite). CMC-REST `data.*` shapes kept as harmless fallbacks.
+  const btcDominanceNow = readNum(payload, [
+    'dominance.btc.current', // Agent Hub — CONFIRMED live
+    'data.btc_dominance',    // CMC REST fallback
+    'btc_dominance',
+  ]);
+  // 7d dominance change (percentage points) = current − value one week ago.
+  // Both operands are real confirmed values; the subtraction is the literal
+  // definition of the field. Only set when BOTH are present (never invents).
+  const btcDominanceLastWeek = readNum(payload, ['dominance.btc.history.last_week']);
+  const btcDominanceChange7d =
+    btcDominanceNow !== undefined && btcDominanceLastWeek !== undefined
+      ? btcDominanceNow - btcDominanceLastWeek
+      : undefined;
+
   const mapped: CmcGlobalMetrics = compact({
     fearGreed: readNum(payload, [
-      'sentiment.fear_greed.current.index', // Agent Hub — CONFIRMED live (get_global_metrics_latest)
+      'sentiment.fear_greed.current.index', // Agent Hub — CONFIRMED live
       'data.fear_and_greed.value',          // CMC REST fallback
       'fear_greed_index',
     ]),
-    btcDominance: readNum(payload, [
-      // Agent Hub candidates (dominance section fell beyond the 2000-char raw
-      // log truncation — confirm the exact path from the next full-payload log).
-      'dominance.btc.current',
-      'rotation.btc_dominance.current',
-      'market_size.btc_dominance.current',
-      'data.btc_dominance', // CMC REST fallback
-      'btc_dominance',
-    ]),
+    btcDominance: btcDominanceNow,
     totalMarketCap: readNum(payload, [
       'market_size.total_crypto_market_cap_usd.current', // Agent Hub — CONFIRMED live
       'data.quote.USD.total_market_cap',                 // CMC REST fallback
@@ -302,26 +310,14 @@ export function mapCmcGlobalPayload(payload: unknown): CmcGlobalMetrics | null {
       'data.total_market_cap_change_24h',
       'total_market_cap_change_24h',
     ]),
-    btcPriceChange7d: readNum(payload, [
-      // BTC's OWN 7d price change is per-asset, NOT a market-wide metric — the
-      // Global Market Metrics tool does not expose it (would need a Live
-      // Quotes(BTC) call). Do NOT alias total-mcap 7d change here. Stays
-      // defaulted unless a real per-asset path turns up.
-      'price.btc.percent_change.7d',
-      'data.btc_price_change_7d',
-    ]),
-    btcDominanceChange7d: readNum(payload, [
-      // Dominance section beyond the truncation — confirm from full payload.
-      'dominance.btc.percent_change.7d',
-      'rotation.btc_dominance.percent_change.7d',
-      'data.btc_dominance_change_7d',
-    ]),
-    stablecoinMcapChange7d: readNum(payload, [
-      // Stablecoin section (if present) beyond the truncation — confirm.
-      'stablecoins.total_market_cap_usd.percent_change.7d',
-      'stablecoins.market_cap.percent_change.7d',
-      'data.stablecoin_market_cap_change_7d',
-    ]),
+    btcDominanceChange7d,
+    // NOT available from Global Market Metrics (confirmed against the full live
+    // payload), so these stay undefined → defaulted by the regime engine:
+    //   - btc_price_change_7d: per-asset (BTC's own price), not market-wide.
+    //   - stablecoin_market_cap_change_7d: no stablecoin section in the payload.
+    // Also present but deliberately NOT mapped (engine can't consume them yet —
+    // future engine-extension phase): rotation.altcoin_season, trad_fi_flows
+    // .etf_aum.btc (ETF/institutional demand — a brand-new signal).
   });
 
   return Object.keys(mapped).length > 0 ? mapped : null;
@@ -368,9 +364,10 @@ export function mapCmcDerivativesPayload(payload: unknown): CmcDerivatives | nul
       'data.open_interest_change_24h',           // CMC REST fallback
     ]),
     longShortRatio: readNum(payload, [
-      // Long/short ratio fell beyond the truncation — confirm from full payload.
-      'longShortRatio.current',
-      'positioning.long_short_ratio.current',
+      // NOT available from get_global_crypto_derivatives_metrics (confirmed against
+      // the full live payload — only liquidation long/short totals exist, which are
+      // a DIFFERENT signal and must NOT be aliased here). Stays defaulted.
+      // Only the CMC-REST fallback shape can provide it.
       'data.long_short_ratio',
     ]),
     liquidations24h: readNum(payload, [
