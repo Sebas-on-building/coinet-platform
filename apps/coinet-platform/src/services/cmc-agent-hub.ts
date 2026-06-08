@@ -127,13 +127,33 @@ async function callCmcTool(
     const connectPromise = client.connect(transport);
     await withTimeout(connectPromise, CONNECT_TIMEOUT_MS, 'cmc-mcp connect');
 
-    const result = await withTimeout(
-      client.callTool({ name: toolName, arguments: args }),
-      CONNECT_TIMEOUT_MS,
-      `cmc-mcp ${toolName}`,
-    );
+    let result: any;
+    try {
+      result = await withTimeout(
+        client.callTool({ name: toolName, arguments: args }),
+        CONNECT_TIMEOUT_MS,
+        `cmc-mcp ${toolName}`,
+      );
+    } catch (callError: any) {
+      // The tool call failed AFTER a successful connect+auth (an auth failure
+      // surfaces on connect, not here). The most common cause is a wrong tool
+      // slug ("Unknown tool"). Self-report the server's REAL tool names so the
+      // correct slug can be pinned via CMC_MCP_TOOL_* env with no code change.
+      await logAvailableCmcTools(client, toolName, callError?.message);
+      return null;
+    }
 
-    return extractToolPayload(result);
+    const payload = extractToolPayload(result);
+    // One-shot field-path pinning aid: with CMC_MCP_DEBUG_RAW set, log the raw
+    // payload (truncated) so the exact field paths can be pinned against the
+    // real response. Off by default — never logs provider payloads in prod.
+    if (payload && process.env.CMC_MCP_DEBUG_RAW) {
+      logger.info('CMC Agent Hub RAW payload', {
+        tool: toolName,
+        raw: JSON.stringify(payload).slice(0, 2000),
+      });
+    }
+    return payload;
   } catch (error: any) {
     logger.warn('CMC Agent Hub MCP call failed', { tool: toolName, error: error?.message });
     return null;
@@ -145,6 +165,36 @@ async function callCmcTool(
         /* best-effort close */
       }
     }
+  }
+}
+
+/**
+ * Diagnostic: when a tool call fails (e.g. unknown slug), ask the server for
+ * its real tool list and log the exact names. This is how the correct slugs
+ * get discovered and then pinned via CMC_MCP_TOOL_GLOBAL / CMC_MCP_TOOL_DERIVATIVES
+ * (env, no code change). Best-effort — swallows its own errors.
+ */
+async function logAvailableCmcTools(
+  client: any,
+  attemptedTool: string,
+  callErrorMessage: string | undefined,
+): Promise<void> {
+  try {
+    const listed: any = await withTimeout(client.listTools(), CONNECT_TIMEOUT_MS, 'cmc-mcp tools/list');
+    const names = Array.isArray(listed?.tools)
+      ? listed.tools.map((t: any) => t?.name).filter(Boolean)
+      : [];
+    logger.warn('CMC Agent Hub tool call failed — server tool slugs follow', {
+      attempted_tool: attemptedTool,
+      error: callErrorMessage,
+      available_tools: names,
+    });
+  } catch (listError: any) {
+    logger.warn('CMC Agent Hub tool call failed and tools/list also failed', {
+      attempted_tool: attemptedTool,
+      call_error: callErrorMessage,
+      list_error: listError?.message,
+    });
   }
 }
 
