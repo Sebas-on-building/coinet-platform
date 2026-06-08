@@ -150,7 +150,7 @@ async function callCmcTool(
     if (payload && process.env.CMC_MCP_DEBUG_RAW) {
       logger.info('CMC Agent Hub RAW payload', {
         tool: toolName,
-        raw: JSON.stringify(payload).slice(0, 2000),
+        raw: JSON.stringify(payload).slice(0, 12000),
       });
     }
     return payload;
@@ -278,40 +278,49 @@ export function mapCmcGlobalPayload(payload: unknown): CmcGlobalMetrics | null {
   // Defensive candidate paths spanning documented CMC global-metrics shapes.
   const mapped: CmcGlobalMetrics = compact({
     fearGreed: readNum(payload, [
-      'data.fear_and_greed.value',
-      'fear_and_greed.value',
-      'data.fear_greed_index',
+      'sentiment.fear_greed.current.index', // Agent Hub — CONFIRMED live (get_global_metrics_latest)
+      'data.fear_and_greed.value',          // CMC REST fallback
       'fear_greed_index',
     ]),
     btcDominance: readNum(payload, [
-      'data.btc_dominance',
+      // Agent Hub candidates (dominance section fell beyond the 2000-char raw
+      // log truncation — confirm the exact path from the next full-payload log).
+      'dominance.btc.current',
+      'rotation.btc_dominance.current',
+      'market_size.btc_dominance.current',
+      'data.btc_dominance', // CMC REST fallback
       'btc_dominance',
-      'data.quote.USD.btc_dominance',
     ]),
     totalMarketCap: readNum(payload, [
-      'data.quote.USD.total_market_cap',
-      'quote.USD.total_market_cap',
+      'market_size.total_crypto_market_cap_usd.current', // Agent Hub — CONFIRMED live
+      'data.quote.USD.total_market_cap',                 // CMC REST fallback
       'data.total_market_cap',
     ]),
     totalMarketCapChange24h: readNum(payload, [
-      'data.quote.USD.total_market_cap_yesterday_percentage_change',
-      'quote.USD.total_market_cap_yesterday_percentage_change',
+      'market_size.total_crypto_market_cap_usd.percent_change.24h', // Agent Hub — CONFIRMED live
+      'data.quote.USD.total_market_cap_yesterday_percentage_change', // CMC REST fallback
       'data.total_market_cap_change_24h',
       'total_market_cap_change_24h',
     ]),
     btcPriceChange7d: readNum(payload, [
+      // BTC's OWN 7d price change is per-asset, NOT a market-wide metric — the
+      // Global Market Metrics tool does not expose it (would need a Live
+      // Quotes(BTC) call). Do NOT alias total-mcap 7d change here. Stays
+      // defaulted unless a real per-asset path turns up.
+      'price.btc.percent_change.7d',
       'data.btc_price_change_7d',
-      'btc_price_change_7d',
-      'data.quote.USD.btc_percent_change_7d',
     ]),
     btcDominanceChange7d: readNum(payload, [
+      // Dominance section beyond the truncation — confirm from full payload.
+      'dominance.btc.percent_change.7d',
+      'rotation.btc_dominance.percent_change.7d',
       'data.btc_dominance_change_7d',
-      'btc_dominance_change_7d',
     ]),
     stablecoinMcapChange7d: readNum(payload, [
+      // Stablecoin section (if present) beyond the truncation — confirm.
+      'stablecoins.total_market_cap_usd.percent_change.7d',
+      'stablecoins.market_cap.percent_change.7d',
       'data.stablecoin_market_cap_change_7d',
-      'stablecoin_market_cap_change_7d',
-      'data.quote.USD.stablecoin_volume_24h_percentage_change',
     ]),
   });
 
@@ -351,25 +360,22 @@ export async function getCmcDerivatives(symbol: string): Promise<CmcDerivatives 
 export function mapCmcDerivativesPayload(payload: unknown): CmcDerivatives | null {
   const mapped: CmcDerivatives = compact({
     aggFunding: readNum(payload, [
-      'data.funding_rate',
-      'funding_rate',
-      'data.aggregate_funding_rate',
-      'data.quote.USD.funding_rate',
+      'fundingRate.current', // Agent Hub — CONFIRMED live (get_global_crypto_derivatives_metrics)
+      'data.funding_rate',   // CMC REST fallback
     ]),
     oiChange24h: readNum(payload, [
-      'data.open_interest_change_24h',
-      'open_interest_change_24h',
-      'data.quote.USD.open_interest_24h_percentage_change',
+      'totalOpenInterest.percentage_change_24h', // Agent Hub — CONFIRMED live
+      'data.open_interest_change_24h',           // CMC REST fallback
     ]),
     longShortRatio: readNum(payload, [
+      // Long/short ratio fell beyond the truncation — confirm from full payload.
+      'longShortRatio.current',
+      'positioning.long_short_ratio.current',
       'data.long_short_ratio',
-      'long_short_ratio',
-      'data.quote.USD.long_short_ratio',
     ]),
     liquidations24h: readNum(payload, [
-      'data.liquidations_24h',
-      'liquidations_24h',
-      'data.quote.USD.liquidations_24h',
+      'btc_liquidations.total_usd_24h.total', // Agent Hub — CONFIRMED live (BTC)
+      'data.liquidations_24h',                // CMC REST fallback
     ]),
   });
 

@@ -21,7 +21,26 @@ import {
 } from '../cmc-agent-hub';
 
 describe('mapCmcGlobalPayload', () => {
-  it('maps the documented CMC global-metrics shape (data.quote.USD.*)', () => {
+  it('maps the LIVE Agent Hub section shape (get_global_metrics_latest)', () => {
+    // Section-based composite confirmed from the real deploy response.
+    const payload = {
+      market_size: {
+        total_crypto_market_cap_usd: {
+          current: 2_300_000_000_000,
+          percent_change: { '24h': 1.36, '7d': -12.54 },
+        },
+      },
+      sentiment: { fear_greed: { current: { index: 15 } } },
+    };
+    const out = mapCmcGlobalPayload(payload);
+    expect(out).toEqual({
+      totalMarketCap: 2_300_000_000_000,
+      totalMarketCapChange24h: 1.36,
+      fearGreed: 15,
+    });
+  });
+
+  it('still maps the CMC REST fallback shape (data.quote.USD.*)', () => {
     const payload = {
       data: {
         btc_dominance: 52.4,
@@ -33,30 +52,18 @@ describe('mapCmcGlobalPayload', () => {
         },
       },
     };
-    const out = mapCmcGlobalPayload(payload);
-    expect(out).toEqual({
+    expect(mapCmcGlobalPayload(payload)).toEqual({
       btcDominance: 52.4,
       totalMarketCap: 2_300_000_000_000,
       totalMarketCapChange24h: 1.5,
     });
   });
 
-  it('maps a flat alternative shape (no data wrapper)', () => {
-    const out = mapCmcGlobalPayload({
-      btc_dominance: 48,
-      total_market_cap_change_24h: -2.2,
-      fear_greed_index: 30,
-    });
-    expect(out).toMatchObject({
-      btcDominance: 48,
-      totalMarketCapChange24h: -2.2,
-      fearGreed: 30,
-    });
-  });
-
   it('coerces numeric strings', () => {
-    const out = mapCmcGlobalPayload({ data: { btc_dominance: '51.2' } });
-    expect(out?.btcDominance).toBe(51.2);
+    const out = mapCmcGlobalPayload({
+      market_size: { total_crypto_market_cap_usd: { current: '2300000000000' } },
+    });
+    expect(out?.totalMarketCap).toBe(2_300_000_000_000);
   });
 
   it('returns null when nothing maps (never invents)', () => {
@@ -66,20 +73,39 @@ describe('mapCmcGlobalPayload', () => {
   });
 
   it('omits unmatched fields rather than defaulting them', () => {
-    const out = mapCmcGlobalPayload({ data: { btc_dominance: 50 } });
-    expect(out).toEqual({ btcDominance: 50 });
+    const out = mapCmcGlobalPayload({ sentiment: { fear_greed: { current: { index: 20 } } } });
+    expect(out).toEqual({ fearGreed: 20 });
     expect(out).not.toHaveProperty('totalMarketCap');
-    expect(out).not.toHaveProperty('fearGreed');
+    expect(out).not.toHaveProperty('btcDominance');
   });
 
   it('ignores non-finite values', () => {
-    expect(mapCmcGlobalPayload({ data: { btc_dominance: NaN } })).toBeNull();
-    expect(mapCmcGlobalPayload({ data: { btc_dominance: 'not-a-number' } })).toBeNull();
+    expect(
+      mapCmcGlobalPayload({ market_size: { total_crypto_market_cap_usd: { current: NaN } } }),
+    ).toBeNull();
+    expect(
+      mapCmcGlobalPayload({ market_size: { total_crypto_market_cap_usd: { current: 'n/a' } } }),
+    ).toBeNull();
   });
 });
 
 describe('mapCmcDerivativesPayload', () => {
-  it('maps the documented derivatives shape', () => {
+  it('maps the LIVE Agent Hub shape (get_global_crypto_derivatives_metrics)', () => {
+    // Confirmed from the real deploy response. long_short_ratio fell beyond the
+    // raw-log truncation, so it is legitimately absent here and stays unmapped.
+    const out = mapCmcDerivativesPayload({
+      fundingRate: { current: -0.0021619 },
+      totalOpenInterest: { percentage_change_24h: 2.62 },
+      btc_liquidations: { total_usd_24h: { total: 75_000_000, long: 50_000_000, short: 25_000_000 } },
+    });
+    expect(out).toEqual({
+      aggFunding: -0.0021619,
+      oiChange24h: 2.62,
+      liquidations24h: 75_000_000,
+    });
+  });
+
+  it('still maps the CMC REST fallback shape (data.*)', () => {
     const out = mapCmcDerivativesPayload({
       data: {
         funding_rate: 0.012,
@@ -102,7 +128,7 @@ describe('mapCmcDerivativesPayload', () => {
   });
 
   it('maps a partial payload, omitting the rest', () => {
-    const out = mapCmcDerivativesPayload({ funding_rate: 0.005 });
+    const out = mapCmcDerivativesPayload({ fundingRate: { current: 0.005 } });
     expect(out).toEqual({ aggFunding: 0.005 });
   });
 });
