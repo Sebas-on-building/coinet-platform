@@ -72,6 +72,7 @@ import { calculateNewsIntelligenceV2, formatNewsIntelligenceV2ForAI } from '../.
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
 import { getFreePerps } from '../../services/free-perps';
+import { fetchDeFiLlamaAdoption } from '../../services/real-data-sources';
 import { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } from '../../services/derivatives-intelligence-v2';
 import { calculateComprehensiveDerivativesIntelligence, formatComprehensiveDerivativesForAI } from '../../services/comprehensive-derivatives-intelligence';
 import { calculateDerivativesIntelligenceFinal, formatDerivativesIntelligenceFinalForAI } from '../../services/derivatives-intelligence-final';
@@ -332,7 +333,12 @@ export class ChatService {
         // CoinGecko on macro atoms, challenger on derivatives. trackFetch-guarded
         // → null on any failure, so it degrades honestly without aborting judgment.
         const cmcSymbolForDeriv = coinSymbols[0] || 'BTC';
-        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket, cmcGlobal, cmcDerivatives, freePerps] = await Promise.all([
+        // DeFiLlama protocol fundamentals for the primary coin (real TVL/fees/
+        // revenue). The slug map self-gates: non-DeFi tokens (BTC, memecoins)
+        // have no slug → instant {hasAdoptionData:false}, no network call → the
+        // snapshot's protocol family stays APPLICABLE_NO_DATA / NOT_APPLICABLE.
+        const defiLlamaId = (detectedCoins[0]?.coinGeckoId || coinSymbols[0] || '').toLowerCase();
+        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket, cmcGlobal, cmcDerivatives, freePerps, defiLlama] = await Promise.all([
           trackFetch('userContext', buildUserContextForAI(userId), true),
           trackFetch('marketData', fetchPricesForMessage(request.message), shouldFetchMarketData),
           trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), (ds.fetchEnterpriseData && coinSymbols.length > 0) || coinSymbols.length > 0),
@@ -353,6 +359,7 @@ export class ChatService {
           trackFetch('cmcGlobal', getCmcGlobalMetrics(), coinSymbols.length > 0), // CMC Agent Hub: macro co-primary (F&G, dominance, total mcap, 7d coverage)
           trackFetch('cmcDerivatives', getCmcDerivatives(cmcSymbolForDeriv), (ds.fetchDerivatives || needsPerpsData) && coinSymbols.length > 0), // CMC Agent Hub: derivatives challenger
           trackFetch('freePerps', getFreePerps(coinSymbols), coinSymbols.length > 0), // Path B: free per-token perps (Bybit + OKX, no key) — funding/OI/L-S
+          trackFetch('defiLlama', fetchDeFiLlamaAdoption(defiLlamaId), coinSymbols.length > 0), // DeFiLlama: per-token protocol TVL/fees/revenue (slug-gated to DeFi)
         ]);
         
         const dataFetchDuration = Date.now() - dataFetchStartTime;
@@ -1264,6 +1271,26 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                   }
                 : undefined;
 
+            // ── PER-TOKEN protocol fundamentals (DeFiLlama) ────────────────────
+            // Real TVL / fees / revenue for the primary coin. Only built when
+            // DeFiLlama actually returned data (DeFi protocols in its slug map);
+            // otherwise undefined → snapshot marks protocol missing →
+            // fundamentals_protocol resolves to APPLICABLE_NO_DATA for sectors
+            // where it's the right lens (DeFi/L2/infra) or NOT_APPLICABLE
+            // (memecoins/L1). NEVER fabricated for tokens with no real protocol.
+            const defi = defiLlama as any;
+            const p_tvl = num(defi?.tvl);
+            const p_fees = num(defi?.fees24h);
+            const p_rev = num(defi?.revenue24h);
+            const perTokenProtocol =
+              defi?.hasAdoptionData && [p_tvl, p_fees, p_rev].some((v) => v !== undefined)
+                ? {
+                    tvl_usd: p_tvl ?? 0,
+                    fees_usd: p_fees ?? 0,
+                    revenue_usd: p_rev ?? 0,
+                  }
+                : undefined;
+
             const socialCoin = bySym((socialIntel as any)?.coins);
             const s_score = num(socialCoin?.sentiment?.score);
             const s_mentions = num(socialCoin?.mentions);
@@ -1288,11 +1315,10 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               // PER-TOKEN (perps[symbol] + CMC backfill). undefined when this token
               // has no derivatives data → APPLICABLE_NO_DATA, NOT the market aggregate.
               derivatives: perTokenDerivatives,
-              protocol: {
-                tvl_usd: 0,
-                fees_usd: 0,
-                revenue_usd: 0,
-              },
+              // PER-TOKEN protocol fundamentals (DeFiLlama TVL/fees/revenue).
+              // undefined when this token has no real protocol data → snapshot
+              // marks it missing → APPLICABLE_NO_DATA / NOT_APPLICABLE per sector.
+              protocol: perTokenProtocol,
               onchain: {
                 // Wired from alchemy-whales (real net-flow). Exchange inflow/
                 // outflow + active addresses are NOT exposed by that source —

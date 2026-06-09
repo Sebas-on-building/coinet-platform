@@ -142,9 +142,31 @@ export function buildSignalSnapshot(input: {
     ? clamp(der.liquidations_24h_usd / 10_000_000, 0, 1)
     : 0;
 
-  const tvlSignal = proto.tvl_usd != null ? clamp(proto.tvl_usd / 100_000_000, 0, 1) : 0;
-  const feeSignal = proto.fees_usd != null ? clamp(proto.fees_usd / 1_000_000, 0, 1) : 0;
-  const revSignal = proto.revenue_usd != null ? clamp(proto.revenue_usd / 500_000, 0, 1) : 0;
+  // Protocol fundamentals — NON-SATURATING (mirrors the turnover-ratio lesson).
+  // Absolute-USD clamps saturated: the old /100M TVL divisor pinned EVERY major
+  // DeFi protocol (UNI $2.75B, AAVE far more) to 1.0, so they couldn't differ.
+  // Judge a protocol RELATIVE to its own size instead:
+  //   • TVL strength      = TVL / market cap (the DeFi "price-to-book"): TVL ≈ or
+  //                         > mcap ⇒ strong fundamental backing. ~2x maps to 1.0.
+  //                         Log-scale absolute-TVL fallback when mcap is absent.
+  //   • fee / rev "yield" = annualized fees|revenue / TVL (capital efficiency) —
+  //                         non-saturating. Log-scale absolute fallback w/o TVL.
+  const protoMcap = d.market_cap_usd;
+  const tvlSignal = proto.tvl_usd != null
+    ? (protoMcap != null && protoMcap > 0
+        ? clamp((proto.tvl_usd / protoMcap) / 2, 0, 1)
+        : (proto.tvl_usd > 0 ? clamp((Math.log10(proto.tvl_usd) - 7) / 2.5, 0, 1) : 0))
+    : 0;
+  const feeSignal = proto.fees_usd != null
+    ? (proto.tvl_usd != null && proto.tvl_usd > 0
+        ? clamp(((proto.fees_usd * 365) / proto.tvl_usd) / 0.5, 0, 1)
+        : (proto.fees_usd > 0 ? clamp((Math.log10(proto.fees_usd) - 4) / 3, 0, 1) : 0))
+    : 0;
+  const revSignal = proto.revenue_usd != null
+    ? (proto.tvl_usd != null && proto.tvl_usd > 0
+        ? clamp(((proto.revenue_usd * 365) / proto.tvl_usd) / 0.25, 0, 1)
+        : (proto.revenue_usd > 0 ? clamp((Math.log10(proto.revenue_usd) - 3.5) / 3, 0, 1) : 0))
+    : 0;
   const addressSignal = oc.active_addresses_24h != null
     ? clamp(oc.active_addresses_24h / 50_000, 0, 1)
     : 0;
