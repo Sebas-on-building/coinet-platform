@@ -1257,7 +1257,10 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             const d_oiChange = num(perpOI?.change24h) ?? num(cmcD?.oiChange24h);
             const d_funding = num(perpFund?.rate) ?? num(cmcD?.aggFunding) ?? num(freePerp?.fundingRate);
             const d_liq = num(perpLiq?.totalLiquidations24h) ?? num(cmcD?.liquidations24h);
-            const d_ls = num(perpLiq?.longShortRatio) ?? num(cmcD?.longShortRatio) ?? num(freePerp?.longShortRatio);
+            // Prefer the Coinglass v4 global ACCOUNT long/short ratio (real
+            // positioning signal, attached to the OI row), then CMC/OKX, then the
+            // liquidation-derived ratio as a last-resort weak fallback.
+            const d_ls = num(perpOI?.longShortRatio) ?? num(cmcD?.longShortRatio) ?? num(freePerp?.longShortRatio) ?? num(perpLiq?.longShortRatio);
             // Only build a derivatives object when SOMETHING real is present for
             // this token; otherwise undefined → snapshot marks it missing.
             const perTokenDerivatives =

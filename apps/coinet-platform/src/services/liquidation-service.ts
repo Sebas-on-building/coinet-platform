@@ -43,8 +43,10 @@ import { logger } from '../utils/logger';
 // ============================================================================
 
 const CONFIG = {
-  // Coinglass API (free tier available)
-  COINGLASS_URL: 'https://open-api.coinglass.com/public/v2',
+  // Coinglass API v4 (paid tier; Hobbyist 30 req/min). The 3s global spacing
+  // below hard-caps ALL Coinglass calls at ~20/min regardless of burst, safely
+  // under 30/min; liquidation/coin-list is fetched ONCE and shared across tokens.
+  COINGLASS_URL: 'https://open-api-v4.coinglass.com',
   COINGLASS_API_KEY: process.env.COINGLASS_API_KEY || '',
   
   // Rate limiting
@@ -89,6 +91,10 @@ export interface OpenInterest {
   change24h: number;        // % change
   change1h: number;         // % change
   trend: 'increasing' | 'decreasing' | 'stable';
+  /** Global ACCOUNT long/short ratio (>1 = more long accounts). Feeds
+   *  leverage_pressure. Attached by getPerpsSnapshot from the v4 L/S endpoint;
+   *  undefined when unavailable for this symbol (no fabricated default). */
+  longShortRatio?: number;
   lastUpdated: string;
 }
 
@@ -157,6 +163,26 @@ let coinglassApiDisabled = false;
 let coinglassDisabledUntil = 0;
 const COINGLASS_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown after plan error
 
+/**
+ * True when an HTTP status or Coinglass envelope code/msg indicates an auth or
+ * plan/permission failure — the conditions that should trip the 1h cooldown so
+ * we stop hammering a key that's rejected or a plan-gated endpoint. (The old
+ * code only matched code '40001', so the live `401 "Upgrade plan"` fell through
+ * and the disable never engaged.)
+ */
+function isAuthOrPlanFailure(httpStatus: number | undefined, code: any, msg: string): boolean {
+  if (httpStatus === 401 || httpStatus === 403) return true;
+  const c = String(code ?? '');
+  if (c === '401' || c === '403' || c === '40001' || c === '30001' || c === '50001') return true;
+  return /upgrade|plan|permission|not allowed|subscribe|tier|insufficient|unauthor/i.test(msg || '');
+}
+
+function disableCoinglass(reason: string, detail: Record<string, any>): void {
+  coinglassApiDisabled = true;
+  coinglassDisabledUntil = Date.now() + COINGLASS_COOLDOWN_MS;
+  logger.warn('💀 Coinglass API disabled for 1 hour', { reason, ...detail });
+}
+
 async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
   if (!CONFIG.COINGLASS_API_KEY) {
     logger.debug('💀 Coinglass API key not configured');
@@ -171,7 +197,7 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
     });
     return null;
   }
-  
+
   // Reset if cooldown expired
   if (coinglassApiDisabled && now >= coinglassDisabledUntil) {
     coinglassApiDisabled = false;
@@ -179,36 +205,45 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
 
   try {
     await waitForRateLimit();
-    
+
+    // validateStatus: read 4xx bodies instead of throwing, so a plan/auth error
+    // is classified explicitly (and trips the cooldown) rather than vanishing
+    // into the catch as a generic failure.
     const response = await axios.get(`${CONFIG.COINGLASS_URL}${endpoint}`, {
       headers: {
-        'coinglassSecret': CONFIG.COINGLASS_API_KEY,
+        'CG-API-KEY': CONFIG.COINGLASS_API_KEY, // v4 auth header
         'Accept': 'application/json',
       },
       timeout: CONFIG.TIMEOUT_MS,
+      validateStatus: () => true,
     });
 
-    // Handle Coinglass-specific error codes
-    if (response.data?.code === '40001' || response.data?.code === 40001) {
-      // "Upgrade plan" error - disable API temporarily
-      coinglassApiDisabled = true;
-      coinglassDisabledUntil = now + COINGLASS_COOLDOWN_MS;
-      logger.warn('💀 Coinglass API error', { 
-        code: response.data?.code, 
-        msg: response.data?.msg,
-        action: 'API disabled for 1 hour - plan upgrade required',
-      });
+    const code = response.data?.code;
+    const msg = response.data?.msg ?? '';
+
+    // Auth / plan / permission failure → disable for 1h (now covers 401/403 +
+    // Coinglass code variants + upgrade/permission messages, not just '40001').
+    if (isAuthOrPlanFailure(response.status, code, msg)) {
+      disableCoinglass('auth/plan failure', { http: response.status, code, msg });
       return null;
     }
-    
-    if (response.data?.code !== '0' && response.data?.code !== 0) {
-      logger.warn('💀 Coinglass API error', { code: response.data?.code, msg: response.data?.msg });
+
+    // v4 success envelope is string code "0".
+    if (code !== '0' && code !== 0) {
+      logger.warn('💀 Coinglass API error', { http: response.status, code, msg });
       return null;
     }
 
     return response.data?.data;
   } catch (error: any) {
-    logger.debug('💀 Coinglass request failed', { endpoint, error: error.message });
+    // Network/timeout or an unexpected throw — also engage cooldown on a 401/403
+    // surfaced via the thrown error (defensive; validateStatus should prevent it).
+    const status = error?.response?.status;
+    if (status === 401 || status === 403) {
+      disableCoinglass('auth/plan failure (thrown)', { http: status });
+    } else {
+      logger.debug('💀 Coinglass request failed', { endpoint, error: error?.message });
+    }
     return null;
   }
 }
@@ -228,42 +263,61 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
  * console.log(`Total liquidations: $${btcLiquidation.totalLiquidations24h}`);
  * ```
  */
-export async function getLiquidationData(symbol: string): Promise<LiquidationData | null> {
-  const cacheKey = `liquidation:${symbol}`;
-  const cached = getFromCache<LiquidationData>(cacheKey);
+const num = (v: any): number => {
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * v4 `liquidation/coin-list` returns CURRENT 24h liquidations for ALL coins
+ * (~1200+) in ONE call. Fetch+cache the whole list ONCE and serve every symbol
+ * from it — so a multi-token judgment costs a single liquidation request, not N.
+ */
+async function getLiquidationCoinList(): Promise<any[] | null> {
+  const cacheKey = 'cg:v4:liquidation-coin-list';
+  const cached = getFromCache<any[]>(cacheKey);
   if (cached) return cached;
 
-  // Try Coinglass first
-  const data = await coinglassRequest<any>(`/liquidation_history?symbol=${symbol}&time_type=h24`);
-  
-  if (data && Array.isArray(data) && data.length > 0) {
-    const latest = data[0];
-    const longLiq = parseFloat(latest.longLiquidationUsd || 0);
-    const shortLiq = parseFloat(latest.shortLiquidationUsd || 0);
-    const total = longLiq + shortLiq;
-    const ratio = shortLiq > 0 ? longLiq / shortLiq : longLiq > 0 ? 10 : 1;
+  const data = await coinglassRequest<any>('/api/futures/liquidation/coin-list');
+  const list = Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : null;
+  if (list) setCache(cacheKey, list);
+  return list;
+}
 
-    const liquidation: LiquidationData = {
-      symbol: symbol.toUpperCase(),
-      longLiquidations24h: longLiq,
-      shortLiquidations24h: shortLiq,
-      totalLiquidations24h: total,
-      longShortRatio: ratio,
-      dominantSide: ratio > 1.2 ? 'longs' : ratio < 0.8 ? 'shorts' : 'balanced',
-      riskLevel: total > 500_000_000 ? 'extreme' :
-                 total > 100_000_000 ? 'high' :
-                 total > 20_000_000 ? 'medium' : 'low',
-      lastUpdated: new Date().toISOString(),
-    };
+export async function getLiquidationData(symbol: string): Promise<LiquidationData | null> {
+  const list = await getLiquidationCoinList();
+  if (!list) return null;
 
-    setCache(cacheKey, liquidation);
-    return liquidation;
-  }
+  const symU = symbol.toUpperCase();
+  const row = list.find((r: any) => String(r?.symbol ?? '').toUpperCase() === symU);
+  // HONESTY: symbol not in the coin-list (e.g. a tiny memecoin with no perp) →
+  // null, NOT a zero-value default. An all-zero object would flow into the
+  // judgment snapshot as a "present" (SCORED) derivatives signal, masquerading
+  // as real data. Absent must read as absent → APPLICABLE_NO_DATA.
+  if (!row) return null;
 
-  // HONESTY: no real Coinglass data → null, NOT a zero-value default. A synthetic
-  // all-zero object would flow into the judgment snapshot as a "present" (SCORED)
-  // derivatives signal, masquerading as real data. Absent must read as absent.
-  return null;
+  const longLiq = num(row.long_liquidation_usd_24h ?? row.longLiquidation_usd_24h);
+  const shortLiq = num(row.short_liquidation_usd_24h ?? row.shortLiquidation_usd_24h);
+  // Prefer the explicit 24h total; fall back to the long+short split.
+  const total = num(row.liquidation_usd_24h) || (longLiq + shortLiq);
+  const ratio = shortLiq > 0 ? longLiq / shortLiq : longLiq > 0 ? 10 : 1;
+
+  // Genuinely-empty row (no liquidations reported) → treat as absent, not a
+  // real zero signal.
+  if (total <= 0 && longLiq <= 0 && shortLiq <= 0) return null;
+
+  return {
+    symbol: symU,
+    longLiquidations24h: longLiq,
+    shortLiquidations24h: shortLiq,
+    totalLiquidations24h: total,
+    longShortRatio: ratio,
+    dominantSide: longLiq > shortLiq * 1.2 ? 'longs' : shortLiq > longLiq * 1.2 ? 'shorts' : 'balanced',
+    riskLevel: total > 500_000_000 ? 'extreme' :
+               total > 100_000_000 ? 'high' :
+               total > 20_000_000 ? 'medium' : 'low',
+    lastUpdated: new Date().toISOString(),
+  };
 }
 
 // ============================================================================
@@ -292,27 +346,52 @@ export async function getFundingRates(symbol: string): Promise<FundingRate[]> {
   const cached = getFromCache<FundingRate[]>(cacheKey);
   if (cached) return cached;
 
-  const data = await coinglassRequest<any[]>(`/funding?symbol=${symbol}`);
-  
-  if (data && Array.isArray(data)) {
-    const rates: FundingRate[] = data.map(item => {
-      const rate = parseFloat(item.rate || item.fundingRate || 0);
-      const annualized = rate * 3 * 365; // 3 funding periods per day
-      
-      return {
-        symbol: symbol.toUpperCase(),
-        exchange: item.exchangeName || item.exchange || 'Unknown',
-        rate,
-        predictedRate: item.predictedRate ? parseFloat(item.predictedRate) : undefined,
-        annualizedRate: annualized,
-        sentiment: rate > 0.01 ? 'bullish' : rate < -0.01 ? 'bearish' : 'neutral',
-        costPerDay: Math.abs(rate * 3) * 100, // Daily cost as %
-        lastUpdated: new Date().toISOString(),
-      };
-    });
+  // v4 funding-rate/exchange-list returns current per-exchange funding for the
+  // symbol, grouped by margin type. We use USDT/stablecoin-margined perps.
+  const data = await coinglassRequest<any>(`/api/futures/funding-rate/exchange-list?symbol=${symbol.toUpperCase()}`);
+  const marginList: any[] | null = Array.isArray(data?.stablecoin_margin_list)
+    ? data.stablecoin_margin_list
+    : Array.isArray(data)
+      ? data
+      : null;
 
-    setCache(cacheKey, rates);
-    return rates;
+  if (marginList && marginList.length > 0) {
+    const rates: FundingRate[] = marginList
+      .map((item: any) => {
+        const rate = num(item.funding_rate ?? item.fundingRate ?? item.rate);
+        const annualized = rate * 3 * 365; // 3 funding periods per day
+        return {
+          symbol: symbol.toUpperCase(),
+          exchange: item.exchange_name || item.exchange || item.exchangeName || 'Unknown',
+          rate,
+          predictedRate: item.predicted_funding_rate != null ? num(item.predicted_funding_rate) : undefined,
+          annualizedRate: annualized,
+          sentiment: (rate > 0.01 ? 'bullish' : rate < -0.01 ? 'bearish' : 'neutral') as FundingRate['sentiment'],
+          costPerDay: Math.abs(rate * 3) * 100,
+          lastUpdated: new Date().toISOString(),
+        };
+      })
+      // keep only the major venues that carry meaningful funding signal
+      .filter((r) => ['binance', 'okx', 'bybit'].includes(r.exchange.toLowerCase()));
+
+    // If the major-venue filter removed everything, fall back to all entries.
+    const finalRates = rates.length > 0
+      ? rates
+      : marginList.map((item: any) => {
+          const rate = num(item.funding_rate ?? item.fundingRate ?? item.rate);
+          return {
+            symbol: symbol.toUpperCase(),
+            exchange: item.exchange_name || item.exchange || 'Unknown',
+            rate,
+            annualizedRate: rate * 3 * 365,
+            sentiment: (rate > 0.01 ? 'bullish' : rate < -0.01 ? 'bearish' : 'neutral') as FundingRate['sentiment'],
+            costPerDay: Math.abs(rate * 3) * 100,
+            lastUpdated: new Date().toISOString(),
+          };
+        });
+
+    setCache(cacheKey, finalRates);
+    return finalRates;
   }
 
   // HONESTY: no real Coinglass funding → empty, NOT a zero-rate default (which
@@ -363,23 +442,56 @@ export async function getOpenInterest(symbol: string): Promise<OpenInterest | nu
   const cached = getFromCache<OpenInterest>(cacheKey);
   if (cached) return cached;
 
-  const data = await coinglassRequest<any>(`/open_interest?symbol=${symbol}`);
-  
-  if (data) {
-    const oi: OpenInterest = {
-      symbol: symbol.toUpperCase(),
-      openInterest: parseFloat(data.openInterest || data.openInterestUsd || 0),
-      change24h: parseFloat(data.change24h || data.h24Change || 0),
-      change1h: parseFloat(data.change1h || data.h1Change || 0),
-      trend: data.change24h > 2 ? 'increasing' : data.change24h < -2 ? 'decreasing' : 'stable',
-      lastUpdated: new Date().toISOString(),
-    };
+  // v4 open-interest/exchange-list returns per-exchange OI for the symbol plus an
+  // aggregate row with exchange="All" — the latter gives both total OI in USD and
+  // the 24h OI change %, the OI-change field Path B had deferred (now free).
+  const data = await coinglassRequest<any>(`/api/futures/open-interest/exchange-list?symbol=${symbol.toUpperCase()}`);
+  const rows: any[] | null = Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : null;
+  if (!rows || rows.length === 0) return null;
 
-    setCache(cacheKey, oi);
-    return oi;
-  }
+  const allRow = rows.find((r: any) => String(r?.exchange ?? '').toLowerCase() === 'all') ?? rows[0];
+  const oiUsd = num(allRow.open_interest_usd ?? allRow.openInterest ?? allRow.open_interest);
+  if (oiUsd <= 0) return null; // no real OI → absent, not a zero default
 
-  return null;
+  const change24h = num(allRow.open_interest_change_percent_24h ?? allRow.open_interest_change_24h);
+  const change1h = num(allRow.open_interest_change_percent_1h ?? allRow.open_interest_change_1h);
+
+  const oi: OpenInterest = {
+    symbol: symbol.toUpperCase(),
+    openInterest: oiUsd,
+    change24h,
+    change1h,
+    trend: change24h > 2 ? 'increasing' : change24h < -2 ? 'decreasing' : 'stable',
+    lastUpdated: new Date().toISOString(),
+  };
+
+  setCache(cacheKey, oi);
+  return oi;
+}
+
+/**
+ * v4 global ACCOUNT long/short ratio for a symbol — the leverage-positioning
+ * signal that feeds leverage_pressure. History endpoint; we take the latest
+ * record. Returns null when unavailable (no fabricated default).
+ */
+export async function getLongShortAccountRatio(symbol: string): Promise<number | null> {
+  const cacheKey = `ls:${symbol.toUpperCase()}`;
+  const cached = getFromCache<number>(cacheKey);
+  if (cached != null) return cached;
+
+  const data = await coinglassRequest<any>(
+    `/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol.toUpperCase()}USDT&interval=4h&limit=1`,
+  );
+  const rows: any[] | null = Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : null;
+  if (!rows || rows.length === 0) return null;
+
+  // Take the most recent record (greatest timestamp if present, else last).
+  const latest = rows.reduce((a: any, b: any) => (num(b?.time) >= num(a?.time) ? b : a), rows[0]);
+  const ratio = num(latest.global_account_long_short_ratio ?? latest.long_short_ratio);
+  if (ratio <= 0) return null;
+
+  setCache(cacheKey, ratio);
+  return ratio;
 }
 
 // ============================================================================
@@ -410,16 +522,27 @@ export async function getPerpsSnapshot(symbols: string[]): Promise<PerpsSnapshot
   const startTime = Date.now();
   const targetSymbols = symbols.length > 0 ? symbols : ['BTC', 'ETH', 'SOL'];
 
-  // Fetch all data in parallel
-  const [liquidationsResults, fundingResults, oiResults] = await Promise.all([
+  // Fetch all data in parallel. Coinglass calls are globally 3s-spaced, so a
+  // burst is throttled to ~20/min (< 30/min Hobbyist). Liquidations come from
+  // the single shared coin-list; funding/OI/L-S are per-symbol.
+  const [liquidationsResults, fundingResults, oiResults, lsResults] = await Promise.all([
     Promise.all(targetSymbols.map(s => getLiquidationData(s))),
     Promise.all(targetSymbols.map(s => getFundingRates(s))),
     Promise.all(targetSymbols.map(s => getOpenInterest(s))),
+    Promise.all(targetSymbols.map(s => getLongShortAccountRatio(s))),
   ]);
 
   const liquidations = liquidationsResults.filter(Boolean) as LiquidationData[];
   const fundingRates = fundingResults.flat();
-  const openInterest = oiResults.filter(Boolean) as OpenInterest[];
+  // Attach the per-symbol account L/S ratio onto the matching OI row (the carrier
+  // the snapshot reads). undefined stays undefined → APPLICABLE_NO_DATA, never 1.
+  const openInterest = (oiResults
+    .map((oi, i) => {
+      if (!oi) return oi;
+      const ls = lsResults[i];
+      return ls != null ? { ...oi, longShortRatio: ls } : oi;
+    })
+    .filter(Boolean)) as OpenInterest[];
 
   // Calculate market summary
   const totalLiq = liquidations.reduce((sum, l) => sum + l.totalLiquidations24h, 0);
