@@ -260,21 +260,10 @@ export async function getLiquidationData(symbol: string): Promise<LiquidationDat
     return liquidation;
   }
 
-  // Return mock/default data if API fails
-  return createDefaultLiquidationData(symbol);
-}
-
-function createDefaultLiquidationData(symbol: string): LiquidationData {
-  return {
-    symbol: symbol.toUpperCase(),
-    longLiquidations24h: 0,
-    shortLiquidations24h: 0,
-    totalLiquidations24h: 0,
-    longShortRatio: 1,
-    dominantSide: 'balanced',
-    riskLevel: 'low',
-    lastUpdated: new Date().toISOString(),
-  };
+  // HONESTY: no real Coinglass data → null, NOT a zero-value default. A synthetic
+  // all-zero object would flow into the judgment snapshot as a "present" (SCORED)
+  // derivatives signal, masquerading as real data. Absent must read as absent.
+  return null;
 }
 
 // ============================================================================
@@ -326,20 +315,9 @@ export async function getFundingRates(symbol: string): Promise<FundingRate[]> {
     return rates;
   }
 
-  // Return default data
-  return [createDefaultFundingRate(symbol)];
-}
-
-function createDefaultFundingRate(symbol: string): FundingRate {
-  return {
-    symbol: symbol.toUpperCase(),
-    exchange: 'Unknown',
-    rate: 0,
-    annualizedRate: 0,
-    sentiment: 'neutral',
-    costPerDay: 0,
-    lastUpdated: new Date().toISOString(),
-  };
+  // HONESTY: no real Coinglass funding → empty, NOT a zero-rate default (which
+  // would read as a real "present" derivatives signal in the judgment snapshot).
+  return [];
 }
 
 /**

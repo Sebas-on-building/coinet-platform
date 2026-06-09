@@ -71,6 +71,7 @@ import { calculateSocialIntelligenceV2, formatSocialIntelligenceV2ForAI } from '
 import { calculateNewsIntelligenceV2, formatNewsIntelligenceV2ForAI } from '../../services/news-intelligence-v2';
 import { buildUserContextForAI, extractMemoriesFromMessage } from '../../services/memory-service';
 import { getPerpsSnapshot, formatPerpsForAI } from '../../services/liquidation-service';
+import { getFreePerps } from '../../services/free-perps';
 import { calculateDerivativesIntelligenceV2, formatDerivativesIntelligenceV2ForAI } from '../../services/derivatives-intelligence-v2';
 import { calculateComprehensiveDerivativesIntelligence, formatComprehensiveDerivativesForAI } from '../../services/comprehensive-derivatives-intelligence';
 import { calculateDerivativesIntelligenceFinal, formatDerivativesIntelligenceFinalForAI } from '../../services/derivatives-intelligence-final';
@@ -331,7 +332,7 @@ export class ChatService {
         // CoinGecko on macro atoms, challenger on derivatives. trackFetch-guarded
         // → null on any failure, so it degrades honestly without aborting judgment.
         const cmcSymbolForDeriv = coinSymbols[0] || 'BTC';
-        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket, cmcGlobal, cmcDerivatives] = await Promise.all([
+        const [userContext, marketData, enterpriseMarketData, whaleContext, enrichedNews, sentiment, socialIntel, influencerIntel, csiResult, cssResult, socialV2Result, newsV2Result, perpsData, derivativesV2, comprehensiveDerivatives, derivativesFinal, globalMarket, cmcGlobal, cmcDerivatives, freePerps] = await Promise.all([
           trackFetch('userContext', buildUserContextForAI(userId), true),
           trackFetch('marketData', fetchPricesForMessage(request.message), shouldFetchMarketData),
           trackFetch('enterpriseMarketData', fetchCachedEnterpriseMarketPrices(coinSymbols), (ds.fetchEnterpriseData && coinSymbols.length > 0) || coinSymbols.length > 0),
@@ -351,6 +352,7 @@ export class ChatService {
           trackFetch('globalMarket', getGlobalMarketData(), coinSymbols.length > 0), // BTAR-011: real CoinGecko /global (dominance + total mcap)
           trackFetch('cmcGlobal', getCmcGlobalMetrics(), coinSymbols.length > 0), // CMC Agent Hub: macro co-primary (F&G, dominance, total mcap, 7d coverage)
           trackFetch('cmcDerivatives', getCmcDerivatives(cmcSymbolForDeriv), (ds.fetchDerivatives || needsPerpsData) && coinSymbols.length > 0), // CMC Agent Hub: derivatives challenger
+          trackFetch('freePerps', getFreePerps(coinSymbols), coinSymbols.length > 0), // Path B: free per-token perps (Bybit + OKX, no key) — funding/OI/L-S
         ]);
         
         const dataFetchDuration = Date.now() - dataFetchStartTime;
@@ -1239,13 +1241,16 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             const perpFund = bySym((perpsData as any)?.fundingRates);
             const perpOI = bySym((perpsData as any)?.openInterest);
             const cmcD = cmcDerivatives as any;
+            // Path B — free per-token perps (Bybit + OKX), keyed by base symbol.
+            // Backfills funding/OI/L-S after Coinglass + CMC. Absent → undefined.
+            const freePerp = (freePerps as any)?.[symU];
 
             const num = (v: any): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
-            const d_oi = num(perpOI?.openInterest);
+            const d_oi = num(perpOI?.openInterest) ?? num(freePerp?.openInterestUsd);
             const d_oiChange = num(perpOI?.change24h) ?? num(cmcD?.oiChange24h);
-            const d_funding = num(perpFund?.rate) ?? num(cmcD?.aggFunding);
+            const d_funding = num(perpFund?.rate) ?? num(cmcD?.aggFunding) ?? num(freePerp?.fundingRate);
             const d_liq = num(perpLiq?.totalLiquidations24h) ?? num(cmcD?.liquidations24h);
-            const d_ls = num(perpLiq?.longShortRatio) ?? num(cmcD?.longShortRatio);
+            const d_ls = num(perpLiq?.longShortRatio) ?? num(cmcD?.longShortRatio) ?? num(freePerp?.longShortRatio);
             // Only build a derivatives object when SOMETHING real is present for
             // this token; otherwise undefined → snapshot marks it missing.
             const perTokenDerivatives =

@@ -197,6 +197,9 @@ vi.mock('../../../services/liquidation-service', () => ({
   getPerpsSnapshot: vi.fn().mockResolvedValue({}),
   formatPerpsForAI: vi.fn().mockReturnValue(''),
 }));
+vi.mock('../../../services/free-perps', () => ({
+  getFreePerps: vi.fn().mockResolvedValue({}),
+}));
 vi.mock('../../../services/derivatives-intelligence-v2', () => ({
   calculateDerivativesIntelligenceV2: vi.fn().mockResolvedValue({}),
   formatDerivativesIntelligenceV2ForAI: vi.fn().mockReturnValue(''),
