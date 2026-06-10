@@ -184,17 +184,13 @@ function disableCoinglass(reason: string, detail: Record<string, any>): void {
 }
 
 async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
-  // 🔬 TEMPORARY: short endpoint tag for per-call outcome logging (REMOVE after verify).
-  const tag = endpoint.split('?')[0];
   if (!CONFIG.COINGLASS_API_KEY) {
-    logger.info('🔬 coinglass call: NO_KEY', { tag }); // TEMP
     return null;
   }
 
   // Check if API is temporarily disabled
   const now = Date.now();
   if (coinglassApiDisabled && now < coinglassDisabledUntil) {
-    logger.info('🔬 coinglass call: DISABLED (cooldown)', { tag, remainingMs: coinglassDisabledUntil - now }); // TEMP
     return null;
   }
 
@@ -234,18 +230,6 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
       return null;
     }
 
-    // 🔬 TEMPORARY success log — shows the call landed + the EXACT element shape
-    // each parser receives, so the container/field nesting is pinned (REMOVE after).
-    const d: any = response.data?.data;
-    const el0 = Array.isArray(d) && d[0] && typeof d[0] === 'object' ? Object.keys(d[0]) : undefined;
-    logger.info('🔬 coinglass call: OK', {
-      tag,
-      http: response.status,
-      dataShape: Array.isArray(d) ? `array(${d.length})` : d == null ? 'null' : `object[${Object.keys(d).join(',')}]`,
-      el0keys: el0,
-      sample0: Array.isArray(d) ? JSON.stringify(d[0]).slice(0, 320) : JSON.stringify(d).slice(0, 320),
-    }); // TEMP
-
     return response.data?.data;
   } catch (error: any) {
     // Network/timeout or an unexpected throw — also engage cooldown on a 401/403
@@ -254,7 +238,7 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
     if (status === 401 || status === 403) {
       disableCoinglass('auth/plan failure (thrown)', { http: status });
     } else {
-      logger.info('🔬 coinglass call: THREW', { tag, http: status, error: error?.message }); // TEMP (was debug)
+      logger.debug('💀 Coinglass request failed', { http: status, error: error?.message });
     }
     return null;
   }

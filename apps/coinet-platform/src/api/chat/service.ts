@@ -1251,20 +1251,6 @@ Inform the user that OmniScore analysis is temporarily unavailable.
             const perpLiq = bySym((perpsData as any)?.liquidations);
             const perpFund = bySym((perpsData as any)?.fundingRates);
             const perpOI = bySym((perpsData as any)?.openInterest);
-            // 🔬 TEMPORARY seam diagnostic — prints the literal perpsData as RECEIVED
-            // here vs the symbol we look up, so we can diff null-vs-empty-vs-unmatched
-            // (REMOVE after verify).
-            logger.info('🔬 perpsData seam', {
-              symU,
-              perpsDataNull: perpsData == null,
-              liqLen: (perpsData as any)?.liquidations?.length ?? null,
-              fundLen: (perpsData as any)?.fundingRates?.length ?? null,
-              oiLen: (perpsData as any)?.openInterest?.length ?? null,
-              liqSymbols: (perpsData as any)?.liquidations?.map((d: any) => d?.symbol)?.slice(0, 12) ?? null,
-              oiSymbols: (perpsData as any)?.openInterest?.map((d: any) => d?.symbol)?.slice(0, 12) ?? null,
-              fundSymbols: Array.from(new Set(((perpsData as any)?.fundingRates ?? []).map((d: any) => d?.symbol))).slice(0, 12),
-              matched: { liq: !!perpLiq, fund: !!perpFund, oi: !!perpOI },
-            }); // TEMP
             const cmcD = cmcDerivatives as any;
             // Path B — free per-token perps (Bybit + OKX), keyed by base symbol.
             // Backfills funding/OI/L-S after Coinglass + CMC. Absent → undefined.
@@ -1370,30 +1356,6 @@ Inform the user that OmniScore analysis is temporarily unavailable.
                 total_count: dataSourceNames.length,
                 stale_count: staleSources,
               },
-            });
-
-            // 🔬 TEMPORARY per-token derivatives diagnostic (REMOVE after verify).
-            // Distinguishes "Coinglass v4 per-token data arriving but genuinely
-            // neutral in a calm market" from "not threading / fell back to CMC
-            // market-wide". `source` shows which provider actually populated each
-            // field; `normalized` shows the resulting snapshot signal values.
-            logger.info('🔬 per-token derivatives diagnostic', {
-              symbol: resolvedSymbol,
-              raw: { d_oi, d_oiChange, d_funding, d_liq, d_ls },
-              source: {
-                coinglass_funding: perpFund?.rate != null,
-                coinglass_oi: perpOI?.openInterest != null,
-                coinglass_liq: perpLiq?.totalLiquidations24h != null,
-                coinglass_ls: (perpOI as any)?.longShortRatio != null,
-                cmc: !!cmcD,
-                freePerp: !!freePerp,
-              },
-              normalized: {
-                leverage_pressure: signals.leverage_pressure,
-                funding_rate: signals.funding_rate,
-                liquidation_density: signals.liquidation_density,
-              },
-              derivativesPresent: !signals._missing.has('derivatives'),
             });
 
             // BTAR-003: track judgment availability so the AI prompt cannot
