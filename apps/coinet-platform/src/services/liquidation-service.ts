@@ -234,12 +234,16 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
       return null;
     }
 
-    // 🔬 TEMPORARY success log — shows the call landed + the data shape (REMOVE after verify).
+    // 🔬 TEMPORARY success log — shows the call landed + the EXACT element shape
+    // each parser receives, so the container/field nesting is pinned (REMOVE after).
     const d: any = response.data?.data;
+    const el0 = Array.isArray(d) && d[0] && typeof d[0] === 'object' ? Object.keys(d[0]) : undefined;
     logger.info('🔬 coinglass call: OK', {
       tag,
       http: response.status,
       dataShape: Array.isArray(d) ? `array(${d.length})` : d == null ? 'null' : `object[${Object.keys(d).join(',')}]`,
+      el0keys: el0,
+      sample0: Array.isArray(d) ? JSON.stringify(d[0]).slice(0, 320) : JSON.stringify(d).slice(0, 320),
     }); // TEMP
 
     return response.data?.data;
