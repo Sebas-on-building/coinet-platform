@@ -184,17 +184,17 @@ function disableCoinglass(reason: string, detail: Record<string, any>): void {
 }
 
 async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
+  // 🔬 TEMPORARY: short endpoint tag for per-call outcome logging (REMOVE after verify).
+  const tag = endpoint.split('?')[0];
   if (!CONFIG.COINGLASS_API_KEY) {
-    logger.debug('💀 Coinglass API key not configured');
+    logger.info('🔬 coinglass call: NO_KEY', { tag }); // TEMP
     return null;
   }
 
   // Check if API is temporarily disabled
   const now = Date.now();
   if (coinglassApiDisabled && now < coinglassDisabledUntil) {
-    logger.debug('💀 Coinglass API temporarily disabled', {
-      remainingMs: coinglassDisabledUntil - now,
-    });
+    logger.info('🔬 coinglass call: DISABLED (cooldown)', { tag, remainingMs: coinglassDisabledUntil - now }); // TEMP
     return null;
   }
 
@@ -234,6 +234,14 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
       return null;
     }
 
+    // 🔬 TEMPORARY success log — shows the call landed + the data shape (REMOVE after verify).
+    const d: any = response.data?.data;
+    logger.info('🔬 coinglass call: OK', {
+      tag,
+      http: response.status,
+      dataShape: Array.isArray(d) ? `array(${d.length})` : d == null ? 'null' : `object[${Object.keys(d).join(',')}]`,
+    }); // TEMP
+
     return response.data?.data;
   } catch (error: any) {
     // Network/timeout or an unexpected throw — also engage cooldown on a 401/403
@@ -242,7 +250,7 @@ async function coinglassRequest<T>(endpoint: string): Promise<T | null> {
     if (status === 401 || status === 403) {
       disableCoinglass('auth/plan failure (thrown)', { http: status });
     } else {
-      logger.debug('💀 Coinglass request failed', { endpoint, error: error?.message });
+      logger.info('🔬 coinglass call: THREW', { tag, http: status, error: error?.message }); // TEMP (was debug)
     }
     return null;
   }

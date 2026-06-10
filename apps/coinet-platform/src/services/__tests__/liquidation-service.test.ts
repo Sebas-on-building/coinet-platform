@@ -26,6 +26,7 @@ import {
   getFundingRates,
   getOpenInterest,
   getLongShortAccountRatio,
+  getPerpsSnapshot,
 } from '../liquidation-service';
 
 function ok(data: any) {
@@ -142,6 +143,37 @@ describe('liquidation-service v4 migration', () => {
     expect(mockedGet.mock.calls[0][0]).toContain('PEPEUSDT');
     expect(mockedGet.mock.calls[0][0]).not.toContain('1000PEPEUSDT');
     expect(mockedGet.mock.calls[1][0]).toContain('1000PEPEUSDT');
+  });
+
+  it('getPerpsSnapshot threads liquidations + funding + OI + L/S end-to-end (v4)', async () => {
+    // URL-routed mock mirroring the LITERAL probe shapes for each v4 endpoint.
+    mockedGet.mockImplementation((url: string) => {
+      if (url.includes('/liquidation/coin-list')) {
+        return Promise.resolve(
+          ok([{ symbol: 'BTC', liquidation_usd_24h: 150_000_000, long_liquidation_usd_24h: 100_000_000, short_liquidation_usd_24h: 50_000_000 }]),
+        );
+      }
+      if (url.includes('/funding-rate/exchange-list')) {
+        return Promise.resolve(ok({ stablecoin_margin_list: [{ exchange: 'Binance', funding_rate: 0.0001 }] }));
+      }
+      if (url.includes('/open-interest/exchange-list')) {
+        return Promise.resolve(ok([{ exchange: 'All', open_interest_usd: 5_000_000_000, open_interest_change_percent_24h: 3.2 }]));
+      }
+      if (url.includes('/global-long-short-account-ratio')) {
+        return Promise.resolve(ok([{ time: 2, global_account_long_short_ratio: 1.9 }]));
+      }
+      return Promise.resolve(ok([]));
+    });
+
+    const p = getPerpsSnapshot(['BTC']);
+    await vi.advanceTimersByTimeAsync(30_000); // flush the serialized 3s spacing
+    const snap = await p;
+
+    expect(snap.liquidations[0]?.totalLiquidations24h).toBe(150_000_000);
+    expect(snap.fundingRates.length).toBeGreaterThan(0);
+    expect(snap.openInterest[0]?.openInterest).toBe(5_000_000_000);
+    expect(snap.openInterest[0]?.change24h).toBe(3.2);
+    expect(snap.openInterest[0]?.longShortRatio).toBe(1.9); // L/S attached to the OI row
   });
 
   it('a 401 "Upgrade plan" engages the 1h cooldown (no more hammering)', async () => {
