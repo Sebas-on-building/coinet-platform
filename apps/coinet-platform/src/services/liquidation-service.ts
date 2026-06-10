@@ -475,23 +475,36 @@ export async function getOpenInterest(symbol: string): Promise<OpenInterest | nu
  * record. Returns null when unavailable (no fabricated default).
  */
 export async function getLongShortAccountRatio(symbol: string): Promise<number | null> {
-  const cacheKey = `ls:${symbol.toUpperCase()}`;
+  const base = symbol.toUpperCase();
+  const cacheKey = `ls:${base}`;
   const cached = getFromCache<number>(cacheKey);
   if (cached != null) return cached;
 
-  const data = await coinglassRequest<any>(
-    `/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${symbol.toUpperCase()}USDT&interval=4h&limit=1`,
-  );
-  const rows: any[] | null = Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : null;
-  if (!rows || rows.length === 0) return null;
+  // The L/S history endpoint takes an EXCHANGE-SPECIFIC PAIR (e.g. BTCUSDT), so
+  // low-priced tokens hit the leverage-multiplier wrinkle: Binance lists PEPE as
+  // 1000PEPEUSDT (and some as kSHIBUSDT). Try the plain pair first, then the
+  // multiplier-prefixed variants before giving up — a 400 "pair does not exist"
+  // returns null (not an auth failure → no cooldown), so we just fall through.
+  // The account L/S ratio is multiplier-invariant, so the variant maps cleanly.
+  const candidates = [base, `1000${base}`, `K${base}`, `1000000${base}`];
+  for (const pair of candidates) {
+    const data = await coinglassRequest<any>(
+      `/api/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=${pair}USDT&interval=4h&limit=1`,
+    );
+    const rows: any[] | null = Array.isArray(data) ? data : Array.isArray(data?.list) ? data.list : null;
+    if (!rows || rows.length === 0) continue;
 
-  // Take the most recent record (greatest timestamp if present, else last).
-  const latest = rows.reduce((a: any, b: any) => (num(b?.time) >= num(a?.time) ? b : a), rows[0]);
-  const ratio = num(latest.global_account_long_short_ratio ?? latest.long_short_ratio);
-  if (ratio <= 0) return null;
+    // Take the most recent record (greatest timestamp if present, else last).
+    const latest = rows.reduce((a: any, b: any) => (num(b?.time) >= num(a?.time) ? b : a), rows[0]);
+    const ratio = num(latest.global_account_long_short_ratio ?? latest.long_short_ratio);
+    if (ratio <= 0) continue;
 
-  setCache(cacheKey, ratio);
-  return ratio;
+    setCache(cacheKey, ratio);
+    return ratio;
+  }
+
+  // No variant carried a perp market → honest absence (undefined → APPLICABLE_NO_DATA).
+  return null;
 }
 
 // ============================================================================

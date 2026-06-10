@@ -130,6 +130,20 @@ describe('liquidation-service v4 migration', () => {
     expect(mockedGet.mock.calls[0][0]).toContain('/api/futures/global-long-short-account-ratio/history');
   });
 
+  it('getLongShortAccountRatio falls back to the 1000x pair (PEPE → 1000PEPEUSDT)', async () => {
+    // The base pair does not exist on Binance for low-priced tokens; the
+    // 1000-prefixed variant does. First candidate returns empty, second carries.
+    mockedGet.mockResolvedValueOnce(ok([])); // PEPEUSDT — no such pair
+    mockedGet.mockResolvedValueOnce(ok([{ time: 1, global_account_long_short_ratio: 2.1 }])); // 1000PEPEUSDT
+    const p = getLongShortAccountRatio('PEPE');
+    await vi.advanceTimersByTimeAsync(10_000); // flush the 3s spacing between candidates
+    const ls = await p;
+    expect(ls).toBe(2.1);
+    expect(mockedGet.mock.calls[0][0]).toContain('PEPEUSDT');
+    expect(mockedGet.mock.calls[0][0]).not.toContain('1000PEPEUSDT');
+    expect(mockedGet.mock.calls[1][0]).toContain('1000PEPEUSDT');
+  });
+
   it('a 401 "Upgrade plan" engages the 1h cooldown (no more hammering)', async () => {
     mockedGet.mockResolvedValueOnce({ status: 401, data: { code: '401', msg: 'Upgrade plan' } });
     // First call hits the API and trips the cooldown.

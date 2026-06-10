@@ -1354,6 +1354,30 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               },
             });
 
+            // 🔬 TEMPORARY per-token derivatives diagnostic (REMOVE after verify).
+            // Distinguishes "Coinglass v4 per-token data arriving but genuinely
+            // neutral in a calm market" from "not threading / fell back to CMC
+            // market-wide". `source` shows which provider actually populated each
+            // field; `normalized` shows the resulting snapshot signal values.
+            logger.info('🔬 per-token derivatives diagnostic', {
+              symbol: resolvedSymbol,
+              raw: { d_oi, d_oiChange, d_funding, d_liq, d_ls },
+              source: {
+                coinglass_funding: perpFund?.rate != null,
+                coinglass_oi: perpOI?.openInterest != null,
+                coinglass_liq: perpLiq?.totalLiquidations24h != null,
+                coinglass_ls: (perpOI as any)?.longShortRatio != null,
+                cmc: !!cmcD,
+                freePerp: !!freePerp,
+              },
+              normalized: {
+                leverage_pressure: signals.leverage_pressure,
+                funding_rate: signals.funding_rate,
+                liquidation_density: signals.liquidation_density,
+              },
+              derivativesPresent: !signals._missing.has('derivatives'),
+            });
+
             // BTAR-003: track judgment availability so the AI prompt cannot
             // silently pretend structured judgment exists when it does not.
             let judgmentAvailability: JudgmentAvailabilityResult;
