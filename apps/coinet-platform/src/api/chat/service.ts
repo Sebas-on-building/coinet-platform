@@ -351,13 +351,17 @@ export class ChatService {
           trackFetch('cssResult', calculateCompositeSocialScore(), ds.fetchSocial),
           trackFetch('socialV2Result', calculateSocialIntelligenceV2(), ds.fetchSocial),
           trackFetch('newsV2Result', calculateNewsIntelligenceV2(), ds.fetchNews),
-          trackFetch('perpsData', getPerpsSnapshot(coinSymbols), ds.fetchDerivatives || needsPerpsData),
+          // NOTE: ds.* is always {} (executeHandler's HandlerResult has no dataSources field),
+          // so the legacy ds.fetchDerivatives gate is dead — it silently DISCARDED the eagerly-run
+          // getPerpsSnapshot result (perpsData null despite OK logs). Per-token derivatives must
+          // fire whenever a token is present, consistent with freePerps/defiLlama/globalMarket below.
+          trackFetch('perpsData', getPerpsSnapshot(coinSymbols), ds.fetchDerivatives || needsPerpsData || coinSymbols.length > 0),
           trackFetch('derivativesV2', calculateDerivativesIntelligenceV2(), ds.fetchDerivatives),
           trackFetch('comprehensiveDerivatives', calculateComprehensiveDerivativesIntelligence(), ds.fetchDerivatives),
           trackFetch('derivativesFinal', calculateDerivativesIntelligenceFinal(), ds.fetchDerivatives),
           trackFetch('globalMarket', getGlobalMarketData(), coinSymbols.length > 0), // BTAR-011: real CoinGecko /global (dominance + total mcap)
           trackFetch('cmcGlobal', getCmcGlobalMetrics(), coinSymbols.length > 0), // CMC Agent Hub: macro co-primary (F&G, dominance, total mcap, 7d coverage)
-          trackFetch('cmcDerivatives', getCmcDerivatives(cmcSymbolForDeriv), (ds.fetchDerivatives || needsPerpsData) && coinSymbols.length > 0), // CMC Agent Hub: derivatives challenger
+          trackFetch('cmcDerivatives', getCmcDerivatives(cmcSymbolForDeriv), coinSymbols.length > 0), // CMC Agent Hub: derivatives challenger (ds.* gate is dead — see perpsData note)
           trackFetch('freePerps', getFreePerps(coinSymbols), coinSymbols.length > 0), // Path B: free per-token perps (Bybit + OKX, no key) — funding/OI/L-S
           trackFetch('defiLlama', fetchDeFiLlamaAdoption(defiLlamaId), coinSymbols.length > 0), // DeFiLlama: per-token protocol TVL/fees/revenue (slug-gated to DeFi)
         ]);
