@@ -71,10 +71,21 @@ const FAILURE_LEAD: Record<string, string> = {
   post_unlock_sell_pressure: 'The overhang wins if',
 };
 
+// A trailing intensifier verb means the engine appended it to a clause that
+// already has its own verb (the contradiction-derived failure: "{X} worsens").
+// "Wrong if {X} worsens" reads as a double verb, so reshape to "this worsens: {X}".
+const TRAILING_INTENSIFIER = /\s+(worsens|intensifies|deteriorates|widens|accelerates)\.?$/i;
+
 function frameFailure(s?: string, thesisId?: string): string | undefined {
   if (!s) return s;
   const core = trimDot(stripPrefix(s.trim(), ['Thesis fails if ', 'Fails if ']));
   const lead = (thesisId && FAILURE_LEAD[thesisId]) || 'Wrong if';
+  const m = core.match(TRAILING_INTENSIFIER);
+  if (m) {
+    const verb = m[1].toLowerCase();
+    const rest = trimDot(core.replace(TRAILING_INTENSIFIER, ''));
+    return `${lead} this ${verb}: ${lowerFirst(rest)} — treat that as the exit, not a dip to argue with.`;
+  }
   return `${lead} ${lowerFirst(core)} — treat that as the exit, not a dip to argue with.`;
 }
 
@@ -102,7 +113,9 @@ function frameUncertainty(s?: string, band?: string): string | undefined {
 
 const frameBullish = (s?: string) => (s ? `What would confirm it: ${s}` : s);
 const frameBearish = (s?: string) => (s ? `What breaks it: ${s}` : s);
-const frameNext = (s?: string) => (s ? `Next thing I'm watching: ${s}` : s);
+// Drop the engine's leading "Watch for"/"Watch:" so we don't double it ("watching: Watch for").
+const frameNext = (s?: string): string | undefined =>
+  s ? `Next thing I'm watching: ${lowerFirst(stripPrefix(s.trim(), ['Watch for ', 'Watch: ']))}` : s;
 
 // ── The transform ────────────────────────────────────────────────────────────
 

@@ -52,6 +52,26 @@ describe('renderMentorCardFields — mentor framing with verbatim fold-in', () =
     expect(a.failure_condition).not.toBe(b.failure_condition); // varies by thesis
   });
 
+  it('reshapes a sentence-form failure (trailing intensifier) into clean grammar', () => {
+    const out = renderMentorCardFields({
+      thesis: 'thin_liquidity_risk',
+      failure_condition: 'Thesis fails if volume significantly exceeds available liquidity worsens.',
+    });
+    // no "...liquidity worsens" double-verb; folds the clause after a colon
+    expect(out.failure_condition).toContain('this worsens: volume significantly exceeds available liquidity');
+    expect(out.failure_condition).not.toContain('liquidity worsens —');
+  });
+
+  it('does not double the watch in the next-trigger framing', () => {
+    const out = renderMentorCardFields({
+      scenario_detail: { next_trigger: 'Watch for liquidation cascades and funding reset.' },
+    });
+    expect(out.scenario_detail?.next_trigger).toBe(
+      "Next thing I'm watching: liquidation cascades and funding reset.",
+    );
+    expect(out.scenario_detail?.next_trigger).not.toContain('watching: Watch for');
+  });
+
   it('replaces the flat maturity note with a phase-specific read, keeps unknown phases', () => {
     const known = renderMentorCardFields({
       timing_phase: 'post_peak',
