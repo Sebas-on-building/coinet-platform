@@ -163,13 +163,17 @@ describe('AI output safety gate (BTAR-005)', () => {
 
   // ── MISSING DISCLOSURES ────────────────────────────────────────────────
   describe('MISSING_DEGRADATION_DISCLOSURE', () => {
-    it('DEGRADED package + plain optimistic answer flags missing disclosure', () => {
+    it('DEGRADED + plain answer flags the missing disclosure but does NOT clobber (warns)', () => {
       const result = evaluateAIOutputSafety({
         output: 'The market is looking constructive for BTC over the next week.',
         judgmentPackage: degradedPkg(),
       });
+      // Phase 2.5: a disclosure-only miss (no substantive violation) is now a
+      // logged warning, not a canned-string replacement — so a compliant
+      // (often non-English) answer survives. Substance stays hard (below).
       expect(result.violations).toContain('MISSING_DEGRADATION_DISCLOSURE');
-      expect(result.decision).toBe('REWRITE_REQUIRED');
+      expect(result.decision).toBe('ALLOW_WITH_WARNINGS');
+      expect(result.safe_output).toBeUndefined();
     });
   });
 
@@ -257,12 +261,16 @@ describe('AI output safety gate (BTAR-005)', () => {
       expect(result.safe_output).toMatch(/structured Coinet judgment is unavailable/i);
     });
 
-    it('produces cautious degraded rewrite when degradation disclosure missing', () => {
+    it('produces cautious degraded rewrite when a SUBSTANTIVE violation co-occurs under DEGRADED', () => {
+      // Disclosure-only no longer clobbers, so to exercise the DEGRADED rewrite
+      // we need a substantive violation (confidence inflation) alongside it.
       const input = {
-        output: 'BTC is set up for a strong move higher.',
+        output: 'BTC is set up for a strong move higher with high confidence.',
         judgmentPackage: degradedPkg(),
       };
       const result = evaluateAIOutputSafety(input);
+      expect(result.violations).toContain('CONFIDENCE_INFLATION');
+      expect(result.decision).toBe('REWRITE_REQUIRED');
       expect(result.safe_output).toMatch(/partially degraded/i);
     });
 
@@ -317,6 +325,66 @@ describe('AI output safety gate (BTAR-005)', () => {
         judgmentPackage: availablePkg(),
       });
       expect(output).toBe(original);
+    });
+  });
+
+  // ── Phase 2.5: disclosure-only relaxation + multilingual hardening ──────────
+  // The disclosure clobber is relaxed so a compliant in-language mentor answer
+  // survives — but ONLY after the substantive detectors are hardened so a fake
+  // claim / buy-sell directive / guarantee in another language still gets caught.
+  describe('disclosure-only relaxation (no clobber)', () => {
+    it('UNAVAILABLE + German compliant scope answer → ALLOW_WITH_WARNINGS, not clobbered', () => {
+      const result = evaluateAIOutputSafety({
+        // honest scope + regime context in German, NO governed thesis claim
+        output:
+          'Ich erstelle noch kein vollständiges Markturteil — meine Urteile sind pro Token. Fear & Greed steht bei 14/100, BTC dominance 58%. Ob du generell kaufst, ist deine Entscheidung.',
+        judgmentPackage: unavailablePkg(),
+      });
+      expect(result.violations).toContain('MISSING_UNAVAILABLE_DISCLOSURE');
+      expect(result.violations).not.toContain('GOVERNED_JUDGMENT_CLAIM_WHEN_UNAVAILABLE');
+      expect(result.decision).toBe('ALLOW_WITH_WARNINGS');
+      expect(result.safe_output).toBeUndefined();
+    });
+
+    it('UNAVAILABLE + English mentor scope phrasing → ALLOW (disclosure recognized)', () => {
+      const result = evaluateAIOutputSafety({
+        output:
+          "I don't produce a full market verdict yet — my judgments are per-token. Fear & Greed is 14/100.",
+        judgmentPackage: unavailablePkg(),
+      });
+      expect(result.decision).toBe('ALLOW');
+    });
+  });
+
+  describe('multilingual hardening — substance still caught in other languages', () => {
+    it('German governed-thesis claim under UNAVAILABLE → still REWRITE', () => {
+      const result = evaluateAIOutputSafety({
+        output: 'Coinets These ist bullisch für den Gesamtmarkt.',
+        judgmentPackage: unavailablePkg(),
+      });
+      expect(result.violations).toContain('GOVERNED_JUDGMENT_CLAIM_WHEN_UNAVAILABLE');
+      expect(result.decision).toBe('REWRITE_REQUIRED');
+      expect(result.safe_output).toBeDefined();
+    });
+
+    it('German "kauf jetzt" direct advice → still caught', () => {
+      expect(detectDirectFinancialAdvice('Kauf jetzt, bevor es zu spät ist.')).toBe(true);
+      expect(detectDirectFinancialAdvice('Du solltest jetzt verkaufen.')).toBe(true);
+    });
+
+    it('German guarantee language → still caught (block)', () => {
+      const result = evaluateAIOutputSafety({
+        output: 'Der Markt wird steigen, garantiert.',
+        judgmentPackage: availablePkg(),
+      });
+      expect(result.violations).toContain('GUARANTEED_OUTCOME_LANGUAGE');
+      expect(result.decision).toBe('BLOCK_OR_CLARIFY');
+    });
+
+    it('Spanish / French / Turkish direct advice → caught', () => {
+      expect(detectDirectFinancialAdvice('Compra ahora, no esperes.')).toBe(true);
+      expect(detectDirectFinancialAdvice('Achète maintenant.')).toBe(true);
+      expect(detectDirectFinancialAdvice('Şimdi al!')).toBe(true);
     });
   });
 });

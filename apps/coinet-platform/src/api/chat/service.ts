@@ -359,8 +359,8 @@ export class ChatService {
           trackFetch('derivativesV2', calculateDerivativesIntelligenceV2(), ds.fetchDerivatives),
           trackFetch('comprehensiveDerivatives', calculateComprehensiveDerivativesIntelligence(), ds.fetchDerivatives),
           trackFetch('derivativesFinal', calculateDerivativesIntelligenceFinal(), ds.fetchDerivatives),
-          trackFetch('globalMarket', getGlobalMarketData(), coinSymbols.length > 0), // BTAR-011: real CoinGecko /global (dominance + total mcap)
-          trackFetch('cmcGlobal', getCmcGlobalMetrics(), coinSymbols.length > 0), // CMC Agent Hub: macro co-primary (F&G, dominance, total mcap, 7d coverage)
+          trackFetch('globalMarket', getGlobalMarketData(), true), // BTAR-011: real CoinGecko /global (dominance + total mcap). Always — market-wide regime, cached, so no-token queries get regime context too.
+          trackFetch('cmcGlobal', getCmcGlobalMetrics(), true), // CMC Agent Hub: macro co-primary (F&G, dominance, total mcap, 7d coverage). Always — 5-min cached, cost-neutral.
           trackFetch('cmcDerivatives', getCmcDerivatives(cmcSymbolForDeriv), coinSymbols.length > 0), // CMC Agent Hub: derivatives challenger (ds.* gate is dead — see perpsData note)
           trackFetch('freePerps', getFreePerps(coinSymbols), coinSymbols.length > 0), // Path B: free per-token perps (Bybit + OKX, no key) — funding/OI/L-S
           trackFetch('defiLlama', fetchDeFiLlamaAdoption(defiLlamaId), coinSymbols.length > 0), // DeFiLlama: per-token protocol TVL/fees/revenue (slug-gated to DeFi)
@@ -507,10 +507,35 @@ export class ChatService {
         // 2. Add market sentiment (Fear & Greed)
         if (sentiment) {
           contextParts.push(formatSentimentForAI(sentiment));
-          logger.debug('📊 Sentiment added', { 
+          logger.debug('📊 Sentiment added', {
             value: sentiment.fearGreed.value,
-            classification: sentiment.fearGreed.classification 
+            classification: sentiment.fearGreed.classification
           });
+        }
+
+        // 2b. Market-wide REGIME context — pushed UNCONDITIONALLY (also for
+        // no-token / market-wide queries) so the mentor can speak to Fear &
+        // Greed, BTC dominance and total market cap even when there is no
+        // per-token judgment (§5.2 market-wide path). Cost-neutral: both
+        // sources are cached (CMC 5-min; CoinGecko /global). This is regime
+        // CONTEXT, never a market-wide verdict — Coinet has no market judgment.
+        {
+          const fearGreed = cmcGlobal?.fearGreed;
+          const btcDom = cmcGlobal?.btcDominance ?? globalMarket?.btcDominance;
+          const totalMcapChg =
+            cmcGlobal?.totalMarketCapChange24h ?? globalMarket?.totalMarketCapChange24h;
+          const regimeBits: string[] = [];
+          if (typeof fearGreed === 'number') regimeBits.push(`Fear & Greed ${Math.round(fearGreed)}/100`);
+          if (typeof btcDom === 'number') regimeBits.push(`BTC dominance ${btcDom.toFixed(1)}%`);
+          if (typeof totalMcapChg === 'number')
+            regimeBits.push(`total market cap ${totalMcapChg >= 0 ? '+' : ''}${totalMcapChg.toFixed(1)}% (24h)`);
+          if (typeof cmcGlobal?.btcDominanceChange7d === 'number')
+            regimeBits.push(`BTC dominance ${cmcGlobal.btcDominanceChange7d >= 0 ? '+' : ''}${cmcGlobal.btcDominanceChange7d.toFixed(1)}pp (7d)`);
+          if (regimeBits.length > 0) {
+            contextParts.push(
+              `[MARKET REGIME CONTEXT — market-wide signals, NOT a per-token Coinet judgment]\n${regimeBits.join(' · ')}`,
+            );
+          }
         }
         
         // 3. Add AI-enriched news intelligence context
@@ -1457,6 +1482,7 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               kind: 'ASSET' as const,
               asset_symbol: resolvedSymbol,
               asset_name: primaryCoin.symbol,
+              asset_sector: resolvedAssetSector, // Law-4 lens for the card's horizon language
             };
 
             if (!judgment) {
@@ -1847,7 +1873,18 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         judgmentPackage: judgmentPackageForGate,
       });
       const assistantContent = finalized.finalOutput;
-      if (finalized.gate.decision !== 'ALLOW') {
+      if (finalized.gate.decision === 'ALLOW_WITH_WARNINGS') {
+        // Distinct, greppable tag: a disclosure phrase was missing but the answer
+        // had no substantive violation, so the (often non-English) mentor answer
+        // was NOT clobbered. Monitor how often this occurs post-launch.
+        logger.info('🟦 AI output gate: allowed with warnings (disclosure-missing, not clobbered)', {
+          decision: finalized.gate.decision,
+          violations: finalized.gate.violations,
+          policy_version: finalized.gate.policy_version,
+          judgment_status: judgmentPackageForGate.judgment_status,
+          changed: finalized.changed,
+        });
+      } else if (finalized.gate.decision !== 'ALLOW') {
         logger.warn('AI output safety gate intervened', {
           decision: finalized.gate.decision,
           violations: finalized.gate.violations,

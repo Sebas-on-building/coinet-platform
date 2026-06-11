@@ -110,6 +110,44 @@ describe('renderMentorCardFields — mentor framing with verbatim fold-in', () =
   });
 });
 
+describe('renderMentorCardFields — horizon lens (Law 4)', () => {
+  const fundamentalsHorizons = {
+    scenario_detail: {
+      horizons: [
+        { horizon: '30d', confirmation: '30d confirmation: fundamental metrics validate growth thesis.', failure: '30d failure: fundamental metrics stagnate or decline.' },
+        { horizon: '24h', confirmation: 'spot volume expands', failure: 'price reverses on a volume spike' },
+      ],
+    },
+  };
+
+  it('re-lenses fundamentals-language horizons for a memecoin (no fundamentals praise)', () => {
+    const out = renderMentorCardFields(fundamentalsHorizons, 'Memecoin');
+    const h30 = out.scenario_detail?.horizons?.[0];
+    expect(h30?.confirmation).not.toMatch(/fundamental/i);
+    expect(h30?.confirmation).toContain('narrative');
+    expect(h30?.failure).toContain('narrative');
+    // non-fundamentals horizon line is untouched
+    expect(out.scenario_detail?.horizons?.[1].confirmation).toBe('spot volume expands');
+  });
+
+  it('keeps fundamentals horizons for an L1 / DeFi asset', () => {
+    const l1 = renderMentorCardFields(fundamentalsHorizons, 'L1');
+    expect(l1.scenario_detail?.horizons?.[0].confirmation).toContain('fundamental metrics validate');
+    const defi = renderMentorCardFields(fundamentalsHorizons, 'DeFi');
+    expect(defi.scenario_detail?.horizons?.[0].confirmation).toContain('fundamental metrics validate');
+  });
+
+  it('Unknown / missing sector is conservative — leaves engine text', () => {
+    const out = renderMentorCardFields(fundamentalsHorizons); // no sector
+    expect(out.scenario_detail?.horizons?.[0].confirmation).toContain('fundamental metrics validate');
+  });
+
+  it('stablecoin re-lenses to peg/depth language', () => {
+    const out = renderMentorCardFields(fundamentalsHorizons, 'Stablecoin');
+    expect(out.scenario_detail?.horizons?.[0].confirmation).toMatch(/peg/i);
+  });
+});
+
 describe('renderMentorCardFields — safety', () => {
   it('passes every structured number through unchanged', () => {
     const j: CoinetJudgmentPromptPackageJudgment = {

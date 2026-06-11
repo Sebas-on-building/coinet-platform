@@ -138,9 +138,10 @@ describe('chat runtime trust evidence (BTAR-008)', () => {
       expect(e.degradation_disclosed).toBe(true);
     });
 
-    it('DEGRADED with raw optimistic output that gets rewritten → final output now discloses', () => {
-      // Optimistic raw output → gate rewrites with "partially degraded" → disclosure_disclosed=true
-      const e = buildDegradedEvidence('BTC is set up for a strong move higher.');
+    it('DEGRADED with a substantive violation gets rewritten → final output now discloses', () => {
+      // Disclosure-only no longer clobbers; a substantive violation (confidence
+      // inflation) still drives the DEGRADED rewrite to a disclosing safe output.
+      const e = buildDegradedEvidence('BTC is set up for a strong move higher with high confidence.');
       expect(e.safety_gate_changed_output).toBe(true);
       expect(e.degradation_disclosed).toBe(true);
     });

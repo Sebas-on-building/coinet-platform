@@ -49,6 +49,22 @@ const DIRECT_FINANCIAL_ADVICE_PATTERNS: RegExp[] = [
   /\bload\s+up\b/i,
   /\btake\s+profit\s+now\b/i,
   /\bcut\s+your\s+position\b/i,
+  // Multilingual imperative buy/sell directives (hardening — the substantive
+  // detectors must not be English-blind once the disclosure clobber is relaxed).
+  /\b(kauf|kaufe|kaufen)\s+(jetzt|sofort|heute)\b/i, // de
+  /\b(verkauf|verkaufe|verkaufen)\s+(jetzt|sofort|heute)\b/i, // de
+  /\b(jetzt|sofort)\s+(kaufen|verkaufen)\b/i, // de
+  /\bdu\s+solltest\s+(jetzt\s+)?(kaufen|verkaufen)\b/i, // de
+  /\b(compra|vende)\s+(ahora|ya|hoy)\b/i, // es
+  /\bdeberías\s+(comprar|vender)\b/i, // es
+  /\b(achète|achetez|vends|vendez)\s+(maintenant|tout\s+de\s+suite)\b/i, // fr
+  /\btu\s+devrais\s+(acheter|vendre)\b/i, // fr
+  /\b(compre|venda)\s+(agora|já|hoje)\b/i, // pt
+  /\bvocê\s+deveria\s+(comprar|vender)\b/i, // pt
+  /\b(compra|vendi)\s+(ora|adesso|subito)\b/i, // it
+  /\bdovresti\s+(comprare|vendere)\b/i, // it
+  /(?:^|[\s,.;!?])şimdi\s+(al|sat)\b/i, // tr (JS \b is ASCII-only; ş is non-word)
+  /\b(almalısın|satmalısın)\b/i, // tr
 ];
 
 // Phrases that signal a negation/defensive context where buy/sell language is
@@ -70,6 +86,24 @@ const GUARANTEED_OUTCOME_PATTERNS: RegExp[] = [
   /\brisk[-\s]?free\b/i,
   /\bsure\s+thing\b/i,
   /\bcannot\s+fail\b/i,
+  // Multilingual guarantee / certainty-of-direction terms (hardening).
+  /\bgarantiert\b/i, // de
+  /\bwird\s+(steigen|fallen|explodieren|pumpen|abstürzen|crashen)\b/i, // de
+  /\b(sicherer\s+gewinn|risikofrei)\b/i, // de
+  /\bgarantizado\b/i, // es
+  /\bva\s+a\s+(subir|explotar|multiplicarse|caer)\b/i, // es
+  /\bsin\s+riesgo\b/i, // es
+  /\bgaranti\b/i, // fr/tr (shared)
+  /\bva\s+(monter|exploser|chuter)\b/i, // fr
+  /\bsans\s+risque\b/i, // fr
+  /\bgarantido\b/i, // pt
+  /\bvai\s+(subir|explodir|cair)\b/i, // pt
+  /\bsem\s+risco\b/i, // pt
+  /\bgarantito\b/i, // it
+  /\b(salirà|esploderà|crollerà)\s+sicuramente\b/i, // it
+  /\bsenza\s+rischio\b/i, // it
+  /\bkesinlikle\s+(yükselecek|düşecek|patlayacak)\b/i, // tr
+  /\briski?siz\b/i, // tr
 ];
 
 const UNSUPPORTED_CERTAINTY_PATTERNS: RegExp[] = [
@@ -105,6 +139,19 @@ const GOVERNED_CLAIM_PATTERNS: RegExp[] = [
   /\bcoinet'?s\s+(scenario|contradiction|timing)\s+is\b/i,
   /\bcoinet\s+has\s+a\s+(governed|structured)\s+(thesis|read)\b/i,
   /\baccording\s+to\s+coinet'?s\s+(structured\s+)?judgment\b/i,
+  // Multilingual "Coinet has/sees a governed thesis/judgment" (hardening — a fake
+  // market thesis must still be caught when the answer is not in English).
+  /\bcoinets?\s+(these|urteil|einschätzung|bewertung)\s+(ist|lautet)\b/i, // de
+  /\bcoinet\s+sieht\b/i, // de
+  /\bla\s+tesis\s+de\s+coinet\s+es\b/i, // es
+  /\bcoinet\s+ve\b/i, // es
+  /\bla\s+thèse\s+de\s+coinet\s+est\b/i, // fr
+  /\bcoinet\s+voit\b/i, // fr
+  /\ba\s+tese\s+da\s+coinet\s+é\b/i, // pt
+  /\bcoinet\s+vê\b/i, // pt
+  /\bla\s+tesi\s+di\s+coinet\s+è\b/i, // it
+  /\bcoinet\s+vede\b/i, // it
+  /\bcoinet'?in\s+(tezi|görüşü|değerlendirmesi)\b/i, // tr
 ];
 
 const DEGRADATION_DISCLOSURE_PATTERNS: RegExp[] = [
@@ -122,6 +169,13 @@ const UNAVAILABLE_DISCLOSURE_PATTERNS: RegExp[] = [
   /\bi\s+cannot\s+produce\s+a\s+structured\s+coinet\s+judgment\b/i,
   /\bnot\s+a\s+governed\s+coinet\s+read\b/i,
   /\bstructured\s+coinet\s+judgment\s+is\s+not\s+available\b/i,
+  // The mentor's natural scope phrasings (so a compliant English answer is not
+  // flagged): market-wide and unsupported-token honest-scope statements.
+  /\bdon'?t\s+produce\s+a\s+full\s+market\s+verdict\b/i,
+  /\bmy\s+judgments?\s+are\s+per[-\s]token\b/i,
+  /\bnot\s+a\s+(full\s+)?market\s+verdict\b/i,
+  /\bwon'?t\s+guess\s+at\s+a\s+verdict\b/i,
+  /\bdon'?t\s+have\s+this\s+one\s+in\s+my\s+engine\b/i,
 ];
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -460,7 +514,23 @@ function deriveDecision(
     return 'BLOCK_OR_CLARIFY';
   }
 
-  // REWRITE_REQUIRED: any other safety violation.
+  // Disclosure-only relaxation: a MISSING disclosure phrase, with NO substantive
+  // violation, must not clobber a compliant answer (often non-English, where the
+  // English disclosure phrasing simply won't match). The substantive protections
+  // — governed-claim-when-unavailable, direct advice, guaranteed outcome — are
+  // enforced above/below and are multilingual-hardened, so a fake thesis or a
+  // buy/sell directive in any language still forces a rewrite/block. A bare
+  // missing-disclosure becomes a logged warning, not a canned-string replacement.
+  const disclosureOnly: AIOutputSafetyViolation[] = [
+    'MISSING_UNAVAILABLE_DISCLOSURE',
+    'MISSING_DEGRADATION_DISCLOSURE',
+  ];
+  if (violations.every((v) => disclosureOnly.includes(v))) {
+    return 'ALLOW_WITH_WARNINGS';
+  }
+
+  // REWRITE_REQUIRED: any other safety violation (incl. a disclosure miss that
+  // CO-OCCURS with a substantive violation — the substantive one drives this).
   const rewriteClasses: AIOutputSafetyViolation[] = [
     'DIRECT_FINANCIAL_ADVICE',
     'MISSING_UNAVAILABLE_DISCLOSURE',

@@ -111,9 +111,11 @@ describe('chat AI response finalizer (BTAR-006)', () => {
       expect(result.finalOutput).toMatch(/structured Coinet judgment is unavailable/i);
     });
 
-    it('produces cautious degraded rewrite when degradation disclosure is missing', () => {
+    it('produces cautious degraded rewrite when a substantive violation co-occurs under DEGRADED', () => {
+      // Disclosure-only no longer clobbers; a substantive violation (confidence
+      // inflation) still drives the DEGRADED rewrite.
       const result = finalizeChatAIResponse({
-        rawOutput: 'BTC is set up for a strong move higher.',
+        rawOutput: 'BTC is set up for a strong move higher with high confidence.',
         judgmentPackage: degradedPkg(),
       });
       expect(result.changed).toBe(true);

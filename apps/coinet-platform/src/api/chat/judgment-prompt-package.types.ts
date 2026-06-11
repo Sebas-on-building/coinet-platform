@@ -37,6 +37,12 @@ export interface CoinetJudgmentPromptPackageScope {
   kind: CoinetJudgmentScopeKind;
   asset_symbol?: string;
   asset_name?: string;
+  /**
+   * OmniScore sector (L1 / DeFi / Memecoin / Stablecoin / …). Claim-neutral
+   * metadata used by the card layer to keep horizon language in the right lens
+   * (Law 4) — e.g. memecoins never get "fundamentals validate growth" horizons.
+   */
+  asset_sector?: string;
   market_context_ref?: string;
 }
 

@@ -432,6 +432,7 @@ function resolveScope(
   const out: CoinetJudgmentPromptPackageScope = { kind };
   if (scope.asset_symbol !== undefined) out.asset_symbol = scope.asset_symbol;
   if (scope.asset_name !== undefined) out.asset_name = scope.asset_name;
+  if (scope.asset_sector !== undefined) out.asset_sector = scope.asset_sector;
   if (scope.market_context_ref !== undefined)
     out.market_context_ref = scope.market_context_ref;
   return out;

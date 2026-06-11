@@ -117,6 +117,39 @@ const frameBearish = (s?: string) => (s ? `What breaks it: ${s}` : s);
 const frameNext = (s?: string): string | undefined =>
   s ? `Next thing I'm watching: ${lowerFirst(stripPrefix(s.trim(), ['Watch for ', 'Watch: ']))}` : s;
 
+// ── Horizon lens correction (Law 4) ─────────────────────────────────────────
+// The engine's longer-horizon lines default to fundamentals language ("fundamental
+// metrics validate growth thesis"). That is the WRONG lens for assets with no
+// fundamentals (memecoins, stablecoins), so for those sectors we re-lens the
+// fundamentals-language horizon lines into the right vocabulary.
+const FUNDAMENTALS_LENS_SECTORS = new Set([
+  'L1', 'L2', 'DeFi', 'Infrastructure', 'Payment', 'Exchange', 'Gaming', 'Privacy',
+]);
+const FUNDAMENTALS_LANGUAGE =
+  /\b(fundamental|growth thesis|adoption metric|metrics validate|revenue|tvl|capital efficiency)\b/i;
+
+function sectorHasFundamentalsLens(sector?: string): boolean {
+  if (!sector || sector === 'Unknown') return true; // conservative: leave engine text
+  return FUNDAMENTALS_LENS_SECTORS.has(sector);
+}
+
+function relensHorizonLine(
+  s: string | undefined,
+  kind: 'confirmation' | 'failure',
+  sector?: string,
+): string | undefined {
+  if (!s || sectorHasFundamentalsLens(sector) || !FUNDAMENTALS_LANGUAGE.test(s)) return s;
+  if (sector === 'Stablecoin') {
+    return kind === 'confirmation'
+      ? 'The peg holds and liquidity stays deep.'
+      : 'The peg slips or reserves come into question.';
+  }
+  // Memecoin (and any other non-fundamentals sector): flow / narrative / liquidity.
+  return kind === 'confirmation'
+    ? 'The narrative holds and liquidity deepens rather than thins.'
+    : 'The narrative fades and liquidity dries up.';
+}
+
 // ── The transform ────────────────────────────────────────────────────────────
 
 /**
@@ -126,6 +159,7 @@ const frameNext = (s?: string): string | undefined =>
  */
 export function renderMentorCardFields(
   j: CoinetJudgmentPromptPackageJudgment,
+  sector?: string,
 ): CoinetJudgmentPromptPackageJudgment {
   // Capture raw enums BEFORE humanizing (framings key on the identifiers).
   const thesisId = j.thesis;
@@ -209,6 +243,22 @@ export function renderMentorCardFields(
         : {}),
       ...(j.scenario_detail.next_trigger !== undefined
         ? { next_trigger: frameNext(j.scenario_detail.next_trigger) }
+        : {}),
+      // Horizons: re-lens fundamentals-language lines for non-fundamentals
+      // sectors (Law 4) — memecoins/stablecoins never get "fundamentals validate
+      // growth" horizons. Other content is preserved verbatim.
+      ...(j.scenario_detail.horizons
+        ? {
+            horizons: j.scenario_detail.horizons.map((h) => ({
+              ...h,
+              ...(h.confirmation !== undefined
+                ? { confirmation: relensHorizonLine(h.confirmation, 'confirmation', sector) }
+                : {}),
+              ...(h.failure !== undefined
+                ? { failure: relensHorizonLine(h.failure, 'failure', sector) }
+                : {}),
+            })),
+          }
         : {}),
     };
   }

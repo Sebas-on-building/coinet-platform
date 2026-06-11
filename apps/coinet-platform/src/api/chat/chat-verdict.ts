@@ -35,7 +35,9 @@ export function toChatVerdict(pkg: CoinetJudgmentPromptPackage): ChatVerdict {
   // (humanized identifiers + framed prose). Pure, claim-neutral, downstream of
   // the engine — never alters numbers or the AI-prompt grounding package.
   const fields =
-    j && Object.keys(j).length > 0 ? renderMentorCardFields(j) : undefined;
+    j && Object.keys(j).length > 0
+      ? renderMentorCardFields(j, pkg.scope.asset_sector)
+      : undefined;
 
   const disclosures = pkg.expression_rules.required_disclosures;
 
