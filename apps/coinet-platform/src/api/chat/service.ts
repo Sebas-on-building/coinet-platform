@@ -1579,6 +1579,31 @@ Inform the user that OmniScore analysis is temporarily unavailable.
               fr,
             );
 
+            // Reconcile blind spots with ACTUAL coverage this turn. The reasoning
+            // builder derives blindness from fetch-SUCCESS, but (a) FETCH_TO_TRUTH_CLASS
+            // predates the protocol family and (b) DeFiLlama "succeeds" with no data
+            // for non-protocol assets — so protocol_substance was stuck "blind" even
+            // when real DeFiLlama fundamentals are present. Drop a domain from blind
+            // when we genuinely have that family's data, so the mentor never says
+            // "protocol is blind" while the card shows real protocol fundamentals.
+            const tf = currentReasoningContext.system_state?.truth_fingerprint;
+            if (tf && Array.isArray(tf.blind_spots) && tf.blind_spots.length > 0) {
+              const covered = new Set<string>();
+              if ((defiLlama as any)?.hasAdoptionData) covered.add('protocol_substance');
+              const hasDerivs = !!(
+                (perpsData as any)?.fundingRates?.length ||
+                (perpsData as any)?.openInterest?.length ||
+                (freePerps && Object.keys(freePerps as any).length > 0) ||
+                cmcDerivatives
+              );
+              if (hasDerivs) covered.add('derivatives_pressure');
+              if (covered.size > 0) {
+                const filtered = tf.blind_spots.filter((d: string) => !covered.has(d));
+                tf.blind_spots = filtered;
+                currentReasoningContext.system_state.blind_domains = filtered;
+              }
+            }
+
             const serialized = serializeReasoningContext(currentReasoningContext);
             contextParts.push(serialized);
 

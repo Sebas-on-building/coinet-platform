@@ -126,7 +126,7 @@ const FUNDAMENTALS_LENS_SECTORS = new Set([
   'L1', 'L2', 'DeFi', 'Infrastructure', 'Payment', 'Exchange', 'Gaming', 'Privacy',
 ]);
 const FUNDAMENTALS_LANGUAGE =
-  /\b(fundamental|growth thesis|adoption metric|metrics validate|revenue|tvl|capital efficiency)\b/i;
+  /\b(fundamentals?|growth thesis|adoption metrics?|metrics validate|revenue|tvl|capital efficiency)\b/i;
 
 function sectorHasFundamentalsLens(sector?: string): boolean {
   if (!sector || sector === 'Unknown') return true; // conservative: leave engine text

@@ -130,6 +130,21 @@ describe('renderMentorCardFields — horizon lens (Law 4)', () => {
     expect(out.scenario_detail?.horizons?.[1].confirmation).toBe('spot volume expands');
   });
 
+  it('re-lenses the PLURAL "fundamentals" 7d line too (not just singular 30d)', () => {
+    const out = renderMentorCardFields(
+      {
+        scenario_detail: {
+          horizons: [
+            { horizon: '7d', confirmation: 'Weekly outlook: strengthens if fundamentals begin confirming narrative.' },
+          ],
+        },
+      },
+      'Memecoin',
+    );
+    expect(out.scenario_detail?.horizons?.[0].confirmation).not.toMatch(/fundamentals/i);
+    expect(out.scenario_detail?.horizons?.[0].confirmation).toContain('narrative');
+  });
+
   it('keeps fundamentals horizons for an L1 / DeFi asset', () => {
     const l1 = renderMentorCardFields(fundamentalsHorizons, 'L1');
     expect(l1.scenario_detail?.horizons?.[0].confirmation).toContain('fundamental metrics validate');
@@ -145,6 +160,54 @@ describe('renderMentorCardFields — horizon lens (Law 4)', () => {
   it('stablecoin re-lenses to peg/depth language', () => {
     const out = renderMentorCardFields(fundamentalsHorizons, 'Stablecoin');
     expect(out.scenario_detail?.horizons?.[0].confirmation).toMatch(/peg/i);
+  });
+});
+
+describe('renderMentorCardFields — Phase 3 numeral grounding guard', () => {
+  // The mentor card layer must never introduce a numeral that was not in its
+  // input (Law 1 made mechanical for the deterministic layer): every digit run
+  // in any output string must already appear in some input string.
+  const collectStringNumerals = (obj: unknown): string[] => {
+    const out: string[] = [];
+    const walk = (v: unknown): void => {
+      if (typeof v === 'string') {
+        const m = v.match(/\d+/g);
+        if (m) out.push(...m);
+      } else if (Array.isArray(v)) {
+        v.forEach(walk);
+      } else if (v && typeof v === 'object') {
+        Object.values(v as Record<string, unknown>).forEach(walk);
+      }
+    };
+    walk(obj);
+    return out;
+  };
+
+  it('introduces no numeral absent from its string inputs (BTC-like, L1)', () => {
+    const j: CoinetJudgmentPromptPackageJudgment = {
+      state: 'structurally_weak_rally',
+      thesis: 'distribution_under_hype',
+      timing_phase: 'post_peak',
+      cause: 'Strong protocol fundamental improvement',
+      failure_condition: 'Thesis fails if price drops below 61000 on volume spike.',
+      signal_24h: 'Confirmed if spot volume expands beyond 2x average.',
+      timing_detail: { score: 89, position: 8, total: 9, maturity_note: 'late-cycle' },
+      confidence_detail: { score: 0.08, primary_uncertainty: '5/100 confidence — 4 blind spots.' },
+      scenario_detail: {
+        bullish_confirmation: 'spot volume expands 3x',
+        bearish_failure: 'price reverses on a 15% volume spike',
+        next_trigger: 'Watch for liquidation cascades above 95%',
+        horizons: [
+          { horizon: '30d', confirmation: '30d confirmation: fundamental metrics validate growth thesis.' },
+        ],
+      },
+    };
+    const out = renderMentorCardFields(j, 'Memecoin');
+    const inputNums = new Set(collectStringNumerals(j));
+    const outputNums = collectStringNumerals(out);
+    for (const n of outputNums) {
+      expect(inputNums.has(n)).toBe(true);
+    }
   });
 });
 

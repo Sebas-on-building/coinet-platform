@@ -42,6 +42,11 @@ describe('mentor prompt constitution', () => {
     expect(SYSTEM_PROMPT).toContain('GROUNDING CONTRACT');
   });
 
+  it('carries the market-wide Law-1 guard (regime block only, no prior-token import)', () => {
+    expect(SYSTEM_PROMPT).toContain('[MARKET REGIME CONTEXT]');
+    expect(SYSTEM_PROMPT).toContain('Do NOT carry forward a specific token');
+  });
+
   it('does NOT reintroduce removed Law-violating instructions', () => {
     // The old OmniScore "fallback protocol" instructed inventing/estimating scores.
     expect(SYSTEM_PROMPT).not.toContain('Synthetic OmniScore Estimation');
