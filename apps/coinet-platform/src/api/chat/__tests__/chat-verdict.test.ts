@@ -86,21 +86,23 @@ describe('toChatVerdict', () => {
 
     it('projects the structured judgment fields (headline)', () => {
       expect(verdict.fields).toBeDefined();
-      expect(verdict.fields?.state).toBe('thin_liquidity_risk');
-      expect(verdict.fields?.thesis).toBe('leverage_driven_squeeze');
+      // Phase 2: card identifiers are humanized in the mentor's voice (display
+      // labels), never raw enums. Numbers and verbatim detail are untouched.
+      expect(verdict.fields?.state).toBe('Thin Liquidity Risk');
+      expect(verdict.fields?.thesis).toBe('Leverage-Driven Squeeze');
       expect(verdict.fields?.cause).toContain('de-leveraging');
       expect(verdict.fields?.contradiction_summary).toContain('contradiction');
-      expect(verdict.fields?.timing_phase).toBe('LATE');
+      expect(verdict.fields?.timing_phase).toBe('Late');
       expect(verdict.fields?.scenario_summary).toContain('continuation');
       expect(verdict.fields?.confidence_band).toBe('very_low');
     });
 
     it('carries the Phase-2 structured depth through to the client', () => {
       const f = verdict.fields!;
-      expect(f.cause_detail?.dominant_cluster).toBe('structural_fragility');
-      expect(f.cause_detail?.drivers?.[0]).toMatchObject({ direction: 'negative', family: 'structural_fragility' });
+      expect(f.cause_detail?.dominant_cluster).toBe('Structural Fragility');
+      expect(f.cause_detail?.drivers?.[0]).toMatchObject({ direction: 'negative', family: 'Structural Fragility' });
       expect(f.contradiction_items).toEqual([
-        { class: 'volume_vs_liquidity', severity: 'high', summary: 'volume exceeds liquidity', resolvable: false },
+        { class: 'Volume vs Liquidity', severity: 'high', summary: 'volume exceeds liquidity', resolvable: false },
       ]);
       expect(f.contradiction_structural_warning).toBe(true);
       expect(f.timing_detail).toMatchObject({ score: 72, position: 7, total: 9, maturity_warning: true });

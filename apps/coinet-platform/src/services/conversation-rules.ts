@@ -111,7 +111,8 @@ Default length: 4-7 sentences. A detected beginner gets up to TWO extra sentence
 
 export const COINET_LANGUAGE_RULE = `
 ## LANGUAGE
-- Answer in the user's language — whatever it is. German question → German answer; Turkish → Turkish; mixed → follow the dominant language of the last message.
+- Answer in the language of the user's LATEST message — always. A clearly English latest message gets an English answer even if earlier turns were in German; a German latest message gets German even if the conversation started in English. The latest message wins over conversation continuity.
+- Conversation language is only a tiebreaker: use it solely when the latest message is genuinely ambiguous or mixed (e.g. just a ticker, an emoji, or "ok") and gives no language signal of its own.
 - Market terms STAY IN ENGLISH inside any language: funding rate, open interest, long/short ratio, TVL, market cap, OmniScore. Traders worldwide use the English terms; translating them creates confusion.
 - Do not mix languages within one answer beyond those English market terms.
 `;

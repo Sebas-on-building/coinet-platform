@@ -14,6 +14,7 @@
 
 import type { CoinetJudgmentPromptPackage } from './judgment-prompt-package.types';
 import type { ChatVerdict } from './types';
+import { renderMentorCardFields } from './judgment-card-templates';
 
 export function toChatVerdict(pkg: CoinetJudgmentPromptPackage): ChatVerdict {
   const status = pkg.judgment_status;
@@ -30,8 +31,11 @@ export function toChatVerdict(pkg: CoinetJudgmentPromptPackage): ChatVerdict {
   // fields. A shallow copy decouples the top-level object from the package.
   const j = status === 'UNAVAILABLE' ? undefined : pkg.judgment;
 
+  // Phase 2: render the card's user-facing strings in the mentor's voice
+  // (humanized identifiers + framed prose). Pure, claim-neutral, downstream of
+  // the engine — never alters numbers or the AI-prompt grounding package.
   const fields =
-    j && Object.keys(j).length > 0 ? ({ ...j } as typeof j) : undefined;
+    j && Object.keys(j).length > 0 ? renderMentorCardFields(j) : undefined;
 
   const disclosures = pkg.expression_rules.required_disclosures;
 
