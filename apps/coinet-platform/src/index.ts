@@ -13,6 +13,7 @@ import { prisma } from './db/client';
 // Build trigger: v4 - message schema fix
 import { logger } from './utils/logger';
 import chatRoutes from './api/chat/routes';
+import marketRegimeRoutes from './api/market-regime/routes';
 import retentionRoutes from './api/retention/routes';
 import authRoutes from './api/auth/routes';
 import feedbackRoutes from './api/feedback/routes';
@@ -1748,6 +1749,7 @@ app.get('/api/keys', async (_req: Request, res: Response) => {
 
 // API routes
 app.use('/api/chat', chatRoutes);
+app.use('/api/market-regime', marketRegimeRoutes); // read-only macro/regime contract (no auth, additive)
 app.use('/api/retention', retentionRoutes);
 app.use('/api/feedback', feedbackRoutes); // RLHF feedback system
 app.use('/api/v1/portfolios', portfolioRoutes); // Portfolio API (auth required)
@@ -4522,7 +4524,7 @@ app.get('/api/test/cache', async (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // TEST ENDPOINT: Enhanced Anomaly & Latency Monitoring v2.0 (Step 1.4.3)
 // Divine Perfection Implementation
-// ═══════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════���═════════════════════
 app.get('/api/test/anomaly-monitor', async (req: Request, res: Response) => {
   const startTime = Date.now();
 
@@ -5049,7 +5051,7 @@ app.get('/', (_req: Request, res: Response) => {
       },
     },
     
-    // ═══════════════════════════════════════════════════════════════════════
+    // ═════════════════════════════════════════════════════════════════════��═
     // IMPLEMENTATION PHASES
     // ═══════════════════════════════════════════════════════════════════════
     phases: {
@@ -5072,7 +5074,7 @@ app.get('/', (_req: Request, res: Response) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TEST ENDPOINT: Project Research Intelligence (Trust Score)
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════���═══════════════════════════════
 app.get('/api/test/project-research', async (req: Request, res: Response) => {
   const startTime = Date.now();
 
@@ -5864,7 +5866,7 @@ app.use((req: Request, res: Response) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ERROR HANDLER (Must be LAST)
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════��═══
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   logger.error('❌ Unhandled error', err, {
     requestId: (req as any).requestId,

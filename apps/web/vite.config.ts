@@ -8,6 +8,19 @@ export default defineConfig(({ mode }) => ({
     host: "0.0.0.0",
     port: 8080,
     proxy: {
+      // Dev-only: the additive /api/market-regime route isn't on production
+      // api.coinet.ai yet (it lives on this branch). When VITE_REGIME_PROXY is
+      // set, route just that path to the local regime harness; everything else
+      // hits the real production backend.
+      ...(process.env.VITE_REGIME_PROXY
+        ? {
+            "/api/market-regime": {
+              target: process.env.VITE_REGIME_PROXY,
+              changeOrigin: true,
+              secure: false,
+            },
+          }
+        : {}),
       // Dev-only proxy to dodge CORS while pointing at a local backend.
       // In production we hit VITE_API_URL (https://api.coinet.ai) directly.
       "/api": {

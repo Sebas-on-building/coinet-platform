@@ -2,10 +2,12 @@ import { Link } from "react-router-dom";
 import { ArrowRight, ShieldCheck, GitBranch, Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MarketPulse } from "@/components/home/MarketPulse";
+import { LiveVerdicts } from "@/components/home/LiveVerdicts";
 
 export function Overview() {
   return (
-    <main className="container py-12">
+    <main className="container flex flex-col gap-16 py-12">
       <section className="mx-auto max-w-3xl text-center">
         <Badge variant="primary" className="mb-4">
           Governed market intelligence
@@ -29,7 +31,17 @@ export function Overview() {
         </div>
       </section>
 
-      <section className="mx-auto mt-16 grid max-w-4xl gap-4 sm:grid-cols-3">
+      {/* Market Pulse — live regime strip from GET /api/market-regime */}
+      <section aria-label="Market pulse" className="mx-auto w-full max-w-5xl">
+        <MarketPulse />
+      </section>
+
+      {/* Live Verdicts — real engine judgments from GET /api/judgment */}
+      <div className="mx-auto w-full max-w-5xl">
+        <LiveVerdicts />
+      </div>
+
+      <section className="mx-auto grid w-full max-w-4xl gap-4 sm:grid-cols-3">
         {[
           {
             icon: ShieldCheck,

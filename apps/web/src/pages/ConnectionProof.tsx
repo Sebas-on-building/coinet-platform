@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loader2, Plug, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useJudgment } from "@/hooks/useJudgment";
 import { RawVerdict } from "@/components/verdict/RawVerdict";
@@ -9,7 +10,21 @@ const SUGGESTIONS = ["BTC", "ETH", "SOL", "DOGE"];
 
 export function ConnectionProof() {
   const { state, run, endpoint } = useJudgment();
-  const [symbol, setSymbol] = useState("BTC");
+  const [searchParams] = useSearchParams();
+  const initialSymbol = (searchParams.get("symbol") || "BTC").toUpperCase();
+  const [symbol, setSymbol] = useState(initialSymbol);
+  const autoRan = useRef(false);
+
+  // Auto-run the verdict when arriving with a ?symbol= param (e.g. from a
+  // homepage verdict card), so the deep link lands on a real result.
+  useEffect(() => {
+    if (autoRan.current) return;
+    const q = searchParams.get("symbol");
+    if (q) {
+      autoRan.current = true;
+      run(q);
+    }
+  }, [searchParams, run]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();

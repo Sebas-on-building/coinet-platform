@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { apiClient, ApiError } from "@/lib/api-client";
 import { API_BASE_URL } from "@/lib/api-config";
 import type { JudgmentResponse } from "@/types/api";
@@ -17,7 +17,7 @@ type ProofState =
 export function useJudgment() {
   const [state, setState] = useState<ProofState>({ status: "idle" });
 
-  async function run(symbol: string) {
+  const run = useCallback(async (symbol: string) => {
     setState({ status: "loading" });
     const started = performance.now();
     try {
@@ -35,7 +35,7 @@ export function useJudgment() {
         httpStatus: err instanceof ApiError ? err.status : undefined,
       });
     }
-  }
+  }, []);
 
   return { state, run, endpoint: `${API_BASE_URL || "(proxy)"}/api/judgment` };
 }

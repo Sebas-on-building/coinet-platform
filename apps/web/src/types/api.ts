@@ -301,20 +301,33 @@ export interface ChatMessageResponse {
 // MARKET REGIME CONTRACT  — GET /api/market-regime  (Milestone 4, additive)
 // ============================================================================
 
+export type RegimeSourceState = "live" | "unavailable";
+
+export interface MarketRegimeData {
+  fearGreed: {
+    value: number; // 0–100
+    classification: string;
+    trend: "improving" | "worsening" | "stable";
+    previousValue: number | null;
+  } | null;
+  btcDominance: number | null;
+  ethDominance: number | null;
+  totalMarketCapUsd: number | null;
+  totalMarketCapChange24h: number | null;
+  btcDominanceChange7d: number | null;
+  sources: {
+    dominance: RegimeSourceState;
+    marketCap: RegimeSourceState;
+    fearGreed: RegimeSourceState;
+  };
+  asOf: string;
+  cacheTtlSeconds: number;
+}
+
 export interface MarketRegimeResponse {
   success: boolean;
-  data: {
-    fearGreed: {
-      value: number; // 0–100
-      classification: string;
-      trend?: "rising" | "falling" | "stable";
-    } | null;
-    btcDominance: number | null;
-    btcDominanceChange7d?: number | null;
-    totalMarketCapUsd: number | null;
-    totalMarketCapChange24h: number | null;
-    updatedAt: string;
-  };
+  data: MarketRegimeData;
+  metadata?: { processingTime: number };
   error?: string;
 }
 
