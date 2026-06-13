@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Coinet design tokens — terminal-meets-fintech, governance-driven.
+ * Dark-first. Single brand accent (electric blue #2B4BFF) on near-black (#14161D).
+ * Trust-state colors (positive / negative / caution) are reserved strictly for
+ * verdict semantics — never decoration.
+ */
+@layer base {
+  :root {
+    /* near-black #14161D */
+    --background: 225 18% 9%;
+    --foreground: 220 14% 92%;
+
+    --card: 224 16% 12%;
+    --card-foreground: 220 14% 92%;
+
+    --popover: 224 16% 12%;
+    --popover-foreground: 220 14% 92%;
+
+    /* electric blue #2B4BFF */
+    --primary: 230 100% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 224 14% 18%;
+    --secondary-foreground: 220 14% 92%;
+
+    --muted: 224 14% 16%;
+    --muted-foreground: 220 8% 58%;
+
+    --accent: 224 14% 18%;
+    --accent-foreground: 220 14% 92%;
+
+    --border: 222 13% 20%;
+    --input: 222 13% 20%;
+    --ring: 230 100% 58%;
+
+    /* Trust-state semantics */
+    --positive: 152 58% 48%;
+    --negative: 0 72% 60%;
+    --caution: 38 92% 56%;
+
+    --radius: 0.625rem;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: "Inter", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+
+  /* Tabular numerals for all data readouts */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
