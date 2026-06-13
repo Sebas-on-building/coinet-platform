@@ -76,6 +76,43 @@ const NEGATION_CONTEXT_PATTERNS: RegExp[] = [
   /\bcannot\s+provide\s+(a\s+)?(buy|sell)\s+recommendation\b/i,
 ];
 
+// Explicit NEGATED-guarantee phrases (multilingual). These NEUTRALIZE a guarantee
+// term so the mentor's honest "nothing is guaranteed" is not flagged as a
+// guaranteed-outcome claim. Deliberately explicit (not a bare "no"/"not" token)
+// so "no doubt" — itself a certainty claim — is NOT treated as a negation.
+const GUARANTEE_NEGATION_PATTERNS: RegExp[] = [
+  // en
+  /\b(nothing|no\s+outcome|no\s+move|no\s+trade)\s+is\s+(guaranteed|risk[-\s]?free|a\s+sure\s+thing)\b/i,
+  /\b(not|never|isn'?t|aren'?t)\s+guaranteed\b/i,
+  /\bno\s+guarantees?\b/i,
+  /\bno\s+such\s+thing\s+as\s+(a\s+)?(guarantee|sure\s+thing)\b/i,
+  /\b(no|not\s+a)\s+sure\s+thing\b/i,
+  /\b(nothing\s+is|not)\s+risk[-\s]?free\b/i,
+  // de
+  /\bnichts\s+ist\s+garantiert\b/i,
+  /\bnicht\s+garantiert\b/i,
+  /\b(keine|ohne)\s+garantie\b/i,
+  // es
+  /\bnada\s+est[aá]\s+garantizado\b/i,
+  /\bno\s+(est[aá]\s+)?garantizado\b/i,
+  /\b(sin|no\s+hay)\s+garant[ií]a\b/i,
+  // fr
+  /\brien\s+n'?est\s+garanti\b/i,
+  /\bpas\s+garanti\b/i,
+  /\b(aucune|sans)\s+garantie\b/i,
+  // pt
+  /\bnada\s+[ée]\s+garantido\b/i,
+  /\bn[ãa]o\s+(é\s+)?garantido\b/i,
+  /\bsem\s+garantia\b/i,
+  // it
+  /\bniente\s+[èe]\s+garantito\b/i,
+  /\bnon\s+garantito\b/i,
+  /\b(nessuna|senza)\s+garanzia\b/i,
+  // tr
+  /\bgaranti\s+değil\b/i,
+  /\bgaranti\s+yok\b/i,
+];
+
 const GUARANTEED_OUTCOME_PATTERNS: RegExp[] = [
   /\bwill\s+(pump|dump|moon|crash|rally|surge|skyrocket)\b/i,
   /\bguaranteed\b/i,
@@ -86,20 +123,21 @@ const GUARANTEED_OUTCOME_PATTERNS: RegExp[] = [
   /\brisk[-\s]?free\b/i,
   /\bsure\s+thing\b/i,
   /\bcannot\s+fail\b/i,
-  // Multilingual guarantee / certainty-of-direction terms (hardening).
-  /\bgarantiert\b/i, // de
+  // Multilingual guarantee / certainty-of-direction terms (hardening). Guarantee
+  // adjectives are matched WITH inflections (garantiert/garantierte/garantizadas/…).
+  /\bgarantiert\w*\b/i, // de (garantiert, garantierte, garantierten)
   /\bwird\s+(steigen|fallen|explodieren|pumpen|abstürzen|crashen)\b/i, // de
   /\b(sicherer\s+gewinn|risikofrei)\b/i, // de
-  /\bgarantizado\b/i, // es
+  /\bgarantizad[oa]s?\b/i, // es (garantizado/-a/-os/-as)
   /\bva\s+a\s+(subir|explotar|multiplicarse|caer)\b/i, // es
   /\bsin\s+riesgo\b/i, // es
-  /\bgaranti\b/i, // fr/tr (shared)
+  /\bgaranti(e|es|s)?\b/i, // fr (garanti/-e/-es/-s); also matches tr "garanti"
   /\bva\s+(monter|exploser|chuter)\b/i, // fr
   /\bsans\s+risque\b/i, // fr
-  /\bgarantido\b/i, // pt
+  /\bgarantid[oa]s?\b/i, // pt (garantido/-a/-os/-as)
   /\bvai\s+(subir|explodir|cair)\b/i, // pt
   /\bsem\s+risco\b/i, // pt
-  /\bgarantito\b/i, // it
+  /\bgarantit[oai]\b/i, // it (garantito/-a/-i)
   /\b(salirà|esploderà|crollerà)\s+sicuramente\b/i, // it
   /\bsenza\s+rischio\b/i, // it
   /\bkesinlikle\s+(yükselecek|düşecek|patlayacak)\b/i, // tr
@@ -210,8 +248,35 @@ function hasNonDefensiveFinancialAdvice(output: string): boolean {
   return false;
 }
 
+function hasGuaranteeNegationContext(output: string): boolean {
+  return GUARANTEE_NEGATION_PATTERNS.some((re) => re.test(output));
+}
+
+/**
+ * Flag a guarantee/certainty claim — but NOT when it is explicitly negated
+ * ("nothing is guaranteed", "nichts ist garantiert"). Mirrors the negation-aware
+ * approach of detectDirectFinancialAdvice: if a negation context is present and
+ * no sentence makes a NON-negated guarantee, do not flag.
+ */
 export function detectGuaranteedOutcomeLanguage(output: string): boolean {
+  if (hasGuaranteeNegationContext(output) && !hasNonNegatedGuarantee(output)) {
+    return false;
+  }
   return GUARANTEED_OUTCOME_PATTERNS.some((re) => re.test(output));
+}
+
+/**
+ * True if any sentence asserts a guarantee/certainty outcome OUTSIDE a negation
+ * clause — so "BTC won't pump, and nothing is guaranteed" stays clean while
+ * "guaranteed 10x; nothing else is guaranteed" still flags the real claim.
+ */
+function hasNonNegatedGuarantee(output: string): boolean {
+  const sentences = splitSentences(output);
+  for (const s of sentences) {
+    if (GUARANTEE_NEGATION_PATTERNS.some((re) => re.test(s))) continue;
+    if (GUARANTEED_OUTCOME_PATTERNS.some((re) => re.test(s))) return true;
+  }
+  return false;
 }
 
 export function detectUnsupportedCertainty(output: string): boolean {

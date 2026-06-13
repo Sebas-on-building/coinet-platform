@@ -144,6 +144,47 @@ describe('AI output safety gate (BTAR-005)', () => {
     it('flags "guaranteed"', () => {
       expect(detectGuaranteedOutcomeLanguage('Guaranteed 5x by end of month.')).toBe(true);
     });
+
+    // Negation guard: the mentor's honest uncertainty must NOT be flagged.
+    it('does NOT flag negated guarantees (en/de/es/fr/pt/it/tr)', () => {
+      expect(detectGuaranteedOutcomeLanguage('Nothing is guaranteed in markets.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('There are no guarantees here.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('This is not risk-free.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('Nichts ist garantiert.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('Es gibt keine Garantie.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('Nada está garantizado.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage("Rien n'est garanti.")).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('Nada é garantido.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('Niente è garantito.')).toBe(false);
+      expect(detectGuaranteedOutcomeLanguage('Bu garanti değil.')).toBe(false);
+    });
+
+    it('still flags REAL guarantee claims, including multilingual', () => {
+      expect(detectGuaranteedOutcomeLanguage('Guaranteed 10x.')).toBe(true);
+      expect(detectGuaranteedOutcomeLanguage('Garantierte Gewinne.')).toBe(true);
+      expect(detectGuaranteedOutcomeLanguage('Ganancias garantizadas.')).toBe(true);
+    });
+
+    it('"no doubt" is a certainty claim, not a negation — still flagged', () => {
+      expect(detectGuaranteedOutcomeLanguage('No doubt this goes higher.')).toBe(true);
+    });
+
+    it('flags a real guarantee even when a negated guarantee also appears', () => {
+      // The non-negated claim drives the flag; the disclaimer doesn't launder it.
+      expect(
+        detectGuaranteedOutcomeLanguage('This is a guaranteed 10x. Of course, nothing is guaranteed.'),
+      ).toBe(true);
+    });
+
+    it('a negated-guarantee answer reaches the user (ALLOW, no clobber)', () => {
+      const result = evaluateAIOutputSafety({
+        output:
+          "I won't promise a direction — nothing is guaranteed in markets, and the failure condition is what matters.",
+        judgmentPackage: availablePkg(),
+      });
+      expect(result.violations).not.toContain('GUARANTEED_OUTCOME_LANGUAGE');
+      expect(result.decision).toBe('ALLOW');
+    });
   });
 
   // ── UNSUPPORTED_CERTAINTY ──────────────────────────────────────────────
