@@ -5,8 +5,12 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "0.0.0.0",
+    host: true,
     port: 8080,
+    // Dev/preview only: allow the external preview host (e.g. *.vercel.run) to
+    // reach the dev server. Vite blocks unknown Host headers by default.
+    // This affects only the dev server, never the production build.
+    allowedHosts: true,
     proxy: {
       // Dev-only: the additive /api/market-regime route isn't on production
       // api.coinet.ai yet (it lives on this branch). When VITE_REGIME_PROXY is
