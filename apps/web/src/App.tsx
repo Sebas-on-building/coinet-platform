@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { CoinetBar } from "@/components/layout/CoinetBar";
 import { Overview } from "@/pages/Overview";
 import { ConnectionProof } from "@/pages/ConnectionProof";
+import { VerdictView } from "@/pages/VerdictView";
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <CoinetBar />
       <Routes>
         <Route path="/" element={<Overview />} />
+        <Route path="/verdict" element={<VerdictView />} />
         <Route path="/connection" element={<ConnectionProof />} />
       </Routes>
     </div>
