@@ -25,9 +25,9 @@
 
 import { Router, Request, Response } from 'express';
 import { logger } from '../../utils/logger';
-import { getGlobalMarketData } from '../../services/market-data';
-import { getCmcGlobalMetrics } from '../../services/cmc-agent-hub';
-import { getMarketSentiment } from '../../services/sentiment-service';
+import { getGlobalMarketData, type GlobalMarketData } from '../../services/market-data';
+import { getCmcGlobalMetrics, type CmcGlobalMetrics } from '../../services/cmc-agent-hub';
+import { getMarketSentiment, type MarketSentiment } from '../../services/sentiment-service';
 
 const router: Router = Router();
 
@@ -65,20 +65,18 @@ const num = (v: unknown): number | null =>
  * GET /api/market-regime
  * No auth — same public posture as GET /api/judgment. Read-only.
  */
-router.get('/', async (_req: Request, res: Response) => {
-  const startedAt = Date.now();
-
-  // All three are independently cached and each returns null (never throws) on
-  // failure, so a single failed source degrades that block only.
-  const [global, cmc, sentiment] = await Promise.all([
-    getGlobalMarketData().catch(() => null),
-    getCmcGlobalMetrics().catch(() => null),
-    getMarketSentiment().catch(() => null),
-  ]);
-
+/**
+ * Pure composition of the regime contract from the three already-fetched sources.
+ * No I/O, never throws, never fabricates: each field is null when its source is
+ * absent, and CoinGecko /global is preferred with CMC as a fallback for fields it
+ * didn't provide. Exported for unit testing (mirrors the toChatVerdict pattern).
+ */
+export function composeMarketRegime(
+  global: GlobalMarketData | null,
+  cmc: CmcGlobalMetrics | null,
+  sentiment: MarketSentiment | null,
+): MarketRegimeData {
   // ── Dominance + market cap ──────────────────────────────────────────────
-  // CoinGecko /global is the confirmed, free, co-primary source; fall back to
-  // CMC Agent Hub only for fields CoinGecko didn't provide. Never invent.
   const btcDominance = num(global?.btcDominance) ?? num(cmc?.btcDominance);
   const ethDominance = num(global?.ethDominance);
   const totalMarketCapUsd = num(global?.totalMarketCapUsd) ?? num(cmc?.totalMarketCap);
@@ -87,8 +85,8 @@ router.get('/', async (_req: Request, res: Response) => {
   const btcDominanceChange7d = num(cmc?.btcDominanceChange7d); // CMC coverage-win only
 
   // ── Fear & Greed ────────────────────────────────────────────────────────
-  // Prefer CMC's numeric index; fall back to the Alternative.me sentiment
-  // service which carries classification + trend + previous value.
+  // Prefer the Alternative.me sentiment service (classification + trend + previous
+  // value); fall back to CMC's numeric index when sentiment is unavailable.
   let fearGreed: FearGreedBlock | null = null;
   if (sentiment?.fearGreed) {
     fearGreed = {
@@ -107,7 +105,7 @@ router.get('/', async (_req: Request, res: Response) => {
     };
   }
 
-  const data: MarketRegimeData = {
+  return {
     fearGreed,
     btcDominance,
     ethDominance,
@@ -122,6 +120,20 @@ router.get('/', async (_req: Request, res: Response) => {
     asOf: new Date().toISOString(),
     cacheTtlSeconds: CACHE_TTL_SECONDS,
   };
+}
+
+router.get('/', async (_req: Request, res: Response) => {
+  const startedAt = Date.now();
+
+  // All three are independently cached and each returns null (never throws) on
+  // failure, so a single failed source degrades that block only.
+  const [global, cmc, sentiment] = await Promise.all([
+    getGlobalMarketData().catch(() => null),
+    getCmcGlobalMetrics().catch(() => null),
+    getMarketSentiment().catch(() => null),
+  ]);
+
+  const data = composeMarketRegime(global, cmc, sentiment);
 
   // Let intermediaries cache it for the same window as the underlying sources.
   res.set('Cache-Control', `public, max-age=${CACHE_TTL_SECONDS}`);
@@ -139,7 +151,7 @@ router.get('/', async (_req: Request, res: Response) => {
 });
 
 /** Standard Alternative.me-style banding for a 0–100 Fear & Greed value. */
-function classifyFearGreed(value: number): string {
+export function classifyFearGreed(value: number): string {
   if (value <= 24) return 'Extreme Fear';
   if (value <= 44) return 'Fear';
   if (value <= 54) return 'Neutral';
