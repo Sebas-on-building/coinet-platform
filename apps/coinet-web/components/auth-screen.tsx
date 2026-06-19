@@ -64,42 +64,51 @@ export function AuthScreen() {
       setError(v)
       return
     }
+
+    // Clerk must be ready before we attempt anything. Check BEFORE flipping the
+    // spinner and surface a visible message — never bail silently into an
+    // infinite "submitting" state.
+    if (mode === "signin" ? !signInLoaded || !signIn : !signUpLoaded || !signUp) {
+      setError("Authentication is still loading — please try again in a moment.")
+      return
+    }
+
     setError(null)
     setSubmitting(true)
-
     try {
       if (mode === "signin") {
-        if (!signInLoaded || !signIn) return
-        const result = await signIn.create({ identifier: email.trim(), password })
+        const result = await signIn!.create({ identifier: email.trim(), password })
         if (result.status === "complete") {
-          await setSignInActive({ session: result.createdSessionId })
+          await setSignInActive!({ session: result.createdSessionId })
           // Gate flips to the terminal once the session is active.
         } else {
           setError("Additional verification is required to finish signing in.")
-          setSubmitting(false)
         }
       } else {
         // Sign up → create the user, then send a 6-digit email code.
-        if (!signUpLoaded || !signUp) return
-        await signUp.create({
+        await signUp!.create({
           emailAddress: email.trim(),
           password,
           firstName: fullName.trim() || undefined,
         })
-        await signUp.prepareEmailAddressVerification({ strategy: "email_code" })
+        await signUp!.prepareEmailAddressVerification({ strategy: "email_code" })
         setMode("verify")
-        setError(null)
-        setSubmitting(false)
       }
     } catch (err) {
       setError(clerkErrorMessage(err))
+    } finally {
+      // Always release the button — success paths flip/unmount the gate, the
+      // verify step stays mounted, and failures must re-enable the form.
       setSubmitting(false)
     }
   }
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault()
-    if (!signUpLoaded || !signUp) return
+    if (!signUpLoaded || !signUp) {
+      setError("Authentication is still loading — please try again in a moment.")
+      return
+    }
     if (code.trim().length < 6) {
       setError("Enter the 6-digit code from your email.")
       return
@@ -109,14 +118,14 @@ export function AuthScreen() {
     try {
       const result = await signUp.attemptEmailAddressVerification({ code: code.trim() })
       if (result.status === "complete") {
-        await setSignUpActive({ session: result.createdSessionId })
+        await setSignUpActive!({ session: result.createdSessionId })
         // Gate flips to the terminal.
       } else {
         setError("That code didn't verify. Please try again.")
-        setSubmitting(false)
       }
     } catch (err) {
       setError(clerkErrorMessage(err))
+    } finally {
       setSubmitting(false)
     }
   }
