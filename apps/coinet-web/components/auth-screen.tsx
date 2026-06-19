@@ -32,6 +32,13 @@ export function AuthScreen() {
   const [error, setError] = useState<string | null>(null)
   const [resent, setResent] = useState(false)
 
+  // useSignIn()/useSignUp() load independently of useAuth() (which is what
+  // gates the AuthScreen mount), so the form can render before the relevant
+  // Clerk resource is ready. Gate the action buttons on it so the user can't
+  // submit into a not-yet-loaded resource (esp. with browser autofill + a fast
+  // click). signIn also backs the social buttons.
+  const clerkReady = mode === "signin" ? signInLoaded && !!signIn : signUpLoaded && !!signUp
+
   function validate(): string | null {
     if (mode === "signup" && fullName.trim().length < 2) return "Please enter your name."
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Please enter a valid email address."
@@ -253,7 +260,7 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => handleSocial("google")}
-                  disabled={submitting}
+                  disabled={submitting || !signInLoaded || !signIn}
                   className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
                 >
                   <GoogleIcon className="size-4" />
@@ -262,7 +269,7 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => handleSocial("apple")}
-                  disabled={submitting}
+                  disabled={submitting || !signInLoaded || !signIn}
                   className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
                 >
                   <AppleIcon className="size-4" />
@@ -372,11 +379,16 @@ export function AuthScreen() {
 
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !clerkReady}
                   className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
                   {submitting ? (
                     <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+                  ) : !clerkReady ? (
+                    <>
+                      <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+                      Initializing…
+                    </>
                   ) : (
                     <>
                       {mode === "signin" ? "Sign in" : "Create account"}
