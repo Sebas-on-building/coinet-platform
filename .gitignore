@@ -159,6 +159,7 @@ checkpoints/
 !tsconfig.json
 !tsconfig.*.json
 !railway.json
+!vercel.json
 !*.config.json
 *.parquet
 data/
