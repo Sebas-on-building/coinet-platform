@@ -6,9 +6,9 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { ChatArea } from "@/components/chat-area"
 import { MarketsView } from "@/components/markets-view"
 import { CoinetLogo } from "@/components/coinet-logo"
+import { useAuth } from "@clerk/nextjs"
 import { ChatProvider, useChat } from "@/components/chat-context"
 import { SettingsProvider } from "@/components/settings-context"
-import { AuthProvider, useAuth } from "@/components/auth-context"
 import { AuthScreen } from "@/components/auth-screen"
 
 function Shell() {
@@ -51,10 +51,10 @@ function Shell() {
 }
 
 function Gate() {
-  const { authed, ready } = useAuth()
+  const { isLoaded, isSignedIn } = useAuth()
 
-  // Avoid an auth-screen flash while the stored session restores.
-  if (!ready) {
+  // Avoid an auth-screen flash while Clerk restores the session.
+  if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <span className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
@@ -62,7 +62,7 @@ function Gate() {
     )
   }
 
-  if (!authed) return <AuthScreen />
+  if (!isSignedIn) return <AuthScreen />
 
   return (
     <ChatProvider>
@@ -73,10 +73,8 @@ function Gate() {
 
 export default function Page() {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <Gate />
-      </SettingsProvider>
-    </AuthProvider>
+    <SettingsProvider>
+      <Gate />
+    </SettingsProvider>
   )
 }

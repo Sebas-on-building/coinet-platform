@@ -1,3 +1,4 @@
+import { ClerkProvider } from '@clerk/nextjs'
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google'
@@ -52,12 +53,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} bg-background`}
-    >
-      <body className="font-sans antialiased">
-        <noscript>
+    <ClerkProvider>
+      <html
+        lang="en"
+        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} bg-background`}
+      >
+        <body className="font-sans antialiased">
+          <noscript>
           <div
             style={{
               display: 'flex',
@@ -77,7 +79,8 @@ export default function RootLayout({
         </noscript>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }

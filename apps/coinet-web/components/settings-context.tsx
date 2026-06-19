@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react"
+import { useUser } from "@clerk/nextjs"
 
 export type Theme = "system" | "light" | "dark"
 
@@ -90,6 +91,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark")
   const [notifications, setNotificationsState] = useState<Notifications>(DEFAULTS.notifications)
   const [hydrated, setHydrated] = useState(false)
+  const { user } = useUser()
+
+  // Reflect the real Clerk identity (name + email) once signed in, so the
+  // sidebar avatar, account panel, and greeting show the actual user rather
+  // than the local default. Signed-out (auth screen) keeps the defaults.
+  useEffect(() => {
+    if (!user) return
+    const full = user.fullName?.trim() || user.firstName?.trim() || ""
+    if (full) setNameState(full)
+    const mail = user.primaryEmailAddress?.emailAddress
+    if (mail) setEmailState(mail)
+  }, [user])
 
   useEffect(() => {
     const stored = loadStored()

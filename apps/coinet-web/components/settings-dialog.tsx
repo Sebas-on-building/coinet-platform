@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { useSettings, type Theme, type Notifications } from "@/components/settings-context"
 import { useChat } from "@/components/chat-context"
-import { useAuth } from "@/components/auth-context"
+import { useClerk } from "@clerk/nextjs"
 import { Modal } from "@/components/modal"
 import { cn } from "@/lib/utils"
 
@@ -85,14 +85,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     initials,
   } = useSettings()
   const { conversations, clearAll } = useChat()
-  const { signOut } = useAuth()
+  const { signOut } = useClerk()
   const [tab, setTab] = useState<TabId>("account")
 
   function handleLogout() {
     clearAll()
     logout()
     onClose()
-    signOut()
+    // Ends the Clerk session → the gate flips back to the auth screen.
+    void signOut()
   }
 
   function handleClear() {

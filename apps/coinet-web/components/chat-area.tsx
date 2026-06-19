@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import Image from "next/image"
 import { Scale, FileText, ImageIcon } from "lucide-react"
+import { useUser } from "@clerk/nextjs"
 import { AskBar } from "@/components/ask-bar"
 import { CoinetLogo } from "@/components/coinet-logo"
 import { JudgmentCard } from "@/components/judgment-card"
@@ -12,8 +13,9 @@ import { cn } from "@/lib/utils"
 
 export function ChatArea() {
   const { messages, thinking, streamingId, started, send: handleSend } = useChat()
-  const { name, reduceMotion } = useSettings()
-  const firstName = name.trim().split(/\s+/)[0] || "there"
+  const { reduceMotion } = useSettings()
+  const { user } = useUser()
+  const firstName = user?.firstName?.trim() || user?.fullName?.trim().split(/\s+/)[0] || "there"
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

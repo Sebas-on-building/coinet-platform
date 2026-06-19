@@ -2,26 +2,35 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { Mail, Lock, User, Eye, EyeOff, ArrowRight, ShieldCheck, Scale, History } from "lucide-react"
-import { useAuth } from "@/components/auth-context"
-import { useSettings } from "@/components/settings-context"
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, ShieldCheck, Scale, History, KeyRound } from "lucide-react"
+import { useSignIn, useSignUp } from "@clerk/nextjs"
 import { CoinetLogo } from "@/components/coinet-logo"
 import { cn } from "@/lib/utils"
 
-type Mode = "signin" | "signup"
+type Mode = "signin" | "signup" | "verify"
+
+// Pull a human-readable message out of a Clerk error (or any thrown value).
+function clerkErrorMessage(err: unknown): string {
+  const anyErr = err as { errors?: Array<{ longMessage?: string; message?: string }>; message?: string }
+  const first = anyErr?.errors?.[0]
+  return first?.longMessage || first?.message || anyErr?.message || "Something went wrong. Please try again."
+}
 
 export function AuthScreen() {
-  const { signIn } = useAuth()
-  const { setName, setEmail } = useSettings()
+  const { isLoaded: signInLoaded, signIn, setActive: setSignInActive } = useSignIn()
+  const { isLoaded: signUpLoaded, signUp, setActive: setSignUpActive } = useSignUp()
+
   const [mode, setMode] = useState<Mode>("signin")
   const [fullName, setFullName] = useState("")
   const [email, setEmailValue] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [code, setCode] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resent, setResent] = useState(false)
 
   function validate(): string | null {
     if (mode === "signup" && fullName.trim().length < 2) return "Please enter your name."
@@ -31,15 +40,24 @@ export function AuthScreen() {
     return null
   }
 
-  function handleSocial(provider: "google" | "apple") {
+  async function handleSocial(provider: "google" | "apple") {
+    if (!signInLoaded || !signIn) return
     setError(null)
     setSubmitting(true)
-    // Simulate the OAuth handshake, then establish the session.
-    setTimeout(() => signIn(), 700)
-    console.log("[v0] social auth:", provider)
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: provider === "google" ? "oauth_google" : "oauth_apple",
+        redirectUrl: "/sso-callback",
+        redirectUrlComplete: "/",
+      })
+      // Control leaves the page on success (redirect to the provider).
+    } catch (err) {
+      setError(clerkErrorMessage(err))
+      setSubmitting(false)
+    }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const v = validate()
     if (v) {
@@ -48,12 +66,71 @@ export function AuthScreen() {
     }
     setError(null)
     setSubmitting(true)
-    // Simulate an auth request, then establish the session.
-    setTimeout(() => {
-      if (mode === "signup" && fullName.trim()) setName(fullName.trim())
-      setEmail(email.trim())
-      signIn()
-    }, 700)
+
+    try {
+      if (mode === "signin") {
+        if (!signInLoaded || !signIn) return
+        const result = await signIn.create({ identifier: email.trim(), password })
+        if (result.status === "complete") {
+          await setSignInActive({ session: result.createdSessionId })
+          // Gate flips to the terminal once the session is active.
+        } else {
+          setError("Additional verification is required to finish signing in.")
+          setSubmitting(false)
+        }
+      } else {
+        // Sign up → create the user, then send a 6-digit email code.
+        if (!signUpLoaded || !signUp) return
+        await signUp.create({
+          emailAddress: email.trim(),
+          password,
+          firstName: fullName.trim() || undefined,
+        })
+        await signUp.prepareEmailAddressVerification({ strategy: "email_code" })
+        setMode("verify")
+        setError(null)
+        setSubmitting(false)
+      }
+    } catch (err) {
+      setError(clerkErrorMessage(err))
+      setSubmitting(false)
+    }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault()
+    if (!signUpLoaded || !signUp) return
+    if (code.trim().length < 6) {
+      setError("Enter the 6-digit code from your email.")
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const result = await signUp.attemptEmailAddressVerification({ code: code.trim() })
+      if (result.status === "complete") {
+        await setSignUpActive({ session: result.createdSessionId })
+        // Gate flips to the terminal.
+      } else {
+        setError("That code didn't verify. Please try again.")
+        setSubmitting(false)
+      }
+    } catch (err) {
+      setError(clerkErrorMessage(err))
+      setSubmitting(false)
+    }
+  }
+
+  async function handleResend() {
+    if (!signUpLoaded || !signUp) return
+    setError(null)
+    try {
+      await signUp.prepareEmailAddressVerification({ strategy: "email_code" })
+      setResent(true)
+      setTimeout(() => setResent(false), 2500)
+    } catch (err) {
+      setError(clerkErrorMessage(err))
+    }
   }
 
   return (
@@ -115,186 +192,304 @@ export function AuthScreen() {
             <span className="font-heading text-xl font-bold tracking-tight">Coinet</span>
           </div>
 
-          <h1 className="font-heading text-2xl font-bold tracking-tight">
-            {mode === "signin" ? "Welcome back" : "Create your account"}
-          </h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {mode === "signin"
-              ? "Sign in to pick up where you left off."
-              : "Start getting Coinet's judgment on any market."}
-          </p>
-
-          {/* Mode toggle */}
-          <div className="mt-6 flex rounded-xl border border-border bg-card/60 p-1">
-            {(["signin", "signup"] as Mode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m)
-                  setError(null)
-                }}
-                className={cn(
-                  "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {m === "signin" ? "Sign in" : "Sign up"}
-              </button>
-            ))}
-          </div>
-
-          {/* Social sign-in */}
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleSocial("google")}
-              disabled={submitting}
-              className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
-            >
-              <GoogleIcon className="size-4" />
-              Google
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSocial("apple")}
-              disabled={submitting}
-              className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
-            >
-              <AppleIcon className="size-4" />
-              Apple
-            </button>
-          </div>
-
-          <div className="my-5 flex items-center gap-3">
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">or continue with email</span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-            {mode === "signup" && (
-              <Field
-                id="name"
-                label="Full name"
-                icon={User}
-                type="text"
-                autoComplete="name"
-                placeholder="Satoshi Nakamoto"
-                value={fullName}
-                onChange={setFullName}
-              />
-            )}
-            <Field
-              id="email"
-              label="Email"
-              icon={Mail}
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={setEmailValue}
-            />
-            <div>
-              <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-foreground/90">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                  placeholder="At least 8 characters"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl border border-input bg-card/60 py-2.5 pl-9 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
-                />
-                <button
-                  type="button"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
-              </div>
-            </div>
-
-            {mode === "signup" && (
-              <div>
-                <label htmlFor="confirm-password" className="mb-1.5 block text-sm font-medium text-foreground/90">
-                  Confirm password
-                </label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    id="confirm-password"
-                    type={showConfirm ? "text" : "password"}
-                    autoComplete="new-password"
-                    placeholder="Re-enter your password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full rounded-xl border border-input bg-card/60 py-2.5 pl-9 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
-                  />
-                  <button
-                    type="button"
-                    aria-label={showConfirm ? "Hide password" : "Show password"}
-                    onClick={() => setShowConfirm((s) => !s)}
-                    className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {mode === "signin" && (
-              <div className="-mt-1 flex justify-end">
-                <button type="button" className="text-xs text-primary transition-opacity hover:opacity-80">
-                  Forgot password?
-                </button>
-              </div>
-            )}
-
-            {error && (
-              <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-            >
-              {submitting ? (
-                <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
-              ) : (
-                <>
-                  {mode === "signin" ? "Sign in" : "Create account"}
-                  <ArrowRight className="size-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            {mode === "signin" ? "New to Coinet? " : "Already have an account? "}
-            <button
-              type="button"
-              onClick={() => {
-                setMode(mode === "signin" ? "signup" : "signin")
+          {mode === "verify" ? (
+            <VerifyPanel
+              email={email}
+              code={code}
+              setCode={setCode}
+              onSubmit={handleVerify}
+              onResend={handleResend}
+              onBack={() => {
+                setMode("signup")
+                setCode("")
                 setError(null)
               }}
-              className="font-medium text-primary transition-opacity hover:opacity-80"
-            >
-              {mode === "signin" ? "Create an account" : "Sign in"}
-            </button>
-          </p>
+              submitting={submitting}
+              error={error}
+              resent={resent}
+            />
+          ) : (
+            <>
+              <h1 className="font-heading text-2xl font-bold tracking-tight">
+                {mode === "signin" ? "Welcome back" : "Create your account"}
+              </h1>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                {mode === "signin"
+                  ? "Sign in to pick up where you left off."
+                  : "Start getting Coinet's judgment on any market."}
+              </p>
+
+              {/* Mode toggle */}
+              <div className="mt-6 flex rounded-xl border border-border bg-card/60 p-1">
+                {(["signin", "signup"] as Mode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setMode(m)
+                      setError(null)
+                    }}
+                    className={cn(
+                      "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {m === "signin" ? "Sign in" : "Sign up"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Social sign-in */}
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSocial("google")}
+                  disabled={submitting}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
+                >
+                  <GoogleIcon className="size-4" />
+                  Google
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocial("apple")}
+                  disabled={submitting}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
+                >
+                  <AppleIcon className="size-4" />
+                  Apple
+                </button>
+              </div>
+
+              <div className="my-5 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">or continue with email</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+                {mode === "signup" && (
+                  <Field
+                    id="name"
+                    label="Full name"
+                    icon={User}
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Satoshi Nakamoto"
+                    value={fullName}
+                    onChange={setFullName}
+                  />
+                )}
+                <Field
+                  id="email"
+                  label="Email"
+                  icon={Mail}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={setEmailValue}
+                />
+                <div>
+                  <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-foreground/90">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                      placeholder="At least 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-card/60 py-2.5 pl-9 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
+                    />
+                    <button
+                      type="button"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {mode === "signup" && (
+                  <div>
+                    <label htmlFor="confirm-password" className="mb-1.5 block text-sm font-medium text-foreground/90">
+                      Confirm password
+                    </label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        id="confirm-password"
+                        type={showConfirm ? "text" : "password"}
+                        autoComplete="new-password"
+                        placeholder="Re-enter your password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full rounded-xl border border-input bg-card/60 py-2.5 pl-9 pr-10 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
+                      />
+                      <button
+                        type="button"
+                        aria-label={showConfirm ? "Hide password" : "Show password"}
+                        onClick={() => setShowConfirm((s) => !s)}
+                        className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {mode === "signin" && (
+                  <div className="-mt-1 flex justify-end">
+                    <button type="button" className="text-xs text-primary transition-opacity hover:opacity-80">
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                {/* Clerk bot-protection mount target (invisible CAPTCHA when enabled). */}
+                <div id="clerk-captcha" />
+
+                {error && (
+                  <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+                  ) : (
+                    <>
+                      {mode === "signin" ? "Sign in" : "Create account"}
+                      <ArrowRight className="size-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <p className="mt-6 text-center text-xs text-muted-foreground">
+                {mode === "signin" ? "New to Coinet? " : "Already have an account? "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === "signin" ? "signup" : "signin")
+                    setError(null)
+                  }}
+                  className="font-medium text-primary transition-opacity hover:opacity-80"
+                >
+                  {mode === "signin" ? "Create an account" : "Sign in"}
+                </button>
+              </p>
+            </>
+          )}
         </div>
       </main>
     </div>
+  )
+}
+
+// Email verification step — matches the auth-screen aesthetic (same input
+// styling, primary button, banner). Sits in the right panel; the brand panel
+// (globe) stays untouched.
+function VerifyPanel({
+  email,
+  code,
+  setCode,
+  onSubmit,
+  onResend,
+  onBack,
+  submitting,
+  error,
+  resent,
+}: {
+  email: string
+  code: string
+  setCode: (v: string) => void
+  onSubmit: (e: React.FormEvent) => void
+  onResend: () => void
+  onBack: () => void
+  submitting: boolean
+  error: string | null
+  resent: boolean
+}) {
+  return (
+    <>
+      <h1 className="font-heading text-2xl font-bold tracking-tight">Check your email</h1>
+      <p className="mt-1.5 text-sm text-muted-foreground">
+        We sent a 6-digit code to{" "}
+        <span className="font-medium text-foreground">{email || "your email"}</span>. Enter it below to verify your
+        account.
+      </p>
+
+      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
+        <div>
+          <label htmlFor="code" className="mb-1.5 block text-sm font-medium text-foreground/90">
+            Verification code
+          </label>
+          <div className="relative">
+            <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              id="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="123456"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              className="w-full rounded-xl border border-input bg-card/60 py-2.5 pl-9 pr-3 text-center font-mono text-lg tracking-[0.5em] text-foreground outline-none transition-colors placeholder:tracking-[0.5em] placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-1 flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          {submitting ? (
+            <span className="size-4 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+          ) : (
+            <>
+              Verify email
+              <ArrowRight className="size-4" />
+            </>
+          )}
+        </button>
+      </form>
+
+      <div className="mt-6 flex items-center justify-between text-xs">
+        <button
+          type="button"
+          onClick={onBack}
+          className="font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          ← Back
+        </button>
+        <button
+          type="button"
+          onClick={onResend}
+          className="font-medium text-primary transition-opacity hover:opacity-80"
+        >
+          {resent ? "Code sent ✓" : "Resend code"}
+        </button>
+      </div>
+    </>
   )
 }
 
