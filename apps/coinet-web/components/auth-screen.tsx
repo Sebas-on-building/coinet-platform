@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, ShieldCheck, Scale, History, KeyRound } from "lucide-react"
-import { useSignIn, useSignUp } from "@clerk/nextjs"
+import { useClerk } from "@clerk/nextjs"
 import { CoinetLogo } from "@/components/coinet-logo"
 import { cn } from "@/lib/utils"
 
@@ -17,8 +17,7 @@ function clerkErrorMessage(err: unknown): string {
 }
 
 export function AuthScreen() {
-  const { isLoaded: signInLoaded, signIn, setActive: setSignInActive } = useSignIn()
-  const { isLoaded: signUpLoaded, signUp, setActive: setSignUpActive } = useSignUp()
+  const clerk = useClerk()
 
   const [mode, setMode] = useState<Mode>("signin")
   const [fullName, setFullName] = useState("")
@@ -32,12 +31,24 @@ export function AuthScreen() {
   const [error, setError] = useState<string | null>(null)
   const [resent, setResent] = useState(false)
 
-  // useSignIn()/useSignUp() load independently of useAuth() (which is what
-  // gates the AuthScreen mount), so the form can render before the relevant
-  // Clerk resource is ready. Gate the action buttons on it so the user can't
-  // submit into a not-yet-loaded resource (esp. with browser autofill + a fast
-  // click). signIn also backs the social buttons.
-  const clerkReady = mode === "signin" ? signInLoaded && !!signIn : signUpLoaded && !!signUp
+  // The useSignIn()/useSignUp() hooks read Clerk's client-resource context,
+  // which on this statically-prerendered Next page can stay isLoaded:false even
+  // after window.Clerk.loaded flips true (a subscription/timing gap → the button
+  // hung on "Initializing…"). Drive readiness off the Clerk instance itself
+  // (useClerk().loaded, proven true) and subscribe via addListener so we
+  // re-render when it loads. The sign-in/up resources are taken from
+  // clerk.client.* (reliably populated) rather than the stale hook returns.
+  const [clerkReady, setClerkReady] = useState(() => clerk.loaded)
+  useEffect(() => {
+    if (clerk.loaded) {
+      setClerkReady(true)
+      return
+    }
+    const unsubscribe = clerk.addListener(() => {
+      if (clerk.loaded) setClerkReady(true)
+    })
+    return () => unsubscribe()
+  }, [clerk])
 
   function validate(): string | null {
     if (mode === "signup" && fullName.trim().length < 2) return "Please enter your name."
@@ -48,11 +59,11 @@ export function AuthScreen() {
   }
 
   async function handleSocial(provider: "google" | "apple") {
-    if (!signInLoaded || !signIn) return
+    if (!clerk.loaded || !clerk.client) return
     setError(null)
     setSubmitting(true)
     try {
-      await signIn.authenticateWithRedirect({
+      await clerk.client.signIn.authenticateWithRedirect({
         strategy: provider === "google" ? "oauth_google" : "oauth_apple",
         redirectUrl: "/sso-callback",
         redirectUrlComplete: "/",
@@ -75,7 +86,7 @@ export function AuthScreen() {
     // Clerk must be ready before we attempt anything. Check BEFORE flipping the
     // spinner and surface a visible message — never bail silently into an
     // infinite "submitting" state.
-    if (mode === "signin" ? !signInLoaded || !signIn : !signUpLoaded || !signUp) {
+    if (!clerk.loaded || !clerk.client) {
       setError("Authentication is still loading — please try again in a moment.")
       return
     }
@@ -84,21 +95,21 @@ export function AuthScreen() {
     setSubmitting(true)
     try {
       if (mode === "signin") {
-        const result = await signIn!.create({ identifier: email.trim(), password })
+        const result = await clerk.client.signIn.create({ identifier: email.trim(), password })
         if (result.status === "complete") {
-          await setSignInActive!({ session: result.createdSessionId })
+          await clerk.setActive({ session: result.createdSessionId })
           // Gate flips to the terminal once the session is active.
         } else {
           setError("Additional verification is required to finish signing in.")
         }
       } else {
         // Sign up → create the user, then send a 6-digit email code.
-        await signUp!.create({
+        await clerk.client.signUp.create({
           emailAddress: email.trim(),
           password,
           firstName: fullName.trim() || undefined,
         })
-        await signUp!.prepareEmailAddressVerification({ strategy: "email_code" })
+        await clerk.client.signUp.prepareEmailAddressVerification({ strategy: "email_code" })
         setMode("verify")
       }
     } catch (err) {
@@ -112,7 +123,7 @@ export function AuthScreen() {
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault()
-    if (!signUpLoaded || !signUp) {
+    if (!clerk.loaded || !clerk.client) {
       setError("Authentication is still loading — please try again in a moment.")
       return
     }
@@ -123,9 +134,9 @@ export function AuthScreen() {
     setError(null)
     setSubmitting(true)
     try {
-      const result = await signUp.attemptEmailAddressVerification({ code: code.trim() })
+      const result = await clerk.client.signUp.attemptEmailAddressVerification({ code: code.trim() })
       if (result.status === "complete") {
-        await setSignUpActive!({ session: result.createdSessionId })
+        await clerk.setActive({ session: result.createdSessionId })
         // Gate flips to the terminal.
       } else {
         setError("That code didn't verify. Please try again.")
@@ -138,10 +149,10 @@ export function AuthScreen() {
   }
 
   async function handleResend() {
-    if (!signUpLoaded || !signUp) return
+    if (!clerk.loaded || !clerk.client) return
     setError(null)
     try {
-      await signUp.prepareEmailAddressVerification({ strategy: "email_code" })
+      await clerk.client.signUp.prepareEmailAddressVerification({ strategy: "email_code" })
       setResent(true)
       setTimeout(() => setResent(false), 2500)
     } catch (err) {
@@ -260,7 +271,7 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => handleSocial("google")}
-                  disabled={submitting || !signInLoaded || !signIn}
+                  disabled={submitting || !clerkReady}
                   className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
                 >
                   <GoogleIcon className="size-4" />
@@ -269,7 +280,7 @@ export function AuthScreen() {
                 <button
                   type="button"
                   onClick={() => handleSocial("apple")}
-                  disabled={submitting || !signInLoaded || !signIn}
+                  disabled={submitting || !clerkReady}
                   className="flex items-center justify-center gap-2 rounded-xl border border-input bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
                 >
                   <AppleIcon className="size-4" />
