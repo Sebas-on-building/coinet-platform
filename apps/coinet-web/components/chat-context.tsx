@@ -1,8 +1,11 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import { useClerk } from "@clerk/nextjs"
 import type { Attachment, SendMeta } from "@/components/ask-bar"
-import { analyzePrompt, type Judgment } from "@/lib/judgment"
+import type { Judgment } from "@/lib/judgment"
+import { apiClient } from "@/lib/api-client"
+import { chatVerdictToJudgment } from "@/lib/verdict-map"
 
 export type Message =
   | { id: string; role: "user"; text: string; attachments: Attachment[] }
@@ -69,6 +72,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const streamTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeIdRef = useRef<string | null>(null)
+  const clerk = useClerk()
 
   const clearTimers = useCallback(() => {
     if (timer.current) clearTimeout(timer.current)
@@ -95,61 +99,61 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimers()
   }, [clearTimers])
 
-  // Produce an assistant reply for `text`, appending it to conversation `targetId`.
-  // Judgment cards appear at once; plain text answers stream word-by-word.
-  const respondTo = useCallback((text: string, targetId: string) => {
-    setThinking(true)
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      const reply = analyzePrompt(text)
-      const id = crypto.randomUUID()
-
-      if (reply.kind === "judgment") {
-        const assistantMsg: Message = { id, role: "assistant", judgment: reply.judgment }
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === targetId ? { ...c, messages: [...c.messages, assistantMsg], updatedAt: Date.now() } : c,
-          ),
-        )
-        setThinking(false)
-        return
-      }
-
-      // Stream a text reply word-by-word.
-      const words = reply.text.split(" ")
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === targetId
-            ? { ...c, messages: [...c.messages, { id, role: "assistant", text: words[0] ?? "" }], updatedAt: Date.now() }
-            : c,
-        ),
-      )
-      setThinking(false)
-      setStreamingId(id)
-      let i = 1
+  // Produce an assistant reply for `text` from the REAL backend, appending it to
+  // conversation `targetId`. A governed verdict (AVAILABLE/DEGRADED with fields)
+  // renders as a JudgmentCard; everything else (UNAVAILABLE / greeting / error)
+  // renders as honest text — never a fabricated card.
+  const respondTo = useCallback(
+    async (text: string, targetId: string) => {
+      setThinking(true)
+      if (timer.current) clearTimeout(timer.current)
       if (streamTimer.current) clearInterval(streamTimer.current)
-      streamTimer.current = setInterval(() => {
-        if (i >= words.length) {
-          if (streamTimer.current) clearInterval(streamTimer.current)
-          setStreamingId(null)
-          return
-        }
-        const partial = words.slice(0, i + 1).join(" ")
-        i += 1
+      setStreamingId(null)
+
+      const append = (msg: Message) =>
         setConversations((prev) =>
           prev.map((c) =>
-            c.id === targetId
-              ? {
-                  ...c,
-                  messages: c.messages.map((m) => (m.id === id ? { ...m, text: partial } : m)),
-                  updatedAt: Date.now(),
-                }
-              : c,
+            c.id === targetId ? { ...c, messages: [...c.messages, msg], updatedAt: Date.now() } : c,
           ),
         )
-      }, 45)
-    }, 1400)
-  }, [])
+
+      try {
+        // Fresh Clerk session token per send (no stale hook), then call the API.
+        const token = (await clerk.session?.getToken()) ?? null
+        apiClient.setAuth(clerk.user?.id ?? null, token)
+
+        const res = await apiClient.sendChatMessage({
+          message: text,
+          context: { analysisDepth: "standard" },
+        })
+        const m = res.data.message
+        const id = m.id || crypto.randomUUID()
+        const v = m.verdict
+
+        if (v && v.status !== "UNAVAILABLE" && v.fields && Object.keys(v.fields).length > 0) {
+          append({ id, role: "assistant", judgment: chatVerdictToJudgment(v, m.content) })
+        } else {
+          append({
+            id,
+            role: "assistant",
+            text: m.content || "I couldn't form a judgment on that just now.",
+          })
+        }
+      } catch (err) {
+        const unauthorized = err instanceof Error && /\b401\b|unauth/i.test(err.message)
+        append({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: unauthorized
+            ? "Your session expired — please sign out and back in, then try again."
+            : "I couldn't reach Coinet's engine just now. Give it a moment and try again.",
+        })
+      } finally {
+        setThinking(false)
+      }
+    },
+    [clerk],
+  )
 
   const send = useCallback((text: string, meta: SendMeta) => {
     const userMsg: Message = {

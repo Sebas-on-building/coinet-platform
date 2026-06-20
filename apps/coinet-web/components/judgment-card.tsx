@@ -227,7 +227,10 @@ export function JudgmentCard({ judgment }: { judgment: Judgment }) {
         <div className="flex flex-col gap-5 px-5 pt-5">
           {/* 6 — Trust layer / data coverage */}
           <div>
-            <SectionLabel>Data coverage</SectionLabel>
+            <div className="flex items-baseline justify-between gap-2">
+              <SectionLabel>Data coverage</SectionLabel>
+              <span className="pb-2 text-[10px] italic text-muted-foreground/50">illustrative — wiring pending</span>
+            </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {judgment.coverage.map((f) => {
                 const m = coverageMeta[f.status]
@@ -304,7 +307,10 @@ export function JudgmentCard({ judgment }: { judgment: Judgment }) {
 
           {/* 10 — OmniScore */}
           <div>
-            <SectionLabel>OmniScore</SectionLabel>
+            <div className="flex items-baseline justify-between gap-2">
+              <SectionLabel>OmniScore</SectionLabel>
+              <span className="pb-2 text-[10px] italic text-muted-foreground/50">illustrative — wiring pending</span>
+            </div>
             <div className="rounded-xl border border-border bg-secondary/30 p-3">
               <div className="flex gap-3">
                 <div className="flex-1 rounded-lg bg-primary/10 px-3 py-2 text-center">
