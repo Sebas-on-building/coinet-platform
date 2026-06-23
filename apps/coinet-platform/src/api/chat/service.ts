@@ -91,7 +91,8 @@ import {
   formatInvestigationForAI,
   type ProjectInvestigation 
 } from '../../services/project-investigation-service';
-import { symbolDetector } from '../../services/symbol-detector';
+import { symbolDetector, type DetectedCoin } from '../../services/symbol-detector';
+import { inferCarriedToken } from '../../services/token-carry-over';
 import { chartDetector } from './chart-detector';
 import { clearTrackedSources, getTrackedSources } from './source-manager';
 import { logger } from '../../utils/logger';
@@ -228,6 +229,10 @@ export class ChatService {
       let handlerResult: HandlerResult | null = null;
       let tokenContextResult: { hasTokenContext: boolean; tokenContext: TokenContext | null; injectionText: string | null } | null = null;
       let currentReasoningContext: ReasoningContext | null = null;
+      // 🧵 Token carried over from the thread (set only on a size-1 unambiguous
+      // history match). Declared out here so the marker can be injected into the
+      // AI prompt after the live-context try block closes.
+      let carriedToken: DetectedCoin | null = null;
       
       try {
         // 🎯 ENTITY-DRIVEN ENRICHMENT: Detect and enrich token entities FIRST
@@ -247,7 +252,30 @@ export class ChatService {
         }
         
         // Detect coins mentioned in the message for targeted news
-        const detectedCoins = await symbolDetector.detectCoins(request.message);
+        let detectedCoins = await symbolDetector.detectCoins(request.message);
+
+        // 🧵 MULTI-TURN TOKEN CARRY-OVER (Law-1 safe): when the CURRENT message
+        // names no token but the recent history holds EXACTLY ONE unambiguous
+        // token across the user's own turns, inherit it so token-less follow-ups
+        // ("wie sicher bist du?") stay on subject. Ambiguity (≥2 distinct tokens)
+        // or no token in history carries NOTHING → the existing clarifying
+        // question runs unchanged. We never guess; in doubt we ask.
+        if (detectedCoins.length === 0) {
+          const carry = await inferCarriedToken(context);
+          if (carry.carried) {
+            carriedToken = carry.carried;
+            detectedCoins = [carry.carried];
+            logger.info('🧵 Token carried over from conversation thread', {
+              symbol: carry.carried.symbol,
+              coinGeckoId: carry.carried.coinGeckoId,
+            });
+          } else if (carry.reason === 'ambiguous') {
+            logger.info('🧵 Token carry-over skipped — ambiguous thread (multiple tokens), falling back to clarifying question', {
+              distinct: carry.distinctSymbols.join(', '),
+            });
+          }
+        }
+
         const coinSymbols = detectedCoins.map(c => c.symbol.toUpperCase());
         
         // 🚨 CRITICAL FIX: Always fetch at least basic market data, even for simple greetings
@@ -1817,6 +1845,16 @@ Remember: Generic responses = FAILURE. Be direct and helpful.
         }
       }
       
+      // 🧵 If a token was carried over from the thread, mark it as the explicit
+      // subject of this turn. This — and ONLY this — authorizes the grounding
+      // contract's narrow thread-continuation allowance (see conversation-rules
+      // GROUNDING CONTRACT). Absent this marker the model must not pull a token
+      // from earlier turns.
+      if (carriedToken) {
+        const carryMarker = `CARRIED-OVER SUBJECT (thread continuation): ${carriedToken.symbol} — the user is continuing this conversation about ${carriedToken.symbol} and did not restate the ticker this turn. Treat ${carriedToken.symbol} as the explicit subject. This is the ONLY token authorized by thread continuation; do not infer any other token from history.`;
+        liveContextStr = liveContextStr ? `${carryMarker}\n\n${liveContextStr}` : carryMarker;
+      }
+
       let aiResponse;
       try {
         aiResponse = await aiService.analyze({
