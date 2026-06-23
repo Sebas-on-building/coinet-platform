@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { useClerk } from "@clerk/nextjs"
-import type { Attachment, SendMeta } from "@/components/ask-bar"
+import type { Attachment, ModeId, SendMeta } from "@/components/ask-bar"
 import type { Judgment } from "@/lib/judgment"
 import { apiClient } from "@/lib/api-client"
 import { chatVerdictToJudgment } from "@/lib/verdict-map"
@@ -17,6 +17,9 @@ export type Conversation = {
   title: string
   messages: Message[]
   updatedAt: number
+  // Canonical conversation id assigned by the backend; the UI `id` stays
+  // client-side for the sidebar list, but threading is keyed off this.
+  backendId?: string
 }
 
 export type AppView = "chat" | "markets"
@@ -42,6 +45,14 @@ type ChatContextValue = {
 const ChatContext = createContext<ChatContextValue | null>(null)
 
 const STORAGE_KEY = "coinet.conversations.v1"
+
+// The composer's mode maps to the backend's analysisDepth contract.
+const MODE_TO_DEPTH: Record<ModeId, "quick" | "standard" | "deep"> = {
+  judgment: "standard",
+  research: "deep",
+  quick: "quick",
+  deep: "deep",
+}
 
 function loadStored(): Conversation[] {
   if (typeof window === "undefined") return []
@@ -72,6 +83,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const streamTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const activeIdRef = useRef<string | null>(null)
+  // Maps a UI conversation id → the canonical backend conversationId, so every
+  // follow-up send threads into the same backend conversation.
+  const backendIdRef = useRef<Map<string, string>>(new Map())
   const clerk = useClerk()
 
   const clearTimers = useCallback(() => {
@@ -79,9 +93,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (streamTimer.current) clearInterval(streamTimer.current)
   }, [])
 
-  // Load saved conversations on mount.
+  // Load saved conversations on mount, rebuilding the UI→backend id link so
+  // threads survive a reload.
   useEffect(() => {
-    setConversations(loadStored())
+    const stored = loadStored()
+    setConversations(stored)
+    for (const c of stored) {
+      if (c.backendId) backendIdRef.current.set(c.id, c.backendId)
+    }
     setHydrated(true)
   }, [])
 
@@ -104,7 +123,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // renders as a JudgmentCard; everything else (UNAVAILABLE / greeting / error)
   // renders as honest text — never a fabricated card.
   const respondTo = useCallback(
-    async (text: string, targetId: string) => {
+    async (text: string, targetId: string, analysisDepth: "quick" | "standard" | "deep") => {
       setThinking(true)
       if (timer.current) clearTimeout(timer.current)
       if (streamTimer.current) clearInterval(streamTimer.current)
@@ -122,10 +141,28 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const token = (await clerk.session?.getToken()) ?? null
         apiClient.setAuth(clerk.user?.id ?? null, token)
 
+        // Continue the existing backend thread when we already have its id;
+        // omit it on the first message so the backend mints a new conversation.
+        const existingConversationId = backendIdRef.current.get(targetId)
+
         const res = await apiClient.sendChatMessage({
           message: text,
-          context: { analysisDepth: "standard" },
+          conversationId: existingConversationId,
+          context: { analysisDepth },
         })
+
+        // The backend owns the conversation id — adopt and cache it so every
+        // follow-up message threads into the same backend conversation.
+        const backendConversationId = res.data.conversationId
+        if (backendConversationId) {
+          backendIdRef.current.set(targetId, backendConversationId)
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === targetId ? { ...c, backendId: backendConversationId } : c,
+            ),
+          )
+        }
+
         const m = res.data.message
         const id = m.id || crypto.randomUUID()
         const v = m.verdict
@@ -190,7 +227,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setActiveId(targetId)
     setView("chat")
 
-    respondTo(text, targetId)
+    respondTo(text, targetId, MODE_TO_DEPTH[meta.mode])
   }, [respondTo])
 
   // Re-run the assistant reply for the last user message in the active conversation.
@@ -212,7 +249,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const lastUser = [...(convo?.messages ?? [])].reverse().find((m) => m.role === "user") as
       | { text: string }
       | undefined
-    if (lastUser) respondTo(lastUser.text, id)
+    if (lastUser) respondTo(lastUser.text, id, "standard")
   }, [conversations, respondTo, clearTimers])
 
   const ask = useCallback(
