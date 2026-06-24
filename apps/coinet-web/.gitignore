@@ -17,3 +17,6 @@ node_modules
 
 # Next.js generated types
 next-env.d.ts
+
+# clerk configuration (can include secrets)
+/.clerk/
