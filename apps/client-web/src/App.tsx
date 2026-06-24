@@ -10,6 +10,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AuthPage } from "@/components/auth/AuthPage";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
+import { Analytics } from "@vercel/analytics/react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import SSOCallback from "./pages/SSOCallback";
@@ -55,6 +56,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
+            <Analytics />
           </AuthProvider>
         </AccessibilityProvider>
       </TooltipProvider>
