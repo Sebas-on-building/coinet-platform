@@ -9,11 +9,13 @@ import { cn } from "@/lib/utils"
 
 type Mode = "signin" | "signup" | "verify"
 
-// Next.js signals client navigations (e.g. the ones Clerk triggers via
-// setActive/authenticateWithRedirect) by THROWING a control-flow error whose
-// `digest` starts with "NEXT_REDIRECT". It is not a real failure — swallowing
-// it in a catch aborts the navigation and surfaces a spurious runtime error,
-// so we must detect and re-throw it untouched.
+// Clerk's setActive()/authenticateWithRedirect() kick off a Next.js navigation
+// that surfaces as a control-flow error whose `digest` starts with
+// "NEXT_REDIRECT". Inside a client-side async event handler (as below) Next has
+// no boundary to catch it, so re-throwing only produces an unhandled promise
+// rejection / overlay error. It is NOT a real failure — Clerk has already
+// started the navigation — so we detect it and swallow it silently instead of
+// showing it to the user.
 function isRedirectError(err: unknown): boolean {
   const digest = (err as { digest?: unknown })?.digest
   return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")
@@ -80,7 +82,7 @@ export function AuthScreen() {
       })
       // Control leaves the page on success (redirect to the provider).
     } catch (err) {
-      if (isRedirectError(err)) throw err
+      if (isRedirectError(err)) return
       setError(clerkErrorMessage(err))
       setSubmitting(false)
     }
@@ -124,7 +126,7 @@ export function AuthScreen() {
         setMode("verify")
       }
     } catch (err) {
-      if (isRedirectError(err)) throw err
+      if (isRedirectError(err)) return
       setError(clerkErrorMessage(err))
     } finally {
       // Always release the button — success paths flip/unmount the gate, the
@@ -154,7 +156,7 @@ export function AuthScreen() {
         setError("That code didn't verify. Please try again.")
       }
     } catch (err) {
-      if (isRedirectError(err)) throw err
+      if (isRedirectError(err)) return
       setError(clerkErrorMessage(err))
     } finally {
       setSubmitting(false)
@@ -169,7 +171,7 @@ export function AuthScreen() {
       setResent(true)
       setTimeout(() => setResent(false), 2500)
     } catch (err) {
-      if (isRedirectError(err)) throw err
+      if (isRedirectError(err)) return
       setError(clerkErrorMessage(err))
     }
   }
