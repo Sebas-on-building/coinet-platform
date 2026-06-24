@@ -29,6 +29,7 @@ type ChatContextValue = {
   activeId: string | null
   messages: Message[]
   thinking: boolean
+  thinkingDepth: AnalysisDepth
   streamingId: string | null
   started: boolean
   view: AppView
@@ -47,11 +48,12 @@ const ChatContext = createContext<ChatContextValue | null>(null)
 const STORAGE_KEY = "coinet.conversations.v1"
 
 // The composer's mode maps to the backend's analysisDepth contract.
-const MODE_TO_DEPTH: Record<ModeId, "quick" | "standard" | "deep"> = {
-  judgment: "standard",
-  research: "deep",
-  quick: "quick",
-  deep: "deep",
+export type AnalysisDepth = "quick" | "standard" | "deep"
+
+const MODE_TO_DEPTH: Record<ModeId, AnalysisDepth> = {
+  fast: "quick",
+  default: "standard",
+  max: "deep",
 }
 
 function loadStored(): Conversation[] {
@@ -77,6 +79,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
+  const [thinkingDepth, setThinkingDepth] = useState<AnalysisDepth>("standard")
   const [hydrated, setHydrated] = useState(false)
   const [streamingId, setStreamingId] = useState<string | null>(null)
   const [view, setView] = useState<AppView>("chat")
@@ -123,7 +126,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   // renders as a JudgmentCard; everything else (UNAVAILABLE / greeting / error)
   // renders as honest text — never a fabricated card.
   const respondTo = useCallback(
-    async (text: string, targetId: string, analysisDepth: "quick" | "standard" | "deep") => {
+    async (text: string, targetId: string, analysisDepth: AnalysisDepth) => {
+      setThinkingDepth(analysisDepth)
       setThinking(true)
       if (timer.current) clearTimeout(timer.current)
       if (streamTimer.current) clearInterval(streamTimer.current)
@@ -254,7 +258,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const ask = useCallback(
     (text: string) => {
-      send(text, { mode: "judgment", attachments: [] })
+      send(text, { mode: "default", attachments: [] })
     },
     [send],
   )
@@ -309,6 +313,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         activeId,
         messages,
         thinking,
+        thinkingDepth,
         streamingId,
         started,
         view,

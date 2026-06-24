@@ -2,17 +2,18 @@
 
 import { useEffect, useRef } from "react"
 import Image from "next/image"
-import { Scale, FileText, ImageIcon } from "lucide-react"
+import { FileText, ImageIcon } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
 import { AskBar } from "@/components/ask-bar"
 import { CoinetLogo } from "@/components/coinet-logo"
 import { JudgmentCard } from "@/components/judgment-card"
+import { ThinkingIndicator } from "@/components/thinking-indicator"
 import { useChat } from "@/components/chat-context"
 import { useSettings } from "@/components/settings-context"
 import { cn } from "@/lib/utils"
 
 export function ChatArea() {
-  const { messages, thinking, streamingId, started, send: handleSend } = useChat()
+  const { messages, thinking, thinkingDepth, streamingId, started, send: handleSend } = useChat()
   const { reduceMotion } = useSettings()
   const { user } = useUser()
   const firstName = user?.firstName?.trim() || user?.fullName?.trim().split(/\s+/)[0] || "there"
@@ -120,16 +121,10 @@ export function ChatArea() {
 
           {thinking && (
             <div className="flex gap-3">
-                <CoinetLogo className="mt-0.5 size-9 shrink-0 text-foreground" />
-              <div className="flex items-center gap-2 rounded-2xl border border-border bg-card/60 px-4 py-3 text-sm text-muted-foreground backdrop-blur">
-                <Scale className="size-4 animate-pulse text-primary" />
-                <span>Coinet is weighing the signals</span>
-                <span className="flex gap-1">
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
-                </span>
-              </div>
+              <CoinetLogo
+                className={cn("mt-0.5 size-9 shrink-0 text-foreground", !reduceMotion && "animate-pulse")}
+              />
+              <ThinkingIndicator depth={thinkingDepth} reduceMotion={reduceMotion} />
             </div>
           )}
 

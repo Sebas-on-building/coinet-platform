@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useRef, useState } from "react"
-import { Plus, ArrowUp, ChevronDown, Waypoints, Telescope, Zap, Microscope, Check, FileText, ImageIcon, X } from "lucide-react"
+import { Plus, ArrowUp, ChevronDown, Waypoints, Zap, Microscope, Check, FileText, ImageIcon, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const suggestions = [
@@ -14,10 +14,9 @@ const suggestions = [
 ]
 
 export const MODES = [
-  { id: "judgment", label: "Judgment", icon: Waypoints, description: "Weighs every signal into one verdict." },
-  { id: "research", label: "Research", icon: Telescope, description: "Deep, sourced breakdown of the topic." },
-  { id: "quick", label: "Quick take", icon: Zap, description: "Fast, one-line read on the move." },
-  { id: "deep", label: "Deep dive", icon: Microscope, description: "Exhaustive analysis across timeframes." },
+  { id: "fast", label: "Fast", icon: Zap, description: "Quick, one-line read on the move." },
+  { id: "default", label: "Default", icon: Waypoints, description: "Balanced verdict weighing every signal." },
+  { id: "max", label: "Max", icon: Microscope, description: "Exhaustive deep-dive across timeframes." },
 ] as const
 
 export type ModeId = (typeof MODES)[number]["id"]
@@ -49,7 +48,7 @@ export function AskBar({
   autoFocus?: boolean
 }) {
   const [value, setValue] = useState("")
-  const [mode, setMode] = useState<ModeId>("judgment")
+  const [mode, setMode] = useState<ModeId>("default")
   const [menuOpen, setMenuOpen] = useState(false)
   const [attachments, setAttachments] = useState<Attachment[]>([])
 

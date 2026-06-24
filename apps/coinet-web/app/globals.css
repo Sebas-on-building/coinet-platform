@@ -136,6 +136,8 @@
 
 @theme {
   --animate-globe-spin: globe-spin 90s linear infinite;
+  --animate-thinking-shimmer: thinking-shimmer 2s linear infinite;
+  --animate-thinking-fade: thinking-fade 0.45s ease-out;
 
   @keyframes globe-spin {
     from {
@@ -143,6 +145,26 @@
     }
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  @keyframes thinking-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  @keyframes thinking-fade {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }
