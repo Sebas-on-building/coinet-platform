@@ -5,5 +5,4 @@ packages:
   - '!apps/mobile-client'
   - '!apps/web-client'
   - '!apps/user-experience'
-  - '!apps/coinet-web'
   - '!packages/api-client'
