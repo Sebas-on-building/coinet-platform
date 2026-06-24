@@ -9,6 +9,16 @@ import { cn } from "@/lib/utils"
 
 type Mode = "signin" | "signup" | "verify"
 
+// Next.js signals client navigations (e.g. the ones Clerk triggers via
+// setActive/authenticateWithRedirect) by THROWING a control-flow error whose
+// `digest` starts with "NEXT_REDIRECT". It is not a real failure — swallowing
+// it in a catch aborts the navigation and surfaces a spurious runtime error,
+// so we must detect and re-throw it untouched.
+function isRedirectError(err: unknown): boolean {
+  const digest = (err as { digest?: unknown })?.digest
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")
+}
+
 // Pull a human-readable message out of a Clerk error (or any thrown value).
 function clerkErrorMessage(err: unknown): string {
   const anyErr = err as { errors?: Array<{ longMessage?: string; message?: string }>; message?: string }
@@ -70,6 +80,7 @@ export function AuthScreen() {
       })
       // Control leaves the page on success (redirect to the provider).
     } catch (err) {
+      if (isRedirectError(err)) throw err
       setError(clerkErrorMessage(err))
       setSubmitting(false)
     }
@@ -113,6 +124,7 @@ export function AuthScreen() {
         setMode("verify")
       }
     } catch (err) {
+      if (isRedirectError(err)) throw err
       setError(clerkErrorMessage(err))
     } finally {
       // Always release the button — success paths flip/unmount the gate, the
@@ -142,6 +154,7 @@ export function AuthScreen() {
         setError("That code didn't verify. Please try again.")
       }
     } catch (err) {
+      if (isRedirectError(err)) throw err
       setError(clerkErrorMessage(err))
     } finally {
       setSubmitting(false)
@@ -156,6 +169,7 @@ export function AuthScreen() {
       setResent(true)
       setTimeout(() => setResent(false), 2500)
     } catch (err) {
+      if (isRedirectError(err)) throw err
       setError(clerkErrorMessage(err))
     }
   }
