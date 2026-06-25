@@ -21,26 +21,60 @@ function isNextRedirect(value: unknown): boolean {
   return typeof message === "string" && message.startsWith("NEXT_REDIRECT")
 }
 
+function mentionsNextRedirect(args: unknown[]): boolean {
+  return args.some((arg) => {
+    if (isNextRedirect(arg)) return true
+    return typeof arg === "string" && arg.includes("NEXT_REDIRECT")
+  })
+}
+
 export function RedirectErrorSilencer() {
   useEffect(() => {
+    // Capture-phase listeners run before the dev/runtime reporters and
+    // stopImmediatePropagation prevents those reporters from ever seeing the
+    // event. We only do this for the NEXT_REDIRECT control-flow signal.
     const onError = (event: ErrorEvent) => {
-      if (isNextRedirect(event.error) || (typeof event.message === "string" && event.message.includes("NEXT_REDIRECT"))) {
+      if (
+        isNextRedirect(event.error) ||
+        (typeof event.message === "string" && event.message.includes("NEXT_REDIRECT"))
+      ) {
         event.preventDefault()
+        event.stopImmediatePropagation()
       }
     }
 
     const onRejection = (event: PromiseRejectionEvent) => {
       if (isNextRedirect(event.reason)) {
         event.preventDefault()
+        event.stopImmediatePropagation()
       }
     }
 
-    window.addEventListener("error", onError)
-    window.addEventListener("unhandledrejection", onRejection)
+    window.addEventListener("error", onError, true)
+    window.addEventListener("unhandledrejection", onRejection, true)
+
+    // The Next.js dev overlay and the v0 runtime reporter funnel uncaught
+    // errors through console.error and reportError. Wrap both so the redirect
+    // signal is dropped while everything else passes through unchanged.
+    const originalConsoleError = console.error
+    console.error = (...args: unknown[]) => {
+      if (mentionsNextRedirect(args)) return
+      originalConsoleError.apply(console, args as [])
+    }
+
+    const originalReportError = window.reportError?.bind(window)
+    if (originalReportError) {
+      window.reportError = (error: unknown) => {
+        if (isNextRedirect(error)) return
+        originalReportError(error)
+      }
+    }
 
     return () => {
-      window.removeEventListener("error", onError)
-      window.removeEventListener("unhandledrejection", onRejection)
+      window.removeEventListener("error", onError, true)
+      window.removeEventListener("unhandledrejection", onRejection, true)
+      console.error = originalConsoleError
+      if (originalReportError) window.reportError = originalReportError
     }
   }, [])
 
